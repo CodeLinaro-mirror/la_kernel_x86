@@ -970,30 +970,34 @@ static ssize_t aio_setup_vectored_rw(int rw, struct kiocb *kiocb, bool compat)
 	if (ret < 0)
 		return ret;
 
-	/* ki_nbytes now reflect bytes instead of segs */
+	ret = rw_verify_area(rw, kiocb->ki_filp, &kiocb->ki_pos, ret);
+	if (ret < 0)
+		return ret;
+
+	kiocb->ki_nr_segs = kiocb->ki_nbytes;
+	kiocb->ki_cur_seg = 0;
+	/* ki_nbytes/left now reflect bytes instead of segs */
 	kiocb->ki_nbytes = ret;
 	return 0;
 }
 
-static ssize_t aio_setup_single_vector(int rw, struct kiocb *kiocb)
+static ssize_t aio_setup_single_vector(int type, struct file *file, struct kiocb *kiocb)
 {
-	size_t len = kiocb->ki_nbytes;
+	int bytes;
 
-	if (len > MAX_RW_COUNT)
-		len = MAX_RW_COUNT;
-
-	if (unlikely(!access_ok(!rw, kiocb->ki_buf, len)))
-                return -EFAULT;
+	bytes = rw_verify_area(type, file, &kiocb->ki_pos, kiocb->ki_left);
+	if (bytes < 0)
+		return bytes;
 
 	kiocb->ki_iovec = &kiocb->ki_inline_vec;
 	kiocb->ki_iovec->iov_base = kiocb->ki_buf;
-	kiocb->ki_iovec->iov_len = len;
+	kiocb->ki_iovec->iov_len = bytes;
 	kiocb->ki_nr_segs = 1;
 	return 0;
 }
 
 /*
- * aio_setup_iocb:
+ * aio_run_iocb:
  *	Performs the initial checks and aio retry method
  *	setup for the kiocb at the time of io submission.
  */
@@ -1007,29 +1011,45 @@ static ssize_t aio_run_iocb(struct kiocb *req, bool compat)
 
 	switch (req->ki_opcode) {
 	case IOCB_CMD_PREAD:
-	case IOCB_CMD_PREADV:
-		mode	= FMODE_READ;
-		rw	= READ;
-		rw_op	= file->f_op->aio_read;
-		goto rw_common;
-
+		ret = -EBADF;
+		if (unlikely(!(file->f_mode & FMODE_READ)))
+			break;
+		ret = -EFAULT;
+		if (unlikely(!access_ok(VERIFY_WRITE, req->ki_buf,
+			req->ki_left)))
+			break;
+		ret = aio_setup_single_vector(READ, file, req);
+		if (ret)
+			break;
+		ret = -EINVAL;
+		break;
 	case IOCB_CMD_PWRITE:
+		ret = -EBADF;
+		if (unlikely(!(file->f_mode & FMODE_WRITE)))
+			break;
+		ret = -EFAULT;
+		if (unlikely(!access_ok(VERIFY_READ, req->ki_buf,
+			req->ki_left)))
+			break;
+		ret = aio_setup_single_vector(WRITE, file, req);
+		if (ret)
+			break;
+		ret = -EINVAL;
+		break;
+	case IOCB_CMD_PREADV:
+		ret = -EBADF;
+		if (unlikely(!(file->f_mode & FMODE_READ)))
+			break;
+		ret = aio_setup_vectored_rw(READ, req, compat);
+		if (ret)
+			break;
+		ret = -EINVAL;
+		break;
 	case IOCB_CMD_PWRITEV:
-		mode	= FMODE_WRITE;
-		rw	= WRITE;
-		rw_op	= file->f_op->aio_write;
-		goto rw_common;
-rw_common:
-		if (unlikely(!(file->f_mode & mode)))
-			return -EBADF;
-
-		if (!rw_op)
-			return -EINVAL;
-
-		ret = (req->ki_opcode == IOCB_CMD_PREADV ||
-		       req->ki_opcode == IOCB_CMD_PWRITEV)
-			? aio_setup_vectored_rw(rw, req, compat)
-			: aio_setup_single_vector(rw, req);
+		ret = -EBADF;
+		if (unlikely(!(file->f_mode & FMODE_WRITE)))
+			break;
+		ret = aio_setup_vectored_rw(WRITE, req, compat);
 		if (ret)
 			return ret;
 
