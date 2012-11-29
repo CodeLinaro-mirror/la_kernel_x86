@@ -8,6 +8,7 @@ obj-$(CONFIG_X86_INTEL_MID) += intel_mid_pcihelpers.o
 obj-$(CONFIG_X86_INTEL_MID) += intel_mid_scu.o
 
 obj-$(CONFIG_EARLY_PRINTK_INTEL_MID)    += early_printk_intel_mid.o
+obj-$(CONFIG_INTEL_MID_PSTORE_RAM) += intel_mid_pstore_ram.o
 
 # PMU driver
 obj-$(CONFIG_ATOM_SOC_POWER) += intel_soc_pmu.o intel_soc_pm_debug.o intel_soc_dump.o

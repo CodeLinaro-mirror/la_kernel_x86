@@ -379,6 +379,6 @@ int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr);
 int intel_mid_hsu_func_to_port(unsigned int func);
 struct device *intel_mid_hsu_set_wake_peer(int port,
                         void (*wake_peer)(struct device *));
-
+extern void pstore_ram_reserve_memory(void);
 
 #endif /* _ASM_X86_INTEL_MID_H */
