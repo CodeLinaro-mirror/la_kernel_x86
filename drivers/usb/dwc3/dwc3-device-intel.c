@@ -252,6 +252,7 @@ int dwc3_start_peripheral(struct usb_gadget *g)
 	int			irq;
 	int			ret = 0;
 
+	wake_lock(&_dev_data->wake_lock);
 	pm_runtime_get_sync(dwc->dev);
 
 	mutex_lock(&_dev_data->mutex);
@@ -595,6 +596,8 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	usb_put_phy(usb_phy);
 	dwc->is_otg = 1;
 
+	wake_lock_init(&_dev_data->wake_lock,
+			WAKE_LOCK_SUSPEND, "dwc_wake_lock");
 
 	dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 	ret = dwc3_gadget_init(dwc);
