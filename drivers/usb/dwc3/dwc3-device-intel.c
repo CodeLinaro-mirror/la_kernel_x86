@@ -382,8 +382,18 @@ static int dwc3_device_gadget_pullup(struct usb_gadget *g, int is_on)
 		dev_err(dwc->dev, "%s: PM_RESUMING, return -EIO\n", __func__);
 		return -EIO;
 	}
-	if (dwc->pm_state == PM_SUSPENDED)
-		pm_runtime_get_sync(dwc->dev);
+
+	if (dwc->pm_state == PM_SUSPENDED) {
+
+		/* WORKAROUND Wait 300 ms and check if the state is still PM_SUSPENDED
+		 * before resuming the controller. This avoids resuming the controller
+		 * during enumeration and causing PHY hangs.
+		 */
+		msleep(300);
+		if (dwc->pm_state == PM_SUSPENDED)
+			pm_runtime_get_sync(dwc->dev);
+	}
+
 	is_on = !!is_on;
 
 	mutex_lock(&_dev_data->mutex);
