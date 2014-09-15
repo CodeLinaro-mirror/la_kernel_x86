@@ -137,6 +137,14 @@
 #define APM_STS                 0x04
 #define PM_CMD_D3_COLD		(0x1 << 21)
 
+/* normally defined in SoC specific header */
+#ifndef ISP_ISLAND
+#define ISP_ISLAND 0x1
+#endif
+#ifndef ISP_SS_PM0
+#define ISP_SS_PM0 0x39
+#endif
+
 /* Size of command logging array */
 #define LOG_SIZE	5
 
@@ -182,23 +190,6 @@ enum pmu_ss_state {
 	SS_STATE_D0I2 = 2,
 	SS_STATE_D0I3 = 3
 };
-
-enum pmu_mrfl_nc_device_name {
-	GFXSLC = 0,
-	GSDKCK,
-	GRSCD,
-	VED,
-	VEC,
-	DPA,
-	DPB,
-	DPC,
-	VSP,
-	ISP,
-	MIO,
-	HDMIO,
-	GFXSLCLDO
-};
-
 
 struct pmu_ss_states {
 	unsigned long pmu1_states;

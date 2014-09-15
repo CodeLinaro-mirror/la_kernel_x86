@@ -45,9 +45,6 @@ char *mrfl_nc_devices[] = {
        "GFXSLCLDO"
 };
 
-int mrfl_no_of_nc_devices =
-       sizeof(mrfl_nc_devices)/sizeof(mrfl_nc_devices[0]);
-
 static int mrfld_pmu_init(void)
 {
 	mid_pmu_cxt->s3_hint = MRFLD_S3_HINT;
@@ -147,7 +144,7 @@ static bool mrfld_nc_sc_status_check(void)
 		/* loop through the status to see if any of nc power island
 		 * is not in D0i3 state
 		 */
-		for (i = 0; i < mrfl_no_of_nc_devices; i++) {
+		for (i = 0; i < LAST_NC_DEVICE; i++) {
 			val = nc_pwr_sts & 3;
 			if (val != 3) {
 				nc_status = false;

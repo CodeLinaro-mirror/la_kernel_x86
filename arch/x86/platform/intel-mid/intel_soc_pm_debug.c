@@ -1516,7 +1516,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	seq_puts(s, "========================================\n");
 
 	nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
-	for (i = 0; i < mrfl_no_of_nc_devices; i++) {
+	for (i = 0; i < LAST_NC_DEVICE; i++) {
 		unsigned long long t, t1;
 		u32 remainder, time, d0i0_time_secs;
 

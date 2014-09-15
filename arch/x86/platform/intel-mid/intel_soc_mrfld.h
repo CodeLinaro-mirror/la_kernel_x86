@@ -35,8 +35,64 @@
 
 #define MRFLD_S3_HINT			0x64
 
-#define PUNIT_PORT			0x04
-#define NC_PM_SSS			0x3F
+/* SSPM registers for NC devices */
+#define GFX_SS_PM0	0x30
+#define VED_SS_PM0	0x32
+#define VEC_SS_PM0	0x34
+#define DSP_SS_PM	0x36
+#define VSP_SS_PM0	0x37
+#define ISP_SS_PM0	0x39
+#define MIO_SS_PM	0x3b
+#define HDMIO_SS_PM	0x3c
+#define NC_PM_SSS	0x3f
+
+/* NC islands for GFXSSPM0 */
+#define GFXSLC_ISLAND		0x1
+#define GSDKCK_ISLAND		0x2
+#define GRSCD_ISLAND		0x4
+#define GFXSLCLDO_ISLAND	0x8
+
+/* NC islands for VEDSSPM0 */
+#define VED_ISLAND		0x1
+
+/* NC islands for VECSSPM0 */
+#define VEC_ISLAND		0x1
+
+/* NC islands for DSPSSPM */
+#define DPA_ISLAND		0x1
+#define DPB_ISLAND		0x2
+#define DPC_ISLAND		0x4
+
+/* NC islands for VSPSSPM0 */
+#define VSP_ISLAND		0x1
+
+/* NC islands for ISPSSPM0 */
+#define ISP_ISLAND		0x1
+
+/* NC islands for MIOSSPM */
+#define MIO_ISLAND		0x1
+
+/* NC islands for HDMIOSSPM */
+#define HDMIO_ISLAND		0x1
+
+/* indexes of NC devices */
+/* should be in sync with mrfl_nc_devices */
+enum pmu_mrfl_nc_device_name {
+	GFXSLC = 0,
+	GSDKCK,
+	GRSCD,
+	VED,
+	VEC,
+	DPA,
+	DPB,
+	DPC,
+	VSP,
+	ISP,
+	MIO,
+	HDMIO,
+	GFXSLCLDO,
+	LAST_NC_DEVICE
+};
 
 /* SRAM locations to get S0ix count and residency */
 #define S0IX_COUNTERS_BASE	0xFFFFF500
@@ -144,7 +200,6 @@
 #define LPMP3_TARGET_SSS0 (0xFFC3FFFF)
 
 extern char *mrfl_nc_devices[];
-extern int mrfl_no_of_nc_devices;
 extern int intel_scu_ipc_simple_command(int, int);
 extern void log_wakeup_irq(void);
 extern void s0ix_complete(void);
