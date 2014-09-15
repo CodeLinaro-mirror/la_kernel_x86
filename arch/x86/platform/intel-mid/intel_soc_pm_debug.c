@@ -343,7 +343,7 @@ inline unsigned int pmu_get_new_cstate
 		(unsigned int cstate, int *index) { return cstate; };
 #endif /* CONFIG_PM_DEBUG */
 
-static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
+static char *dstates[] = {"D0  ", "D0i1", "D0i2", "D0i3"};
 
 /* This can be used to report NC power transitions */
 void (*nc_report_power_state) (u32, int);
@@ -1519,56 +1519,54 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	for (i = 0; i < LAST_NC_DEVICE; i++) {
 		unsigned long long t, t1;
 		u32 remainder, time, d0i0_time_secs;
+		unsigned long flags, count;
 
-		val = nc_pwr_sts & 3;
+		val = nc_pwr_sts & D0I3_MASK;
 		nc_pwr_sts >>= BITS_PER_LSS;
 
-		/* For Islands after VED, we dont receive
-		 * requests for D0ix
-		 */
-		if (i <= VED) {
-			down(&mid_pmu_cxt->scu_ready_sem);
+		down(&mid_pmu_cxt->scu_ready_sem);
 
-			t = mid_pmu_cxt->nc_d0i0_time[i];
-			/* If in D0i0 add current time */
-			if (val == D0I0_MASK)
-				t += (cpu_clock(0) - mid_pmu_cxt->nc_d0i0_prev_time[i]);
+		spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
-			uptime_t =  cpu_clock(0);
-			uptime_t -= mid_pmu_cxt->pmu_init_time;
+		t = mid_pmu_cxt->nc_d0i0_time[i];
+		/* If in D0i0 add current time */
+		if ((val == D0I0_MASK) && (mid_pmu_cxt->nc_d0i0_prev_time[i] > 0))
+			t += cpu_clock(0) - mid_pmu_cxt->nc_d0i0_prev_time[i];
+		count = (unsigned long) mid_pmu_cxt->nc_d0i0_count[i];
 
-			up(&mid_pmu_cxt->scu_ready_sem);
+		spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 
-			t1 = t;
-			d0i0_time_secs = do_div(t1, NANO_SEC);
+		uptime_t =  cpu_clock(0);
+		uptime_t -= mid_pmu_cxt->pmu_init_time;
 
-			/* convert to usecs */
-			do_div(t, 10000);
-			do_div(uptime_t, 1000000);
+		up(&mid_pmu_cxt->scu_ready_sem);
 
-			if (uptime_t) {
-				remainder = do_div(t, uptime_t);
+		t1 = t;
+		d0i0_time_secs = do_div(t1, NANO_SEC);
 
-				time = (unsigned long) t;
+		/* convert to usecs */
+		do_div(t, 10000);
+		do_div(uptime_t, 1000000);
 
-				/* for getting 2 digit precision after
-				 * decimal dot */
-				t = (u64) remainder;
-				t *= 100;
-				remainder = do_div(t, uptime_t);
-			} else {
-				time = t = 0;
-			}
-		}
+		if (uptime_t) {
+			remainder = do_div(t, uptime_t);
 
-		seq_printf(s, "%9s : %s", mrfl_nc_devices[i], dstates[val]);
-		if (i <= VED) {
-			seq_printf(s, " %5lu.%02lu", (unsigned long)t1,
-						   (unsigned long) d0i0_time_secs/10000000);
-			seq_printf(s, "   %3lu.%02lu", (unsigned long) time, (unsigned long) t);
-			seq_printf(s, " %5lu\n", (unsigned long) mid_pmu_cxt->nc_d0i0_count[i]);
+			time = (unsigned long) t;
+
+			/* for getting 2 digit precision after
+			 * decimal dot */
+			t = (u64) remainder;
+			t *= 100;
+			remainder = do_div(t, uptime_t);
 		} else
-			seq_puts(s, "\n");
+			time = t = 0;
+
+		seq_printf(s, "%9s : %s", mrfl_nc_devices[i], dstates[val & 3]);
+		seq_printf(s, " %5lu.%02lu", (unsigned long)t1,
+				(unsigned long) d0i0_time_secs/10000000);
+		seq_printf(s, "   %3lu.%02lu", (unsigned long) time,
+				(unsigned long) t);
+		seq_printf(s, " %5lu\n", count);
 	}
 
 	seq_printf(s, "\nSOUTH COMPLEX DEVICES :\n\n");
@@ -1708,17 +1706,21 @@ static ssize_t devices_state_write(struct file *file,
 		/* D0i0 time stats clear */
 		{
 			int i;
+			unsigned long flags;
+
 			for (i = 0; i < MAX_LSS_POSSIBLE; i++) {
 				mid_pmu_cxt->d0i0_count[i] = 0;
 				mid_pmu_cxt->d0i0_time[i] = 0;
 				mid_pmu_cxt->d0i0_prev_time[i] = cpu_clock(0);
 			}
 
+			spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 			for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
 				mid_pmu_cxt->nc_d0i0_count[i] = 0;
 				mid_pmu_cxt->nc_d0i0_time[i] = 0;
 				mid_pmu_cxt->nc_d0i0_prev_time[i] = cpu_clock(0);
 			}
+			spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 		}
 
 		up(&mid_pmu_cxt->scu_ready_sem);
@@ -2635,15 +2637,21 @@ void pmu_stats_init(void)
 		/* D0i0 time stats clear */
 		{
 			int i;
+			unsigned long flags;
+
 			for (i = 0; i < MAX_LSS_POSSIBLE; i++) {
+				mid_pmu_cxt->d0i0_count[i] = 0;
 				mid_pmu_cxt->d0i0_time[i] = 0;
 				mid_pmu_cxt->d0i0_prev_time[i] = cpu_clock(0);
 			}
 
+			spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 			for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
+				mid_pmu_cxt->nc_d0i0_count[i] = 0;
 				mid_pmu_cxt->nc_d0i0_time[i] = 0;
 				mid_pmu_cxt->nc_d0i0_prev_time[i] = cpu_clock(0);
 			}
+			spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 		}
 
 		/* /sys/kernel/debug/ignore_add */

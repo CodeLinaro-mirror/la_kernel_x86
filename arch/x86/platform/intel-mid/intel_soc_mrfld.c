@@ -45,6 +45,99 @@ char *mrfl_nc_devices[] = {
        "GFXSLCLDO"
 };
 
+#define PMU_MAX_SHARE_SSPM	4 /* max. no. of islands by SSPM */
+
+/*
+ * List of SSPM indexes.
+ * Need to be in sync with mrfl_nc_sspm_devices.
+ */
+enum {
+	IND_GFXSSPM0 = 0,
+	IND_VEDSSPM0,
+	IND_VECSSPM0,
+	IND_DSPSSPM,
+	IND_VSPSSPM0,
+	IND_ISPSSPM0,
+	IND_MIOSSPM,
+	IND_HDMIOSSPM,
+	IND_LAST_SSPM
+};
+
+/* Map SSPM registers to NC device indexes */
+static int mrfl_nc_sspm_devices[IND_LAST_SSPM][PMU_MAX_SHARE_SSPM] = {
+	{GFXSLC, GSDKCK, GRSCD, GFXSLCLDO},	/* GFXSSPM0 */
+	{VED, -1, -1, -1},			/* VEDSSPM0 */
+	{VEC, -1, -1, -1},			/* VECSSPM0 */
+	{DPA, DPB, DPC, -1},			/* DSPSSPM */
+	{VSP, -1, -1, -1},			/* VSPSSPM0 */
+	{ISP, -1, -1, -1},			/* ISPSSPM0 */
+	{MIO, -1, -1, -1},			/* MIOSSPM */
+	{HDMIO, -1, -1, -1}			/* HDMIOSSPM */
+};
+
+/*
+ * Get index in mrfl_nc_sspm_devices from SSPM register.
+ * - sspm: SSPM register (ex: GFXSSPM0)
+ */
+static int mrfl_nc_get_index_sspm(int sspm)
+{
+	int id;
+
+	switch (sspm) {
+	case GFX_SS_PM0:
+		id = IND_GFXSSPM0;
+		break;
+	case VED_SS_PM0:
+		id = IND_VEDSSPM0;
+		break;
+	case VEC_SS_PM0:
+		id = IND_VECSSPM0;
+		break;
+	case DSP_SS_PM:
+		id = IND_DSPSSPM;
+		break;
+	case VSP_SS_PM0:
+		id = IND_VSPSSPM0;
+		break;
+	case ISP_SS_PM0:
+		id = IND_ISPSSPM0;
+		break;
+	case MIO_SS_PM:
+		id = IND_MIOSSPM;
+		break;
+	case HDMIO_SS_PM:
+		id = IND_HDMIOSSPM;
+		break;
+	default:
+		WARN(1, "invalid SSPM 0x%x\n", sspm);
+		id = -1; /* invalid SSPM */
+		break;
+	}
+
+	return id;
+}
+
+/*
+ * Get NC device index from SSPM and island.
+ * - sspm: SSPM register (ex: GFXSSPM0)
+ * - island: island number for given SSPM (bit position)
+ */
+static int mrfl_nc_get_pmu_device(int sspm, int island)
+{
+	int isspm;
+
+	if ((island < 0) || (island >= PMU_MAX_SHARE_SSPM)) {
+		WARN(1, "invalid island %d (SSPM 0x%x)\n", island, sspm);
+		return -1;
+	}
+
+	isspm = mrfl_nc_get_index_sspm(sspm);
+	if (isspm < 0) /* invalid SSPM */
+		return -1;
+
+	return mrfl_nc_sspm_devices[isspm][island];
+}
+
 static int mrfld_pmu_init(void)
 {
 	mid_pmu_cxt->s3_hint = MRFLD_S3_HINT;
@@ -311,37 +404,57 @@ static int wait_for_nc_pmcmd_complete(int verify_mask,
 static int mrfld_nc_set_power_state(int islands, int state_type,
 							int reg, int *change)
 {
-	u32 pwr_sts = 0;
-	u32 pwr_mask = 0;
-	int i, lss, mask;
+	u32 pwr_sts = 0; /* holds status for all SS */
+	u32 pwr_mask = 0; /* holds SS power requests */
+	int status_mask = 0; /* mask of SS to drive */
+	int i, mask, idev;
 	int ret = 0;
-	int status_mask = 0;
+
+	/* no SS, nothing to do */
+	if (!islands)
+		return ret;
 
 	*change = 0;
 	pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg);
 	pwr_mask = pwr_sts;
 
-	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
-		lss = islands & (0x1 << i);
-		if (lss) {
-			mask = D0I3_MASK << (BITS_PER_LSS * i);
-			status_mask = status_mask | mask;
-			if (state_type == OSPM_ISLAND_DOWN) {
-				pwr_mask |= mask;
-				mid_pmu_cxt->nc_d0i0_time[i] +=
-					(cpu_clock(0) - mid_pmu_cxt->nc_d0i0_prev_time[i]);
-			} else if (state_type == OSPM_ISLAND_UP) {
-				mid_pmu_cxt->nc_d0i0_count[i]++;
-				pwr_mask &= ~mask;
-				mid_pmu_cxt->nc_d0i0_prev_time[i] = cpu_clock(0);
-			/* Soft reset case */
-			} else if (state_type == OSPM_ISLAND_SR) {
-				pwr_mask &= ~mask;
-				mask = SR_MASK << (BITS_PER_LSS * i);
-				pwr_mask |= mask;
+	do {
+		i = ffs(islands) - 1;
+		/* get NC device index */
+		idev = mrfl_nc_get_pmu_device(reg, i);
+		islands &= ~(0x1 << i);
+
+		mask = D0I3_MASK << (BITS_PER_LSS * i);
+		status_mask |= mask;
+
+		if (state_type == OSPM_ISLAND_DOWN) {
+			pwr_mask |= mask;
+
+			/* if no change don't update device residency */
+			if ((idev >= 0) &&
+			    ((pwr_mask & mask) != (pwr_sts & mask))) {
+				mid_pmu_cxt->nc_d0i0_time[idev] +=
+					cpu_clock(0) -
+					mid_pmu_cxt->nc_d0i0_prev_time[idev];
+				mid_pmu_cxt->nc_d0i0_prev_time[idev] = 0;
 			}
+		} else if (state_type == OSPM_ISLAND_UP) {
+			pwr_mask &= ~mask;
+
+			/* if no change don't update device residency */
+			if ((idev >= 0) &&
+			    ((pwr_mask & mask) != (pwr_sts & mask))) {
+				mid_pmu_cxt->nc_d0i0_count[idev]++;
+				mid_pmu_cxt->nc_d0i0_prev_time[idev] =
+								cpu_clock(0);
+			}
+		/* Soft reset case */
+		} else if (state_type == OSPM_ISLAND_SR) {
+			pwr_mask &= ~mask;
+			mask = SR_MASK << (BITS_PER_LSS * i);
+			pwr_mask |= mask;
 		}
-	}
+	} while (islands);
 
 	if (pwr_mask != pwr_sts) {
 		intel_mid_msgbus_write32(PUNIT_PORT, reg, pwr_mask);
