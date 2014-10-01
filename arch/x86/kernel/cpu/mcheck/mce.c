@@ -2293,7 +2293,7 @@ static struct device_attribute *mce_device_attrs[] = {
 	NULL
 };
 
-static cpumask_var_t mce_device_initialized;
+static cpumask_var_t mce_devfiles_initialized;
 
 static void mce_device_release(struct device *dev)
 {
@@ -2301,27 +2301,17 @@ static void mce_device_release(struct device *dev)
 }
 
 /* Per cpu device init. All of the cpus still share the same ctrl bank: */
-static int mce_device_create(unsigned int cpu)
+static int mce_device_create_files(unsigned int cpu)
 {
-	struct device *dev;
+	struct device *dev = per_cpu(mce_device, cpu);
 	int err;
 	int i, j;
 
 	if (!mce_available(&boot_cpu_data))
 		return -EIO;
 
-	dev = kzalloc(sizeof *dev, GFP_KERNEL);
 	if (!dev)
-		return -ENOMEM;
-	dev->id  = cpu;
-	dev->bus = &mce_subsys;
-	dev->release = &mce_device_release;
-
-	err = device_register(dev);
-	if (err) {
-		put_device(dev);
-		return err;
-	}
+		return -EINVAL;
 
 	for (i = 0; mce_device_attrs[i]; i++) {
 		err = device_create_file(dev, mce_device_attrs[i]);
@@ -2333,8 +2323,7 @@ static int mce_device_create(unsigned int cpu)
 		if (err)
 			goto error2;
 	}
-	cpumask_set_cpu(cpu, mce_device_initialized);
-	per_cpu(mce_device, cpu) = dev;
+	cpumask_set_cpu(cpu, mce_devfiles_initialized);
 
 	return 0;
 error2:
@@ -2344,17 +2333,18 @@ error:
 	while (--i >= 0)
 		device_remove_file(dev, mce_device_attrs[i]);
 
-	device_unregister(dev);
-
 	return err;
 }
 
-static void mce_device_remove(unsigned int cpu)
+static void mce_device_remove_files(unsigned int cpu)
 {
 	struct device *dev = per_cpu(mce_device, cpu);
 	int i;
 
-	if (!cpumask_test_cpu(cpu, mce_device_initialized))
+	if (!cpumask_test_cpu(cpu, mce_devfiles_initialized))
+		return;
+
+	if (!dev)
 		return;
 
 	for (i = 0; mce_device_attrs[i]; i++)
@@ -2363,9 +2353,7 @@ static void mce_device_remove(unsigned int cpu)
 	for (i = 0; i < mca_cfg.banks; i++)
 		device_remove_file(dev, &mce_banks[i].attr);
 
-	device_unregister(dev);
-	cpumask_clear_cpu(cpu, mce_device_initialized);
-	per_cpu(mce_device, cpu) = NULL;
+	cpumask_clear_cpu(cpu, mce_devfiles_initialized);
 }
 
 /* Make sure there are no machine checks on offlined CPUs. */
@@ -2409,14 +2397,14 @@ mce_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
 
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_ONLINE:
-		mce_device_create(cpu);
+		mce_device_create_files(cpu);
 		if (threshold_cpu_callback)
 			threshold_cpu_callback(action, cpu);
 		break;
 	case CPU_DEAD:
 		if (threshold_cpu_callback)
 			threshold_cpu_callback(action, cpu);
-		mce_device_remove(cpu);
+		mce_device_remove_files(cpu);
 		mce_intel_hcpu_update(cpu);
 
 		/* intentionally ignoring frozen here */
@@ -2462,13 +2450,14 @@ static __init int mcheck_init_device(void)
 {
 	int err;
 	int i = 0;
+	struct device *dev = NULL;
 
 	if (!mce_available(&boot_cpu_data)) {
 		err = -EIO;
 		goto err_out;
 	}
 
-	if (!zalloc_cpumask_var(&mce_device_initialized, GFP_KERNEL)) {
+	if (!zalloc_cpumask_var(&mce_devfiles_initialized, GFP_KERNEL)) {
 		err = -ENOMEM;
 		goto err_out;
 	}
@@ -2481,14 +2470,29 @@ static __init int mcheck_init_device(void)
 
 	cpu_notifier_register_begin();
 	for_each_online_cpu(i) {
-		err = mce_device_create(i);
+		/* create MCE device */
+		dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+		if (!dev) {
+			err = -ENOMEM;
+			goto err_out;
+		}
+		dev->id  = i;
+		dev->bus = &mce_subsys;
+		dev->release = &mce_device_release;
+
+		err = device_register(dev);
 		if (err) {
-			/*
-			 * Register notifier anyway (and do not unreg it) so
-			 * that we don't leave undeleted timers, see notifier
-			 * callback above.
-			 */
-			__register_hotcpu_notifier(&mce_cpu_notifier);
+			kfree(dev);
+			goto err_out;
+		}
+
+		per_cpu(mce_device, i) = dev;
+
+		/* create MCE specific device files */
+		err = mce_device_create_files(i);
+		if (err) {
+			per_cpu(mce_device, i) = NULL;
+			device_unregister(dev);
 			cpu_notifier_register_done();
 			goto err_device_create;
 		}
@@ -2517,10 +2521,10 @@ err_device_create:
 	 * mce_device_remove() will do the right thing.
 	 */
 	for_each_possible_cpu(i)
-		mce_device_remove(i);
+		mce_device_remove_files(i);
 
 err_out_mem:
-	free_cpumask_var(mce_device_initialized);
+	free_cpumask_var(mce_devfiles_initialized);
 
 err_out:
 	pr_err("Unable to init device /dev/mcelog (rc: %d)\n", err);
