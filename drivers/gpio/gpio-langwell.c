@@ -754,12 +754,13 @@ static void lnw_irq_handler(struct irq_desc *desc)
 			gpio = __ffs(pending);
 			DEFINE_DEBUG_IRQ_CONUNT_INCREASE(lnw->chip.base +
 				base + gpio);
-			/* Mask irq if not requested in kernel */
 			lnw_irq = irq_find_mapping(lnw->domain, base + gpio);
 			pr_debug("%s: gpio=%u, lnw_irq=%u\n",
-				__func__, gpio, lnw_irq);
+				 __func__, gpio, lnw_irq);
 			lnw_irq_desc = irq_to_desc(lnw_irq);
-			if (lnw_irq_desc && unlikely(!lnw_irq_desc->action)) {
+			/* Mask irq if not requested in kernel, doing this only for Merrifiled */
+			if (lnw->type == TANGIER_GPIO &&
+			    lnw_irq_desc && unlikely(!lnw_irq_desc->action)) {
 				lnw_irq_mask(&lnw_irq_desc->irq_data);
 				continue;
 			}
