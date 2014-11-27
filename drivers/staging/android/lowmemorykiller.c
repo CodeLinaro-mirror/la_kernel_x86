@@ -96,6 +96,10 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 						global_page_state(NR_SHMEM) -
 						total_swapcache_pages();
 
+#ifdef CONFIG_SWAP
+	other_file -= total_swapcache_pages();
+#endif
+
 	if (lowmem_adj_size < array_size)
 		array_size = lowmem_adj_size;
 	if (lowmem_minfree_size < array_size)
@@ -144,6 +148,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			continue;
 		}
 		tasksize = get_mm_rss(p->mm);
+#ifdef CONFIG_SWAP
+		tasksize += get_mm_counter(p->mm, MM_SWAPENTS);
+#endif
 		task_unlock(p);
 		if (tasksize <= 0)
 			continue;
