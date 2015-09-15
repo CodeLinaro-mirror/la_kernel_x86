@@ -195,9 +195,16 @@ static int sst_check_and_send_slot_map(struct sst_data *drv, struct snd_kcontrol
 
 	if (e->w && e->w->power)
 		ret = sst_send_slot_map(drv);
-	else
-		dev_err(&drv->pdev->dev, "Slot control: %s doesn't have DAPM widget!!!\n",
+	else {
+		if (e->w)
+			dev_err(&drv->pdev->dev,
+				"Slot control: %s has widget with no power!\n",
 				kcontrol->id.name);
+		else
+			dev_err(&drv->pdev->dev,
+				"Slot control: %s doesn't have DAPM widget!\n",
+				kcontrol->id.name);
+	}
 	return ret;
 }
 
@@ -1421,12 +1428,12 @@ static int sst_fill_widget_module_info(struct snd_soc_dapm_widget *w,
 
 			mc->w = w;
 
-		} else if (strstr(kctl->id.name, "interleaver")) {
+		} else if (strstr(kctl->id.name, "tx interleaver")) {
 			struct sst_enum *e = (void *)kctl->private_value;
 
 			e->w = w;
 
-		} else if (strstr(kctl->id.name, "deinterleaver")) {
+		} else if (strstr(kctl->id.name, "rx deinterleaver")) {
 			struct sst_enum *e = (void *)kctl->private_value;
 
 			e->w = w;
