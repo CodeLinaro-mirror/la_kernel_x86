@@ -1,6 +1,4 @@
 /*
- *	arch/mips/dec/call_o32.S
- *
  *	O32 interface for the 64 (or N32) ABI.
  *
  *	Copyright (C) 2002  Maciej W. Rozycki
@@ -16,7 +14,7 @@
 
 /* Maximum number of arguments supported.  Must be even!  */
 #define O32_ARGC	32
-/* Number of static registers we save.  */
+/* Number of static registers we save.	*/
 #define O32_STATC	11
 /* Frame size for both of the above.  */
 #define O32_FRAMESZ	(4 * O32_ARGC + SZREG * O32_STATC)

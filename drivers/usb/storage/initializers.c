@@ -1,7 +1,5 @@
 /* Special Initializers for certain USB Mass Storage devices
  *
- * $Id: initializers.c,v 1.2 2000/09/06 22:35:57 mdharm Exp $
- *
  * Current development and maintenance by:
  *   (c) 1999, 2000 Matthew Dharm (mdharm-usb@one-eyed-alien.net)
  *
@@ -37,7 +35,6 @@
  * 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <linux/sched.h>
 #include <linux/errno.h>
 
 #include "usb.h"
@@ -51,12 +48,12 @@ int usb_stor_euscsi_init(struct us_data *us)
 {
 	int result;
 
-	US_DEBUGP("Attempting to init eUSCSI bridge...\n");
+	usb_stor_dbg(us, "Attempting to init eUSCSI bridge...\n");
 	us->iobuf[0] = 0x1;
 	result = usb_stor_control_msg(us, us->send_ctrl_pipe,
 			0x0C, USB_RECIP_INTERFACE | USB_TYPE_VENDOR,
-			0x01, 0x0, us->iobuf, 0x1, 5*HZ);
-	US_DEBUGP("-- result is %d\n", result);
+			0x01, 0x0, us->iobuf, 0x1, 5000);
+	usb_stor_dbg(us, "-- result is %d\n", result);
 
 	return 0;
 }
@@ -67,10 +64,11 @@ int usb_stor_ucr61s2b_init(struct us_data *us)
 {
 	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap*) us->iobuf;
 	struct bulk_cs_wrap *bcs = (struct bulk_cs_wrap*) us->iobuf;
-	int res, partial;
+	int res;
+	unsigned int partial;
 	static char init_string[] = "\xec\x0a\x06\x00$PCCHIPS";
 
-	US_DEBUGP("Sending UCR-61S2B initialization packet...\n");
+	usb_stor_dbg(us, "Sending UCR-61S2B initialization packet...\n");
 
 	bcb->Signature = cpu_to_le32(US_BULK_CB_SIGN);
 	bcb->Tag = 0;
@@ -82,12 +80,27 @@ int usb_stor_ucr61s2b_init(struct us_data *us)
 
 	res = usb_stor_bulk_transfer_buf(us, us->send_bulk_pipe, bcb,
 			US_BULK_CB_WRAP_LEN, &partial);
-	if(res)
-		return res;
+	if (res)
+		return -EIO;
 
-	US_DEBUGP("Getting status packet...\n");
+	usb_stor_dbg(us, "Getting status packet...\n");
 	res = usb_stor_bulk_transfer_buf(us, us->recv_bulk_pipe, bcs,
 			US_BULK_CS_WRAP_LEN, &partial);
+	if (res)
+		return -EIO;
 
-	return (res ? -1 : 0);
+	return 0;
+}
+
+/* This places the HUAWEI E220 devices in multi-port mode */
+int usb_stor_huawei_e220_init(struct us_data *us)
+{
+	int result;
+
+	result = usb_stor_control_msg(us, us->send_ctrl_pipe,
+				      USB_REQ_SET_FEATURE,
+				      USB_TYPE_STANDARD | USB_RECIP_DEVICE,
+				      0x01, 0x0, NULL, 0x0, 1000);
+	usb_stor_dbg(us, "Huawei mode set result is %d\n", result);
+	return 0;
 }

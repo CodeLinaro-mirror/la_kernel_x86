@@ -1,14 +1,11 @@
-#include <linux/config.h>
 #include <linux/kernel.h>
 #include <linux/pci.h>
-#include <linux/ptrace.h>
 #include <linux/interrupt.h>
 #include <linux/mm.h>
 #include <linux/init.h>
 #include <linux/ioport.h>
+#include <linux/io.h>
 
-#include <asm/io.h>
-#include <asm/system.h>
 
 #include <asm/mach/pci.h>
 
@@ -54,7 +51,7 @@ via82c505_write_config(struct pci_bus *bus, unsigned int devfn, int where,
 	return PCIBIOS_SUCCESSFUL;
 }
 
-static struct pci_ops via82c505_ops = {
+struct pci_ops via82c505_ops = {
 	.read	= via82c505_read_config,
 	.write	= via82c505_write_config,
 };
@@ -83,12 +80,4 @@ void __init via82c505_preinit(void)
 int __init via82c505_setup(int nr, struct pci_sys_data *sys)
 {
 	return (nr == 0);
-}
-
-struct pci_bus * __init via82c505_scan_bus(int nr, struct pci_sys_data *sysdata)
-{
-	if (nr == 0)
-		return pci_scan_bus(0, &via82c505_ops, sysdata);
-
-	return NULL;
 }

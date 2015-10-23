@@ -3,7 +3,7 @@
  *
  *   vfs operations that deal with io control
  *
- *   Copyright (C) International Business Machines  Corp., 2005
+ *   Copyright (C) International Business Machines  Corp., 2005,2007
  *   Author(s): Steve French (sfrench@us.ibm.com)
  *
  *   This library is free software; you can redistribute it and/or modify
@@ -20,30 +20,77 @@
  *   along with this library; if not, write to the Free Software
  *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
+
 #include <linux/fs.h>
-#include <linux/ext2_fs.h>
 #include "cifspdu.h"
 #include "cifsglob.h"
 #include "cifsproto.h"
 #include "cifs_debug.h"
+#include "cifsfs.h"
 
-int cifs_ioctl (struct inode * inode, struct file * filep, 
-		unsigned int command, unsigned long arg)
+long cifs_ioctl(struct file *filep, unsigned int command, unsigned long arg)
 {
+	struct inode *inode = file_inode(filep);
 	int rc = -ENOTTY; /* strange error - but the precedent */
+	unsigned int xid;
+	struct cifs_sb_info *cifs_sb;
 #ifdef CONFIG_CIFS_POSIX
-	cFYI(1,("ioctl file %p  cmd %u  arg %lu",filep,command,arg));
-	switch(command) {
-		case EXT2_IOC_GETFLAGS:
-			cFYI(1,("get flags not implemented yet"));
-			return -EOPNOTSUPP;
-		case EXT2_IOC_SETFLAGS:
-			cFYI(1,("set flags not implemented yet"));
-			return -EOPNOTSUPP;
-		default:
-			cFYI(1,("unsupported ioctl"));
-			return rc;
-	}
+	struct cifsFileInfo *pSMBFile = filep->private_data;
+	struct cifs_tcon *tcon;
+	__u64	ExtAttrBits = 0;
+	__u64	ExtAttrMask = 0;
+	__u64   caps;
 #endif /* CONFIG_CIFS_POSIX */
+
+	xid = get_xid();
+
+	cifs_dbg(FYI, "ioctl file %p  cmd %u  arg %lu\n", filep, command, arg);
+
+	cifs_sb = CIFS_SB(inode->i_sb);
+
+	switch (command) {
+#ifdef CONFIG_CIFS_POSIX
+		case FS_IOC_GETFLAGS:
+			if (pSMBFile == NULL)
+				break;
+			tcon = tlink_tcon(pSMBFile->tlink);
+			caps = le64_to_cpu(tcon->fsUnixInfo.Capability);
+			if (CIFS_UNIX_EXTATTR_CAP & caps) {
+				rc = CIFSGetExtAttr(xid, tcon,
+						    pSMBFile->fid.netfid,
+						    &ExtAttrBits, &ExtAttrMask);
+				if (rc == 0)
+					rc = put_user(ExtAttrBits &
+						FS_FL_USER_VISIBLE,
+						(int __user *)arg);
+			}
+			break;
+
+		case FS_IOC_SETFLAGS:
+			if (pSMBFile == NULL)
+				break;
+			tcon = tlink_tcon(pSMBFile->tlink);
+			caps = le64_to_cpu(tcon->fsUnixInfo.Capability);
+			if (CIFS_UNIX_EXTATTR_CAP & caps) {
+				if (get_user(ExtAttrBits, (int __user *)arg)) {
+					rc = -EFAULT;
+					break;
+				}
+				/*
+				 * rc = CIFSGetExtAttr(xid, tcon,
+				 *		       pSMBFile->fid.netfid,
+				 *		       extAttrBits,
+				 *		       &ExtAttrMask);
+				 */
+			}
+			cifs_dbg(FYI, "set flags not implemented yet\n");
+			break;
+#endif /* CONFIG_CIFS_POSIX */
+		default:
+			cifs_dbg(FYI, "unsupported ioctl\n");
+			break;
+	}
+
+	free_xid(xid);
 	return rc;
-} 
+}

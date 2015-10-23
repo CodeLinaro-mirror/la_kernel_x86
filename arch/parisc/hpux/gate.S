@@ -9,30 +9,21 @@
  */
 
 #include <asm/assembly.h>
-#include <asm/offsets.h>
+#include <asm/asm-offsets.h>
 #include <asm/unistd.h>
 #include <asm/errno.h>
+#include <linux/linkage.h>
 
-#ifdef __LP64__
-	.level          2.0w
-#else
-	.level		1.1
-#endif
+	.level	LEVEL
 	.text
 
-#ifdef __LP64__
-#define FRAME_SIZE	128
-#else
-#define FRAME_SIZE	64
-#endif
 	.import hpux_call_table
 	.import hpux_syscall_exit,code
-	.export hpux_gateway_page
 
-	.align 4096
-hpux_gateway_page:
+	.align	PAGE_SIZE
+ENTRY(hpux_gateway_page)
 	nop
-#ifdef __LP64__
+#ifdef CONFIG_64BIT
 #warning NEEDS WORK for 64-bit
 #endif
 	ldw     -64(%r30), %r29                 ;! 8th argument
@@ -80,7 +71,7 @@ hpux_gateway_page:
 	STREG	%r26, TASK_PT_GR26(%r1)	 	/* 1st argument */
 	STREG	%r27, TASK_PT_GR27(%r1)		/* user dp */
 	STREG   %r28, TASK_PT_GR28(%r1)         /* return value 0 */
-	STREG   %r28, TASK_PT_ORIG_R28(%r1)     /* return value 0 (saved for signals) */
+	STREG   %r0, TASK_PT_ORIG_R28(%r1)     /* don't prohibit restarts */
 	STREG   %r29, TASK_PT_GR29(%r1)         /* 8th argument */
 	STREG	%r31, TASK_PT_GR31(%r1)		/* preserve syscall return ptr */
 	
@@ -101,7 +92,7 @@ hpux_gateway_page:
 	ldo	R%hpux_call_table(%r21), %r21
 	comiclr,>>=	__NR_HPUX_syscalls, %r22, %r0
 	b,n	syscall_nosys
-	ldwx,s	%r22(%r21), %r21
+	LDREGX	%r22(%r21), %r21
 	ldil	L%hpux_syscall_exit,%r2
 	be	0(%sr7,%r21)
 	ldo	R%hpux_syscall_exit(%r2),%r2
@@ -110,7 +101,7 @@ syscall_nosys:
 	ldil	L%hpux_syscall_exit,%r1
 	be	R%hpux_syscall_exit(%sr7,%r1)
 	ldo	-ENOSYS(%r0),%r28
+ENDPROC(hpux_gateway_page)
 
-	.align 4096
-	.export end_hpux_gateway_page
-end_hpux_gateway_page:
+	.align	PAGE_SIZE
+ENTRY(end_hpux_gateway_page)

@@ -5,140 +5,233 @@
  *	Authors:
  *	Lennert Buytenhek		<buytenh@gnu.org>
  *
- *	$Id: br_input.c,v 1.10 2001/12/24 04:50:20 davem Exp $
- *
  *	This program is free software; you can redistribute it and/or
  *	modify it under the terms of the GNU General Public License
  *	as published by the Free Software Foundation; either version
  *	2 of the License, or (at your option) any later version.
  */
 
+#include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/netfilter_bridge.h>
+#include <linux/export.h>
+#include <linux/rculist.h>
 #include "br_private.h"
 
-const unsigned char bridge_ula[6] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x00 };
+/* Hook for brouter */
+br_should_route_hook_t __rcu *br_should_route_hook __read_mostly;
+EXPORT_SYMBOL(br_should_route_hook);
 
-static int br_pass_frame_up_finish(struct sk_buff *skb)
+static int br_pass_frame_up(struct sk_buff *skb)
 {
-#ifdef CONFIG_NETFILTER_DEBUG
-	skb->nf_debug = 0;
-#endif
-	netif_rx(skb);
+	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
+	struct net_bridge *br = netdev_priv(brdev);
+	struct br_cpu_netstats *brstats = this_cpu_ptr(br->stats);
 
-	return 0;
-}
+	u64_stats_update_begin(&brstats->syncp);
+	brstats->rx_packets++;
+	brstats->rx_bytes += skb->len;
+	u64_stats_update_end(&brstats->syncp);
 
-static void br_pass_frame_up(struct net_bridge *br, struct sk_buff *skb)
-{
-	struct net_device *indev;
+	/* Bridge is just like any other port.  Make sure the
+	 * packet is allowed except in promisc modue when someone
+	 * may be running packet capture.
+	 */
+	if (!(brdev->flags & IFF_PROMISC) &&
+	    !br_allowed_egress(br, br_get_vlan_info(br), skb)) {
+		kfree_skb(skb);
+		return NET_RX_DROP;
+	}
 
-	br->statistics.rx_packets++;
-	br->statistics.rx_bytes += skb->len;
+	skb = br_handle_vlan(br, br_get_vlan_info(br), skb);
+	if (!skb)
+		return NET_RX_DROP;
 
 	indev = skb->dev;
-	skb->dev = br->dev;
+	skb->dev = brdev;
 
-	NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_IN, skb, indev, NULL,
-			br_pass_frame_up_finish);
+	return NF_HOOK(NFPROTO_BRIDGE, NF_BR_LOCAL_IN, skb, indev, NULL,
+		       netif_receive_skb);
 }
 
-/* note: already called with rcu_read_lock (preempt_disabled) */
+/* note: already called with rcu_read_lock */
 int br_handle_frame_finish(struct sk_buff *skb)
 {
 	const unsigned char *dest = eth_hdr(skb)->h_dest;
-	struct net_bridge_port *p = skb->dev->br_port;
-	struct net_bridge *br = p->br;
+	struct net_bridge_port *p = br_port_get_rcu(skb->dev);
+	struct net_bridge *br;
 	struct net_bridge_fdb_entry *dst;
-	int passedup = 0;
+	struct net_bridge_mdb_entry *mdst;
+	struct sk_buff *skb2;
+	u16 vid = 0;
 
-	if (br->dev->flags & IFF_PROMISC) {
-		struct sk_buff *skb2;
+	if (!p || p->state == BR_STATE_DISABLED)
+		goto drop;
 
-		skb2 = skb_clone(skb, GFP_ATOMIC);
-		if (skb2 != NULL) {
-			passedup = 1;
-			br_pass_frame_up(br, skb2);
-		}
-	}
-
-	if (dest[0] & 1) {
-		br_flood_forward(br, skb, !passedup);
-		if (!passedup)
-			br_pass_frame_up(br, skb);
+	if (!br_allowed_ingress(p->br, nbp_get_vlan_info(p), skb, &vid))
 		goto out;
+
+	/* insert into forwarding database after filtering to avoid spoofing */
+	br = p->br;
+	br_fdb_update(br, p, eth_hdr(skb)->h_source, vid);
+
+	if (!is_broadcast_ether_addr(dest) && is_multicast_ether_addr(dest) &&
+	    br_multicast_rcv(br, p, skb))
+		goto drop;
+
+	if (p->state == BR_STATE_LEARNING)
+		goto drop;
+
+	BR_INPUT_SKB_CB(skb)->brdev = br->dev;
+
+	/* The packet skb2 goes to the local host (NULL to skip). */
+	skb2 = NULL;
+
+	if (br->dev->flags & IFF_PROMISC)
+		skb2 = skb;
+
+	dst = NULL;
+
+	if (is_broadcast_ether_addr(dest))
+		skb2 = skb;
+	else if (is_multicast_ether_addr(dest)) {
+		mdst = br_mdb_get(br, skb, vid);
+		if (mdst || BR_INPUT_SKB_CB_MROUTERS_ONLY(skb)) {
+			if ((mdst && mdst->mglist) ||
+			    br_multicast_is_router(br))
+				skb2 = skb;
+			br_multicast_forward(mdst, skb, skb2);
+			skb = NULL;
+			if (!skb2)
+				goto out;
+		} else
+			skb2 = skb;
+
+		br->dev->stats.multicast++;
+	} else if ((dst = __br_fdb_get(br, dest, vid)) &&
+			dst->is_local) {
+		skb2 = skb;
+		/* Do not forward the packet since it's local. */
+		skb = NULL;
 	}
 
-	dst = __br_fdb_get(br, dest);
-	if (dst != NULL && dst->is_local) {
-		if (!passedup)
-			br_pass_frame_up(br, skb);
-		else
-			kfree_skb(skb);
-		goto out;
+	if (skb) {
+		if (dst) {
+			dst->used = jiffies;
+			br_forward(dst->dst, skb, skb2);
+		} else
+			br_flood_forward(br, skb, skb2);
 	}
 
-	if (dst != NULL) {
-		br_forward(dst->dst, skb);
-		goto out;
-	}
-
-	br_flood_forward(br, skb, 0);
+	if (skb2)
+		return br_pass_frame_up(skb2);
 
 out:
 	return 0;
+drop:
+	kfree_skb(skb);
+	goto out;
+}
+
+/* note: already called with rcu_read_lock */
+static int br_handle_local_finish(struct sk_buff *skb)
+{
+	struct net_bridge_port *p = br_port_get_rcu(skb->dev);
+	u16 vid = 0;
+
+	br_vlan_get_tag(skb, &vid);
+	br_fdb_update(p->br, p, eth_hdr(skb)->h_source, vid);
+	return 0;	 /* process further */
 }
 
 /*
- * Called via br_handle_frame_hook.
- * Return 0 if *pskb should be processed furthur
- *	  1 if *pskb is handled
- * note: already called with rcu_read_lock (preempt_disabled) 
+ * Return NULL if skb is handled
+ * note: already called with rcu_read_lock
  */
-int br_handle_frame(struct net_bridge_port *p, struct sk_buff **pskb)
+rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 {
+	struct net_bridge_port *p;
 	struct sk_buff *skb = *pskb;
 	const unsigned char *dest = eth_hdr(skb)->h_dest;
+	br_should_route_hook_t *rhook;
 
-	if (p->state == BR_STATE_DISABLED)
-		goto err;
+	if (unlikely(skb->pkt_type == PACKET_LOOPBACK))
+		return RX_HANDLER_PASS;
 
 	if (!is_valid_ether_addr(eth_hdr(skb)->h_source))
-		goto err;
+		goto drop;
 
-	if (p->state == BR_STATE_LEARNING ||
-	    p->state == BR_STATE_FORWARDING)
-		br_fdb_update(p->br, p, eth_hdr(skb)->h_source);
+	skb = skb_share_check(skb, GFP_ATOMIC);
+	if (!skb)
+		return RX_HANDLER_CONSUMED;
 
-	if (p->br->stp_enabled &&
-	    !memcmp(dest, bridge_ula, 5) &&
-	    !(dest[5] & 0xF0)) {
-		if (!dest[5]) {
-			NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_IN, skb, skb->dev, 
-				NULL, br_stp_handle_bpdu);
-			return 1;
+	p = br_port_get_rcu(skb->dev);
+
+	if (unlikely(is_link_local_ether_addr(dest))) {
+		/*
+		 * See IEEE 802.1D Table 7-10 Reserved addresses
+		 *
+		 * Assignment		 		Value
+		 * Bridge Group Address		01-80-C2-00-00-00
+		 * (MAC Control) 802.3		01-80-C2-00-00-01
+		 * (Link Aggregation) 802.3	01-80-C2-00-00-02
+		 * 802.1X PAE address		01-80-C2-00-00-03
+		 *
+		 * 802.1AB LLDP 		01-80-C2-00-00-0E
+		 *
+		 * Others reserved for future standardization
+		 */
+		switch (dest[5]) {
+		case 0x00:	/* Bridge Group Address */
+			/* If STP is turned off,
+			   then must forward to keep loop detection */
+			if (p->br->stp_enabled == BR_NO_STP)
+				goto forward;
+			break;
+
+		case 0x01:	/* IEEE MAC (Pause) */
+			goto drop;
+
+		default:
+			/* Allow selective forwarding for most other protocols */
+			if (p->br->group_fwd_mask & (1u << dest[5]))
+				goto forward;
+		}
+
+		/* Deliver packet to local host only */
+		if (NF_HOOK(NFPROTO_BRIDGE, NF_BR_LOCAL_IN, skb, skb->dev,
+			    NULL, br_handle_local_finish)) {
+			return RX_HANDLER_CONSUMED; /* consumed by filter */
+		} else {
+			*pskb = skb;
+			return RX_HANDLER_PASS;	/* continue processing */
 		}
 	}
 
-	else if (p->state == BR_STATE_FORWARDING) {
-		if (br_should_route_hook) {
-			if (br_should_route_hook(pskb)) 
-				return 0;
-			skb = *pskb;
+forward:
+	switch (p->state) {
+	case BR_STATE_FORWARDING:
+		rhook = rcu_dereference(br_should_route_hook);
+		if (rhook) {
+			if ((*rhook)(skb)) {
+				*pskb = skb;
+				return RX_HANDLER_PASS;
+			}
 			dest = eth_hdr(skb)->h_dest;
 		}
-
-		if (!memcmp(p->br->dev->dev_addr, dest, ETH_ALEN))
+		/* fall through */
+	case BR_STATE_LEARNING:
+		if (ether_addr_equal(p->br->dev->dev_addr, dest))
 			skb->pkt_type = PACKET_HOST;
 
-		NF_HOOK(PF_BRIDGE, NF_BR_PRE_ROUTING, skb, skb->dev, NULL,
+		NF_HOOK(NFPROTO_BRIDGE, NF_BR_PRE_ROUTING, skb, skb->dev, NULL,
 			br_handle_frame_finish);
-		return 1;
+		break;
+	default:
+drop:
+		kfree_skb(skb);
 	}
-
-err:
-	kfree_skb(skb);
-	return 1;
+	return RX_HANDLER_CONSUMED;
 }

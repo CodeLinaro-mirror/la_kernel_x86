@@ -1,209 +1,421 @@
 /*
  * File:	pci-acpi.c
- * Purpose:	Provide PCI supports in ACPI
+ * Purpose:	Provide PCI support in ACPI
  *
- * Copyright (C) 2004 Intel
- * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
+ * Copyright (C) 2005 David Shaohua Li <shaohua.li@intel.com>
+ * Copyright (C) 2004 Tom Long Nguyen <tom.l.nguyen@intel.com>
+ * Copyright (C) 2004 Intel Corp.
  */
 
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/module.h>
+#include <linux/pci-aspm.h>
 #include <acpi/acpi.h>
-#include <acpi/acnamesp.h>
-#include <acpi/acresrc.h>
 #include <acpi/acpi_bus.h>
 
 #include <linux/pci-acpi.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
+#include "pci.h"
 
-static u32 ctrlset_buf[3] = {0, 0, 0};
-static u32 global_ctrlsets = 0;
-u8 OSC_UUID[16] = {0x5B, 0x4D, 0xDB, 0x33, 0xF7, 0x1F, 0x1C, 0x40, 0x96, 0x57, 0x74, 0x41, 0xC0, 0x3D, 0xD7, 0x66};
-
-static acpi_status  
-acpi_query_osc (
-	acpi_handle	handle,
-	u32		level,
-	void		*context,
-	void		**retval )
+/**
+ * pci_acpi_wake_bus - Wake-up notification handler for root buses.
+ * @handle: ACPI handle of a device the notification is for.
+ * @event: Type of the signaled event.
+ * @context: PCI root bus to wake up devices on.
+ */
+static void pci_acpi_wake_bus(acpi_handle handle, u32 event, void *context)
 {
-	acpi_status		status;
-	struct acpi_object_list	input;
-	union acpi_object 	in_params[4];
-	struct acpi_buffer	output;
-	union acpi_object 	out_obj;	
-	u32			osc_dw0;
+	struct pci_bus *pci_bus = context;
 
-	/* Setting up output buffer */
-	output.length = sizeof(out_obj) + 3*sizeof(u32);  
-	output.pointer = &out_obj;
-	
-	/* Setting up input parameters */
-	input.count = 4;
-	input.pointer = in_params;
-	in_params[0].type 		= ACPI_TYPE_BUFFER;
-	in_params[0].buffer.length 	= 16;
-	in_params[0].buffer.pointer	= OSC_UUID;
-	in_params[1].type 		= ACPI_TYPE_INTEGER;
-	in_params[1].integer.value 	= 1;
-	in_params[2].type 		= ACPI_TYPE_INTEGER;
-	in_params[2].integer.value	= 3;
-	in_params[3].type		= ACPI_TYPE_BUFFER;
-	in_params[3].buffer.length 	= 12;
-	in_params[3].buffer.pointer 	= (u8 *)context;
-
-	status = acpi_evaluate_object(handle, "_OSC", &input, &output);
-	if (ACPI_FAILURE (status)) {
-		printk(KERN_DEBUG  
-			"Evaluate _OSC Set fails. Status = 0x%04x\n", status);
-		return status;
-	}
-	if (out_obj.type != ACPI_TYPE_BUFFER) {
-		printk(KERN_DEBUG  
-			"Evaluate _OSC returns wrong type\n");
-		return AE_TYPE;
-	}
-	osc_dw0 = *((u32 *) out_obj.buffer.pointer);
-	if (osc_dw0) {
-		if (osc_dw0 & OSC_REQUEST_ERROR)
-			printk(KERN_DEBUG "_OSC request fails\n"); 
-		if (osc_dw0 & OSC_INVALID_UUID_ERROR)
-			printk(KERN_DEBUG "_OSC invalid UUID\n"); 
-		if (osc_dw0 & OSC_INVALID_REVISION_ERROR)
-			printk(KERN_DEBUG "_OSC invalid revision\n"); 
-		if (osc_dw0 & OSC_CAPABILITIES_MASK_ERROR) {
-			/* Update Global Control Set */
-			global_ctrlsets = *((u32 *)(out_obj.buffer.pointer+8));
-			return AE_OK;
-		}
-		return AE_ERROR;
-	}
-
-	/* Update Global Control Set */
-	global_ctrlsets = *((u32 *)(out_obj.buffer.pointer + 8));
-	return AE_OK;
-}
-
-
-static acpi_status  
-acpi_run_osc (
-	acpi_handle	handle,
-	u32		level,
-	void		*context,
-	void		**retval )
-{
-	acpi_status		status;
-	struct acpi_object_list	input;
-	union acpi_object 	in_params[4];
-	struct acpi_buffer	output;
-	union acpi_object 	out_obj;	
-	u32			osc_dw0;
-
-	/* Setting up output buffer */
-	output.length = sizeof(out_obj) + 3*sizeof(u32);  
-	output.pointer = &out_obj;
-	
-	/* Setting up input parameters */
-	input.count = 4;
-	input.pointer = in_params;
-	in_params[0].type 		= ACPI_TYPE_BUFFER;
-	in_params[0].buffer.length 	= 16;
-	in_params[0].buffer.pointer	= OSC_UUID;
-	in_params[1].type 		= ACPI_TYPE_INTEGER;
-	in_params[1].integer.value 	= 1;
-	in_params[2].type 		= ACPI_TYPE_INTEGER;
-	in_params[2].integer.value	= 3;
-	in_params[3].type		= ACPI_TYPE_BUFFER;
-	in_params[3].buffer.length 	= 12;
-	in_params[3].buffer.pointer 	= (u8 *)context;
-
-	status = acpi_evaluate_object(handle, "_OSC", &input, &output);
-	if (ACPI_FAILURE (status)) {
-		printk(KERN_DEBUG  
-			"Evaluate _OSC Set fails. Status = 0x%04x\n", status);
-		return status;
-	}
-	if (out_obj.type != ACPI_TYPE_BUFFER) {
-		printk(KERN_DEBUG  
-			"Evaluate _OSC returns wrong type\n");
-		return AE_TYPE;
-	}
-	osc_dw0 = *((u32 *) out_obj.buffer.pointer);
-	if (osc_dw0) {
-		if (osc_dw0 & OSC_REQUEST_ERROR)
-			printk(KERN_DEBUG "_OSC request fails\n"); 
-		if (osc_dw0 & OSC_INVALID_UUID_ERROR)
-			printk(KERN_DEBUG "_OSC invalid UUID\n"); 
-		if (osc_dw0 & OSC_INVALID_REVISION_ERROR)
-			printk(KERN_DEBUG "_OSC invalid revision\n"); 
-		if (osc_dw0 & OSC_CAPABILITIES_MASK_ERROR) {
-			printk(KERN_DEBUG "_OSC FW not grant req. control\n");
-			return AE_SUPPORT;
-		}
-		return AE_ERROR;
-	}
-	return AE_OK;
+	if (event == ACPI_NOTIFY_DEVICE_WAKE && pci_bus)
+		pci_pme_wakeup_bus(pci_bus);
 }
 
 /**
- * pci_osc_support_set - register OS support to Firmware
- * @flags: OS support bits
- *
- * Update OS support fields and doing a _OSC Query to obtain an update
- * from Firmware on supported control bits.
- **/
-acpi_status pci_osc_support_set(u32 flags)
+ * pci_acpi_wake_dev - Wake-up notification handler for PCI devices.
+ * @handle: ACPI handle of a device the notification is for.
+ * @event: Type of the signaled event.
+ * @context: PCI device object to wake up.
+ */
+static void pci_acpi_wake_dev(acpi_handle handle, u32 event, void *context)
 {
-	u32 temp;
+	struct pci_dev *pci_dev = context;
 
-	if (!(flags & OSC_SUPPORT_MASKS)) {
-		return AE_TYPE;
+	if (event != ACPI_NOTIFY_DEVICE_WAKE || !pci_dev)
+		return;
+
+	if (pci_dev->pme_poll)
+		pci_dev->pme_poll = false;
+
+	if (pci_dev->current_state == PCI_D3cold) {
+		pci_wakeup_event(pci_dev);
+		pm_runtime_resume(&pci_dev->dev);
+		return;
 	}
-	ctrlset_buf[OSC_SUPPORT_TYPE] |= (flags & OSC_SUPPORT_MASKS);
 
-	/* do _OSC query for all possible controls */
-	temp = ctrlset_buf[OSC_CONTROL_TYPE];
-	ctrlset_buf[OSC_QUERY_TYPE] = OSC_QUERY_ENABLE;
-	ctrlset_buf[OSC_CONTROL_TYPE] = OSC_CONTROL_MASKS;
-	acpi_get_devices ( PCI_ROOT_HID_STRING,
-			acpi_query_osc,
-			ctrlset_buf,
-			NULL );
-	ctrlset_buf[OSC_QUERY_TYPE] = !OSC_QUERY_ENABLE;
-	ctrlset_buf[OSC_CONTROL_TYPE] = temp;
-	return AE_OK;
+	/* Clear PME Status if set. */
+	if (pci_dev->pme_support)
+		pci_check_pme_status(pci_dev);
+
+	pci_wakeup_event(pci_dev);
+	pm_runtime_resume(&pci_dev->dev);
+
+	if (pci_dev->subordinate)
+		pci_pme_wakeup_bus(pci_dev->subordinate);
 }
-EXPORT_SYMBOL(pci_osc_support_set);
 
 /**
- * pci_osc_control_set - commit requested control to Firmware
- * @flags: driver's requested control bits
- *
- * Attempt to take control from Firmware on requested control bits.
- **/
-acpi_status pci_osc_control_set(u32 flags)
+ * pci_acpi_add_bus_pm_notifier - Register PM notifier for given PCI bus.
+ * @dev: ACPI device to add the notifier for.
+ * @pci_bus: PCI bus to walk checking for PME status if an event is signaled.
+ */
+acpi_status pci_acpi_add_bus_pm_notifier(struct acpi_device *dev,
+					 struct pci_bus *pci_bus)
 {
-	acpi_status	status;
-	u32		ctrlset;
-
-	ctrlset = (flags & OSC_CONTROL_MASKS);
-	if (!ctrlset) {
-		return AE_TYPE;
-	}
-	if (ctrlset_buf[OSC_SUPPORT_TYPE] && 
-	 	((global_ctrlsets & ctrlset) != ctrlset)) {
-		return AE_SUPPORT;
-	}
-	ctrlset_buf[OSC_CONTROL_TYPE] |= ctrlset;
-	status = acpi_get_devices ( PCI_ROOT_HID_STRING,
-				acpi_run_osc,
-				ctrlset_buf,
-				NULL );
-	if (ACPI_FAILURE (status)) {
-		ctrlset_buf[OSC_CONTROL_TYPE] &= ~ctrlset;
-	}
-	
-	return status;
+	return acpi_add_pm_notifier(dev, pci_acpi_wake_bus, pci_bus);
 }
-EXPORT_SYMBOL(pci_osc_control_set);
+
+/**
+ * pci_acpi_remove_bus_pm_notifier - Unregister PCI bus PM notifier.
+ * @dev: ACPI device to remove the notifier from.
+ */
+acpi_status pci_acpi_remove_bus_pm_notifier(struct acpi_device *dev)
+{
+	return acpi_remove_pm_notifier(dev, pci_acpi_wake_bus);
+}
+
+/**
+ * pci_acpi_add_pm_notifier - Register PM notifier for given PCI device.
+ * @dev: ACPI device to add the notifier for.
+ * @pci_dev: PCI device to check for the PME status if an event is signaled.
+ */
+acpi_status pci_acpi_add_pm_notifier(struct acpi_device *dev,
+				     struct pci_dev *pci_dev)
+{
+	return acpi_add_pm_notifier(dev, pci_acpi_wake_dev, pci_dev);
+}
+
+/**
+ * pci_acpi_remove_pm_notifier - Unregister PCI device PM notifier.
+ * @dev: ACPI device to remove the notifier from.
+ */
+acpi_status pci_acpi_remove_pm_notifier(struct acpi_device *dev)
+{
+	return acpi_remove_pm_notifier(dev, pci_acpi_wake_dev);
+}
+
+phys_addr_t acpi_pci_root_get_mcfg_addr(acpi_handle handle)
+{
+	acpi_status status = AE_NOT_EXIST;
+	unsigned long long mcfg_addr;
+
+	if (handle)
+		status = acpi_evaluate_integer(handle, METHOD_NAME__CBA,
+					       NULL, &mcfg_addr);
+	if (ACPI_FAILURE(status))
+		return 0;
+
+	return (phys_addr_t)mcfg_addr;
+}
+
+/*
+ * _SxD returns the D-state with the highest power
+ * (lowest D-state number) supported in the S-state "x".
+ *
+ * If the devices does not have a _PRW
+ * (Power Resources for Wake) supporting system wakeup from "x"
+ * then the OS is free to choose a lower power (higher number
+ * D-state) than the return value from _SxD.
+ *
+ * But if _PRW is enabled at S-state "x", the OS
+ * must not choose a power lower than _SxD --
+ * unless the device has an _SxW method specifying
+ * the lowest power (highest D-state number) the device
+ * may enter while still able to wake the system.
+ *
+ * ie. depending on global OS policy:
+ *
+ * if (_PRW at S-state x)
+ *	choose from highest power _SxD to lowest power _SxW
+ * else // no _PRW at S-state x
+ * 	choose highest power _SxD or any lower power
+ */
+
+static pci_power_t acpi_pci_choose_state(struct pci_dev *pdev)
+{
+	int acpi_state, d_max;
+
+#ifdef CONFIG_INTEL_SOC_PMC
+	pci_power_t target_state = acpi_pci_quirk_choose_state(pdev);
+
+	if (target_state != PCI_POWER_ERROR)
+		return target_state;
+#endif
+	if (pdev->no_d3cold)
+		d_max = ACPI_STATE_D3_HOT;
+	else
+		d_max = ACPI_STATE_D3_COLD;
+	acpi_state = acpi_pm_device_sleep_state(&pdev->dev, NULL, d_max);
+	if (acpi_state < 0)
+		return PCI_POWER_ERROR;
+
+	switch (acpi_state) {
+	case ACPI_STATE_D0:
+		return PCI_D0;
+	case ACPI_STATE_D1:
+		return PCI_D1;
+	case ACPI_STATE_D2:
+		return PCI_D2;
+	case ACPI_STATE_D3_HOT:
+		return PCI_D3hot;
+	case ACPI_STATE_D3_COLD:
+		return PCI_D3cold;
+	}
+	return PCI_POWER_ERROR;
+}
+
+static bool acpi_pci_power_manageable(struct pci_dev *dev)
+{
+	acpi_handle handle = DEVICE_ACPI_HANDLE(&dev->dev);
+
+#ifdef CONFIG_INTEL_SOC_PMC
+	if (acpi_pci_quirk_power_manageable(dev))
+		return true;
+#endif
+	return handle ? acpi_bus_power_manageable(handle) : false;
+}
+
+static int acpi_pci_set_power_state(struct pci_dev *dev, pci_power_t state)
+{
+	acpi_handle handle = DEVICE_ACPI_HANDLE(&dev->dev);
+	acpi_handle tmp;
+	static const u8 state_conv[] = {
+		[PCI_D0] = ACPI_STATE_D0,
+		[PCI_D1] = ACPI_STATE_D1,
+		[PCI_D2] = ACPI_STATE_D2,
+		[PCI_D3hot] = ACPI_STATE_D3,
+		[PCI_D3cold] = ACPI_STATE_D3
+	};
+	int error = -EINVAL;
+
+#ifdef CONFIG_INTEL_SOC_PMC
+	error = acpi_pci_quirk_set_state(dev, state);
+	if (!error)
+		return 0;
+#endif
+
+	/* If the ACPI device has _EJ0, ignore the device */
+	if (!handle || ACPI_SUCCESS(acpi_get_handle(handle, "_EJ0", &tmp)))
+		return -ENODEV;
+
+	switch (state) {
+	case PCI_D3cold:
+		if (dev_pm_qos_flags(&dev->dev, PM_QOS_FLAG_NO_POWER_OFF) ==
+				PM_QOS_FLAGS_ALL) {
+			error = -EBUSY;
+			break;
+		}
+	case PCI_D0:
+	case PCI_D1:
+	case PCI_D2:
+	case PCI_D3hot:
+		error = acpi_bus_set_power(handle, state_conv[state]);
+	}
+
+	if (!error)
+		dev_info(&dev->dev, "power state changed by ACPI to %s\n",
+			 pci_power_name(state));
+
+	return error;
+}
+
+static bool acpi_pci_can_wakeup(struct pci_dev *dev)
+{
+	acpi_handle handle = DEVICE_ACPI_HANDLE(&dev->dev);
+
+	return handle ? acpi_bus_can_wakeup(handle) : false;
+}
+
+static void acpi_pci_propagate_wakeup_enable(struct pci_bus *bus, bool enable)
+{
+	while (bus->parent) {
+		if (!acpi_pm_device_sleep_wake(&bus->self->dev, enable))
+			return;
+		bus = bus->parent;
+	}
+
+	/* We have reached the root bus. */
+	if (bus->bridge)
+		acpi_pm_device_sleep_wake(bus->bridge, enable);
+}
+
+static int acpi_pci_sleep_wake(struct pci_dev *dev, bool enable)
+{
+	if (acpi_pci_can_wakeup(dev))
+		return acpi_pm_device_sleep_wake(&dev->dev, enable);
+
+	acpi_pci_propagate_wakeup_enable(dev->bus, enable);
+	return 0;
+}
+
+static void acpi_pci_propagate_run_wake(struct pci_bus *bus, bool enable)
+{
+	while (bus->parent) {
+		struct pci_dev *bridge = bus->self;
+
+		if (bridge->pme_interrupt)
+			return;
+		if (!acpi_pm_device_run_wake(&bridge->dev, enable))
+			return;
+		bus = bus->parent;
+	}
+
+	/* We have reached the root bus. */
+	if (bus->bridge)
+		acpi_pm_device_run_wake(bus->bridge, enable);
+}
+
+static int acpi_pci_run_wake(struct pci_dev *dev, bool enable)
+{
+	/*
+	 * Per PCI Express Base Specification Revision 2.0 section
+	 * 5.3.3.2 Link Wakeup, platform support is needed for D3cold
+	 * waking up to power on the main link even if there is PME
+	 * support for D3cold
+	 */
+	if (dev->pme_interrupt && !dev->runtime_d3cold)
+		return 0;
+
+	if (!acpi_pm_device_run_wake(&dev->dev, enable))
+		return 0;
+
+	acpi_pci_propagate_run_wake(dev->bus, enable);
+	return 0;
+}
+
+static struct pci_platform_pm_ops acpi_pci_platform_pm = {
+	.is_manageable = acpi_pci_power_manageable,
+	.set_state = acpi_pci_set_power_state,
+	.choose_state = acpi_pci_choose_state,
+	.sleep_wake = acpi_pci_sleep_wake,
+	.run_wake = acpi_pci_run_wake,
+};
+
+void acpi_pci_add_bus(struct pci_bus *bus)
+{
+	acpi_handle handle = NULL;
+
+	if (bus->bridge)
+		handle = ACPI_HANDLE(bus->bridge);
+	if (acpi_pci_disabled || handle == NULL)
+		return;
+
+	acpi_pci_slot_enumerate(bus, handle);
+	acpiphp_enumerate_slots(bus, handle);
+}
+
+void acpi_pci_remove_bus(struct pci_bus *bus)
+{
+	/*
+	 * bus->bridge->acpi_node.handle has already been reset to NULL
+	 * when acpi_pci_remove_bus() is called, so don't check ACPI handle.
+	 */
+	if (acpi_pci_disabled)
+		return;
+
+	acpiphp_remove_slots(bus);
+	acpi_pci_slot_remove(bus);
+}
+
+/* ACPI bus type */
+static int acpi_pci_find_device(struct device *dev, acpi_handle *handle)
+{
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	bool is_bridge;
+	u64 addr;
+
+	/*
+	 * pci_is_bridge() is not suitable here, because pci_dev->subordinate
+	 * is set only after acpi_pci_find_device() has been called for the
+	 * given device.
+	 */
+	is_bridge = pci_dev->hdr_type == PCI_HEADER_TYPE_BRIDGE
+			|| pci_dev->hdr_type == PCI_HEADER_TYPE_CARDBUS;
+	/* Please ref to ACPI spec for the syntax of _ADR */
+	addr = (PCI_SLOT(pci_dev->devfn) << 16) | PCI_FUNC(pci_dev->devfn);
+	*handle = acpi_find_child(ACPI_HANDLE(dev->parent), addr, is_bridge);
+	if (!*handle)
+		return -ENODEV;
+	return 0;
+}
+
+static void pci_acpi_setup(struct device *dev)
+{
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	acpi_handle handle = ACPI_HANDLE(dev);
+	struct acpi_device *adev;
+
+	if (acpi_bus_get_device(handle, &adev) || !adev->wakeup.flags.valid)
+		return;
+
+	device_set_wakeup_capable(dev, true);
+	acpi_pci_sleep_wake(pci_dev, false);
+
+	pci_acpi_add_pm_notifier(adev, pci_dev);
+	if (adev->wakeup.flags.run_wake)
+		device_set_run_wake(dev, true);
+}
+
+static void pci_acpi_cleanup(struct device *dev)
+{
+	acpi_handle handle = ACPI_HANDLE(dev);
+	struct acpi_device *adev;
+
+	if (!acpi_bus_get_device(handle, &adev) && adev->wakeup.flags.valid) {
+		device_set_wakeup_capable(dev, false);
+		device_set_run_wake(dev, false);
+		pci_acpi_remove_pm_notifier(adev);
+	}
+}
+
+static bool pci_acpi_bus_match(struct device *dev)
+{
+	return dev->bus == &pci_bus_type;
+}
+
+static struct acpi_bus_type acpi_pci_bus = {
+	.name = "PCI",
+	.match = pci_acpi_bus_match,
+	.find_device = acpi_pci_find_device,
+	.setup = pci_acpi_setup,
+	.cleanup = pci_acpi_cleanup,
+};
+
+static int __init acpi_pci_init(void)
+{
+	int ret;
+
+	if (acpi_gbl_FADT.boot_flags & ACPI_FADT_NO_MSI) {
+		printk(KERN_INFO"ACPI FADT declares the system doesn't support MSI, so disable it\n");
+		pci_no_msi();
+	}
+
+	if (acpi_gbl_FADT.boot_flags & ACPI_FADT_NO_ASPM) {
+		printk(KERN_INFO"ACPI FADT declares the system doesn't support PCIe ASPM, so disable it\n");
+		pcie_no_aspm();
+	}
+
+	ret = register_acpi_bus_type(&acpi_pci_bus);
+	if (ret)
+		return 0;
+
+	pci_set_platform_pm(&acpi_pci_platform_pm);
+	acpi_pci_slot_init();
+	acpiphp_init();
+
+	return 0;
+}
+arch_initcall(acpi_pci_init);

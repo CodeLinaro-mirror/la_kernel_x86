@@ -1,41 +1,26 @@
 /*
- * Copyright (c) 2000, 2002 Silicon Graphics, Inc.  All Rights Reserved.
+ * Copyright (c) 2000,2002,2005 Silicon Graphics, Inc.
+ * Copyright (c) 2013 Red Hat, Inc.
+ * All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it would be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * This program is distributed in the hope that it would be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * Further, this software is distributed without any warranty that it is
- * free of the rightful claim of any third person regarding infringement
- * or the like.  Any license provided herein, whether implied or
- * otherwise, applies only to this software file.  Patent licenses, if
- * any, provided herein do not apply to combinations of this program with
- * other software, or any other product whatsoever.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write the Free Software Foundation, Inc., 59
- * Temple Place - Suite 330, Boston MA 02111-1307, USA.
- *
- * Contact information: Silicon Graphics, Inc., 1600 Amphitheatre Pkwy,
- * Mountain View, CA  94043, or:
- *
- * http://www.sgi.com
- *
- * For further information regarding this notice, see:
- *
- * http://oss.sgi.com/projects/GenInfo/SGIGPLNoticeExplan/
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write the Free Software Foundation,
+ * Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 #ifndef __XFS_DA_BTREE_H__
 #define	__XFS_DA_BTREE_H__
 
-struct xfs_buf;
 struct xfs_bmap_free;
 struct xfs_inode;
-struct xfs_mount;
 struct xfs_trans;
 struct zone;
 
@@ -46,24 +31,47 @@ struct zone;
 /*
  * This structure is common to both leaf nodes and non-leaf nodes in the Btree.
  *
- * Is is used to manage a doubly linked list of all blocks at the same
+ * It is used to manage a doubly linked list of all blocks at the same
  * level in the Btree, and to identify which type of block this is.
  */
 #define XFS_DA_NODE_MAGIC	0xfebe	/* magic number: non-leaf blocks */
-#define XFS_DIR_LEAF_MAGIC	0xfeeb	/* magic number: directory leaf blks */
 #define XFS_ATTR_LEAF_MAGIC	0xfbee	/* magic number: attribute leaf blks */
 #define	XFS_DIR2_LEAF1_MAGIC	0xd2f1	/* magic number: v2 dirlf single blks */
 #define	XFS_DIR2_LEAFN_MAGIC	0xd2ff	/* magic number: v2 dirlf multi blks */
 
-#define	XFS_DIRX_LEAF_MAGIC(mp)	\
-	(XFS_DIR_IS_V1(mp) ? XFS_DIR_LEAF_MAGIC : XFS_DIR2_LEAFN_MAGIC)
-
 typedef struct xfs_da_blkinfo {
-	xfs_dablk_t forw;			/* previous block in list */
-	xfs_dablk_t back;			/* following block in list */
-	__uint16_t magic;			/* validity check on block */
-	__uint16_t pad;				/* unused */
+	__be32		forw;			/* previous block in list */
+	__be32		back;			/* following block in list */
+	__be16		magic;			/* validity check on block */
+	__be16		pad;			/* unused */
 } xfs_da_blkinfo_t;
+
+/*
+ * CRC enabled directory structure types
+ *
+ * The headers change size for the additional verification information, but
+ * otherwise the tree layouts and contents are unchanged. Hence the da btree
+ * code can use the struct xfs_da_blkinfo for manipulating the tree links and
+ * magic numbers without modification for both v2 and v3 nodes.
+ */
+#define XFS_DA3_NODE_MAGIC	0x3ebe	/* magic number: non-leaf blocks */
+#define XFS_ATTR3_LEAF_MAGIC	0x3bee	/* magic number: attribute leaf blks */
+#define	XFS_DIR3_LEAF1_MAGIC	0x3df1	/* magic number: v2 dirlf single blks */
+#define	XFS_DIR3_LEAFN_MAGIC	0x3dff	/* magic number: v2 dirlf multi blks */
+
+struct xfs_da3_blkinfo {
+	/*
+	 * the node link manipulation code relies on the fact that the first
+	 * element of this structure is the struct xfs_da_blkinfo so it can
+	 * ignore the differences in the rest of the structures.
+	 */
+	struct xfs_da_blkinfo	hdr;
+	__be32			crc;	/* CRC of block */
+	__be64			blkno;	/* first block of the buffer */
+	__be64			lsn;	/* sequence number of last write */
+	uuid_t			uuid;	/* filesystem we belong to */
+	__be64			owner;	/* inode that owns the block */
+};
 
 /*
  * This is the structure of the root and intermediate nodes in the Btree.
@@ -76,101 +84,99 @@ typedef struct xfs_da_blkinfo {
  */
 #define	XFS_DA_NODE_MAXDEPTH	5	/* max depth of Btree */
 
+typedef struct xfs_da_node_hdr {
+	struct xfs_da_blkinfo	info;	/* block type, links, etc. */
+	__be16			__count; /* count of active entries */
+	__be16			__level; /* level above leaves (leaf == 0) */
+} xfs_da_node_hdr_t;
+
+struct xfs_da3_node_hdr {
+	struct xfs_da3_blkinfo	info;	/* block type, links, etc. */
+	__be16			__count; /* count of active entries */
+	__be16			__level; /* level above leaves (leaf == 0) */
+	__be32			__pad32;
+};
+
+#define XFS_DA3_NODE_CRC_OFF	(offsetof(struct xfs_da3_node_hdr, info.crc))
+
+typedef struct xfs_da_node_entry {
+	__be32	hashval;	/* hash value for this descendant */
+	__be32	before;		/* Btree block before this key */
+} xfs_da_node_entry_t;
+
 typedef struct xfs_da_intnode {
-	struct xfs_da_node_hdr {	/* constant-structure header block */
-		xfs_da_blkinfo_t info;	/* block type, links, etc. */
-		__uint16_t count;	/* count of active entries */
-		__uint16_t level;	/* level above leaves (leaf == 0) */
-	} hdr;
-	struct xfs_da_node_entry {
-		xfs_dahash_t hashval;	/* hash value for this descendant */
-		xfs_dablk_t before;	/* Btree block before this key */
-	} btree[1];			/* variable sized array of keys */
+	struct xfs_da_node_hdr	hdr;
+	struct xfs_da_node_entry __btree[];
 } xfs_da_intnode_t;
-typedef struct xfs_da_node_hdr xfs_da_node_hdr_t;
-typedef struct xfs_da_node_entry xfs_da_node_entry_t;
 
-#define XFS_DA_MAXHASH	((xfs_dahash_t)-1) /* largest valid hash value */
-
-/*
- * Macros used by directory code to interface to the filesystem.
- */
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_LBSIZE)
-int xfs_lbsize(struct xfs_mount *mp);
-#define	XFS_LBSIZE(mp)			xfs_lbsize(mp)
-#else
-#define	XFS_LBSIZE(mp)	((mp)->m_sb.sb_blocksize)
-#endif
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_LBLOG)
-int xfs_lblog(struct xfs_mount *mp);
-#define	XFS_LBLOG(mp)			xfs_lblog(mp)
-#else
-#define	XFS_LBLOG(mp)	((mp)->m_sb.sb_blocklog)
-#endif
+struct xfs_da3_intnode {
+	struct xfs_da3_node_hdr	hdr;
+	struct xfs_da_node_entry __btree[];
+};
 
 /*
- * Macros used by directory code to interface to the kernel
+ * In-core version of the node header to abstract the differences in the v2 and
+ * v3 disk format of the headers. Callers need to convert to/from disk format as
+ * appropriate.
  */
+struct xfs_da3_icnode_hdr {
+	__uint32_t	forw;
+	__uint32_t	back;
+	__uint16_t	magic;
+	__uint16_t	count;
+	__uint16_t	level;
+};
 
-/*
- * Macros used to manipulate directory off_t's
- */
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_DA_MAKE_BNOENTRY)
-__uint32_t xfs_da_make_bnoentry(struct xfs_mount *mp, xfs_dablk_t bno,
-				int entry);
-#define	XFS_DA_MAKE_BNOENTRY(mp,bno,entry)	\
-	xfs_da_make_bnoentry(mp,bno,entry)
-#else
-#define	XFS_DA_MAKE_BNOENTRY(mp,bno,entry) \
-	(((bno) << (mp)->m_dircook_elog) | (entry))
-#endif
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_DA_MAKE_COOKIE)
-xfs_off_t xfs_da_make_cookie(struct xfs_mount *mp, xfs_dablk_t bno, int entry,
-				xfs_dahash_t hash);
-#define	XFS_DA_MAKE_COOKIE(mp,bno,entry,hash)	\
-	xfs_da_make_cookie(mp,bno,entry,hash)
-#else
-#define	XFS_DA_MAKE_COOKIE(mp,bno,entry,hash) \
-	(((xfs_off_t)XFS_DA_MAKE_BNOENTRY(mp, bno, entry) << 32) | (hash))
-#endif
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_DA_COOKIE_HASH)
-xfs_dahash_t xfs_da_cookie_hash(struct xfs_mount *mp, xfs_off_t cookie);
-#define	XFS_DA_COOKIE_HASH(mp,cookie)		xfs_da_cookie_hash(mp,cookie)
-#else
-#define	XFS_DA_COOKIE_HASH(mp,cookie)	((xfs_dahash_t)(cookie))
-#endif
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_DA_COOKIE_BNO)
-xfs_dablk_t xfs_da_cookie_bno(struct xfs_mount *mp, xfs_off_t cookie);
-#define	XFS_DA_COOKIE_BNO(mp,cookie)		xfs_da_cookie_bno(mp,cookie)
-#else
-#define	XFS_DA_COOKIE_BNO(mp,cookie) \
-	(((xfs_off_t)(cookie) >> 31) == -1LL ? \
-		(xfs_dablk_t)0 : \
-		(xfs_dablk_t)((xfs_off_t)(cookie) >> ((mp)->m_dircook_elog + 32)))
-#endif
-#if XFS_WANT_FUNCS || (XFS_WANT_SPACE && XFSSO_XFS_DA_COOKIE_ENTRY)
-int xfs_da_cookie_entry(struct xfs_mount *mp, xfs_off_t cookie);
-#define	XFS_DA_COOKIE_ENTRY(mp,cookie)		xfs_da_cookie_entry(mp,cookie)
-#else
-#define	XFS_DA_COOKIE_ENTRY(mp,cookie) \
-	(((xfs_off_t)(cookie) >> 31) == -1LL ? \
-		(xfs_dablk_t)0 : \
-		(xfs_dablk_t)(((xfs_off_t)(cookie) >> 32) & \
-			      ((1 << (mp)->m_dircook_elog) - 1)))
-#endif
+extern void xfs_da3_node_hdr_from_disk(struct xfs_da3_icnode_hdr *to,
+				       struct xfs_da_intnode *from);
+extern void xfs_da3_node_hdr_to_disk(struct xfs_da_intnode *to,
+				     struct xfs_da3_icnode_hdr *from);
 
+static inline int
+xfs_da3_node_hdr_size(struct xfs_da_intnode *dap)
+{
+	if (dap->hdr.info.magic == cpu_to_be16(XFS_DA3_NODE_MAGIC))
+		return sizeof(struct xfs_da3_node_hdr);
+	return sizeof(struct xfs_da_node_hdr);
+}
+
+static inline struct xfs_da_node_entry *
+xfs_da3_node_tree_p(struct xfs_da_intnode *dap)
+{
+	if (dap->hdr.info.magic == cpu_to_be16(XFS_DA3_NODE_MAGIC)) {
+		struct xfs_da3_intnode *dap3 = (struct xfs_da3_intnode *)dap;
+		return dap3->__btree;
+	}
+	return dap->__btree;
+}
+
+extern void xfs_da3_intnode_from_disk(struct xfs_da3_icnode_hdr *to,
+				      struct xfs_da_intnode *from);
+extern void xfs_da3_intnode_to_disk(struct xfs_da_intnode *to,
+				    struct xfs_da3_icnode_hdr *from);
+
+#define	XFS_LBSIZE(mp)	(mp)->m_sb.sb_blocksize
 
 /*========================================================================
  * Btree searching and modification structure definitions.
  *========================================================================*/
 
 /*
+ * Search comparison results
+ */
+enum xfs_dacmp {
+	XFS_CMP_DIFFERENT,	/* names are completely different */
+	XFS_CMP_EXACT,		/* names are exactly the same */
+	XFS_CMP_CASE		/* names are same but differ in case */
+};
+
+/*
  * Structure to ease passing around component names.
  */
 typedef struct xfs_da_args {
-	uchar_t		*name;		/* string (maybe not NULL terminated) */
+	const __uint8_t	*name;		/* string (maybe not NULL terminated) */
 	int		namelen;	/* length of string (maybe no NULL) */
-	uchar_t		*value;		/* set of bytes (maybe contain NULLs) */
+	__uint8_t	*value;		/* set of bytes (maybe contain NULLs) */
 	int		valuelen;	/* length of value */
 	int		flags;		/* argument flags (eg: ATTR_NOCREATE) */
 	xfs_dahash_t	hashval;	/* hash value of name */
@@ -189,40 +195,25 @@ typedef struct xfs_da_args {
 	int		index2;		/* index of 2nd attr in blk */
 	xfs_dablk_t	rmtblkno2;	/* remote attr value starting blkno */
 	int		rmtblkcnt2;	/* remote attr value block count */
-	unsigned char	justcheck;	/* T/F: check for ok with no space */
-	unsigned char	rename;		/* T/F: this is an atomic rename op */
-	unsigned char	addname;	/* T/F: this is an add operation */
-	unsigned char	oknoent;	/* T/F: ok to return ENOENT, else die */
+	int		op_flags;	/* operation flags */
+	enum xfs_dacmp	cmpresult;	/* name compare result for lookups */
 } xfs_da_args_t;
 
 /*
- * Structure to describe buffer(s) for a block.
- * This is needed in the directory version 2 format case, when
- * multiple non-contiguous fsblocks might be needed to cover one
- * logical directory block.
- * If the buffer count is 1 then the data pointer points to the
- * same place as the b_addr field for the buffer, else to kmem_alloced memory.
+ * Operation flags:
  */
-typedef struct xfs_dabuf {
-	int		nbuf;		/* number of buffer pointers present */
-	short		dirty;		/* data needs to be copied back */
-	short		bbcount;	/* how large is data in bbs */
-	void		*data;		/* pointer for buffers' data */
-#ifdef XFS_DABUF_DEBUG
-	inst_t		*ra;		/* return address of caller to make */
-	struct xfs_dabuf *next;		/* next in global chain */
-	struct xfs_dabuf *prev;		/* previous in global chain */
-	struct xfs_buftarg *target;	/* device for buffer */
-	xfs_daddr_t	blkno;		/* daddr first in bps[0] */
-#endif
-	struct xfs_buf	*bps[1];	/* actually nbuf of these */
-} xfs_dabuf_t;
-#define	XFS_DA_BUF_SIZE(n)	\
-	(sizeof(xfs_dabuf_t) + sizeof(struct xfs_buf *) * ((n) - 1))
+#define XFS_DA_OP_JUSTCHECK	0x0001	/* check for ok with no space */
+#define XFS_DA_OP_RENAME	0x0002	/* this is an atomic rename op */
+#define XFS_DA_OP_ADDNAME	0x0004	/* this is an add operation */
+#define XFS_DA_OP_OKNOENT	0x0008	/* lookup/add op, ENOENT ok, else die */
+#define XFS_DA_OP_CILOOKUP	0x0010	/* lookup to return CI name if found */
 
-#ifdef XFS_DABUF_DEBUG
-extern xfs_dabuf_t	*xfs_dabuf_global_list;
-#endif
+#define XFS_DA_OP_FLAGS \
+	{ XFS_DA_OP_JUSTCHECK,	"JUSTCHECK" }, \
+	{ XFS_DA_OP_RENAME,	"RENAME" }, \
+	{ XFS_DA_OP_ADDNAME,	"ADDNAME" }, \
+	{ XFS_DA_OP_OKNOENT,	"OKNOENT" }, \
+	{ XFS_DA_OP_CILOOKUP,	"CILOOKUP" }
 
 /*
  * Storage for holding state during Btree searches and split/join ops.
@@ -232,7 +223,7 @@ extern xfs_dabuf_t	*xfs_dabuf_global_list;
  * which is slightly more than enough.
  */
 typedef struct xfs_da_state_blk {
-	xfs_dabuf_t	*bp;		/* buffer containing block */
+	struct xfs_buf	*bp;		/* buffer containing block */
 	xfs_dablk_t	blkno;		/* filesystem blkno of buffer */
 	xfs_daddr_t	disk_blkno;	/* on-disk blkno (in BBs) of buffer */
 	int		index;		/* relevant index into block */
@@ -255,7 +246,7 @@ typedef struct xfs_da_state {
 	unsigned char		inleaf;		/* insert into 1->lf, 0->splf */
 	unsigned char		extravalid;	/* T/F: extrablk is in use */
 	unsigned char		extraafter;	/* T/F: extrablk is after new */
-	xfs_da_state_blk_t	extrablk;	/* for double-splits on leafs */
+	xfs_da_state_blk_t	extrablk;	/* for double-splits on leaves */
 						/* for dirv2 extrablk is data */
 } xfs_da_state_t;
 
@@ -267,69 +258,79 @@ typedef struct xfs_da_state {
 		(uint)(XFS_DA_LOGOFF(BASE, ADDR)), \
 		(uint)(XFS_DA_LOGOFF(BASE, ADDR)+(SIZE)-1)
 
+/*
+ * Name ops for directory and/or attr name operations
+ */
+struct xfs_nameops {
+	xfs_dahash_t	(*hashname)(struct xfs_name *);
+	enum xfs_dacmp	(*compname)(struct xfs_da_args *,
+					const unsigned char *, int);
+};
 
-#ifdef __KERNEL__
+
 /*========================================================================
- * Function prototypes for the kernel.
+ * Function prototypes.
  *========================================================================*/
 
 /*
  * Routines used for growing the Btree.
  */
-int	xfs_da_node_create(xfs_da_args_t *args, xfs_dablk_t blkno, int level,
-					 xfs_dabuf_t **bpp, int whichfork);
-int	xfs_da_split(xfs_da_state_t *state);
+int	xfs_da3_node_create(struct xfs_da_args *args, xfs_dablk_t blkno,
+			    int level, struct xfs_buf **bpp, int whichfork);
+int	xfs_da3_split(xfs_da_state_t *state);
 
 /*
  * Routines used for shrinking the Btree.
  */
-int	xfs_da_join(xfs_da_state_t *state);
-void	xfs_da_fixhashpath(xfs_da_state_t *state,
-					  xfs_da_state_path_t *path_to_to_fix);
+int	xfs_da3_join(xfs_da_state_t *state);
+void	xfs_da3_fixhashpath(struct xfs_da_state *state,
+			    struct xfs_da_state_path *path_to_to_fix);
 
 /*
  * Routines used for finding things in the Btree.
  */
-int	xfs_da_node_lookup_int(xfs_da_state_t *state, int *result);
-int	xfs_da_path_shift(xfs_da_state_t *state, xfs_da_state_path_t *path,
+int	xfs_da3_node_lookup_int(xfs_da_state_t *state, int *result);
+int	xfs_da3_path_shift(xfs_da_state_t *state, xfs_da_state_path_t *path,
 					 int forward, int release, int *result);
 /*
  * Utility routines.
  */
-int	xfs_da_blk_unlink(xfs_da_state_t *state, xfs_da_state_blk_t *drop_blk,
-					 xfs_da_state_blk_t *save_blk);
-int	xfs_da_blk_link(xfs_da_state_t *state, xfs_da_state_blk_t *old_blk,
+int	xfs_da3_blk_link(xfs_da_state_t *state, xfs_da_state_blk_t *old_blk,
 				       xfs_da_state_blk_t *new_blk);
+int	xfs_da3_node_read(struct xfs_trans *tp, struct xfs_inode *dp,
+			 xfs_dablk_t bno, xfs_daddr_t mappedbno,
+			 struct xfs_buf **bpp, int which_fork);
+
+extern const struct xfs_buf_ops xfs_da3_node_buf_ops;
 
 /*
  * Utility routines.
  */
 int	xfs_da_grow_inode(xfs_da_args_t *args, xfs_dablk_t *new_blkno);
+int	xfs_da_grow_inode_int(struct xfs_da_args *args, xfs_fileoff_t *bno,
+			      int count);
 int	xfs_da_get_buf(struct xfs_trans *trans, struct xfs_inode *dp,
 			      xfs_dablk_t bno, xfs_daddr_t mappedbno,
-			      xfs_dabuf_t **bp, int whichfork);
+			      struct xfs_buf **bp, int whichfork);
 int	xfs_da_read_buf(struct xfs_trans *trans, struct xfs_inode *dp,
 			       xfs_dablk_t bno, xfs_daddr_t mappedbno,
-			       xfs_dabuf_t **bpp, int whichfork);
+			       struct xfs_buf **bpp, int whichfork,
+			       const struct xfs_buf_ops *ops);
 xfs_daddr_t	xfs_da_reada_buf(struct xfs_trans *trans, struct xfs_inode *dp,
-			xfs_dablk_t bno, int whichfork);
+				xfs_dablk_t bno, xfs_daddr_t mapped_bno,
+				int whichfork, const struct xfs_buf_ops *ops);
 int	xfs_da_shrink_inode(xfs_da_args_t *args, xfs_dablk_t dead_blkno,
-					  xfs_dabuf_t *dead_buf);
+					  struct xfs_buf *dead_buf);
 
-uint xfs_da_hashname(uchar_t *name_string, int name_length);
-uint xfs_da_log2_roundup(uint i);
+uint xfs_da_hashname(const __uint8_t *name_string, int name_length);
+enum xfs_dacmp xfs_da_compname(struct xfs_da_args *args,
+				const unsigned char *name, int len);
+
+
 xfs_da_state_t *xfs_da_state_alloc(void);
 void xfs_da_state_free(xfs_da_state_t *state);
-void xfs_da_state_kill_altpath(xfs_da_state_t *state);
-
-void xfs_da_buf_done(xfs_dabuf_t *dabuf);
-void xfs_da_log_buf(struct xfs_trans *tp, xfs_dabuf_t *dabuf, uint first,
-			   uint last);
-void xfs_da_brelse(struct xfs_trans *tp, xfs_dabuf_t *dabuf);
-void xfs_da_binval(struct xfs_trans *tp, xfs_dabuf_t *dabuf);
-xfs_daddr_t xfs_da_blkno(xfs_dabuf_t *dabuf);
 
 extern struct kmem_zone *xfs_da_state_zone;
-#endif	/* __KERNEL__ */
+extern const struct xfs_nameops xfs_default_nameops;
 
 #endif	/* __XFS_DA_BTREE_H__ */

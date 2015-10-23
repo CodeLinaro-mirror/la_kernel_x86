@@ -7,6 +7,8 @@
  * Copyright (C) 2002 Hiroshi Aono (h-aono@ap.jp.nec.com)
  * Copyright (C) 2002,2003 Takayoshi Kochi (t-kochi@bq.jp.nec.com)
  * Copyright (C) 2002,2003 NEC Corporation
+ * Copyright (C) 2003-2005 Matthew Wilcox (matthew.wilcox@hp.com)
+ * Copyright (C) 2003-2005 Hewlett Packard
  *
  * All rights reserved.
  *
@@ -34,76 +36,51 @@
 #define _ACPIPHP_H
 
 #include <linux/acpi.h>
-#include <linux/kobject.h>	/* for KOBJ_NAME_LEN */
-#include "pci_hotplug.h"
+#include <linux/mutex.h>
+#include <linux/pci_hotplug.h>
 
 #define dbg(format, arg...)					\
 	do {							\
 		if (acpiphp_debug)				\
 			printk(KERN_DEBUG "%s: " format,	\
-				MY_NAME , ## arg); 		\
+				MY_NAME , ## arg);		\
 	} while (0)
 #define err(format, arg...) printk(KERN_ERR "%s: " format, MY_NAME , ## arg)
 #define info(format, arg...) printk(KERN_INFO "%s: " format, MY_NAME , ## arg)
 #define warn(format, arg...) printk(KERN_WARNING "%s: " format, MY_NAME , ## arg)
 
-/* name size which is used for entries in pcihpfs */
-#define SLOT_NAME_SIZE	KOBJ_NAME_LEN		/* {_SUN} */
-
 struct acpiphp_bridge;
 struct acpiphp_slot;
-struct pci_resource;
 
 /*
  * struct slot - slot information for each *physical* slot
  */
 struct slot {
-	u8 number;
 	struct hotplug_slot	*hotplug_slot;
-	struct list_head	slot_list;
-
 	struct acpiphp_slot	*acpi_slot;
+	struct hotplug_slot_info info;
 };
+
+static inline const char *slot_name(struct slot *slot)
+{
+	return hotplug_slot_name(slot->hotplug_slot);
+}
 
 /*
- * struct pci_resource - describes pci resource (mem, pfmem, io, bus)
- */
-struct pci_resource {
-	struct pci_resource * next;
-	u64 base;
-	u32 length;
-};
-
-/**
- * struct hpp_param - ACPI 2.0 _HPP Hot Plug Parameters
- * @cache_line_size in DWORD
- * @latency_timer in PCI clock
- * @enable_SERR 0 or 1
- * @enable_PERR 0 or 1
- */
-struct hpp_param {
-	u8 cache_line_size;
-	u8 latency_timer;
-	u8 enable_SERR;
-	u8 enable_PERR;
-};
-
-
-/**
  * struct acpiphp_bridge - PCI bridge information
  *
  * for each bridge device in ACPI namespace
  */
 struct acpiphp_bridge {
 	struct list_head list;
+	struct list_head slots;
+	struct kref ref;
 	acpi_handle handle;
-	struct acpiphp_slot *slots;
-	int type;
-	int nr_slots;
 
-	u8 seg;
-	u8 bus;
-	u8 sub;
+	/* Ejectable PCI-to-PCI bridge (PCI bridge and PCI function) */
+	struct acpiphp_func *func;
+
+	int nr_slots;
 
 	u32 flags;
 
@@ -112,42 +89,30 @@ struct acpiphp_bridge {
 
 	/* PCI-to-PCI bridge device */
 	struct pci_dev *pci_dev;
-
-	/* ACPI 2.0 _HPP parameters */
-	struct hpp_param hpp;
-
-	spinlock_t res_lock;
-
-	/* available resources on this bus */
-	struct pci_resource *mem_head;
-	struct pci_resource *p_mem_head;
-	struct pci_resource *io_head;
-	struct pci_resource *bus_head;
 };
 
 
-/**
+/*
  * struct acpiphp_slot - PCI slot information
  *
  * PCI slot information for each *physical* PCI slot
  */
 struct acpiphp_slot {
-	struct acpiphp_slot *next;
+	struct list_head node;
 	struct acpiphp_bridge *bridge;	/* parent */
 	struct list_head funcs;		/* one slot may have different
 					   objects (i.e. for each function) */
-	struct semaphore crit_sect;
+	struct slot *slot;
+	struct mutex crit_sect;
 
-	u32		id;		/* slot id (serial #) for hotplug core */
 	u8		device;		/* pci device# */
 
-	u32		sun;		/* ACPI _SUN (slot unique number) */
-	u32		slotno;		/* slot number relative to bridge */
+	unsigned long long sun;		/* ACPI _SUN (slot unique number) */
 	u32		flags;		/* see below */
 };
 
 
-/**
+/*
  * struct acpiphp_func - PCI function information
  *
  * PCI function information for each object in ACPI namespace
@@ -157,21 +122,14 @@ struct acpiphp_func {
 	struct acpiphp_slot *slot;	/* parent */
 
 	struct list_head sibling;
-	struct pci_dev *pci_dev;
-
+	struct notifier_block nb;
 	acpi_handle	handle;
 
 	u8		function;	/* pci function# */
 	u32		flags;		/* see below */
-
-	/* resources used for this function */
-	struct pci_resource *mem_head;
-	struct pci_resource *p_mem_head;
-	struct pci_resource *io_head;
-	struct pci_resource *bus_head;
 };
 
-/**
+/*
  * struct acpiphp_attention_info - device specific attention registration
  *
  * ACPI has no generic method of setting/getting attention status
@@ -187,25 +145,11 @@ struct acpiphp_attention_info
 /* PCI bus bridge HID */
 #define ACPI_PCI_HOST_HID		"PNP0A03"
 
-/* PCI BRIDGE type */
-#define BRIDGE_TYPE_HOST		0
-#define BRIDGE_TYPE_P2P			1
-
 /* ACPI _STA method value (ignore bit 4; battery present) */
-#define ACPI_STA_PRESENT		(0x00000001)
-#define ACPI_STA_ENABLED		(0x00000002)
-#define ACPI_STA_SHOW_IN_UI		(0x00000004)
-#define ACPI_STA_FUNCTIONING		(0x00000008)
 #define ACPI_STA_ALL			(0x0000000f)
 
 /* bridge flags */
-#define BRIDGE_HAS_STA		(0x00000001)
-#define BRIDGE_HAS_EJ0		(0x00000002)
-#define BRIDGE_HAS_HPP		(0x00000004)
-#define BRIDGE_HAS_PS0		(0x00000010)
-#define BRIDGE_HAS_PS1		(0x00000020)
-#define BRIDGE_HAS_PS2		(0x00000040)
-#define BRIDGE_HAS_PS3		(0x00000080)
+#define BRIDGE_HAS_EJ0		(0x00000001)
 
 /* slot flags */
 
@@ -221,48 +165,29 @@ struct acpiphp_attention_info
 #define FUNC_HAS_PS1		(0x00000020)
 #define FUNC_HAS_PS2		(0x00000040)
 #define FUNC_HAS_PS3		(0x00000080)
+#define FUNC_HAS_DCK            (0x00000100)
 
 /* function prototypes */
 
 /* acpiphp_core.c */
-extern int acpiphp_register_attention(struct acpiphp_attention_info*info);
-extern int acpiphp_unregister_attention(struct acpiphp_attention_info *info);
+int acpiphp_register_attention(struct acpiphp_attention_info*info);
+int acpiphp_unregister_attention(struct acpiphp_attention_info *info);
+int acpiphp_register_hotplug_slot(struct acpiphp_slot *slot);
+void acpiphp_unregister_hotplug_slot(struct acpiphp_slot *slot);
 
 /* acpiphp_glue.c */
-extern int acpiphp_glue_init (void);
-extern void acpiphp_glue_exit (void);
-extern int acpiphp_get_num_slots (void);
-extern struct acpiphp_slot *get_slot_from_id (int id);
 typedef int (*acpiphp_callback)(struct acpiphp_slot *slot, void *data);
 
-extern int acpiphp_enable_slot (struct acpiphp_slot *slot);
-extern int acpiphp_disable_slot (struct acpiphp_slot *slot);
-extern u8 acpiphp_get_power_status (struct acpiphp_slot *slot);
-extern u8 acpiphp_get_attention_status (struct acpiphp_slot *slot);
-extern u8 acpiphp_get_latch_status (struct acpiphp_slot *slot);
-extern u8 acpiphp_get_adapter_status (struct acpiphp_slot *slot);
-extern u32 acpiphp_get_address (struct acpiphp_slot *slot);
-
-/* acpiphp_pci.c */
-extern struct pci_dev *acpiphp_allocate_pcidev (struct pci_bus *pbus, int dev, int fn);
-extern int acpiphp_configure_slot (struct acpiphp_slot *slot);
-extern int acpiphp_configure_function (struct acpiphp_func *func);
-extern void acpiphp_unconfigure_function (struct acpiphp_func *func);
-extern int acpiphp_detect_pci_resource (struct acpiphp_bridge *bridge);
-extern int acpiphp_init_func_resource (struct acpiphp_func *func);
-
-/* acpiphp_res.c */
-extern struct pci_resource *acpiphp_get_io_resource (struct pci_resource **head, u32 size);
-extern struct pci_resource *acpiphp_get_resource (struct pci_resource **head, u32 size);
-extern struct pci_resource *acpiphp_get_resource_with_base (struct pci_resource **head, u64 base, u32 size);
-extern int acpiphp_resource_sort_and_combine (struct pci_resource **head);
-extern struct pci_resource *acpiphp_make_resource (u64 base, u32 length);
-extern void acpiphp_move_resource (struct pci_resource **from, struct pci_resource **to);
-extern void acpiphp_free_resource (struct pci_resource **res);
-extern void acpiphp_dump_resource (struct acpiphp_bridge *bridge); /* debug */
-extern void acpiphp_dump_func_resource (struct acpiphp_func *func); /* debug */
+int acpiphp_enable_slot(struct acpiphp_slot *slot);
+int acpiphp_disable_slot(struct acpiphp_slot *slot);
+int acpiphp_eject_slot(struct acpiphp_slot *slot);
+u8 acpiphp_get_power_status(struct acpiphp_slot *slot);
+u8 acpiphp_get_attention_status(struct acpiphp_slot *slot);
+u8 acpiphp_get_latch_status(struct acpiphp_slot *slot);
+u8 acpiphp_get_adapter_status(struct acpiphp_slot *slot);
 
 /* variables */
-extern int acpiphp_debug;
+extern bool acpiphp_debug;
+extern bool acpiphp_disabled;
 
 #endif /* _ACPIPHP_H */

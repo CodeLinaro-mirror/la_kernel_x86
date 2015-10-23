@@ -18,6 +18,9 @@
 #define STI_FONT_HPROMAN8 1
 #define STI_FONT_KANA8 2
 
+#define ALT_CODE_TYPE_UNKNOWN 0x00	/* alt code type values */
+#define ALT_CODE_TYPE_PA_RISC_64 0x01
+
 /* The latency of the STI functions cannot really be reduced by setting
  * this to 0;  STI doesn't seem to be designed to allow calling a different
  * function (or the same function with different arguments) after a
@@ -34,36 +37,12 @@
  * for them to fix it and steal their solution.   prumpf
  */
  
+#include <asm/io.h>
+
 #define STI_WAIT 1
 
-#include <asm/io.h> /* for USE_HPPA_IOREMAP */
-
-#if USE_HPPA_IOREMAP
-
-#define STI_PTR(p)	(p)
-#define PTR_STI(p)	(p)
-static inline int STI_CALL( unsigned long func, 
-		void *flags, void *inptr, void *outptr, void *glob_cfg )
-{
-       int (*f)(void *,void *,void *,void *);
-       f = (void*)func;
-       return f(flags, inptr, outptr, glob_cfg);
-}
-
-#else /* !USE_HPPA_IOREMAP */
-
 #define STI_PTR(p)	( virt_to_phys(p) )
-#define PTR_STI(p)	( phys_to_virt((long)p) )
-#define STI_CALL(func, flags, inptr, outptr, glob_cfg) \
-       ({                                                      \
-               pdc_sti_call( func, (unsigned long)STI_PTR(flags), \
-                                   (unsigned long)STI_PTR(inptr), \
-                                   (unsigned long)STI_PTR(outptr), \
-                                   (unsigned long)STI_PTR(glob_cfg)); \
-       })
-
-#endif /* USE_HPPA_IOREMAP */
-
+#define PTR_STI(p)	( phys_to_virt((unsigned long)p) )
 
 #define sti_onscreen_x(sti) (sti->glob_cfg->onscreen_x)
 #define sti_onscreen_y(sti) (sti->glob_cfg->onscreen_y)
@@ -71,6 +50,12 @@ static inline int STI_CALL( unsigned long func,
 /* sti_font_xy() use the native font ROM ! */
 #define sti_font_x(sti) (PTR_STI(sti->font)->width)
 #define sti_font_y(sti) (PTR_STI(sti->font)->height)
+
+#ifdef CONFIG_64BIT
+#define STI_LOWMEM	(GFP_KERNEL | GFP_DMA)
+#else
+#define STI_LOWMEM	(GFP_KERNEL)
+#endif
 
 
 /* STI function configuration structs */
@@ -95,7 +80,7 @@ struct sti_glob_cfg_ext {
 	 u8 curr_mon;			/* current monitor configured */
 	 u8 friendly_boot;		/* in friendly boot mode */
 	s16 power;			/* power calculation (in Watts) */
-	s32 freq_ref;			/* frequency refrence */
+	s32 freq_ref;			/* frequency reference */
 	u32 sti_mem_addr;		/* pointer to global sti memory (size=sti_mem_request) */
 	u32 future_ptr; 		/* pointer to future data */
 };
@@ -322,6 +307,34 @@ struct sti_blkmv_outptr {
 };
 
 
+/* sti_all_data is an internal struct which needs to be allocated in
+ * low memory (< 4GB) if STI is used with 32bit STI on a 64bit kernel */
+
+struct sti_all_data {
+	struct sti_glob_cfg glob_cfg;
+	struct sti_glob_cfg_ext glob_cfg_ext;
+
+	struct sti_conf_inptr		inq_inptr;
+	struct sti_conf_outptr		inq_outptr; /* configuration */
+	struct sti_conf_outptr_ext	inq_outptr_ext;
+
+	struct sti_init_inptr_ext	init_inptr_ext;
+	struct sti_init_inptr		init_inptr;
+	struct sti_init_outptr		init_outptr;
+
+	struct sti_blkmv_inptr		blkmv_inptr;
+	struct sti_blkmv_outptr		blkmv_outptr;
+
+	struct sti_font_inptr		font_inptr;
+	struct sti_font_outptr		font_outptr;
+
+	/* leave as last entries */
+	unsigned long save_addr[1024 / sizeof(unsigned long)];
+	   /* min 256 bytes which is STI default, max sti->sti_mem_request */
+	unsigned long sti_mem_addr[256 / sizeof(unsigned long)];
+	/* do not add something below here ! */
+};
+
 /* internal generic STI struct */
 
 struct sti_struct {
@@ -346,18 +359,20 @@ struct sti_struct {
 	region_t regions[STI_REGION_MAX];
 	unsigned long regions_phys[STI_REGION_MAX];
 
-	struct sti_glob_cfg *glob_cfg;
+	struct sti_glob_cfg *glob_cfg;	/* points into sti_all_data */
+
 	struct sti_cooked_font *font;	/* ptr to selected font (cooked) */
 
-	struct sti_conf_outptr outptr; /* configuration */
-	struct sti_conf_outptr_ext outptr_ext;
+	struct pci_dev *pd;
 
 	/* PCI data structures (pg. 17ff from sti.pdf) */
-	struct pci_dev *pd;
 	u8 rm_entry[16]; /* pci region mapper array == pci config space offset */
 
 	/* pointer to the fb_info where this STI device is used */
 	struct fb_info *info;
+
+	/* pointer to all internal data */
+	struct sti_all_data *sti_data;
 };
 
 
@@ -365,10 +380,16 @@ struct sti_struct {
 
 struct sti_struct *sti_get_rom(unsigned int index); /* 0: default sti */
 
+
+/* sticore main function to call STI firmware */
+
+int sti_call(const struct sti_struct *sti, unsigned long func,
+		const void *flags, void *inptr, void *outptr,
+		struct sti_glob_cfg *glob_cfg);
+
+
 /* functions to call the STI ROM directly */
 
-int  sti_init_graph(struct sti_struct *sti);
-void sti_inq_conf(struct sti_struct *sti);
 void sti_putc(struct sti_struct *sti, int c, int y, int x);
 void sti_set(struct sti_struct *sti, int src_y, int src_x,
 	     int height, int width, u8 color);

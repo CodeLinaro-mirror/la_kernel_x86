@@ -2,7 +2,7 @@
 #define __LINUX_SEQLOCK_H
 /*
  * Reader/writer consistent mechanism without starving writers. This type of
- * lock for data where the reader wants a consitent set of information
+ * lock for data where the reader wants a consistent set of information
  * and is willing to retry if the information changes.  Readers never
  * block but they may have to retry if a writer is in
  * progress. Writers do not wait for readers. 
@@ -26,74 +26,9 @@
  * by Keith Owens and Andrea Arcangeli
  */
 
-#include <linux/config.h>
 #include <linux/spinlock.h>
 #include <linux/preempt.h>
-
-typedef struct {
-	unsigned sequence;
-	spinlock_t lock;
-} seqlock_t;
-
-/*
- * These macros triggered gcc-3.x compile-time problems.  We think these are
- * OK now.  Be cautious.
- */
-#define SEQLOCK_UNLOCKED { 0, SPIN_LOCK_UNLOCKED }
-#define seqlock_init(x)	do { *(x) = (seqlock_t) SEQLOCK_UNLOCKED; } while (0)
-
-
-/* Lock out other writers and update the count.
- * Acts like a normal spin_lock/unlock.
- * Don't need preempt_disable() because that is in the spin_lock already.
- */
-static inline void write_seqlock(seqlock_t *sl)
-{
-	spin_lock(&sl->lock);
-	++sl->sequence;
-	smp_wmb();			
-}	
-
-static inline void write_sequnlock(seqlock_t *sl) 
-{
-	smp_wmb();
-	sl->sequence++;
-	spin_unlock(&sl->lock);
-}
-
-static inline int write_tryseqlock(seqlock_t *sl)
-{
-	int ret = spin_trylock(&sl->lock);
-
-	if (ret) {
-		++sl->sequence;
-		smp_wmb();			
-	}
-	return ret;
-}
-
-/* Start of read calculation -- fetch last complete writer token */
-static inline unsigned read_seqbegin(const seqlock_t *sl)
-{
-	unsigned ret = sl->sequence;
-	smp_rmb();
-	return ret;
-}
-
-/* Test if reader processed invalid data.
- * If initial values is odd, 
- *	then writer had already started when section was entered
- * If sequence value changed
- *	then writer changed data while in section
- *    
- * Using xor saves one conditional branch.
- */
-static inline int read_seqretry(const seqlock_t *sl, unsigned iv)
-{
-	smp_rmb();
-	return (iv & 1) | (sl->sequence ^ iv);
-}
-
+#include <asm/processor.h>
 
 /*
  * Version using sequence counter only.
@@ -101,7 +36,6 @@ static inline int read_seqretry(const seqlock_t *sl, unsigned iv)
  * updating starting before the write_seqcountbeqin() and ending
  * after the write_seqcount_end().
  */
-
 typedef struct seqcount {
 	unsigned sequence;
 } seqcount_t;
@@ -109,23 +43,102 @@ typedef struct seqcount {
 #define SEQCNT_ZERO { 0 }
 #define seqcount_init(x)	do { *(x) = (seqcount_t) SEQCNT_ZERO; } while (0)
 
-/* Start of read using pointer to a sequence counter only.  */
+/**
+ * __read_seqcount_begin - begin a seq-read critical section (without barrier)
+ * @s: pointer to seqcount_t
+ * Returns: count to be passed to read_seqcount_retry
+ *
+ * __read_seqcount_begin is like read_seqcount_begin, but has no smp_rmb()
+ * barrier. Callers should ensure that smp_rmb() or equivalent ordering is
+ * provided before actually loading any of the variables that are to be
+ * protected in this critical section.
+ *
+ * Use carefully, only in critical code, and comment how the barrier is
+ * provided.
+ */
+static inline unsigned __read_seqcount_begin(const seqcount_t *s)
+{
+	unsigned ret;
+
+repeat:
+	ret = ACCESS_ONCE(s->sequence);
+	if (unlikely(ret & 1)) {
+		cpu_relax();
+		goto repeat;
+	}
+	return ret;
+}
+
+/**
+ * read_seqcount_begin - begin a seq-read critical section
+ * @s: pointer to seqcount_t
+ * Returns: count to be passed to read_seqcount_retry
+ *
+ * read_seqcount_begin opens a read critical section of the given seqcount.
+ * Validity of the critical section is tested by checking read_seqcount_retry
+ * function.
+ */
 static inline unsigned read_seqcount_begin(const seqcount_t *s)
 {
-	unsigned ret = s->sequence;
+	unsigned ret = __read_seqcount_begin(s);
 	smp_rmb();
 	return ret;
 }
 
-/* Test if reader processed invalid data.
- * Equivalent to: iv is odd or sequence number has changed.
- *                (iv & 1) || (*s != iv)
- * Using xor saves one conditional branch.
+/**
+ * raw_seqcount_begin - begin a seq-read critical section
+ * @s: pointer to seqcount_t
+ * Returns: count to be passed to read_seqcount_retry
+ *
+ * raw_seqcount_begin opens a read critical section of the given seqcount.
+ * Validity of the critical section is tested by checking read_seqcount_retry
+ * function.
+ *
+ * Unlike read_seqcount_begin(), this function will not wait for the count
+ * to stabilize. If a writer is active when we begin, we will fail the
+ * read_seqcount_retry() instead of stabilizing at the beginning of the
+ * critical section.
  */
-static inline int read_seqcount_retry(const seqcount_t *s, unsigned iv)
+static inline unsigned raw_seqcount_begin(const seqcount_t *s)
+{
+	unsigned ret = ACCESS_ONCE(s->sequence);
+	smp_rmb();
+	return ret & ~1;
+}
+
+/**
+ * __read_seqcount_retry - end a seq-read critical section (without barrier)
+ * @s: pointer to seqcount_t
+ * @start: count, from read_seqcount_begin
+ * Returns: 1 if retry is required, else 0
+ *
+ * __read_seqcount_retry is like read_seqcount_retry, but has no smp_rmb()
+ * barrier. Callers should ensure that smp_rmb() or equivalent ordering is
+ * provided before actually loading any of the variables that are to be
+ * protected in this critical section.
+ *
+ * Use carefully, only in critical code, and comment how the barrier is
+ * provided.
+ */
+static inline int __read_seqcount_retry(const seqcount_t *s, unsigned start)
+{
+	return unlikely(s->sequence != start);
+}
+
+/**
+ * read_seqcount_retry - end a seq-read critical section
+ * @s: pointer to seqcount_t
+ * @start: count, from read_seqcount_begin
+ * Returns: 1 if retry is required, else 0
+ *
+ * read_seqcount_retry closes a read critical section of the given seqcount.
+ * If the critical section was invalid, it must be ignored (and typically
+ * retried).
+ */
+static inline int read_seqcount_retry(const seqcount_t *s, unsigned start)
 {
 	smp_rmb();
-	return (iv & 1) | (s->sequence ^ iv);
+	return __read_seqcount_retry(s, start);
 }
 
 
@@ -145,31 +158,114 @@ static inline void write_seqcount_end(seqcount_t *s)
 	s->sequence++;
 }
 
-/*
- * Possible sw/hw IRQ protected versions of the interfaces.
+/**
+ * write_seqcount_barrier - invalidate in-progress read-side seq operations
+ * @s: pointer to seqcount_t
+ *
+ * After write_seqcount_barrier, no read-side seq operations will complete
+ * successfully and see data older than this.
  */
+static inline void write_seqcount_barrier(seqcount_t *s)
+{
+	smp_wmb();
+	s->sequence+=2;
+}
+
+typedef struct {
+	struct seqcount seqcount;
+	spinlock_t lock;
+} seqlock_t;
+
+/*
+ * These macros triggered gcc-3.x compile-time problems.  We think these are
+ * OK now.  Be cautious.
+ */
+#define __SEQLOCK_UNLOCKED(lockname)			\
+	{						\
+		.seqcount = SEQCNT_ZERO,		\
+		.lock =	__SPIN_LOCK_UNLOCKED(lockname)	\
+	}
+
+#define seqlock_init(x)					\
+	do {						\
+		seqcount_init(&(x)->seqcount);		\
+		spin_lock_init(&(x)->lock);		\
+	} while (0)
+
+#define DEFINE_SEQLOCK(x) \
+		seqlock_t x = __SEQLOCK_UNLOCKED(x)
+
+/*
+ * Read side functions for starting and finalizing a read side section.
+ */
+static inline unsigned read_seqbegin(const seqlock_t *sl)
+{
+	return read_seqcount_begin(&sl->seqcount);
+}
+
+static inline unsigned read_seqretry(const seqlock_t *sl, unsigned start)
+{
+	return read_seqcount_retry(&sl->seqcount, start);
+}
+
+/*
+ * Lock out other writers and update the count.
+ * Acts like a normal spin_lock/unlock.
+ * Don't need preempt_disable() because that is in the spin_lock already.
+ */
+static inline void write_seqlock(seqlock_t *sl)
+{
+	spin_lock(&sl->lock);
+	write_seqcount_begin(&sl->seqcount);
+}
+
+static inline void write_sequnlock(seqlock_t *sl)
+{
+	write_seqcount_end(&sl->seqcount);
+	spin_unlock(&sl->lock);
+}
+
+static inline void write_seqlock_bh(seqlock_t *sl)
+{
+	spin_lock_bh(&sl->lock);
+	write_seqcount_begin(&sl->seqcount);
+}
+
+static inline void write_sequnlock_bh(seqlock_t *sl)
+{
+	write_seqcount_end(&sl->seqcount);
+	spin_unlock_bh(&sl->lock);
+}
+
+static inline void write_seqlock_irq(seqlock_t *sl)
+{
+	spin_lock_irq(&sl->lock);
+	write_seqcount_begin(&sl->seqcount);
+}
+
+static inline void write_sequnlock_irq(seqlock_t *sl)
+{
+	write_seqcount_end(&sl->seqcount);
+	spin_unlock_irq(&sl->lock);
+}
+
+static inline unsigned long __write_seqlock_irqsave(seqlock_t *sl)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&sl->lock, flags);
+	write_seqcount_begin(&sl->seqcount);
+	return flags;
+}
+
 #define write_seqlock_irqsave(lock, flags)				\
-	do { local_irq_save(flags); write_seqlock(lock); } while (0)
-#define write_seqlock_irq(lock)						\
-	do { local_irq_disable();   write_seqlock(lock); } while (0)
-#define write_seqlock_bh(lock)						\
-        do { local_bh_disable();    write_seqlock(lock); } while (0)
+	do { flags = __write_seqlock_irqsave(lock); } while (0)
 
-#define write_sequnlock_irqrestore(lock, flags)				\
-	do { write_sequnlock(lock); local_irq_restore(flags); } while(0)
-#define write_sequnlock_irq(lock)					\
-	do { write_sequnlock(lock); local_irq_enable(); } while(0)
-#define write_sequnlock_bh(lock)					\
-	do { write_sequnlock(lock); local_bh_enable(); } while(0)
-
-#define read_seqbegin_irqsave(lock, flags)				\
-	({ local_irq_save(flags);   read_seqbegin(lock); })
-
-#define read_seqretry_irqrestore(lock, iv, flags)			\
-	({								\
-		int ret = read_seqretry(lock, iv);			\
-		local_irq_restore(flags);				\
-		ret;							\
-	})
+static inline void
+write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags)
+{
+	write_seqcount_end(&sl->seqcount);
+	spin_unlock_irqrestore(&sl->lock, flags);
+}
 
 #endif /* __LINUX_SEQLOCK_H */

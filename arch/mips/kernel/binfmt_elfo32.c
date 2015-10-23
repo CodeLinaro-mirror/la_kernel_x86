@@ -6,7 +6,7 @@
  *
  * Heavily inspired by the 32-bit Sparc compat code which is
  * Copyright (C) 1995, 1996, 1997, 1998 David S. Miller (davem@redhat.com)
- * Copyright (C) 1995, 1996, 1997, 1998 Jakub Jelinek   (jj@ultra.linux.cz)
+ * Copyright (C) 1995, 1996, 1997, 1998 Jakub Jelinek	(jj@ultra.linux.cz)
  */
 
 #define ELF_ARCH		EM_MIPS
@@ -48,15 +48,30 @@ typedef elf_fpreg_t elf_fpregset_t[ELF_NFPREG];
 	__res;								\
 })
 
+#ifdef CONFIG_KVM_GUEST
+#define TASK32_SIZE		0x3fff8000UL
+#else
 #define TASK32_SIZE		0x7fff8000UL
+#endif
 #undef ELF_ET_DYN_BASE
-#define ELF_ET_DYN_BASE         (TASK32_SIZE / 3 * 2)
+#define ELF_ET_DYN_BASE		(TASK32_SIZE / 3 * 2)
 
 #include <asm/processor.h>
+
+/* These MUST be defined before elf.h gets included */
+extern void elf32_core_copy_regs(elf_gregset_t grp, struct pt_regs *regs);
+#define ELF_CORE_COPY_REGS(_dest, _regs) elf32_core_copy_regs(_dest, _regs);
+#define ELF_CORE_COPY_TASK_REGS(_tsk, _dest)				\
+({									\
+	int __res = 1;							\
+	elf32_core_copy_regs(*(_dest), task_pt_regs(_tsk));		\
+	__res;								\
+})
+
 #include <linux/module.h>
-#include <linux/config.h>
 #include <linux/elfcore.h>
 #include <linux/compat.h>
+#include <linux/math64.h>
 
 #define elf_prstatus elf_prstatus32
 struct elf_prstatus32
@@ -69,8 +84,8 @@ struct elf_prstatus32
 	pid_t	pr_ppid;
 	pid_t	pr_pgrp;
 	pid_t	pr_sid;
-	struct compat_timeval pr_utime;	/* User time */
-	struct compat_timeval pr_stime;	/* System time */
+	struct compat_timeval pr_utime; /* User time */
+	struct compat_timeval pr_stime; /* System time */
 	struct compat_timeval pr_cutime;/* Cumulative user time */
 	struct compat_timeval pr_cstime;/* Cumulative system time */
 	elf_gregset_t pr_reg;	/* GP registers */
@@ -90,44 +105,46 @@ struct elf_prpsinfo32
 	pid_t	pr_pid, pr_ppid, pr_pgrp, pr_sid;
 	/* Lots missing */
 	char	pr_fname[16];	/* filename of executable */
-	char	pr_psargs[ELF_PRARGSZ];	/* initial part of arg list */
+	char	pr_psargs[ELF_PRARGSZ]; /* initial part of arg list */
 };
 
-#define elf_addr_t	u32
 #define elf_caddr_t	u32
 #define init_elf_binfmt init_elf32_binfmt
 
 #define jiffies_to_timeval jiffies_to_compat_timeval
-static __inline__ void
+static inline void
 jiffies_to_compat_timeval(unsigned long jiffies, struct compat_timeval *value)
 {
 	/*
-	 * Convert jiffies to nanoseconds and seperate with
+	 * Convert jiffies to nanoseconds and separate with
 	 * one divide.
 	 */
-	u64 nsec = (u64)jiffies * TICK_NSEC; 
-	value->tv_sec = div_long_long_rem(nsec, NSEC_PER_SEC, &value->tv_usec);
-	value->tv_usec /= NSEC_PER_USEC;
+	u64 nsec = (u64)jiffies * TICK_NSEC;
+	u32 rem;
+	value->tv_sec = div_u64_rem(nsec, NSEC_PER_SEC, &rem);
+	value->tv_usec = rem / NSEC_PER_USEC;
 }
 
-#undef ELF_CORE_COPY_REGS
-#define ELF_CORE_COPY_REGS(_dest,_regs) elf32_core_copy_regs(_dest,_regs);
-
-void elf32_core_copy_regs(elf_gregset_t _dest, struct pt_regs *_regs)
+void elf32_core_copy_regs(elf_gregset_t grp, struct pt_regs *regs)
 {
 	int i;
 
-	memset(_dest, 0, sizeof(elf_gregset_t));
-
-	/* XXXKW the 6 is from EF_REG0 in gdb/gdb/mips-linux-tdep.c, include/asm-mips/reg.h */
-	for (i=6; i<38; i++)
-		_dest[i] = (elf_greg_t) _regs->regs[i-6];
-	_dest[i++] = (elf_greg_t) _regs->lo;
-	_dest[i++] = (elf_greg_t) _regs->hi;
-	_dest[i++] = (elf_greg_t) _regs->cp0_epc;
-	_dest[i++] = (elf_greg_t) _regs->cp0_badvaddr;
-	_dest[i++] = (elf_greg_t) _regs->cp0_status;
-	_dest[i++] = (elf_greg_t) _regs->cp0_cause;
+	for (i = 0; i < MIPS32_EF_R0; i++)
+		grp[i] = 0;
+	grp[MIPS32_EF_R0] = 0;
+	for (i = 1; i <= 31; i++)
+		grp[MIPS32_EF_R0 + i] = (elf_greg_t) regs->regs[i];
+	grp[MIPS32_EF_R26] = 0;
+	grp[MIPS32_EF_R27] = 0;
+	grp[MIPS32_EF_LO] = (elf_greg_t) regs->lo;
+	grp[MIPS32_EF_HI] = (elf_greg_t) regs->hi;
+	grp[MIPS32_EF_CP0_EPC] = (elf_greg_t) regs->cp0_epc;
+	grp[MIPS32_EF_CP0_BADVADDR] = (elf_greg_t) regs->cp0_badvaddr;
+	grp[MIPS32_EF_CP0_STATUS] = (elf_greg_t) regs->cp0_status;
+	grp[MIPS32_EF_CP0_CAUSE] = (elf_greg_t) regs->cp0_cause;
+#ifdef MIPS32_EF_UNUSED0
+	grp[MIPS32_EF_UNUSED0] = 0;
+#endif
 }
 
 MODULE_DESCRIPTION("Binary format loader for compatibility with o32 Linux/MIPS binaries");
@@ -135,5 +152,19 @@ MODULE_AUTHOR("Ralf Baechle (ralf@linux-mips.org)");
 
 #undef MODULE_DESCRIPTION
 #undef MODULE_AUTHOR
+
+#undef TASK_SIZE
+#define TASK_SIZE TASK_SIZE32
+
+#undef cputime_to_timeval
+#define cputime_to_timeval cputime_to_compat_timeval
+static __inline__ void
+cputime_to_compat_timeval(const cputime_t cputime, struct compat_timeval *value)
+{
+	unsigned long jiffies = cputime_to_jiffies(cputime);
+
+	value->tv_usec = (jiffies % HZ) * (1000000L / HZ);
+	value->tv_sec = jiffies / HZ;
+}
 
 #include "../../../fs/binfmt_elf.c"

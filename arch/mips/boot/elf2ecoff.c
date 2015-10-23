@@ -29,7 +29,7 @@
 /* elf2ecoff.c
 
    This program converts an elf executable to an ECOFF executable.
-   No symbol table is retained.   This is useful primarily in building
+   No symbol table is retained.	  This is useful primarily in building
    net-bootable kernels for machines (e.g., DECstation and Alpha) which
    only support the ECOFF object file format. */
 
@@ -59,8 +59,8 @@ struct sect {
 };
 
 int *symTypeTable;
-int must_convert_endian = 0;
-int format_bigendian = 0;
+int must_convert_endian;
+int format_bigendian;
 
 static void copy(int out, int in, off_t offset, off_t size)
 {
@@ -341,7 +341,7 @@ int main(int argc, char *argv[])
 
 	/* Figure out if we can cram the program header into an ECOFF
 	   header...  Basically, we can't handle anything but loadable
-	   segments, but we can ignore some kinds of segments.  We can't
+	   segments, but we can ignore some kinds of segments.	We can't
 	   handle holes in the address space.  Segments may be out of order,
 	   so we sort them first. */
 
@@ -467,7 +467,7 @@ int main(int argc, char *argv[])
 	esecs[0].s_scnptr = N_TXTOFF(efh, eah);
 	esecs[1].s_scnptr = N_DATOFF(efh, eah);
 #define ECOFF_SEGMENT_ALIGNMENT(a) 0x10
-#define ECOFF_ROUND(s,a) (((s)+(a)-1)&~((a)-1))
+#define ECOFF_ROUND(s, a) (((s)+(a)-1)&~((a)-1))
 	esecs[2].s_scnptr = esecs[1].s_scnptr +
 	    ECOFF_ROUND(esecs[1].s_size, ECOFF_SEGMENT_ALIGNMENT(&eah));
 	if (addflag) {
@@ -514,7 +514,7 @@ int main(int argc, char *argv[])
 
 		for (i = 0; i < nosecs; i++) {
 			printf
-			    ("Section %d: %s phys %lx  size %lx  file offset %lx\n",
+			    ("Section %d: %s phys %lx  size %lx	 file offset %lx\n",
 			     i, esecs[i].s_name, esecs[i].s_paddr,
 			     esecs[i].s_size, esecs[i].s_scnptr);
 		}
@@ -551,7 +551,7 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-	 * Copy the loadable sections.   Zero-fill any gaps less than 64k;
+	 * Copy the loadable sections.	 Zero-fill any gaps less than 64k;
 	 * complain about any zero-filling, and die if we're asked to zero-fill
 	 * more than 64k.
 	 */

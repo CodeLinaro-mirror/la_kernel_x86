@@ -5,9 +5,9 @@
 #include <linux/interrupt.h>
 #include <linux/keyboard.h>
 
+#ifndef CONFIG_ANDROID
 extern struct tasklet_struct keyboard_tasklet;
-
-extern int shift_state;
+#endif
 
 extern char *func_table[MAX_NR_FUNC];
 extern char func_buf[];
@@ -50,11 +50,12 @@ struct kbd_struct {
 #define VC_CAPSLOCK	2	/* capslock mode */
 #define VC_KANALOCK	3	/* kanalock mode */
 
-	unsigned char kbdmode:2;	/* one 2-bit value */
+	unsigned char kbdmode:3;	/* one 3-bit value */
 #define VC_XLATE	0	/* translate keycodes using keymap */
 #define VC_MEDIUMRAW	1	/* medium raw (keycode) mode */
 #define VC_RAW		2	/* raw (scancode) mode */
 #define VC_UNICODE	3	/* Unicode mode */
+#define VC_OFF		4	/* disabled mode */
 
 	unsigned char modeflags:5;
 #define VC_APPLIC	0	/* application key mode */
@@ -64,24 +65,26 @@ struct kbd_struct {
 #define VC_META		4	/* 0 - meta, 1 - meta=prefix with ESC */
 };
 
-extern struct kbd_struct kbd_table[];
-
 extern int kbd_init(void);
 
-extern unsigned char getledstate(void);
 extern void setledstate(struct kbd_struct *kbd, unsigned int led);
 
 extern int do_poke_blanked_console;
 
 extern void (*kbd_ledfunc)(unsigned int led);
 
-extern void set_console(int nr);
+extern int set_console(int nr);
 extern void schedule_console_callback(void);
 
+#ifndef CONFIG_ANDROID
+/* FIXME: review locking for vt.c callers */
 static inline void set_leds(void)
 {
 	tasklet_schedule(&keyboard_tasklet);
 }
+#else
+static inline void set_leds(void) {}
+#endif
 
 static inline int vc_kbd_mode(struct kbd_struct * kbd, int flag)
 {
@@ -135,23 +138,16 @@ static inline void chg_vc_kbd_led(struct kbd_struct * kbd, int flag)
 
 #define U(x) ((x) ^ 0xf000)
 
+#define BRL_UC_ROW 0x2800
+
 /* keyboard.c */
 
 struct console;
 
-int getkeycode(unsigned int scancode);
-int setkeycode(unsigned int scancode, unsigned int keycode);
 void compute_shiftstate(void);
 
 /* defkeymap.c */
 
 extern unsigned int keymap_count;
-
-/* console.c */
-
-static inline void con_schedule_flip(struct tty_struct *t)
-{
-	schedule_work(&t->flip.work);
-}
 
 #endif

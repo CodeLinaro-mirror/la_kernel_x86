@@ -47,11 +47,11 @@
 
 #define IOBASE_SUN3_VMESCSI 0xff200000
 
-static int sun3scsi_abort (Scsi_Cmnd *);
-static int sun3scsi_detect (Scsi_Host_Template *);
+static int sun3scsi_abort(struct scsi_cmnd *);
+static int sun3scsi_detect (struct scsi_host_template *);
 static const char *sun3scsi_info (struct Scsi_Host *);
-static int sun3scsi_bus_reset(Scsi_Cmnd *);
-static int sun3scsi_queue_command (Scsi_Cmnd *, void (*done)(Scsi_Cmnd *));
+static int sun3scsi_bus_reset(struct scsi_cmnd *);
+static int sun3scsi_queue_command(struct Scsi_Host *, struct scsi_cmnd *);
 static int sun3scsi_release (struct Scsi_Host *);
 
 #ifndef CMD_PER_LUN
@@ -100,7 +100,7 @@ static int sun3scsi_release (struct Scsi_Host *);
 #define NCR5380_queue_command sun3scsi_queue_command
 #define NCR5380_bus_reset sun3scsi_bus_reset
 #define NCR5380_abort sun3scsi_abort
-#define NCR5380_proc_info sun3scsi_proc_info
+#define NCR5380_show_info sun3scsi_show_info
 #define NCR5380_dma_xfer_len(i, cmd, phase) \
         sun3scsi_dma_xfer_len(cmd->SCp.this_residual,cmd,((phase) & SR_IO) ? 0 : 1)
 
@@ -220,7 +220,7 @@ struct sun3_udc_regs {
  *
  */
 
-
+#include "NCR5380.h"
 
 #if NDEBUG & NDEBUG_ARBITRATION
 #define ARB_PRINTK(format, args...) \

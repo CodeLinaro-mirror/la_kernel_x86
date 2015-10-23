@@ -1,5 +1,4 @@
 /*
- *  
  *  Copyright (C) 2002 Intersil Americas Inc.
  *  Copyright 2004 Jens Maurer <Jens.Maurer@gmx.net>
  *
@@ -18,13 +17,13 @@
  *
  */
 
-#include <linux/config.h>
 #include <linux/netdevice.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
 
 #include <asm/io.h>
-#include <asm/system.h>
 #include <linux/if_arp.h>
 
 #include "prismcompat.h"
@@ -114,7 +113,7 @@ islpci_mgmt_rx_fill(struct net_device *ndev)
 	u32 curr = le32_to_cpu(cb->driver_curr_frag[ISL38XX_CB_RX_MGMTQ]);
 
 #if VERBOSE > SHOW_ERROR_MESSAGES
-	DEBUG(SHOW_FUNCTION_CALLS, "islpci_mgmt_rx_fill \n");
+	DEBUG(SHOW_FUNCTION_CALLS, "islpci_mgmt_rx_fill\n");
 #endif
 
 	while (curr - priv->index_mgmt_rx < ISL38XX_CB_MGMT_QSIZE) {
@@ -124,11 +123,8 @@ islpci_mgmt_rx_fill(struct net_device *ndev)
 
 		if (buf->mem == NULL) {
 			buf->mem = kmalloc(MGMT_FRAME_SIZE, GFP_ATOMIC);
-			if (!buf->mem) {
-				printk(KERN_WARNING
-				       "Error allocating management frame.\n");
+			if (!buf->mem)
 				return -ENOMEM;
-			}
 			buf->size = MGMT_FRAME_SIZE;
 		}
 		if (buf->pci_addr == 0) {
@@ -137,7 +133,7 @@ islpci_mgmt_rx_fill(struct net_device *ndev)
 						       PCI_DMA_FROMDEVICE);
 			if (!buf->pci_addr) {
 				printk(KERN_WARNING
-				       "Failed to make memory DMA'able\n.");
+				       "Failed to make memory DMA'able.\n");
 				return -ENOMEM;
 			}
 		}
@@ -192,11 +188,9 @@ islpci_mgt_transmit(struct net_device *ndev, int operation, unsigned long oid,
 
 	err = -ENOMEM;
 	p = buf.mem = kmalloc(frag_len, GFP_KERNEL);
-	if (!buf.mem) {
-		printk(KERN_DEBUG "%s: cannot allocate mgmt frame\n",
-		       ndev->name);
+	if (!buf.mem)
 		goto error;
-	}
+
 	buf.size = frag_len;
 
 	/* create the header directly in the fragment data area */
@@ -212,7 +206,7 @@ islpci_mgt_transmit(struct net_device *ndev, int operation, unsigned long oid,
 	{
 		pimfor_header_t *h = buf.mem;
 		DEBUG(SHOW_PIMFOR_FRAMES,
-		      "PIMFOR: op %i, oid 0x%08lx, device %i, flags 0x%x length 0x%x \n",
+		      "PIMFOR: op %i, oid 0x%08lx, device %i, flags 0x%x length 0x%x\n",
 		      h->operation, oid, h->device_id, h->flags, length);
 
 		/* display the buffer contents for debugging */
@@ -280,7 +274,7 @@ islpci_mgt_receive(struct net_device *ndev)
 	u32 curr_frag;
 
 #if VERBOSE > SHOW_ERROR_MESSAGES
-	DEBUG(SHOW_FUNCTION_CALLS, "islpci_mgt_receive \n");
+	DEBUG(SHOW_FUNCTION_CALLS, "islpci_mgt_receive\n");
 #endif
 
 	/* Only once per interrupt, determine fragment range to
@@ -339,7 +333,7 @@ islpci_mgt_receive(struct net_device *ndev)
 
 #if VERBOSE > SHOW_ERROR_MESSAGES
 		DEBUG(SHOW_PIMFOR_FRAMES,
-		      "PIMFOR: op %i, oid 0x%08x, device %i, flags 0x%x length 0x%x \n",
+		      "PIMFOR: op %i, oid 0x%08x, device %i, flags 0x%x length 0x%x\n",
 		      header->operation, header->oid, header->device_id,
 		      header->flags, header->length);
 
@@ -359,14 +353,11 @@ islpci_mgt_receive(struct net_device *ndev)
 
 		/* Determine frame size, skipping OID_INL_TUNNEL headers. */
 		size = PIMFOR_HEADER_SIZE + header->length;
-		frame = kmalloc(sizeof (struct islpci_mgmtframe) + size,
+		frame = kmalloc(sizeof(struct islpci_mgmtframe) + size,
 				GFP_ATOMIC);
-		if (!frame) {
-			printk(KERN_WARNING
-			       "%s: Out of memory, cannot handle oid 0x%08x\n",
-			       ndev->name, header->oid);
+		if (!frame)
 			continue;
-		}
+
 		frame->ndev = ndev;
 		memcpy(&frame->buf, header, size);
 		frame->header = (pimfor_header_t *) frame->buf;
@@ -388,7 +379,7 @@ islpci_mgt_receive(struct net_device *ndev)
 
 			/* Create work to handle trap out of interrupt
 			 * context. */
-			INIT_WORK(&frame->ws, prism54_process_trap, frame);
+			INIT_WORK(&frame->ws, prism54_process_trap);
 			schedule_work(&frame->ws);
 
 		} else {
@@ -455,14 +446,14 @@ islpci_mgt_transaction(struct net_device *ndev,
 		       struct islpci_mgmtframe **recvframe)
 {
 	islpci_private *priv = netdev_priv(ndev);
-	const long wait_cycle_jiffies = (ISL38XX_WAIT_CYCLE * 10 * HZ) / 1000;
+	const long wait_cycle_jiffies = msecs_to_jiffies(ISL38XX_WAIT_CYCLE * 10);
 	long timeout_left = ISL38XX_MAX_WAIT_CYCLES * wait_cycle_jiffies;
 	int err;
 	DEFINE_WAIT(wait);
 
 	*recvframe = NULL;
 
-	if (down_interruptible(&priv->mgmt_sem))
+	if (mutex_lock_interruptible(&priv->mgmt_lock))
 		return -ERESTARTSYS;
 
 	prepare_to_wait(&priv->mgmt_wqueue, &wait, TASK_UNINTERRUPTIBLE);
@@ -475,8 +466,7 @@ islpci_mgt_transaction(struct net_device *ndev,
 		int timeleft;
 		struct islpci_mgmtframe *frame;
 
-		set_current_state(TASK_UNINTERRUPTIBLE);
-		timeleft = schedule_timeout(wait_cycle_jiffies);
+		timeleft = schedule_timeout_uninterruptible(wait_cycle_jiffies);
 		frame = xchg(&priv->mgmt_received, NULL);
 		if (frame) {
 			if (frame->header->oid == oid) {
@@ -504,10 +494,10 @@ islpci_mgt_transaction(struct net_device *ndev,
 	printk(KERN_WARNING "%s: timeout waiting for mgmt response\n",
 	       ndev->name);
 
-	/* TODO: we should reset the device here */     
+	/* TODO: we should reset the device here */
  out:
 	finish_wait(&priv->mgmt_wqueue, &wait);
-	up(&priv->mgmt_sem);
+	mutex_unlock(&priv->mgmt_lock);
 	return err;
 }
 

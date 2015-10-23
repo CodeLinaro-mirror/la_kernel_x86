@@ -29,39 +29,22 @@
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/shm.h>
-#include <linux/smp_lock.h>
 #include <linux/syscalls.h>
-
-int sys_pipe(int __user *fildes)
-{
-	int fd[2];
-	int error;
-
-	error = do_pipe(fd);
-	if (!error) {
-		if (copy_to_user(fildes, fd, 2*sizeof(int)))
-			error = -EFAULT;
-	}
-	return error;
-}
+#include <linux/utsname.h>
+#include <linux/personality.h>
 
 static unsigned long get_unshared_area(unsigned long addr, unsigned long len)
 {
-	struct vm_area_struct *vma;
+	struct vm_unmapped_area_info info;
 
-	addr = PAGE_ALIGN(addr);
-
-	for (vma = find_vma(current->mm, addr); ; vma = vma->vm_next) {
-		/* At this point:  (!vma || addr < vma->vm_end). */
-		if (TASK_SIZE - len < addr)
-			return -ENOMEM;
-		if (!vma || addr + len <= vma->vm_start)
-			return addr;
-		addr = vma->vm_end;
-	}
+	info.flags = 0;
+	info.length = len;
+	info.low_limit = PAGE_ALIGN(addr);
+	info.high_limit = TASK_SIZE;
+	info.align_mask = 0;
+	info.align_offset = 0;
+	return vm_unmapped_area(&info);
 }
-
-#define DCACHE_ALIGN(addr) (((addr) + (SHMLBA - 1)) &~ (SHMLBA - 1))
 
 /*
  * We need to know the offset to use.  Old scheme was to look for
@@ -75,28 +58,28 @@ static unsigned long get_unshared_area(unsigned long addr, unsigned long len)
  */
 static int get_offset(struct address_space *mapping)
 {
-	int offset = (unsigned long) mapping << (PAGE_SHIFT - 8);
-	return offset & 0x3FF000;
+	return (unsigned long) mapping >> 8;
 }
 
-static unsigned long get_shared_area(struct address_space *mapping,
-		unsigned long addr, unsigned long len, unsigned long pgoff)
+static unsigned long shared_align_offset(struct file *filp, unsigned long pgoff)
 {
-	struct vm_area_struct *vma;
-	int offset = mapping ? get_offset(mapping) : 0;
+	struct address_space *mapping = filp ? filp->f_mapping : NULL;
 
-	addr = DCACHE_ALIGN(addr - offset) + offset;
+	return (get_offset(mapping) + pgoff) << PAGE_SHIFT;
+}
 
-	for (vma = find_vma(current->mm, addr); ; vma = vma->vm_next) {
-		/* At this point:  (!vma || addr < vma->vm_end). */
-		if (TASK_SIZE - len < addr)
-			return -ENOMEM;
-		if (!vma || addr + len <= vma->vm_start)
-			return addr;
-		addr = DCACHE_ALIGN(vma->vm_end - offset) + offset;
-		if (addr < vma->vm_end) /* handle wraparound */
-			return -ENOMEM;
-	}
+static unsigned long get_shared_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff)
+{
+	struct vm_unmapped_area_info info;
+
+	info.flags = 0;
+	info.length = len;
+	info.low_limit = PAGE_ALIGN(addr);
+	info.high_limit = TASK_SIZE;
+	info.align_mask = PAGE_MASK & (SHMLBA - 1);
+	info.align_offset = shared_align_offset(filp, pgoff);
+	return vm_unmapped_area(&info);
 }
 
 unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
@@ -104,41 +87,21 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
 {
 	if (len > TASK_SIZE)
 		return -ENOMEM;
+	if (flags & MAP_FIXED) {
+		if ((flags & MAP_SHARED) &&
+		    (addr - shared_align_offset(filp, pgoff)) & (SHMLBA - 1))
+			return -EINVAL;
+		return addr;
+	}
 	if (!addr)
 		addr = TASK_UNMAPPED_BASE;
 
-	if (filp) {
-		addr = get_shared_area(filp->f_mapping, addr, len, pgoff);
-	} else if(flags & MAP_SHARED) {
-		addr = get_shared_area(NULL, addr, len, pgoff);
-	} else {
+	if (filp || (flags & MAP_SHARED))
+		addr = get_shared_area(filp, addr, len, pgoff);
+	else
 		addr = get_unshared_area(addr, len);
-	}
+
 	return addr;
-}
-
-static unsigned long do_mmap2(unsigned long addr, unsigned long len,
-	unsigned long prot, unsigned long flags, unsigned long fd,
-	unsigned long pgoff)
-{
-	struct file * file = NULL;
-	unsigned long error = -EBADF;
-	if (!(flags & MAP_ANONYMOUS)) {
-		file = fget(fd);
-		if (!file)
-			goto out;
-	}
-
-	flags &= ~(MAP_EXECUTABLE | MAP_DENYWRITE);
-
-	down_write(&current->mm->mmap_sem);
-	error = do_mmap_pgoff(file, addr, len, prot, flags, pgoff);
-	up_write(&current->mm->mmap_sem);
-
-	if (file != NULL)
-		fput(file);
-out:
-	return error;
 }
 
 asmlinkage unsigned long sys_mmap2(unsigned long addr, unsigned long len,
@@ -147,7 +110,8 @@ asmlinkage unsigned long sys_mmap2(unsigned long addr, unsigned long len,
 {
 	/* Make sure the shift for mmap2 is constant (12), no matter what PAGE_SIZE
 	   we have. */
-	return do_mmap2(addr, len, prot, flags, fd, pgoff >> (PAGE_SHIFT - 12));
+	return sys_mmap_pgoff(addr, len, prot, flags, fd,
+			      pgoff >> (PAGE_SHIFT - 12));
 }
 
 asmlinkage unsigned long sys_mmap(unsigned long addr, unsigned long len,
@@ -155,21 +119,11 @@ asmlinkage unsigned long sys_mmap(unsigned long addr, unsigned long len,
 		unsigned long offset)
 {
 	if (!(offset & ~PAGE_MASK)) {
-		return do_mmap2(addr, len, prot, flags, fd, offset >> PAGE_SHIFT);
+		return sys_mmap_pgoff(addr, len, prot, flags, fd,
+					offset >> PAGE_SHIFT);
 	} else {
 		return -EINVAL;
 	}
-}
-
-long sys_shmat_wrapper(int shmid, char __user *shmaddr, int shmflag)
-{
-	unsigned long raddr;
-	int r;
-
-	r = do_shmat(shmid, shmaddr, shmflag, &raddr);
-	if (r < 0)
-		return r;
-	return raddr;
 }
 
 /* Fucking broken ABI */
@@ -242,6 +196,21 @@ asmlinkage long parisc_fadvise64_64(int fd,
 			(loff_t)high_len << 32 | low_len, advice);
 }
 
+asmlinkage long parisc_sync_file_range(int fd,
+			u32 hi_off, u32 lo_off, u32 hi_nbytes, u32 lo_nbytes,
+			unsigned int flags)
+{
+	return sys_sync_file_range(fd, (loff_t)hi_off << 32 | lo_off,
+			(loff_t)hi_nbytes << 32 | lo_nbytes, flags);
+}
+
+asmlinkage long parisc_fallocate(int fd, int mode, u32 offhi, u32 offlo,
+				u32 lenhi, u32 lenlo)
+{
+        return sys_fallocate(fd, mode, ((u64)offhi << 32) | offlo,
+                             ((u64)lenhi << 32) | lenlo);
+}
+
 asmlinkage unsigned long sys_alloc_hugepages(int key, unsigned long addr, unsigned long len, int prot, int flag)
 {
 	return -ENOMEM;
@@ -250,4 +219,19 @@ asmlinkage unsigned long sys_alloc_hugepages(int key, unsigned long addr, unsign
 asmlinkage int sys_free_hugepages(unsigned long addr)
 {
 	return -EINVAL;
+}
+
+long parisc_personality(unsigned long personality)
+{
+	long err;
+
+	if (personality(current->personality) == PER_LINUX32
+	    && personality(personality) == PER_LINUX)
+		personality = (personality & ~PER_MASK) | PER_LINUX32;
+
+	err = sys_personality(personality);
+	if (personality(err) == PER_LINUX32)
+		err = (err & ~PER_MASK) | PER_LINUX;
+
+	return err;
 }

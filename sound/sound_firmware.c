@@ -1,9 +1,11 @@
 #include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/file.h>
 #include <linux/mm.h>
-#include <linux/slab.h>
+#include <linux/sched.h>
 #include <asm/uaccess.h>
+#include "oss/sound_firmware.h"
 
 static int do_mod_firmware_load(const char *fn, char **fp)
 {
@@ -18,18 +20,18 @@ static int do_mod_firmware_load(const char *fn, char **fp)
 		printk(KERN_INFO "Unable to load '%s'.\n", fn);
 		return 0;
 	}
-	l = filp->f_dentry->d_inode->i_size;
+	l = i_size_read(file_inode(filp));
 	if (l <= 0 || l > 131072)
 	{
 		printk(KERN_INFO "Invalid firmware '%s'\n", fn);
-		filp_close(filp, current->files);
+		fput(filp);
 		return 0;
 	}
 	dp = vmalloc(l);
 	if (dp == NULL)
 	{
 		printk(KERN_INFO "Out of memory loading '%s'.\n", fn);
-		filp_close(filp, current->files);
+		fput(filp);
 		return 0;
 	}
 	pos = 0;
@@ -37,10 +39,10 @@ static int do_mod_firmware_load(const char *fn, char **fp)
 	{
 		printk(KERN_INFO "Failed to read '%s'.\n", fn);
 		vfree(dp);
-		filp_close(filp, current->files);
+		fput(filp);
 		return 0;
 	}
-	filp_close(filp, current->files);
+	fput(filp);
 	*fp = dp;
 	return (int) l;
 }
@@ -59,8 +61,7 @@ static int do_mod_firmware_load(const char *fn, char **fp)
  *	value zero on a failure.
  *
  *	Caution: This API is not recommended. Firmware should be loaded via
- *	an ioctl call and a setup application. This function may disappear
- *	in future.
+ *	request_firmware.
  */
  
 int mod_firmware_load(const char *fn, char **fp)
@@ -73,4 +74,6 @@ int mod_firmware_load(const char *fn, char **fp)
 	set_fs(fs);
 	return r;
 }
+EXPORT_SYMBOL(mod_firmware_load);
 
+MODULE_LICENSE("GPL");

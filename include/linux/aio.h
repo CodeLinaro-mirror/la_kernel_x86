@@ -4,190 +4,105 @@
 #include <linux/list.h>
 #include <linux/workqueue.h>
 #include <linux/aio_abi.h>
+#include <linux/uio.h>
+#include <linux/rcupdate.h>
 
-#include <asm/atomic.h>
-
-#define AIO_MAXSEGS		4
-#define AIO_KIOGRP_NR_ATOMIC	8
+#include <linux/atomic.h>
 
 struct kioctx;
+struct kiocb;
 
-/* Notes on cancelling a kiocb:
- *	If a kiocb is cancelled, aio_complete may return 0 to indicate 
- *	that cancel has not yet disposed of the kiocb.  All cancel 
- *	operations *must* call aio_put_req to dispose of the kiocb 
- *	to guard against races with the completion code.
+#define KIOCB_KEY		0
+
+/*
+ * We use ki_cancel == KIOCB_CANCELLED to indicate that a kiocb has been either
+ * cancelled or completed (this makes a certain amount of sense because
+ * successful cancellation - io_cancel() - does deliver the completion to
+ * userspace).
+ *
+ * And since most things don't implement kiocb cancellation and we'd really like
+ * kiocb completion to be lockless when possible, we use ki_cancel to
+ * synchronize cancellation and completion - we only set it to KIOCB_CANCELLED
+ * with xchg() or cmpxchg(), see batch_complete_aio() and kiocb_cancel().
  */
-#define KIOCB_C_CANCELLED	0x01
-#define KIOCB_C_COMPLETE	0x02
+#define KIOCB_CANCELLED		((void *) (~0ULL))
 
-#define KIOCB_SYNC_KEY		(~0U)
-
-/* ki_flags bits */
-#define KIF_LOCKED		0
-#define KIF_KICKED		1
-#define KIF_CANCELLED		2
-
-#define kiocbTryLock(iocb)	test_and_set_bit(KIF_LOCKED, &(iocb)->ki_flags)
-#define kiocbTryKick(iocb)	test_and_set_bit(KIF_KICKED, &(iocb)->ki_flags)
-
-#define kiocbSetLocked(iocb)	set_bit(KIF_LOCKED, &(iocb)->ki_flags)
-#define kiocbSetKicked(iocb)	set_bit(KIF_KICKED, &(iocb)->ki_flags)
-#define kiocbSetCancelled(iocb)	set_bit(KIF_CANCELLED, &(iocb)->ki_flags)
-
-#define kiocbClearLocked(iocb)	clear_bit(KIF_LOCKED, &(iocb)->ki_flags)
-#define kiocbClearKicked(iocb)	clear_bit(KIF_KICKED, &(iocb)->ki_flags)
-#define kiocbClearCancelled(iocb)	clear_bit(KIF_CANCELLED, &(iocb)->ki_flags)
-
-#define kiocbIsLocked(iocb)	test_bit(KIF_LOCKED, &(iocb)->ki_flags)
-#define kiocbIsKicked(iocb)	test_bit(KIF_KICKED, &(iocb)->ki_flags)
-#define kiocbIsCancelled(iocb)	test_bit(KIF_CANCELLED, &(iocb)->ki_flags)
+typedef int (kiocb_cancel_fn)(struct kiocb *, struct io_event *);
 
 struct kiocb {
-	struct list_head	ki_run_list;
-	long			ki_flags;
-	int			ki_users;
-	unsigned		ki_key;		/* id of this request */
+	atomic_t		ki_users;
 
 	struct file		*ki_filp;
-	struct kioctx		*ki_ctx;	/* may be NULL for sync ops */
-	int			(*ki_cancel)(struct kiocb *, struct io_event *);
-	ssize_t			(*ki_retry)(struct kiocb *);
+	struct kioctx		*ki_ctx;	/* NULL for sync ops */
+	kiocb_cancel_fn		*ki_cancel;
 	void			(*ki_dtor)(struct kiocb *);
-
-	struct list_head	ki_list;	/* the aio core uses this
-						 * for cancellation */
 
 	union {
 		void __user		*user;
 		struct task_struct	*tsk;
 	} ki_obj;
+
 	__u64			ki_user_data;	/* user's data for completion */
 	loff_t			ki_pos;
+
+	void			*private;
 	/* State that we remember to be able to restart/retry  */
 	unsigned short		ki_opcode;
 	size_t			ki_nbytes; 	/* copy of iocb->aio_nbytes */
 	char 			__user *ki_buf;	/* remaining iocb->aio_buf */
 	size_t			ki_left; 	/* remaining bytes */
-	wait_queue_t		ki_wait;
-	long			ki_retried; 	/* just for testing */
-	long			ki_kicked; 	/* just for testing */
-	long			ki_queued; 	/* just for testing */
+	struct iovec		ki_inline_vec;	/* inline vector */
+ 	struct iovec		*ki_iovec;
+ 	unsigned long		ki_nr_segs;
+ 	unsigned long		ki_cur_seg;
 
-	void			*private;
+	struct list_head	ki_list;	/* the aio core uses this
+						 * for cancellation */
+
+	/*
+	 * If the aio_resfd field of the userspace iocb is not zero,
+	 * this is the underlying eventfd context to deliver events to.
+	 */
+	struct eventfd_ctx	*ki_eventfd;
 };
 
-#define is_sync_kiocb(iocb)	((iocb)->ki_key == KIOCB_SYNC_KEY)
-#define init_sync_kiocb(x, filp)			\
-	do {						\
-		struct task_struct *tsk = current;	\
-		(x)->ki_flags = 0;			\
-		(x)->ki_users = 1;			\
-		(x)->ki_key = KIOCB_SYNC_KEY;		\
-		(x)->ki_filp = (filp);			\
-		(x)->ki_ctx = &tsk->active_mm->default_kioctx;	\
-		(x)->ki_cancel = NULL;			\
-		(x)->ki_dtor = NULL;			\
-		(x)->ki_obj.tsk = tsk;			\
-		(x)->ki_user_data = 0;                  \
-		init_wait((&(x)->ki_wait));             \
-	} while (0)
+static inline bool is_sync_kiocb(struct kiocb *kiocb)
+{
+	return kiocb->ki_ctx == NULL;
+}
 
-#define AIO_RING_MAGIC			0xa10a10a1
-#define AIO_RING_COMPAT_FEATURES	1
-#define AIO_RING_INCOMPAT_FEATURES	0
-struct aio_ring {
-	unsigned	id;	/* kernel internal index number */
-	unsigned	nr;	/* number of io_events */
-	unsigned	head;
-	unsigned	tail;
-
-	unsigned	magic;
-	unsigned	compat_features;
-	unsigned	incompat_features;
-	unsigned	header_length;	/* size of aio_ring */
-
-
-	struct io_event		io_events[0];
-}; /* 128 bytes + ring size */
-
-#define aio_ring_avail(info, ring)	(((ring)->head + (info)->nr - 1 - (ring)->tail) % (info)->nr)
-
-#define AIO_RING_PAGES	8
-struct aio_ring_info {
-	unsigned long		mmap_base;
-	unsigned long		mmap_size;
-
-	struct page		**ring_pages;
-	spinlock_t		ring_lock;
-	long			nr_pages;
-
-	unsigned		nr, tail;
-
-	struct page		*internal_pages[AIO_RING_PAGES];
-};
-
-struct kioctx {
-	atomic_t		users;
-	int			dead;
-	struct mm_struct	*mm;
-
-	/* This needs improving */
-	unsigned long		user_id;
-	struct kioctx		*next;
-
-	wait_queue_head_t	wait;
-
-	spinlock_t		ctx_lock;
-
-	int			reqs_active;
-	struct list_head	active_reqs;	/* used for cancellation */
-	struct list_head	run_list;	/* used for kicked reqs */
-
-	unsigned		max_reqs;
-
-	struct aio_ring_info	ring_info;
-
-	struct work_struct	wq;
-};
+static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
+{
+	*kiocb = (struct kiocb) {
+			.ki_users = ATOMIC_INIT(1),
+			.ki_ctx = NULL,
+			.ki_filp = filp,
+			.ki_obj.tsk = current,
+		};
+}
 
 /* prototypes */
-extern unsigned aio_max_size;
-
-extern ssize_t FASTCALL(wait_on_sync_kiocb(struct kiocb *iocb));
-extern int FASTCALL(aio_put_req(struct kiocb *iocb));
-extern void FASTCALL(kick_iocb(struct kiocb *iocb));
-extern int FASTCALL(aio_complete(struct kiocb *iocb, long res, long res2));
-extern void FASTCALL(__put_ioctx(struct kioctx *ctx));
+#ifdef CONFIG_AIO
+extern ssize_t wait_on_sync_kiocb(struct kiocb *iocb);
+extern void aio_put_req(struct kiocb *iocb);
+extern void aio_complete(struct kiocb *iocb, long res, long res2);
 struct mm_struct;
-extern void FASTCALL(exit_aio(struct mm_struct *mm));
-extern struct kioctx *lookup_ioctx(unsigned long ctx_id);
-extern int FASTCALL(io_submit_one(struct kioctx *ctx,
-			struct iocb __user *user_iocb, struct iocb *iocb));
-
-/* semi private, but used by the 32bit emulations: */
-struct kioctx *lookup_ioctx(unsigned long ctx_id);
-int FASTCALL(io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
-				  struct iocb *iocb));
-
-#define get_ioctx(kioctx)	do { if (unlikely(atomic_read(&(kioctx)->users) <= 0)) BUG(); atomic_inc(&(kioctx)->users); } while (0)
-#define put_ioctx(kioctx)	do { if (unlikely(atomic_dec_and_test(&(kioctx)->users))) __put_ioctx(kioctx); else if (unlikely(atomic_read(&(kioctx)->users) < 0)) BUG(); } while (0)
-
-#define in_aio() !is_sync_wait(current->io_wait)
-/* may be used for debugging */
-#define warn_if_async()							\
-do {									\
-	if (in_aio()) {							\
-		printk(KERN_ERR "%s(%s:%d) called in async context!\n",	\
-			__FUNCTION__, __FILE__, __LINE__);		\
-		dump_stack();						\
-	}								\
-} while (0)
-
-#define io_wait_to_kiocb(wait) container_of(wait, struct kiocb, ki_wait)
-#define is_retried_kiocb(iocb) ((iocb)->ki_retried > 1)
-
-#include <linux/aio_abi.h>
+extern void exit_aio(struct mm_struct *mm);
+extern long do_io_submit(aio_context_t ctx_id, long nr,
+			 struct iocb __user *__user *iocbpp, bool compat);
+void kiocb_set_cancel_fn(struct kiocb *req, kiocb_cancel_fn *cancel);
+#else
+static inline ssize_t wait_on_sync_kiocb(struct kiocb *iocb) { return 0; }
+static inline void aio_put_req(struct kiocb *iocb) { }
+static inline void aio_complete(struct kiocb *iocb, long res, long res2) { }
+struct mm_struct;
+static inline void exit_aio(struct mm_struct *mm) { }
+static inline long do_io_submit(aio_context_t ctx_id, long nr,
+				struct iocb __user * __user *iocbpp,
+				bool compat) { return 0; }
+static inline void kiocb_set_cancel_fn(struct kiocb *req,
+				       kiocb_cancel_fn *cancel) { }
+#endif /* CONFIG_AIO */
 
 static inline struct kiocb *list_kiocb(struct list_head *h)
 {
@@ -195,7 +110,7 @@ static inline struct kiocb *list_kiocb(struct list_head *h)
 }
 
 /* for sysctl: */
-extern atomic_t aio_nr;
-extern unsigned aio_max_nr;
+extern unsigned long aio_nr;
+extern unsigned long aio_max_nr;
 
 #endif /* __LINUX__AIO_H */

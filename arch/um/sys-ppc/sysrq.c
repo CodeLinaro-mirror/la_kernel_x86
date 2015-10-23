@@ -3,14 +3,16 @@
  * Licensed under the GPL
  */
 
-#include "linux/kernel.h"
-#include "linux/smp.h"
+#include <linux/kernel.h>
+#include <linux/smp.h>
 #include "asm/ptrace.h"
 #include "sysrq.h"
 
 void show_regs(struct pt_regs_subarch *regs)
 {
 	printk("\n");
+	show_regs_print_info(KERN_DEFAULT);
+
 	printk("show_regs(): insert regs here.\n");
 #if 0
         printk("\n");
@@ -27,17 +29,5 @@ void show_regs(struct pt_regs_subarch *regs)
                 0xffff & regs->xds, 0xffff & regs->xes);
 #endif
 
-        show_trace(&regs->gpr[1]);
+        show_trace(current, &regs->gpr[1]);
 }
-
-
-/*
- * Overrides for Emacs so that we follow Linus's tabbing style.
- * Emacs will notice this stuff at the end of the file and automatically
- * adjust the settings for this buffer only.  This must remain at the end
- * of the file.
- * ---------------------------------------------------------------------------
- * Local variables:
- * c-file-style: "linux"
- * End:
- */

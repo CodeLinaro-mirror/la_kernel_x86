@@ -8,59 +8,116 @@
  *
  *	See ../COPYING for licensing terms.
  */
+#define pr_fmt(fmt) "%s: " fmt, __func__
+
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/time.h>
 #include <linux/aio_abi.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/syscalls.h>
-
-#define DEBUG 0
+#include <linux/backing-dev.h>
+#include <linux/uio.h>
 
 #include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
+#include <linux/mmu_context.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
 #include <linux/aio.h>
 #include <linux/highmem.h>
 #include <linux/workqueue.h>
 #include <linux/security.h>
+#include <linux/eventfd.h>
+#include <linux/blkdev.h>
+#include <linux/compat.h>
 
 #include <asm/kmap_types.h>
 #include <asm/uaccess.h>
-#include <asm/mmu_context.h>
 
-#if DEBUG > 1
-#define dprintk		printk
-#else
-#define dprintk(x...)	do { ; } while (0)
-#endif
+#define AIO_RING_MAGIC			0xa10a10a1
+#define AIO_RING_COMPAT_FEATURES	1
+#define AIO_RING_INCOMPAT_FEATURES	0
+struct aio_ring {
+	unsigned	id;	/* kernel internal index number */
+	unsigned	nr;	/* number of io_events */
+	unsigned	head;
+	unsigned	tail;
 
-long aio_run = 0; /* for testing only */
-long aio_wakeups = 0; /* for testing only */
+	unsigned	magic;
+	unsigned	compat_features;
+	unsigned	incompat_features;
+	unsigned	header_length;	/* size of aio_ring */
+
+
+	struct io_event		io_events[0];
+}; /* 128 bytes + ring size */
+
+#define AIO_RING_PAGES	8
+
+struct kioctx {
+	atomic_t		users;
+	atomic_t		dead;
+
+	/* This needs improving */
+	unsigned long		user_id;
+	struct hlist_node	list;
+
+	/*
+	 * This is what userspace passed to io_setup(), it's not used for
+	 * anything but counting against the global max_reqs quota.
+	 *
+	 * The real limit is nr_events - 1, which will be larger (see
+	 * aio_setup_ring())
+	 */
+	unsigned		max_reqs;
+
+	/* Size of ringbuffer, in units of struct io_event */
+	unsigned		nr_events;
+
+	unsigned long		mmap_base;
+	unsigned long		mmap_size;
+
+	struct page		**ring_pages;
+	long			nr_pages;
+
+	struct rcu_head		rcu_head;
+	struct work_struct	rcu_work;
+
+	struct {
+		atomic_t	reqs_active;
+	} ____cacheline_aligned_in_smp;
+
+	struct {
+		spinlock_t	ctx_lock;
+		struct list_head active_reqs;	/* used for cancellation */
+	} ____cacheline_aligned_in_smp;
+
+	struct {
+		struct mutex	ring_lock;
+		wait_queue_head_t wait;
+	} ____cacheline_aligned_in_smp;
+
+	struct {
+		unsigned	tail;
+		spinlock_t	completion_lock;
+	} ____cacheline_aligned_in_smp;
+
+	struct page		*internal_pages[AIO_RING_PAGES];
+};
 
 /*------ sysctl variables----*/
-atomic_t aio_nr = ATOMIC_INIT(0);	/* current system wide number of aio requests */
-unsigned aio_max_nr = 0x10000;	/* system wide maximum number of aio requests */
+static DEFINE_SPINLOCK(aio_nr_lock);
+unsigned long aio_nr;		/* current system wide number of aio requests */
+unsigned long aio_max_nr = 0x10000; /* system wide maximum number of aio requests */
 /*----end sysctl variables---*/
 
-static kmem_cache_t	*kiocb_cachep;
-static kmem_cache_t	*kioctx_cachep;
-
-static struct workqueue_struct *aio_wq;
-
-/* Used for rare fput completion. */
-static void aio_fput_routine(void *);
-static DECLARE_WORK(fput_work, aio_fput_routine, NULL);
-
-static DEFINE_SPINLOCK(fput_lock);
-LIST_HEAD(fput_head);
-
-static void aio_kick_handler(void *);
+static struct kmem_cache	*kiocb_cachep;
+static struct kmem_cache	*kioctx_cachep;
 
 /* aio_setup
  *	Creates the slab caches used by the aio routines, panic on
@@ -68,44 +125,32 @@ static void aio_kick_handler(void *);
  */
 static int __init aio_setup(void)
 {
-	kiocb_cachep = kmem_cache_create("kiocb", sizeof(struct kiocb),
-				0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL, NULL);
-	kioctx_cachep = kmem_cache_create("kioctx", sizeof(struct kioctx),
-				0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL, NULL);
+	kiocb_cachep = KMEM_CACHE(kiocb, SLAB_HWCACHE_ALIGN|SLAB_PANIC);
+	kioctx_cachep = KMEM_CACHE(kioctx,SLAB_HWCACHE_ALIGN|SLAB_PANIC);
 
-	aio_wq = create_workqueue("aio");
-
-	pr_debug("aio_setup: sizeof(struct page) = %d\n", (int)sizeof(struct page));
+	pr_debug("sizeof(struct page) = %zu\n", sizeof(struct page));
 
 	return 0;
 }
+__initcall(aio_setup);
 
 static void aio_free_ring(struct kioctx *ctx)
 {
-	struct aio_ring_info *info = &ctx->ring_info;
 	long i;
 
-	for (i=0; i<info->nr_pages; i++)
-		put_page(info->ring_pages[i]);
+	for (i = 0; i < ctx->nr_pages; i++)
+		put_page(ctx->ring_pages[i]);
 
-	if (info->mmap_size) {
-		down_write(&ctx->mm->mmap_sem);
-		do_munmap(ctx->mm, info->mmap_base, info->mmap_size);
-		up_write(&ctx->mm->mmap_sem);
-	}
-
-	if (info->ring_pages && info->ring_pages != info->internal_pages)
-		kfree(info->ring_pages);
-	info->ring_pages = NULL;
-	info->nr = 0;
+	if (ctx->ring_pages && ctx->ring_pages != ctx->internal_pages)
+		kfree(ctx->ring_pages);
 }
 
 static int aio_setup_ring(struct kioctx *ctx)
 {
 	struct aio_ring *ring;
-	struct aio_ring_info *info = &ctx->ring_info;
 	unsigned nr_events = ctx->max_reqs;
-	unsigned long size;
+	struct mm_struct *mm = current->mm;
+	unsigned long size, populate;
 	int nr_pages;
 
 	/* Compensate for the ring buffer's head/tail overlap entry */
@@ -120,45 +165,44 @@ static int aio_setup_ring(struct kioctx *ctx)
 
 	nr_events = (PAGE_SIZE * nr_pages - sizeof(struct aio_ring)) / sizeof(struct io_event);
 
-	info->nr = 0;
-	info->ring_pages = info->internal_pages;
+	ctx->nr_events = 0;
+	ctx->ring_pages = ctx->internal_pages;
 	if (nr_pages > AIO_RING_PAGES) {
-		info->ring_pages = kmalloc(sizeof(struct page *) * nr_pages, GFP_KERNEL);
-		if (!info->ring_pages)
+		ctx->ring_pages = kcalloc(nr_pages, sizeof(struct page *),
+					  GFP_KERNEL);
+		if (!ctx->ring_pages)
 			return -ENOMEM;
-		memset(info->ring_pages, 0, sizeof(struct page *) * nr_pages);
 	}
 
-	info->mmap_size = nr_pages * PAGE_SIZE;
-	dprintk("attempting mmap of %lu bytes\n", info->mmap_size);
-	down_write(&ctx->mm->mmap_sem);
-	info->mmap_base = do_mmap(NULL, 0, info->mmap_size, 
-				  PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE,
-				  0);
-	if (IS_ERR((void *)info->mmap_base)) {
-		up_write(&ctx->mm->mmap_sem);
-		printk("mmap err: %ld\n", -info->mmap_base);
-		info->mmap_size = 0;
+	ctx->mmap_size = nr_pages * PAGE_SIZE;
+	pr_debug("attempting mmap of %lu bytes\n", ctx->mmap_size);
+	down_write(&mm->mmap_sem);
+	ctx->mmap_base = do_mmap_pgoff(NULL, 0, ctx->mmap_size,
+				       PROT_READ|PROT_WRITE,
+				       MAP_ANONYMOUS|MAP_PRIVATE, 0, &populate);
+	if (IS_ERR((void *)ctx->mmap_base)) {
+		up_write(&mm->mmap_sem);
+		ctx->mmap_size = 0;
 		aio_free_ring(ctx);
 		return -EAGAIN;
 	}
 
-	dprintk("mmap address: 0x%08lx\n", info->mmap_base);
-	info->nr_pages = get_user_pages(current, ctx->mm,
-					info->mmap_base, nr_pages, 
-					1, 0, info->ring_pages, NULL);
-	up_write(&ctx->mm->mmap_sem);
+	pr_debug("mmap address: 0x%08lx\n", ctx->mmap_base);
+	ctx->nr_pages = get_user_pages(current, mm, ctx->mmap_base, nr_pages,
+				       1, 0, ctx->ring_pages, NULL);
+	up_write(&mm->mmap_sem);
 
-	if (unlikely(info->nr_pages != nr_pages)) {
+	if (unlikely(ctx->nr_pages != nr_pages)) {
 		aio_free_ring(ctx);
 		return -EAGAIN;
 	}
+	if (populate)
+		mm_populate(ctx->mmap_base, populate);
 
-	ctx->user_id = info->mmap_base;
+	ctx->user_id = ctx->mmap_base;
+	ctx->nr_events = nr_events; /* trusted copy */
 
-	info->nr = nr_events;		/* trusted copy */
-
-	ring = kmap_atomic(info->ring_pages[0], KM_USER0);
+	ring = kmap_atomic(ctx->ring_pages[0]);
 	ring->nr = nr_events;	/* user copy */
 	ring->id = ctx->user_id;
 	ring->head = ring->tail = 0;
@@ -166,41 +210,140 @@ static int aio_setup_ring(struct kioctx *ctx)
 	ring->compat_features = AIO_RING_COMPAT_FEATURES;
 	ring->incompat_features = AIO_RING_INCOMPAT_FEATURES;
 	ring->header_length = sizeof(struct aio_ring);
-	kunmap_atomic(ring, KM_USER0);
+	kunmap_atomic(ring);
+	flush_dcache_page(ctx->ring_pages[0]);
 
 	return 0;
 }
 
-
-/* aio_ring_event: returns a pointer to the event at the given index from
- * kmap_atomic(, km).  Release the pointer with put_aio_ring_event();
- */
 #define AIO_EVENTS_PER_PAGE	(PAGE_SIZE / sizeof(struct io_event))
 #define AIO_EVENTS_FIRST_PAGE	((PAGE_SIZE - sizeof(struct aio_ring)) / sizeof(struct io_event))
 #define AIO_EVENTS_OFFSET	(AIO_EVENTS_PER_PAGE - AIO_EVENTS_FIRST_PAGE)
 
-#define aio_ring_event(info, nr, km) ({					\
-	unsigned pos = (nr) + AIO_EVENTS_OFFSET;			\
-	struct io_event *__event;					\
-	__event = kmap_atomic(						\
-			(info)->ring_pages[pos / AIO_EVENTS_PER_PAGE], km); \
-	__event += pos % AIO_EVENTS_PER_PAGE;				\
-	__event;							\
-})
+void kiocb_set_cancel_fn(struct kiocb *req, kiocb_cancel_fn *cancel)
+{
+	struct kioctx *ctx = req->ki_ctx;
+	unsigned long flags;
 
-#define put_aio_ring_event(event, km) do {	\
-	struct io_event *__event = (event);	\
-	(void)__event;				\
-	kunmap_atomic((void *)((unsigned long)__event & PAGE_MASK), km); \
-} while(0)
+	spin_lock_irqsave(&ctx->ctx_lock, flags);
+
+	if (!req->ki_list.next)
+		list_add(&req->ki_list, &ctx->active_reqs);
+
+	req->ki_cancel = cancel;
+
+	spin_unlock_irqrestore(&ctx->ctx_lock, flags);
+}
+EXPORT_SYMBOL(kiocb_set_cancel_fn);
+
+static int kiocb_cancel(struct kioctx *ctx, struct kiocb *kiocb,
+			struct io_event *res)
+{
+	kiocb_cancel_fn *old, *cancel;
+	int ret = -EINVAL;
+
+	/*
+	 * Don't want to set kiocb->ki_cancel = KIOCB_CANCELLED unless it
+	 * actually has a cancel function, hence the cmpxchg()
+	 */
+
+	cancel = ACCESS_ONCE(kiocb->ki_cancel);
+	do {
+		if (!cancel || cancel == KIOCB_CANCELLED)
+			return ret;
+
+		old = cancel;
+		cancel = cmpxchg(&kiocb->ki_cancel, old, KIOCB_CANCELLED);
+	} while (cancel != old);
+
+	atomic_inc(&kiocb->ki_users);
+	spin_unlock_irq(&ctx->ctx_lock);
+
+	memset(res, 0, sizeof(*res));
+	res->obj = (u64)(unsigned long)kiocb->ki_obj.user;
+	res->data = kiocb->ki_user_data;
+	ret = cancel(kiocb, res);
+
+	spin_lock_irq(&ctx->ctx_lock);
+
+	return ret;
+}
+
+static void free_ioctx_rcu(struct rcu_head *head)
+{
+	struct kioctx *ctx = container_of(head, struct kioctx, rcu_head);
+	kmem_cache_free(kioctx_cachep, ctx);
+}
+
+/*
+ * When this function runs, the kioctx has been removed from the "hash table"
+ * and ctx->users has dropped to 0, so we know no more kiocbs can be submitted -
+ * now it's safe to cancel any that need to be.
+ */
+static void free_ioctx(struct kioctx *ctx)
+{
+	struct aio_ring *ring;
+	struct io_event res;
+	struct kiocb *req;
+	unsigned head, avail;
+
+	spin_lock_irq(&ctx->ctx_lock);
+
+	while (!list_empty(&ctx->active_reqs)) {
+		req = list_first_entry(&ctx->active_reqs,
+				       struct kiocb, ki_list);
+
+		list_del_init(&req->ki_list);
+		kiocb_cancel(ctx, req, &res);
+	}
+
+	spin_unlock_irq(&ctx->ctx_lock);
+
+	ring = kmap_atomic(ctx->ring_pages[0]);
+	head = ring->head;
+	kunmap_atomic(ring);
+
+	while (atomic_read(&ctx->reqs_active) > 0) {
+		wait_event(ctx->wait,
+				head != ctx->tail ||
+				atomic_read(&ctx->reqs_active) <= 0);
+
+		avail = (head <= ctx->tail ? ctx->tail : ctx->nr_events) - head;
+
+		head += avail;
+		head %= ctx->nr_events;
+	}
+
+	WARN_ON(atomic_read(&ctx->reqs_active) < 0);
+
+	aio_free_ring(ctx);
+
+	pr_debug("freeing %p\n", ctx);
+
+	/*
+	 * Here the call_rcu() is between the wait_event() for reqs_active to
+	 * hit 0, and freeing the ioctx.
+	 *
+	 * aio_complete() decrements reqs_active, but it has to touch the ioctx
+	 * after to issue a wakeup so we use rcu.
+	 */
+	call_rcu(&ctx->rcu_head, free_ioctx_rcu);
+}
+
+static void put_ioctx(struct kioctx *ctx)
+{
+	if (unlikely(atomic_dec_and_test(&ctx->users)))
+		free_ioctx(ctx);
+}
 
 /* ioctx_alloc
  *	Allocates and initializes an ioctx.  Returns an ERR_PTR if it failed.
  */
 static struct kioctx *ioctx_alloc(unsigned nr_events)
 {
-	struct mm_struct *mm;
+	struct mm_struct *mm = current->mm;
 	struct kioctx *ctx;
+	int err = -ENOMEM;
 
 	/* Prevent overflows */
 	if ((nr_events > (0x10000000U / sizeof(struct io_event))) ||
@@ -209,1044 +352,471 @@ static struct kioctx *ioctx_alloc(unsigned nr_events)
 		return ERR_PTR(-EINVAL);
 	}
 
-	if (nr_events > aio_max_nr)
+	if (!nr_events || (unsigned long)nr_events > aio_max_nr)
 		return ERR_PTR(-EAGAIN);
 
-	ctx = kmem_cache_alloc(kioctx_cachep, GFP_KERNEL);
+	ctx = kmem_cache_zalloc(kioctx_cachep, GFP_KERNEL);
 	if (!ctx)
 		return ERR_PTR(-ENOMEM);
 
-	memset(ctx, 0, sizeof(*ctx));
 	ctx->max_reqs = nr_events;
-	mm = ctx->mm = current->mm;
-	atomic_inc(&mm->mm_count);
 
-	atomic_set(&ctx->users, 1);
+	atomic_set(&ctx->users, 2);
+	atomic_set(&ctx->dead, 0);
 	spin_lock_init(&ctx->ctx_lock);
-	spin_lock_init(&ctx->ring_info.ring_lock);
+	spin_lock_init(&ctx->completion_lock);
+	mutex_init(&ctx->ring_lock);
 	init_waitqueue_head(&ctx->wait);
 
 	INIT_LIST_HEAD(&ctx->active_reqs);
-	INIT_LIST_HEAD(&ctx->run_list);
-	INIT_WORK(&ctx->wq, aio_kick_handler, ctx);
 
 	if (aio_setup_ring(ctx) < 0)
 		goto out_freectx;
 
 	/* limit the number of system wide aios */
-	atomic_add(ctx->max_reqs, &aio_nr);	/* undone by __put_ioctx */
-	if (unlikely(atomic_read(&aio_nr) > aio_max_nr))
+	spin_lock(&aio_nr_lock);
+	if (aio_nr + nr_events > aio_max_nr ||
+	    aio_nr + nr_events < aio_nr) {
+		spin_unlock(&aio_nr_lock);
 		goto out_cleanup;
+	}
+	aio_nr += ctx->max_reqs;
+	spin_unlock(&aio_nr_lock);
 
-	/* now link into global list.  kludge.  FIXME */
-	write_lock(&mm->ioctx_list_lock);
-	ctx->next = mm->ioctx_list;
-	mm->ioctx_list = ctx;
-	write_unlock(&mm->ioctx_list_lock);
+	/* now link into global list. */
+	spin_lock(&mm->ioctx_lock);
+	hlist_add_head_rcu(&ctx->list, &mm->ioctx_list);
+	spin_unlock(&mm->ioctx_lock);
 
-	dprintk("aio: allocated ioctx %p[%ld]: mm=%p mask=0x%x\n",
-		ctx, ctx->user_id, current->mm, ctx->ring_info.nr);
+	pr_debug("allocated ioctx %p[%ld]: mm=%p mask=0x%x\n",
+		 ctx, ctx->user_id, mm, ctx->nr_events);
 	return ctx;
 
 out_cleanup:
-	atomic_sub(ctx->max_reqs, &aio_nr);
-	ctx->max_reqs = 0;	/* prevent __put_ioctx from sub'ing aio_nr */
-	__put_ioctx(ctx);
-	return ERR_PTR(-EAGAIN);
-
+	err = -EAGAIN;
+	aio_free_ring(ctx);
 out_freectx:
-	mmdrop(mm);
 	kmem_cache_free(kioctx_cachep, ctx);
-	ctx = ERR_PTR(-ENOMEM);
-
-	dprintk("aio: error allocating ioctx %p\n", ctx);
-	return ctx;
+	pr_debug("error allocating ioctx %d\n", err);
+	return ERR_PTR(err);
 }
 
-/* aio_cancel_all
- *	Cancels all outstanding aio requests on an aio context.  Used 
- *	when the processes owning a context have all exited to encourage 
+static void kill_ioctx_work(struct work_struct *work)
+{
+	struct kioctx *ctx = container_of(work, struct kioctx, rcu_work);
+
+	wake_up_all(&ctx->wait);
+	put_ioctx(ctx);
+}
+
+static void kill_ioctx_rcu(struct rcu_head *head)
+{
+	struct kioctx *ctx = container_of(head, struct kioctx, rcu_head);
+
+	INIT_WORK(&ctx->rcu_work, kill_ioctx_work);
+	schedule_work(&ctx->rcu_work);
+}
+
+/* kill_ioctx
+ *	Cancels all outstanding aio requests on an aio context.  Used
+ *	when the processes owning a context have all exited to encourage
  *	the rapid destruction of the kioctx.
  */
-static void aio_cancel_all(struct kioctx *ctx)
+static void kill_ioctx(struct mm_struct *mm, struct kioctx *ctx)
 {
-	int (*cancel)(struct kiocb *, struct io_event *);
-	struct io_event res;
-	spin_lock_irq(&ctx->ctx_lock);
-	ctx->dead = 1;
-	while (!list_empty(&ctx->active_reqs)) {
-		struct list_head *pos = ctx->active_reqs.next;
-		struct kiocb *iocb = list_kiocb(pos);
-		list_del_init(&iocb->ki_list);
-		cancel = iocb->ki_cancel;
-		kiocbSetCancelled(iocb);
-		if (cancel) {
-			iocb->ki_users++;
-			spin_unlock_irq(&ctx->ctx_lock);
-			cancel(iocb, &res);
-			spin_lock_irq(&ctx->ctx_lock);
-		}
+	if (!atomic_xchg(&ctx->dead, 1)) {
+		spin_lock(&mm->ioctx_lock);
+		hlist_del_rcu(&ctx->list);
+		spin_unlock(&mm->ioctx_lock);
+
+		/*
+		 * It'd be more correct to do this in free_ioctx(), after all
+		 * the outstanding kiocbs have finished - but by then io_destroy
+		 * has already returned, so io_setup() could potentially return
+		 * -EAGAIN with no ioctxs actually in use (as far as userspace
+		 *  could tell).
+		 */
+		spin_lock(&aio_nr_lock);
+		BUG_ON(aio_nr - ctx->max_reqs > aio_nr);
+		aio_nr -= ctx->max_reqs;
+		spin_unlock(&aio_nr_lock);
+
+		if (ctx->mmap_size)
+			vm_munmap(ctx->mmap_base, ctx->mmap_size);
+
+		/* Between hlist_del_rcu() and dropping the initial ref */
+		call_rcu(&ctx->rcu_head, kill_ioctx_rcu);
 	}
-	spin_unlock_irq(&ctx->ctx_lock);
-}
-
-void wait_for_all_aios(struct kioctx *ctx)
-{
-	struct task_struct *tsk = current;
-	DECLARE_WAITQUEUE(wait, tsk);
-
-	if (!ctx->reqs_active)
-		return;
-
-	add_wait_queue(&ctx->wait, &wait);
-	set_task_state(tsk, TASK_UNINTERRUPTIBLE);
-	while (ctx->reqs_active) {
-		schedule();
-		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
-	}
-	__set_task_state(tsk, TASK_RUNNING);
-	remove_wait_queue(&ctx->wait, &wait);
 }
 
 /* wait_on_sync_kiocb:
  *	Waits on the given sync kiocb to complete.
  */
-ssize_t fastcall wait_on_sync_kiocb(struct kiocb *iocb)
+ssize_t wait_on_sync_kiocb(struct kiocb *iocb)
 {
-	while (iocb->ki_users) {
+	while (atomic_read(&iocb->ki_users)) {
 		set_current_state(TASK_UNINTERRUPTIBLE);
-		if (!iocb->ki_users)
+		if (!atomic_read(&iocb->ki_users))
 			break;
-		schedule();
+		io_schedule();
 	}
 	__set_current_state(TASK_RUNNING);
 	return iocb->ki_user_data;
 }
+EXPORT_SYMBOL(wait_on_sync_kiocb);
 
-/* exit_aio: called when the last user of mm goes away.  At this point, 
- * there is no way for any new requests to be submited or any of the 
- * io_* syscalls to be called on the context.  However, there may be 
- * outstanding requests which hold references to the context; as they 
- * go away, they will call put_ioctx and release any pinned memory
- * associated with the request (held via struct page * references).
+/*
+ * exit_aio: called when the last user of mm goes away.  At this point, there is
+ * no way for any new requests to be submited or any of the io_* syscalls to be
+ * called on the context.
+ *
+ * There may be outstanding kiocbs, but free_ioctx() will explicitly wait on
+ * them.
  */
-void fastcall exit_aio(struct mm_struct *mm)
+void exit_aio(struct mm_struct *mm)
 {
-	struct kioctx *ctx = mm->ioctx_list;
-	mm->ioctx_list = NULL;
-	while (ctx) {
-		struct kioctx *next = ctx->next;
-		ctx->next = NULL;
-		aio_cancel_all(ctx);
+	struct kioctx *ctx;
+	struct hlist_node *n;
 
-		wait_for_all_aios(ctx);
-		/*
-		 * this is an overkill, but ensures we don't leave
-		 * the ctx on the aio_wq
-		 */
-		flush_workqueue(aio_wq);
-
+	hlist_for_each_entry_safe(ctx, n, &mm->ioctx_list, list) {
 		if (1 != atomic_read(&ctx->users))
 			printk(KERN_DEBUG
 				"exit_aio:ioctx still alive: %d %d %d\n",
-				atomic_read(&ctx->users), ctx->dead,
-				ctx->reqs_active);
-		put_ioctx(ctx);
-		ctx = next;
+				atomic_read(&ctx->users),
+				atomic_read(&ctx->dead),
+				atomic_read(&ctx->reqs_active));
+		/*
+		 * We don't need to bother with munmap() here -
+		 * exit_mmap(mm) is coming and it'll unmap everything.
+		 * Since aio_free_ring() uses non-zero ->mmap_size
+		 * as indicator that it needs to unmap the area,
+		 * just set it to 0; aio_free_ring() is the only
+		 * place that uses ->mmap_size, so it's safe.
+		 */
+		ctx->mmap_size = 0;
+
+		kill_ioctx(mm, ctx);
 	}
 }
 
-/* __put_ioctx
- *	Called when the last user of an aio context has gone away,
- *	and the struct needs to be freed.
- */
-void fastcall __put_ioctx(struct kioctx *ctx)
-{
-	unsigned nr_events = ctx->max_reqs;
-
-	if (unlikely(ctx->reqs_active))
-		BUG();
-
-	cancel_delayed_work(&ctx->wq);
-	flush_workqueue(aio_wq);
-	aio_free_ring(ctx);
-	mmdrop(ctx->mm);
-	ctx->mm = NULL;
-	pr_debug("__put_ioctx: freeing %p\n", ctx);
-	kmem_cache_free(kioctx_cachep, ctx);
-
-	atomic_sub(nr_events, &aio_nr);
-}
-
 /* aio_get_req
- *	Allocate a slot for an aio request.  Increments the users count
+ *	Allocate a slot for an aio request.  Increments the ki_users count
  * of the kioctx so that the kioctx stays around until all requests are
  * complete.  Returns NULL if no requests are free.
  *
- * Returns with kiocb->users set to 2.  The io submit code path holds
+ * Returns with kiocb->ki_users set to 2.  The io submit code path holds
  * an extra reference while submitting the i/o.
  * This prevents races between the aio code path referencing the
  * req (after submitting it) and aio_complete() freeing the req.
  */
-static struct kiocb *FASTCALL(__aio_get_req(struct kioctx *ctx));
-static struct kiocb fastcall *__aio_get_req(struct kioctx *ctx)
-{
-	struct kiocb *req = NULL;
-	struct aio_ring *ring;
-	int okay = 0;
-
-	req = kmem_cache_alloc(kiocb_cachep, GFP_KERNEL);
-	if (unlikely(!req))
-		return NULL;
-
-	req->ki_flags = 1 << KIF_LOCKED;
-	req->ki_users = 2;
-	req->ki_key = 0;
-	req->ki_ctx = ctx;
-	req->ki_cancel = NULL;
-	req->ki_retry = NULL;
-	req->ki_obj.user = NULL;
-	req->ki_dtor = NULL;
-	req->private = NULL;
-	INIT_LIST_HEAD(&req->ki_run_list);
-
-	/* Check if the completion queue has enough free space to
-	 * accept an event from this io.
-	 */
-	spin_lock_irq(&ctx->ctx_lock);
-	ring = kmap_atomic(ctx->ring_info.ring_pages[0], KM_USER0);
-	if (ctx->reqs_active < aio_ring_avail(&ctx->ring_info, ring)) {
-		list_add(&req->ki_list, &ctx->active_reqs);
-		get_ioctx(ctx);
-		ctx->reqs_active++;
-		okay = 1;
-	}
-	kunmap_atomic(ring, KM_USER0);
-	spin_unlock_irq(&ctx->ctx_lock);
-
-	if (!okay) {
-		kmem_cache_free(kiocb_cachep, req);
-		req = NULL;
-	}
-
-	return req;
-}
-
 static inline struct kiocb *aio_get_req(struct kioctx *ctx)
 {
 	struct kiocb *req;
-	/* Handle a potential starvation case -- should be exceedingly rare as 
-	 * requests will be stuck on fput_head only if the aio_fput_routine is 
-	 * delayed and the requests were the last user of the struct file.
-	 */
-	req = __aio_get_req(ctx);
-	if (unlikely(NULL == req)) {
-		aio_fput_routine(NULL);
-		req = __aio_get_req(ctx);
-	}
+
+	if (atomic_read(&ctx->reqs_active) >= ctx->nr_events)
+		return NULL;
+
+	if (atomic_inc_return(&ctx->reqs_active) > ctx->nr_events - 1)
+		goto out_put;
+
+	req = kmem_cache_alloc(kiocb_cachep, GFP_KERNEL|__GFP_ZERO);
+	if (unlikely(!req))
+		goto out_put;
+
+	atomic_set(&req->ki_users, 2);
+	req->ki_ctx = ctx;
+
 	return req;
+out_put:
+	atomic_dec(&ctx->reqs_active);
+	return NULL;
 }
 
-static inline void really_put_req(struct kioctx *ctx, struct kiocb *req)
+static void kiocb_free(struct kiocb *req)
 {
+	if (req->ki_filp)
+		fput(req->ki_filp);
+	if (req->ki_eventfd != NULL)
+		eventfd_ctx_put(req->ki_eventfd);
 	if (req->ki_dtor)
 		req->ki_dtor(req);
-	req->ki_ctx = NULL;
-	req->ki_filp = NULL;
-	req->ki_obj.user = NULL;
-	req->ki_dtor = NULL;
-	req->private = NULL;
+	if (req->ki_iovec != &req->ki_inline_vec)
+		kfree(req->ki_iovec);
 	kmem_cache_free(kiocb_cachep, req);
-	ctx->reqs_active--;
-
-	if (unlikely(!ctx->reqs_active && ctx->dead))
-		wake_up(&ctx->wait);
 }
 
-static void aio_fput_routine(void *data)
+void aio_put_req(struct kiocb *req)
 {
-	spin_lock_irq(&fput_lock);
-	while (likely(!list_empty(&fput_head))) {
-		struct kiocb *req = list_kiocb(fput_head.next);
-		struct kioctx *ctx = req->ki_ctx;
-
-		list_del(&req->ki_list);
-		spin_unlock_irq(&fput_lock);
-
-		/* Complete the fput */
-		__fput(req->ki_filp);
-
-		/* Link the iocb into the context's free list */
-		spin_lock_irq(&ctx->ctx_lock);
-		really_put_req(ctx, req);
-		spin_unlock_irq(&ctx->ctx_lock);
-
-		put_ioctx(ctx);
-		spin_lock_irq(&fput_lock);
-	}
-	spin_unlock_irq(&fput_lock);
+	if (atomic_dec_and_test(&req->ki_users))
+		kiocb_free(req);
 }
+EXPORT_SYMBOL(aio_put_req);
 
-/* __aio_put_req
- *	Returns true if this put was the last user of the request.
- */
-static int __aio_put_req(struct kioctx *ctx, struct kiocb *req)
+static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 {
-	dprintk(KERN_DEBUG "aio_put(%p): f_count=%d\n",
-		req, atomic_read(&req->ki_filp->f_count));
+	struct mm_struct *mm = current->mm;
+	struct kioctx *ctx, *ret = NULL;
 
-	req->ki_users --;
-	if (unlikely(req->ki_users < 0))
-		BUG();
-	if (likely(req->ki_users))
-		return 0;
-	list_del(&req->ki_list);		/* remove from active_reqs */
-	req->ki_cancel = NULL;
-	req->ki_retry = NULL;
+	rcu_read_lock();
 
-	/* Must be done under the lock to serialise against cancellation.
-	 * Call this aio_fput as it duplicates fput via the fput_work.
-	 */
-	if (unlikely(atomic_dec_and_test(&req->ki_filp->f_count))) {
-		get_ioctx(ctx);
-		spin_lock(&fput_lock);
-		list_add(&req->ki_list, &fput_head);
-		spin_unlock(&fput_lock);
-		queue_work(aio_wq, &fput_work);
-	} else
-		really_put_req(ctx, req);
-	return 1;
-}
-
-/* aio_put_req
- *	Returns true if this put was the last user of the kiocb,
- *	false if the request is still in use.
- */
-int fastcall aio_put_req(struct kiocb *req)
-{
-	struct kioctx *ctx = req->ki_ctx;
-	int ret;
-	spin_lock_irq(&ctx->ctx_lock);
-	ret = __aio_put_req(ctx, req);
-	spin_unlock_irq(&ctx->ctx_lock);
-	if (ret)
-		put_ioctx(ctx);
-	return ret;
-}
-
-/*	Lookup an ioctx id.  ioctx_list is lockless for reads.
- *	FIXME: this is O(n) and is only suitable for development.
- */
-struct kioctx *lookup_ioctx(unsigned long ctx_id)
-{
-	struct kioctx *ioctx;
-	struct mm_struct *mm;
-
-	mm = current->mm;
-	read_lock(&mm->ioctx_list_lock);
-	for (ioctx = mm->ioctx_list; ioctx; ioctx = ioctx->next)
-		if (likely(ioctx->user_id == ctx_id && !ioctx->dead)) {
-			get_ioctx(ioctx);
+	hlist_for_each_entry_rcu(ctx, &mm->ioctx_list, list) {
+		if (ctx->user_id == ctx_id) {
+			atomic_inc(&ctx->users);
+			ret = ctx;
 			break;
 		}
-	read_unlock(&mm->ioctx_list_lock);
-
-	return ioctx;
-}
-
-/*
- * use_mm
- *	Makes the calling kernel thread take on the specified
- *	mm context.
- *	Called by the retry thread execute retries within the
- *	iocb issuer's mm context, so that copy_from/to_user
- *	operations work seamlessly for aio.
- *	(Note: this routine is intended to be called only
- *	from a kernel thread context)
- */
-static void use_mm(struct mm_struct *mm)
-{
-	struct mm_struct *active_mm;
-	struct task_struct *tsk = current;
-
-	task_lock(tsk);
-	tsk->flags |= PF_BORROWED_MM;
-	active_mm = tsk->active_mm;
-	atomic_inc(&mm->mm_count);
-	tsk->mm = mm;
-	tsk->active_mm = mm;
-	activate_mm(active_mm, mm);
-	task_unlock(tsk);
-
-	mmdrop(active_mm);
-}
-
-/*
- * unuse_mm
- *	Reverses the effect of use_mm, i.e. releases the
- *	specified mm context which was earlier taken on
- *	by the calling kernel thread
- *	(Note: this routine is intended to be called only
- *	from a kernel thread context)
- *
- * Comments: Called with ctx->ctx_lock held. This nests
- * task_lock instead ctx_lock.
- */
-void unuse_mm(struct mm_struct *mm)
-{
-	struct task_struct *tsk = current;
-
-	task_lock(tsk);
-	tsk->flags &= ~PF_BORROWED_MM;
-	tsk->mm = NULL;
-	/* active_mm is still 'mm' */
-	enter_lazy_tlb(mm, tsk);
-	task_unlock(tsk);
-}
-
-/*
- * Queue up a kiocb to be retried. Assumes that the kiocb
- * has already been marked as kicked, and places it on
- * the retry run list for the corresponding ioctx, if it
- * isn't already queued. Returns 1 if it actually queued
- * the kiocb (to tell the caller to activate the work
- * queue to process it), or 0, if it found that it was
- * already queued.
- *
- * Should be called with the spin lock iocb->ki_ctx->ctx_lock
- * held
- */
-static inline int __queue_kicked_iocb(struct kiocb *iocb)
-{
-	struct kioctx *ctx = iocb->ki_ctx;
-
-	if (list_empty(&iocb->ki_run_list)) {
-		list_add_tail(&iocb->ki_run_list,
-			&ctx->run_list);
-		iocb->ki_queued++;
-		return 1;
-	}
-	return 0;
-}
-
-/* aio_run_iocb
- *	This is the core aio execution routine. It is
- *	invoked both for initial i/o submission and
- *	subsequent retries via the aio_kick_handler.
- *	Expects to be invoked with iocb->ki_ctx->lock
- *	already held. The lock is released and reaquired
- *	as needed during processing.
- *
- * Calls the iocb retry method (already setup for the
- * iocb on initial submission) for operation specific
- * handling, but takes care of most of common retry
- * execution details for a given iocb. The retry method
- * needs to be non-blocking as far as possible, to avoid
- * holding up other iocbs waiting to be serviced by the
- * retry kernel thread.
- *
- * The trickier parts in this code have to do with
- * ensuring that only one retry instance is in progress
- * for a given iocb at any time. Providing that guarantee
- * simplifies the coding of individual aio operations as
- * it avoids various potential races.
- */
-static ssize_t aio_run_iocb(struct kiocb *iocb)
-{
-	struct kioctx	*ctx = iocb->ki_ctx;
-	ssize_t (*retry)(struct kiocb *);
-	ssize_t ret;
-
-	if (iocb->ki_retried++ > 1024*1024) {
-		printk("Maximal retry count.  Bytes done %Zd\n",
-			iocb->ki_nbytes - iocb->ki_left);
-		return -EAGAIN;
 	}
 
-	if (!(iocb->ki_retried & 0xff)) {
-		pr_debug("%ld retry: %d of %d (kick %ld, Q %ld run %ld, wake %ld)\n",
-			iocb->ki_retried,
-			iocb->ki_nbytes - iocb->ki_left, iocb->ki_nbytes,
-			iocb->ki_kicked, iocb->ki_queued, aio_run, aio_wakeups);
-	}
-
-	if (!(retry = iocb->ki_retry)) {
-		printk("aio_run_iocb: iocb->ki_retry = NULL\n");
-		return 0;
-	}
-
-	/*
-	 * We don't want the next retry iteration for this
-	 * operation to start until this one has returned and
-	 * updated the iocb state. However, wait_queue functions
-	 * can trigger a kick_iocb from interrupt context in the
-	 * meantime, indicating that data is available for the next
-	 * iteration. We want to remember that and enable the
-	 * next retry iteration _after_ we are through with
-	 * this one.
-	 *
-	 * So, in order to be able to register a "kick", but
-	 * prevent it from being queued now, we clear the kick
-	 * flag, but make the kick code *think* that the iocb is
-	 * still on the run list until we are actually done.
-	 * When we are done with this iteration, we check if
-	 * the iocb was kicked in the meantime and if so, queue
-	 * it up afresh.
-	 */
-
-	kiocbClearKicked(iocb);
-
-	/*
-	 * This is so that aio_complete knows it doesn't need to
-	 * pull the iocb off the run list (We can't just call
-	 * INIT_LIST_HEAD because we don't want a kick_iocb to
-	 * queue this on the run list yet)
-	 */
-	iocb->ki_run_list.next = iocb->ki_run_list.prev = NULL;
-	spin_unlock_irq(&ctx->ctx_lock);
-
-	/* Quit retrying if the i/o has been cancelled */
-	if (kiocbIsCancelled(iocb)) {
-		ret = -EINTR;
-		aio_complete(iocb, ret, 0);
-		/* must not access the iocb after this */
-		goto out;
-	}
-
-	/*
-	 * Now we are all set to call the retry method in async
-	 * context. By setting this thread's io_wait context
-	 * to point to the wait queue entry inside the currently
-	 * running iocb for the duration of the retry, we ensure
-	 * that async notification wakeups are queued by the
-	 * operation instead of blocking waits, and when notified,
-	 * cause the iocb to be kicked for continuation (through
-	 * the aio_wake_function callback).
-	 */
-	BUG_ON(current->io_wait != NULL);
-	current->io_wait = &iocb->ki_wait;
-	ret = retry(iocb);
-	current->io_wait = NULL;
-
-	if (-EIOCBRETRY != ret) {
- 		if (-EIOCBQUEUED != ret) {
-			BUG_ON(!list_empty(&iocb->ki_wait.task_list));
-			aio_complete(iocb, ret, 0);
-			/* must not access the iocb after this */
-		}
-	} else {
-		/*
-		 * Issue an additional retry to avoid waiting forever if
-		 * no waits were queued (e.g. in case of a short read).
-		 */
-		if (list_empty(&iocb->ki_wait.task_list))
-			kiocbSetKicked(iocb);
-	}
-out:
-	spin_lock_irq(&ctx->ctx_lock);
-
-	if (-EIOCBRETRY == ret) {
-		/*
-		 * OK, now that we are done with this iteration
-		 * and know that there is more left to go,
-		 * this is where we let go so that a subsequent
-		 * "kick" can start the next iteration
-		 */
-
-		/* will make __queue_kicked_iocb succeed from here on */
-		INIT_LIST_HEAD(&iocb->ki_run_list);
-		/* we must queue the next iteration ourselves, if it
-		 * has already been kicked */
-		if (kiocbIsKicked(iocb)) {
-			__queue_kicked_iocb(iocb);
-		}
-	}
+	rcu_read_unlock();
 	return ret;
 }
-
-/*
- * __aio_run_iocbs:
- * 	Process all pending retries queued on the ioctx
- * 	run list.
- * Assumes it is operating within the aio issuer's mm
- * context. Expects to be called with ctx->ctx_lock held
- */
-static int __aio_run_iocbs(struct kioctx *ctx)
-{
-	struct kiocb *iocb;
-	int count = 0;
-	LIST_HEAD(run_list);
-
-	list_splice_init(&ctx->run_list, &run_list);
-	while (!list_empty(&run_list)) {
-		iocb = list_entry(run_list.next, struct kiocb,
-			ki_run_list);
-		list_del(&iocb->ki_run_list);
-		/*
-		 * Hold an extra reference while retrying i/o.
-		 */
-		iocb->ki_users++;       /* grab extra reference */
-		aio_run_iocb(iocb);
-		if (__aio_put_req(ctx, iocb))  /* drop extra ref */
-			put_ioctx(ctx);
-		count++;
- 	}
-	aio_run++;
-	if (!list_empty(&ctx->run_list))
-		return 1;
-	return 0;
-}
-
-static void aio_queue_work(struct kioctx * ctx)
-{
-	unsigned long timeout;
-	/*
-	 * if someone is waiting, get the work started right
-	 * away, otherwise, use a longer delay
-	 */
-	smp_mb();
-	if (waitqueue_active(&ctx->wait))
-		timeout = 1;
-	else
-		timeout = HZ/10;
-	queue_delayed_work(aio_wq, &ctx->wq, timeout);
-}
-
-
-/*
- * aio_run_iocbs:
- * 	Process all pending retries queued on the ioctx
- * 	run list.
- * Assumes it is operating within the aio issuer's mm
- * context.
- */
-static inline void aio_run_iocbs(struct kioctx *ctx)
-{
-	int requeue;
-
-	spin_lock_irq(&ctx->ctx_lock);
-
-	requeue = __aio_run_iocbs(ctx);
-	spin_unlock_irq(&ctx->ctx_lock);
-	if (requeue)
-		aio_queue_work(ctx);
-}
-
-/*
- * just like aio_run_iocbs, but keeps running them until
- * the list stays empty
- */
-static inline void aio_run_all_iocbs(struct kioctx *ctx)
-{
-	spin_lock_irq(&ctx->ctx_lock);
-	while (__aio_run_iocbs(ctx))
-		;
-	spin_unlock_irq(&ctx->ctx_lock);
-}
-
-/*
- * aio_kick_handler:
- * 	Work queue handler triggered to process pending
- * 	retries on an ioctx. Takes on the aio issuer's
- *	mm context before running the iocbs, so that
- *	copy_xxx_user operates on the issuer's address
- *      space.
- * Run on aiod's context.
- */
-static void aio_kick_handler(void *data)
-{
-	struct kioctx *ctx = data;
-	mm_segment_t oldfs = get_fs();
-	int requeue;
-
-	set_fs(USER_DS);
-	use_mm(ctx->mm);
-	spin_lock_irq(&ctx->ctx_lock);
-	requeue =__aio_run_iocbs(ctx);
- 	unuse_mm(ctx->mm);
-	spin_unlock_irq(&ctx->ctx_lock);
-	set_fs(oldfs);
-	/*
-	 * we're in a worker thread already, don't use queue_delayed_work,
-	 */
-	if (requeue)
-		queue_work(aio_wq, &ctx->wq);
-}
-
-
-/*
- * Called by kick_iocb to queue the kiocb for retry
- * and if required activate the aio work queue to process
- * it
- */
-void queue_kicked_iocb(struct kiocb *iocb)
-{
- 	struct kioctx	*ctx = iocb->ki_ctx;
-	unsigned long flags;
-	int run = 0;
-
-	WARN_ON((!list_empty(&iocb->ki_wait.task_list)));
-
-	spin_lock_irqsave(&ctx->ctx_lock, flags);
-	run = __queue_kicked_iocb(iocb);
-	spin_unlock_irqrestore(&ctx->ctx_lock, flags);
-	if (run) {
-		aio_queue_work(ctx);
-		aio_wakeups++;
-	}
-}
-
-/*
- * kick_iocb:
- *      Called typically from a wait queue callback context
- *      (aio_wake_function) to trigger a retry of the iocb.
- *      The retry is usually executed by aio workqueue
- *      threads (See aio_kick_handler).
- */
-void fastcall kick_iocb(struct kiocb *iocb)
-{
-	/* sync iocbs are easy: they can only ever be executing from a 
-	 * single context. */
-	if (is_sync_kiocb(iocb)) {
-		kiocbSetKicked(iocb);
-	        wake_up_process(iocb->ki_obj.tsk);
-		return;
-	}
-
-	iocb->ki_kicked++;
-	/* If its already kicked we shouldn't queue it again */
-	if (!kiocbTryKick(iocb)) {
-		queue_kicked_iocb(iocb);
-	}
-}
-EXPORT_SYMBOL(kick_iocb);
 
 /* aio_complete
  *	Called when the io request on the given iocb is complete.
- *	Returns true if this is the last user of the request.  The 
- *	only other user of the request can be the cancellation code.
  */
-int fastcall aio_complete(struct kiocb *iocb, long res, long res2)
+void aio_complete(struct kiocb *iocb, long res, long res2)
 {
 	struct kioctx	*ctx = iocb->ki_ctx;
-	struct aio_ring_info	*info;
 	struct aio_ring	*ring;
-	struct io_event	*event;
+	struct io_event	*ev_page, *event;
 	unsigned long	flags;
-	unsigned long	tail;
-	int		ret;
+	unsigned tail, pos;
 
-	/* Special case handling for sync iocbs: events go directly
-	 * into the iocb for fast handling.  Note that this will not 
-	 * work if we allow sync kiocbs to be cancelled. in which
-	 * case the usage count checks will have to move under ctx_lock
-	 * for all cases.
+	/*
+	 * Special case handling for sync iocbs:
+	 *  - events go directly into the iocb for fast handling
+	 *  - the sync task with the iocb in its stack holds the single iocb
+	 *    ref, no other paths have a way to get another ref
+	 *  - the sync task helpfully left a reference to itself in the iocb
 	 */
 	if (is_sync_kiocb(iocb)) {
-		int ret;
-
+		BUG_ON(atomic_read(&iocb->ki_users) != 1);
 		iocb->ki_user_data = res;
-		if (iocb->ki_users == 1) {
-			iocb->ki_users = 0;
-			ret = 1;
-		} else {
-			spin_lock_irq(&ctx->ctx_lock);
-			iocb->ki_users--;
-			ret = (0 == iocb->ki_users);
-			spin_unlock_irq(&ctx->ctx_lock);
-		}
-		/* sync iocbs put the task here for us */
+		atomic_set(&iocb->ki_users, 0);
 		wake_up_process(iocb->ki_obj.tsk);
-		return ret;
+		return;
 	}
 
-	info = &ctx->ring_info;
-
-	/* add a completion event to the ring buffer.
-	 * must be done holding ctx->ctx_lock to prevent
-	 * other code from messing with the tail
-	 * pointer since we might be called from irq
-	 * context.
+	/*
+	 * Take rcu_read_lock() in case the kioctx is being destroyed, as we
+	 * need to issue a wakeup after decrementing reqs_active.
 	 */
-	spin_lock_irqsave(&ctx->ctx_lock, flags);
+	rcu_read_lock();
 
-	if (iocb->ki_run_list.prev && !list_empty(&iocb->ki_run_list))
-		list_del_init(&iocb->ki_run_list);
+	if (iocb->ki_list.next) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&ctx->ctx_lock, flags);
+		list_del(&iocb->ki_list);
+		spin_unlock_irqrestore(&ctx->ctx_lock, flags);
+	}
 
 	/*
 	 * cancelled requests don't get events, userland was given one
 	 * when the event got cancelled.
 	 */
-	if (kiocbIsCancelled(iocb))
+	if (unlikely(xchg(&iocb->ki_cancel,
+			  KIOCB_CANCELLED) == KIOCB_CANCELLED)) {
+		atomic_dec(&ctx->reqs_active);
+		/* Still need the wake_up in case free_ioctx is waiting */
 		goto put_rq;
+	}
 
-	ring = kmap_atomic(info->ring_pages[0], KM_IRQ1);
+	/*
+	 * Add a completion event to the ring buffer. Must be done holding
+	 * ctx->ctx_lock to prevent other code from messing with the tail
+	 * pointer since we might be called from irq context.
+	 */
+	spin_lock_irqsave(&ctx->completion_lock, flags);
 
-	tail = info->tail;
-	event = aio_ring_event(info, tail, KM_IRQ0);
-	tail = (tail + 1) % info->nr;
+	tail = ctx->tail;
+	pos = tail + AIO_EVENTS_OFFSET;
+
+	if (++tail >= ctx->nr_events)
+		tail = 0;
+
+	ev_page = kmap_atomic(ctx->ring_pages[pos / AIO_EVENTS_PER_PAGE]);
+	event = ev_page + pos % AIO_EVENTS_PER_PAGE;
 
 	event->obj = (u64)(unsigned long)iocb->ki_obj.user;
 	event->data = iocb->ki_user_data;
 	event->res = res;
 	event->res2 = res2;
 
-	dprintk("aio_complete: %p[%lu]: %p: %p %Lx %lx %lx\n",
-		ctx, tail, iocb, iocb->ki_obj.user, iocb->ki_user_data,
-		res, res2);
+	kunmap_atomic(ev_page);
+	flush_dcache_page(ctx->ring_pages[pos / AIO_EVENTS_PER_PAGE]);
+
+	pr_debug("%p[%u]: %p: %p %Lx %lx %lx\n",
+		 ctx, tail, iocb, iocb->ki_obj.user, iocb->ki_user_data,
+		 res, res2);
 
 	/* after flagging the request as done, we
 	 * must never even look at it again
 	 */
 	smp_wmb();	/* make event visible before updating tail */
 
-	info->tail = tail;
+	ctx->tail = tail;
+
+	ring = kmap_atomic(ctx->ring_pages[0]);
 	ring->tail = tail;
+	kunmap_atomic(ring);
+	flush_dcache_page(ctx->ring_pages[0]);
 
-	put_aio_ring_event(event, KM_IRQ0);
-	kunmap_atomic(ring, KM_IRQ1);
+	spin_unlock_irqrestore(&ctx->completion_lock, flags);
 
-	pr_debug("added to ring %p at [%lu]\n", iocb, tail);
+	pr_debug("added to ring %p at [%u]\n", iocb, tail);
 
-	pr_debug("%ld retries: %d of %d (kicked %ld, Q %ld run %ld wake %ld)\n",
-		iocb->ki_retried,
-		iocb->ki_nbytes - iocb->ki_left, iocb->ki_nbytes,
-		iocb->ki_kicked, iocb->ki_queued, aio_run, aio_wakeups);
+	/*
+	 * Check if the user asked us to deliver the result through an
+	 * eventfd. The eventfd_signal() function is safe to be called
+	 * from IRQ context.
+	 */
+	if (iocb->ki_eventfd != NULL)
+		eventfd_signal(iocb->ki_eventfd, 1);
+
 put_rq:
 	/* everything turned out well, dispose of the aiocb. */
-	ret = __aio_put_req(ctx, iocb);
+	aio_put_req(iocb);
+	atomic_dec(&ctx->reqs_active);
 
-	spin_unlock_irqrestore(&ctx->ctx_lock, flags);
+	/*
+	 * We have to order our ring_info tail store above and test
+	 * of the wait list below outside the wait lock.  This is
+	 * like in wake_up_bit() where clearing a bit has to be
+	 * ordered with the unlocked test.
+	 */
+	smp_mb();
 
 	if (waitqueue_active(&ctx->wait))
 		wake_up(&ctx->wait);
 
-	if (ret)
-		put_ioctx(ctx);
-
-	return ret;
+	rcu_read_unlock();
 }
+EXPORT_SYMBOL(aio_complete);
 
-/* aio_read_evt
- *	Pull an event off of the ioctx's event ring.  Returns the number of 
- *	events fetched (0 or 1 ;-)
- *	FIXME: make this use cmpxchg.
- *	TODO: make the ringbuffer user mmap()able (requires FIXME).
+/* aio_read_events
+ *	Pull an event off of the ioctx's event ring.  Returns the number of
+ *	events fetched
  */
-static int aio_read_evt(struct kioctx *ioctx, struct io_event *ent)
+static long aio_read_events_ring(struct kioctx *ctx,
+				 struct io_event __user *event, long nr)
 {
-	struct aio_ring_info *info = &ioctx->ring_info;
 	struct aio_ring *ring;
-	unsigned long head;
-	int ret = 0;
+	unsigned head, pos;
+	long ret = 0;
+	int copy_ret;
 
-	ring = kmap_atomic(info->ring_pages[0], KM_USER0);
-	dprintk("in aio_read_evt h%lu t%lu m%lu\n",
-		 (unsigned long)ring->head, (unsigned long)ring->tail,
-		 (unsigned long)ring->nr);
+	mutex_lock(&ctx->ring_lock);
 
-	if (ring->head == ring->tail)
+	ring = kmap_atomic(ctx->ring_pages[0]);
+	head = ring->head;
+	kunmap_atomic(ring);
+
+	pr_debug("h%u t%u m%u\n", head, ctx->tail, ctx->nr_events);
+
+	if (head == ctx->tail)
 		goto out;
 
-	spin_lock(&info->ring_lock);
+	head %= ctx->nr_events;
 
-	head = ring->head % info->nr;
-	if (head != ring->tail) {
-		struct io_event *evp = aio_ring_event(info, head, KM_USER1);
-		*ent = *evp;
-		head = (head + 1) % info->nr;
-		smp_mb(); /* finish reading the event before updatng the head */
-		ring->head = head;
-		ret = 1;
-		put_aio_ring_event(evp, KM_USER1);
+	while (ret < nr) {
+		long avail;
+		struct io_event *ev;
+		struct page *page;
+
+		avail = (head <= ctx->tail ? ctx->tail : ctx->nr_events) - head;
+		if (head == ctx->tail)
+			break;
+
+		avail = min(avail, nr - ret);
+		avail = min_t(long, avail, AIO_EVENTS_PER_PAGE -
+			    ((head + AIO_EVENTS_OFFSET) % AIO_EVENTS_PER_PAGE));
+
+		pos = head + AIO_EVENTS_OFFSET;
+		page = ctx->ring_pages[pos / AIO_EVENTS_PER_PAGE];
+		pos %= AIO_EVENTS_PER_PAGE;
+
+		ev = kmap(page);
+		copy_ret = copy_to_user(event + ret, ev + pos,
+					sizeof(*ev) * avail);
+		kunmap(page);
+
+		if (unlikely(copy_ret)) {
+			ret = -EFAULT;
+			goto out;
+		}
+
+		ret += avail;
+		head += avail;
+		head %= ctx->nr_events;
 	}
-	spin_unlock(&info->ring_lock);
 
+	ring = kmap_atomic(ctx->ring_pages[0]);
+	ring->head = head;
+	kunmap_atomic(ring);
+	flush_dcache_page(ctx->ring_pages[0]);
+
+	pr_debug("%li  h%u t%u\n", ret, head, ctx->tail);
 out:
-	kunmap_atomic(ring, KM_USER0);
-	dprintk("leaving aio_read_evt: %d  h%lu t%lu\n", ret,
-		 (unsigned long)ring->head, (unsigned long)ring->tail);
+	mutex_unlock(&ctx->ring_lock);
+
 	return ret;
 }
 
-struct aio_timeout {
-	struct timer_list	timer;
-	int			timed_out;
-	struct task_struct	*p;
-};
-
-static void timeout_func(unsigned long data)
+static bool aio_read_events(struct kioctx *ctx, long min_nr, long nr,
+			    struct io_event __user *event, long *i)
 {
-	struct aio_timeout *to = (struct aio_timeout *)data;
+	long ret = aio_read_events_ring(ctx, event + *i, nr - *i);
 
-	to->timed_out = 1;
-	wake_up_process(to->p);
+	if (ret > 0)
+		*i += ret;
+
+	if (unlikely(atomic_read(&ctx->dead)))
+		ret = -EINVAL;
+
+	if (!*i)
+		*i = ret;
+
+	return ret < 0 || *i >= min_nr;
 }
 
-static inline void init_timeout(struct aio_timeout *to)
-{
-	init_timer(&to->timer);
-	to->timer.data = (unsigned long)to;
-	to->timer.function = timeout_func;
-	to->timed_out = 0;
-	to->p = current;
-}
-
-static inline void set_timeout(long start_jiffies, struct aio_timeout *to,
-			       const struct timespec *ts)
-{
-	to->timer.expires = start_jiffies + timespec_to_jiffies(ts);
-	if (time_after(to->timer.expires, jiffies))
-		add_timer(&to->timer);
-	else
-		to->timed_out = 1;
-}
-
-static inline void clear_timeout(struct aio_timeout *to)
-{
-	del_singleshot_timer_sync(&to->timer);
-}
-
-static int read_events(struct kioctx *ctx,
-			long min_nr, long nr,
+static long read_events(struct kioctx *ctx, long min_nr, long nr,
 			struct io_event __user *event,
 			struct timespec __user *timeout)
 {
-	long			start_jiffies = jiffies;
-	struct task_struct	*tsk = current;
-	DECLARE_WAITQUEUE(wait, tsk);
-	int			ret;
-	int			i = 0;
-	struct io_event		ent;
-	struct aio_timeout	to;
-	int 			event_loop = 0; /* testing only */
-	int			retry = 0;
+	ktime_t until = { .tv64 = KTIME_MAX };
+	long ret = 0;
 
-	/* needed to zero any padding within an entry (there shouldn't be 
-	 * any, but C is fun!
-	 */
-	memset(&ent, 0, sizeof(ent));
-retry:
-	ret = 0;
-	while (likely(i < nr)) {
-		ret = aio_read_evt(ctx, &ent);
-		if (unlikely(ret <= 0))
-			break;
-
-		dprintk("read event: %Lx %Lx %Lx %Lx\n",
-			ent.data, ent.obj, ent.res, ent.res2);
-
-		/* Could we split the check in two? */
-		ret = -EFAULT;
-		if (unlikely(copy_to_user(event, &ent, sizeof(ent)))) {
-			dprintk("aio: lost an event due to EFAULT.\n");
-			break;
-		}
-		ret = 0;
-
-		/* Good, event copied to userland, update counts. */
-		event ++;
-		i ++;
-	}
-
-	if (min_nr <= i)
-		return i;
-	if (ret)
-		return ret;
-
-	/* End fast path */
-
-	/* racey check, but it gets redone */
-	if (!retry && unlikely(!list_empty(&ctx->run_list))) {
-		retry = 1;
-		aio_run_all_iocbs(ctx);
-		goto retry;
-	}
-
-	init_timeout(&to);
 	if (timeout) {
 		struct timespec	ts;
-		ret = -EFAULT;
+
 		if (unlikely(copy_from_user(&ts, timeout, sizeof(ts))))
-			goto out;
+			return -EFAULT;
 
-		set_timeout(start_jiffies, &to, &ts);
+		until = timespec_to_ktime(ts);
 	}
 
-	while (likely(i < nr)) {
-		add_wait_queue_exclusive(&ctx->wait, &wait);
-		do {
-			set_task_state(tsk, TASK_INTERRUPTIBLE);
-			ret = aio_read_evt(ctx, &ent);
-			if (ret)
-				break;
-			if (min_nr <= i)
-				break;
-			ret = 0;
-			if (to.timed_out)	/* Only check after read evt */
-				break;
-			schedule();
-			event_loop++;
-			if (signal_pending(tsk)) {
-				ret = -EINTR;
-				break;
-			}
-			/*ret = aio_read_evt(ctx, &ent);*/
-		} while (1) ;
+	/*
+	 * Note that aio_read_events() is being called as the conditional - i.e.
+	 * we're calling it after prepare_to_wait() has set task state to
+	 * TASK_INTERRUPTIBLE.
+	 *
+	 * But aio_read_events() can block, and if it blocks it's going to flip
+	 * the task state back to TASK_RUNNING.
+	 *
+	 * This should be ok, provided it doesn't flip the state back to
+	 * TASK_RUNNING and return 0 too much - that causes us to spin. That
+	 * will only happen if the mutex_lock() call blocks, and we then find
+	 * the ringbuffer empty. So in practice we should be ok, but it's
+	 * something to be aware of when touching this code.
+	 */
+	wait_event_interruptible_hrtimeout(ctx->wait,
+			aio_read_events(ctx, min_nr, nr, event, &ret), until);
 
-		set_task_state(tsk, TASK_RUNNING);
-		remove_wait_queue(&ctx->wait, &wait);
+	if (!ret && signal_pending(current))
+		ret = -EINTR;
 
-		if (unlikely(ret <= 0))
-			break;
-
-		ret = -EFAULT;
-		if (unlikely(copy_to_user(event, &ent, sizeof(ent)))) {
-			dprintk("aio: lost an event due to EFAULT.\n");
-			break;
-		}
-
-		/* Good, event copied to userland, update counts. */
-		event ++;
-		i ++;
-	}
-
-	if (timeout)
-		clear_timeout(&to);
-out:
-	pr_debug("event loop executed %d times\n", event_loop);
-	pr_debug("aio_run %ld\n", aio_run);
-	pr_debug("aio_wakeups %ld\n", aio_wakeups);
-	return i ? i : ret;
-}
-
-/* Take an ioctx and remove it from the list of ioctx's.  Protects 
- * against races with itself via ->dead.
- */
-static void io_destroy(struct kioctx *ioctx)
-{
-	struct mm_struct *mm = current->mm;
-	struct kioctx **tmp;
-	int was_dead;
-
-	/* delete the entry from the list is someone else hasn't already */
-	write_lock(&mm->ioctx_list_lock);
-	was_dead = ioctx->dead;
-	ioctx->dead = 1;
-	for (tmp = &mm->ioctx_list; *tmp && *tmp != ioctx;
-	     tmp = &(*tmp)->next)
-		;
-	if (*tmp)
-		*tmp = ioctx->next;
-	write_unlock(&mm->ioctx_list_lock);
-
-	dprintk("aio_release(%p)\n", ioctx);
-	if (likely(!was_dead))
-		put_ioctx(ioctx);	/* twice for the list */
-
-	aio_cancel_all(ioctx);
-	wait_for_all_aios(ioctx);
-	put_ioctx(ioctx);	/* once for the lookup */
+	return ret;
 }
 
 /* sys_io_setup:
@@ -1262,7 +832,7 @@ static void io_destroy(struct kioctx *ioctx)
  *	pointer is passed for ctxp.  Will fail with -ENOSYS if not
  *	implemented.
  */
-asmlinkage long sys_io_setup(unsigned nr_events, aio_context_t __user *ctxp)
+SYSCALL_DEFINE2(io_setup, unsigned, nr_events, aio_context_t __user *, ctxp)
 {
 	struct kioctx *ioctx = NULL;
 	unsigned long ctx;
@@ -1273,8 +843,9 @@ asmlinkage long sys_io_setup(unsigned nr_events, aio_context_t __user *ctxp)
 		goto out;
 
 	ret = -EINVAL;
-	if (unlikely(ctx || (int)nr_events <= 0)) {
-		pr_debug("EINVAL: io_setup: ctx or nr_events > max\n");
+	if (unlikely(ctx || nr_events == 0)) {
+		pr_debug("EINVAL: io_setup: ctx %lu nr_events %u\n",
+		         ctx, nr_events);
 		goto out;
 	}
 
@@ -1282,11 +853,9 @@ asmlinkage long sys_io_setup(unsigned nr_events, aio_context_t __user *ctxp)
 	ret = PTR_ERR(ioctx);
 	if (!IS_ERR(ioctx)) {
 		ret = put_user(ioctx->user_id, ctxp);
-		if (!ret)
-			return 0;
-
-		get_ioctx(ioctx); /* io_destroy() expects us to hold a ref */
-		io_destroy(ioctx);
+		if (ret)
+			kill_ioctx(current->mm, ioctx);
+		put_ioctx(ioctx);
 	}
 
 out:
@@ -1296,104 +865,126 @@ out:
 /* sys_io_destroy:
  *	Destroy the aio_context specified.  May cancel any outstanding 
  *	AIOs and block on completion.  Will fail with -ENOSYS if not
- *	implemented.  May fail with -EFAULT if the context pointed to
+ *	implemented.  May fail with -EINVAL if the context pointed to
  *	is invalid.
  */
-asmlinkage long sys_io_destroy(aio_context_t ctx)
+SYSCALL_DEFINE1(io_destroy, aio_context_t, ctx)
 {
 	struct kioctx *ioctx = lookup_ioctx(ctx);
 	if (likely(NULL != ioctx)) {
-		io_destroy(ioctx);
+		kill_ioctx(current->mm, ioctx);
+		put_ioctx(ioctx);
 		return 0;
 	}
 	pr_debug("EINVAL: io_destroy: invalid context id\n");
 	return -EINVAL;
 }
 
-/*
- * Default retry method for aio_read (also used for first time submit)
- * Responsible for updating iocb state as retries progress
- */
-static ssize_t aio_pread(struct kiocb *iocb)
+static void aio_advance_iovec(struct kiocb *iocb, ssize_t ret)
+{
+	struct iovec *iov = &iocb->ki_iovec[iocb->ki_cur_seg];
+
+	BUG_ON(ret <= 0);
+
+	while (iocb->ki_cur_seg < iocb->ki_nr_segs && ret > 0) {
+		ssize_t this = min((ssize_t)iov->iov_len, ret);
+		iov->iov_base += this;
+		iov->iov_len -= this;
+		iocb->ki_left -= this;
+		ret -= this;
+		if (iov->iov_len == 0) {
+			iocb->ki_cur_seg++;
+			iov++;
+		}
+	}
+
+	/* the caller should not have done more io than what fit in
+	 * the remaining iovecs */
+	BUG_ON(ret > 0 && iocb->ki_left == 0);
+}
+
+typedef ssize_t (aio_rw_op)(struct kiocb *, const struct iovec *,
+			    unsigned long, loff_t);
+
+static ssize_t aio_rw_vect_retry(struct kiocb *iocb, int rw, aio_rw_op *rw_op)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
 	ssize_t ret = 0;
 
-	ret = file->f_op->aio_read(iocb, iocb->ki_buf,
-		iocb->ki_left, iocb->ki_pos);
+	/* This matches the pread()/pwrite() logic */
+	if (iocb->ki_pos < 0)
+		return -EINVAL;
 
-	/*
-	 * Can't just depend on iocb->ki_left to determine
-	 * whether we are done. This may have been a short read.
-	 */
-	if (ret > 0) {
-		iocb->ki_buf += ret;
-		iocb->ki_left -= ret;
-		/*
-		 * For pipes and sockets we return once we have
-		 * some data; for regular files we retry till we
-		 * complete the entire read or find that we can't
-		 * read any more data (e.g short reads).
-		 */
-		if (!S_ISFIFO(inode->i_mode) && !S_ISSOCK(inode->i_mode))
-			ret = -EIOCBRETRY;
-	}
+	if (rw == WRITE)
+		file_start_write(file);
+	do {
+		ret = rw_op(iocb, &iocb->ki_iovec[iocb->ki_cur_seg],
+			    iocb->ki_nr_segs - iocb->ki_cur_seg,
+			    iocb->ki_pos);
+		if (ret > 0)
+			aio_advance_iovec(iocb, ret);
 
-	/* This means we must have transferred all that we could */
-	/* No need to retry anymore */
-	if ((ret == 0) || (iocb->ki_left == 0))
-		ret = iocb->ki_nbytes - iocb->ki_left;
-
-	return ret;
-}
-
-/*
- * Default retry method for aio_write (also used for first time submit)
- * Responsible for updating iocb state as retries progress
- */
-static ssize_t aio_pwrite(struct kiocb *iocb)
-{
-	struct file *file = iocb->ki_filp;
-	ssize_t ret = 0;
-
-	ret = file->f_op->aio_write(iocb, iocb->ki_buf,
-		iocb->ki_left, iocb->ki_pos);
-
-	if (ret > 0) {
-		iocb->ki_buf += ret;
-		iocb->ki_left -= ret;
-
-		ret = -EIOCBRETRY;
-	}
+	/* retry all partial writes.  retry partial reads as long as its a
+	 * regular file. */
+	} while (ret > 0 && iocb->ki_left > 0 &&
+		 (rw == WRITE ||
+		  (!S_ISFIFO(inode->i_mode) && !S_ISSOCK(inode->i_mode))));
+	if (rw == WRITE)
+		file_end_write(file);
 
 	/* This means we must have transferred all that we could */
 	/* No need to retry anymore */
 	if ((ret == 0) || (iocb->ki_left == 0))
 		ret = iocb->ki_nbytes - iocb->ki_left;
 
+	/* If we managed to write some out we return that, rather than
+	 * the eventual error. */
+	if (rw == WRITE
+	    && ret < 0 && ret != -EIOCBQUEUED
+	    && iocb->ki_nbytes - iocb->ki_left)
+		ret = iocb->ki_nbytes - iocb->ki_left;
+
 	return ret;
 }
 
-static ssize_t aio_fdsync(struct kiocb *iocb)
+static ssize_t aio_setup_vectored_rw(int rw, struct kiocb *kiocb, bool compat)
 {
-	struct file *file = iocb->ki_filp;
-	ssize_t ret = -EINVAL;
+	ssize_t ret;
 
-	if (file->f_op->aio_fsync)
-		ret = file->f_op->aio_fsync(iocb, 1);
-	return ret;
+	kiocb->ki_nr_segs = kiocb->ki_nbytes;
+
+#ifdef CONFIG_COMPAT
+	if (compat)
+		ret = compat_rw_copy_check_uvector(rw,
+				(struct compat_iovec __user *)kiocb->ki_buf,
+				kiocb->ki_nr_segs, 1, &kiocb->ki_inline_vec,
+				&kiocb->ki_iovec);
+	else
+#endif
+		ret = rw_copy_check_uvector(rw,
+				(struct iovec __user *)kiocb->ki_buf,
+				kiocb->ki_nr_segs, 1, &kiocb->ki_inline_vec,
+				&kiocb->ki_iovec);
+	if (ret < 0)
+		return ret;
+
+	/* ki_nbytes now reflect bytes instead of segs */
+	kiocb->ki_nbytes = ret;
+	return 0;
 }
 
-static ssize_t aio_fsync(struct kiocb *iocb)
+static ssize_t aio_setup_single_vector(int rw, struct kiocb *kiocb)
 {
-	struct file *file = iocb->ki_filp;
-	ssize_t ret = -EINVAL;
+	if (unlikely(!access_ok(!rw, kiocb->ki_buf, kiocb->ki_nbytes)))
+		return -EFAULT;
 
-	if (file->f_op->aio_fsync)
-		ret = file->f_op->aio_fsync(iocb, 0);
-	return ret;
+	kiocb->ki_iovec = &kiocb->ki_inline_vec;
+	kiocb->ki_iovec->iov_base = kiocb->ki_buf;
+	kiocb->ki_iovec->iov_len = kiocb->ki_nbytes;
+	kiocb->ki_nr_segs = 1;
+	return 0;
 }
 
 /*
@@ -1401,95 +992,95 @@ static ssize_t aio_fsync(struct kiocb *iocb)
  *	Performs the initial checks and aio retry method
  *	setup for the kiocb at the time of io submission.
  */
-ssize_t aio_setup_iocb(struct kiocb *kiocb)
+static ssize_t aio_run_iocb(struct kiocb *req, bool compat)
 {
-	struct file *file = kiocb->ki_filp;
-	ssize_t ret = 0;
+	struct file *file = req->ki_filp;
+	ssize_t ret;
+	int rw;
+	fmode_t mode;
+	aio_rw_op *rw_op;
 
-	switch (kiocb->ki_opcode) {
+	switch (req->ki_opcode) {
 	case IOCB_CMD_PREAD:
-		ret = -EBADF;
-		if (unlikely(!(file->f_mode & FMODE_READ)))
-			break;
-		ret = -EFAULT;
-		if (unlikely(!access_ok(VERIFY_WRITE, kiocb->ki_buf,
-			kiocb->ki_left)))
-			break;
-		ret = -EINVAL;
-		if (file->f_op->aio_read)
-			kiocb->ki_retry = aio_pread;
-		break;
+	case IOCB_CMD_PREADV:
+		mode	= FMODE_READ;
+		rw	= READ;
+		rw_op	= file->f_op->aio_read;
+		goto rw_common;
+
 	case IOCB_CMD_PWRITE:
-		ret = -EBADF;
-		if (unlikely(!(file->f_mode & FMODE_WRITE)))
-			break;
-		ret = -EFAULT;
-		if (unlikely(!access_ok(VERIFY_READ, kiocb->ki_buf,
-			kiocb->ki_left)))
-			break;
-		ret = -EINVAL;
-		if (file->f_op->aio_write)
-			kiocb->ki_retry = aio_pwrite;
+	case IOCB_CMD_PWRITEV:
+		mode	= FMODE_WRITE;
+		rw	= WRITE;
+		rw_op	= file->f_op->aio_write;
+		goto rw_common;
+rw_common:
+		if (unlikely(!(file->f_mode & mode)))
+			return -EBADF;
+
+		if (!rw_op)
+			return -EINVAL;
+
+		ret = (req->ki_opcode == IOCB_CMD_PREADV ||
+		       req->ki_opcode == IOCB_CMD_PWRITEV)
+			? aio_setup_vectored_rw(rw, req, compat)
+			: aio_setup_single_vector(rw, req);
+		if (ret)
+			return ret;
+
+		ret = rw_verify_area(rw, file, &req->ki_pos, req->ki_nbytes);
+		if (ret < 0)
+			return ret;
+
+		req->ki_nbytes = ret;
+		req->ki_left = ret;
+
+		ret = aio_rw_vect_retry(req, rw, rw_op);
 		break;
+
 	case IOCB_CMD_FDSYNC:
-		ret = -EINVAL;
-		if (file->f_op->aio_fsync)
-			kiocb->ki_retry = aio_fdsync;
+		if (!file->f_op->aio_fsync)
+			return -EINVAL;
+
+		ret = file->f_op->aio_fsync(req, 1);
 		break;
+
 	case IOCB_CMD_FSYNC:
-		ret = -EINVAL;
-		if (file->f_op->aio_fsync)
-			kiocb->ki_retry = aio_fsync;
+		if (!file->f_op->aio_fsync)
+			return -EINVAL;
+
+		ret = file->f_op->aio_fsync(req, 0);
 		break;
+
 	default:
-		dprintk("EINVAL: io_submit: no operation provided\n");
-		ret = -EINVAL;
+		pr_debug("EINVAL: no operation provided\n");
+		return -EINVAL;
 	}
 
-	if (!kiocb->ki_retry)
-		return ret;
+	if (ret != -EIOCBQUEUED) {
+		/*
+		 * There's no easy way to restart the syscall since other AIO's
+		 * may be already running. Just fail this IO with EINTR.
+		 */
+		if (unlikely(ret == -ERESTARTSYS || ret == -ERESTARTNOINTR ||
+			     ret == -ERESTARTNOHAND ||
+			     ret == -ERESTART_RESTARTBLOCK))
+			ret = -EINTR;
+		aio_complete(req, ret, 0);
+	}
 
 	return 0;
 }
 
-/*
- * aio_wake_function:
- * 	wait queue callback function for aio notification,
- * 	Simply triggers a retry of the operation via kick_iocb.
- *
- * 	This callback is specified in the wait queue entry in
- *	a kiocb	(current->io_wait points to this wait queue
- *	entry when an aio operation executes; it is used
- * 	instead of a synchronous wait when an i/o blocking
- *	condition is encountered during aio).
- *
- * Note:
- * This routine is executed with the wait queue lock held.
- * Since kick_iocb acquires iocb->ctx->ctx_lock, it nests
- * the ioctx lock inside the wait queue lock. This is safe
- * because this callback isn't used for wait queues which
- * are nested inside ioctx lock (i.e. ctx->wait)
- */
-int aio_wake_function(wait_queue_t *wait, unsigned mode, int sync, void *key)
-{
-	struct kiocb *iocb = container_of(wait, struct kiocb, ki_wait);
-
-	list_del_init(&wait->task_list);
-	kick_iocb(iocb);
-	return 1;
-}
-
-int fastcall io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
-			 struct iocb *iocb)
+static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
+			 struct iocb *iocb, bool compat)
 {
 	struct kiocb *req;
-	struct file *file;
 	ssize_t ret;
 
 	/* enforce forwards compatibility on users */
-	if (unlikely(iocb->aio_reserved1 || iocb->aio_reserved2 ||
-		     iocb->aio_reserved3)) {
-		pr_debug("EINVAL: io_submit: reserve field set\n");
+	if (unlikely(iocb->aio_reserved1 || iocb->aio_reserved2)) {
+		pr_debug("EINVAL: reserve field set\n");
 		return -EINVAL;
 	}
 
@@ -1503,21 +1094,34 @@ int fastcall io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 		return -EINVAL;
 	}
 
-	file = fget(iocb->aio_fildes);
-	if (unlikely(!file))
-		return -EBADF;
-
-	req = aio_get_req(ctx);		/* returns with 2 references to req */
-	if (unlikely(!req)) {
-		fput(file);
+	req = aio_get_req(ctx);
+	if (unlikely(!req))
 		return -EAGAIN;
+
+	req->ki_filp = fget(iocb->aio_fildes);
+	if (unlikely(!req->ki_filp)) {
+		ret = -EBADF;
+		goto out_put_req;
 	}
 
-	req->ki_filp = file;
-	iocb->aio_key = req->ki_key;
-	ret = put_user(iocb->aio_key, &user_iocb->aio_key);
+	if (iocb->aio_flags & IOCB_FLAG_RESFD) {
+		/*
+		 * If the IOCB_FLAG_RESFD flag of aio_flags is set, get an
+		 * instance of the file* now. The file descriptor must be
+		 * an eventfd() fd, and will be signaled for each completed
+		 * event using the eventfd_signal() function.
+		 */
+		req->ki_eventfd = eventfd_ctx_fdget((int) iocb->aio_resfd);
+		if (IS_ERR(req->ki_eventfd)) {
+			ret = PTR_ERR(req->ki_eventfd);
+			req->ki_eventfd = NULL;
+			goto out_put_req;
+		}
+	}
+
+	ret = put_user(KIOCB_KEY, &user_iocb->aio_key);
 	if (unlikely(ret)) {
-		dprintk("EFAULT: aio_key\n");
+		pr_debug("EFAULT: aio_key\n");
 		goto out_put_req;
 	}
 
@@ -1528,66 +1132,44 @@ int fastcall io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 	req->ki_buf = (char __user *)(unsigned long)iocb->aio_buf;
 	req->ki_left = req->ki_nbytes = iocb->aio_nbytes;
 	req->ki_opcode = iocb->aio_lio_opcode;
-	init_waitqueue_func_entry(&req->ki_wait, aio_wake_function);
-	INIT_LIST_HEAD(&req->ki_wait.task_list);
-	req->ki_run_list.next = req->ki_run_list.prev = NULL;
-	req->ki_retry = NULL;
-	req->ki_retried = 0;
-	req->ki_kicked = 0;
-	req->ki_queued = 0;
-	aio_run = 0;
-	aio_wakeups = 0;
 
-	ret = aio_setup_iocb(req);
-
+	ret = aio_run_iocb(req, compat);
 	if (ret)
 		goto out_put_req;
 
-	spin_lock_irq(&ctx->ctx_lock);
-	list_add_tail(&req->ki_run_list, &ctx->run_list);
-	/* drain the run list */
-	while (__aio_run_iocbs(ctx))
-		;
-	spin_unlock_irq(&ctx->ctx_lock);
 	aio_put_req(req);	/* drop extra ref to req */
 	return 0;
-
 out_put_req:
+	atomic_dec(&ctx->reqs_active);
 	aio_put_req(req);	/* drop extra ref to req */
 	aio_put_req(req);	/* drop i/o ref to req */
 	return ret;
 }
 
-/* sys_io_submit:
- *	Queue the nr iocbs pointed to by iocbpp for processing.  Returns
- *	the number of iocbs queued.  May return -EINVAL if the aio_context
- *	specified by ctx_id is invalid, if nr is < 0, if the iocb at
- *	*iocbpp[0] is not properly initialized, if the operation specified
- *	is invalid for the file descriptor in the iocb.  May fail with
- *	-EFAULT if any of the data structures point to invalid data.  May
- *	fail with -EBADF if the file descriptor specified in the first
- *	iocb is invalid.  May fail with -EAGAIN if insufficient resources
- *	are available to queue any iocbs.  Will return 0 if nr is 0.  Will
- *	fail with -ENOSYS if not implemented.
- */
-asmlinkage long sys_io_submit(aio_context_t ctx_id, long nr,
-			      struct iocb __user * __user *iocbpp)
+long do_io_submit(aio_context_t ctx_id, long nr,
+		  struct iocb __user *__user *iocbpp, bool compat)
 {
 	struct kioctx *ctx;
 	long ret = 0;
-	int i;
+	int i = 0;
+	struct blk_plug plug;
 
 	if (unlikely(nr < 0))
 		return -EINVAL;
+
+	if (unlikely(nr > LONG_MAX/sizeof(*iocbpp)))
+		nr = LONG_MAX/sizeof(*iocbpp);
 
 	if (unlikely(!access_ok(VERIFY_READ, iocbpp, (nr*sizeof(*iocbpp)))))
 		return -EFAULT;
 
 	ctx = lookup_ioctx(ctx_id);
 	if (unlikely(!ctx)) {
-		pr_debug("EINVAL: io_submit: invalid context id\n");
+		pr_debug("EINVAL: invalid context id\n");
 		return -EINVAL;
 	}
+
+	blk_start_plug(&plug);
 
 	/*
 	 * AKPM: should this return a partial result if some of the IOs were
@@ -1607,26 +1189,51 @@ asmlinkage long sys_io_submit(aio_context_t ctx_id, long nr,
 			break;
 		}
 
-		ret = io_submit_one(ctx, user_iocb, &tmp);
+		ret = io_submit_one(ctx, user_iocb, &tmp, compat);
 		if (ret)
 			break;
 	}
+	blk_finish_plug(&plug);
 
 	put_ioctx(ctx);
 	return i ? i : ret;
 }
 
+/* sys_io_submit:
+ *	Queue the nr iocbs pointed to by iocbpp for processing.  Returns
+ *	the number of iocbs queued.  May return -EINVAL if the aio_context
+ *	specified by ctx_id is invalid, if nr is < 0, if the iocb at
+ *	*iocbpp[0] is not properly initialized, if the operation specified
+ *	is invalid for the file descriptor in the iocb.  May fail with
+ *	-EFAULT if any of the data structures point to invalid data.  May
+ *	fail with -EBADF if the file descriptor specified in the first
+ *	iocb is invalid.  May fail with -EAGAIN if insufficient resources
+ *	are available to queue any iocbs.  Will return 0 if nr is 0.  Will
+ *	fail with -ENOSYS if not implemented.
+ */
+SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
+		struct iocb __user * __user *, iocbpp)
+{
+	return do_io_submit(ctx_id, nr, iocbpp, 0);
+}
+
 /* lookup_kiocb
  *	Finds a given iocb for cancellation.
- *	MUST be called with ctx->ctx_lock held.
  */
-struct kiocb *lookup_kiocb(struct kioctx *ctx, struct iocb __user *iocb, u32 key)
+static struct kiocb *lookup_kiocb(struct kioctx *ctx, struct iocb __user *iocb,
+				  u32 key)
 {
 	struct list_head *pos;
+
+	assert_spin_locked(&ctx->ctx_lock);
+
+	if (key != KIOCB_KEY)
+		return NULL;
+
 	/* TODO: use a hash or array, this sucks. */
 	list_for_each(pos, &ctx->active_reqs) {
 		struct kiocb *kiocb = list_kiocb(pos);
-		if (kiocb->ki_obj.user == iocb && kiocb->ki_key == key)
+		if (kiocb->ki_obj.user == iocb)
 			return kiocb;
 	}
 	return NULL;
@@ -1642,10 +1249,10 @@ struct kiocb *lookup_kiocb(struct kioctx *ctx, struct iocb __user *iocb, u32 key
  *	invalid.  May fail with -EAGAIN if the iocb specified was not
  *	cancelled.  Will fail with -ENOSYS if not implemented.
  */
-asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb,
-			      struct io_event __user *result)
+SYSCALL_DEFINE3(io_cancel, aio_context_t, ctx_id, struct iocb __user *, iocb,
+		struct io_event __user *, result)
 {
-	int (*cancel)(struct kiocb *iocb, struct io_event *res);
+	struct io_event res;
 	struct kioctx *ctx;
 	struct kiocb *kiocb;
 	u32 key;
@@ -1660,32 +1267,22 @@ asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb,
 		return -EINVAL;
 
 	spin_lock_irq(&ctx->ctx_lock);
-	ret = -EAGAIN;
+
 	kiocb = lookup_kiocb(ctx, iocb, key);
-	if (kiocb && kiocb->ki_cancel) {
-		cancel = kiocb->ki_cancel;
-		kiocb->ki_users ++;
-		kiocbSetCancelled(kiocb);
-	} else
-		cancel = NULL;
+	if (kiocb)
+		ret = kiocb_cancel(ctx, kiocb, &res);
+	else
+		ret = -EINVAL;
+
 	spin_unlock_irq(&ctx->ctx_lock);
 
-	if (NULL != cancel) {
-		struct io_event tmp;
-		pr_debug("calling cancel\n");
-		memset(&tmp, 0, sizeof(tmp));
-		tmp.obj = (u64)(unsigned long)kiocb->ki_obj.user;
-		tmp.data = kiocb->ki_user_data;
-		ret = cancel(kiocb, &tmp);
-		if (!ret) {
-			/* Cancellation succeeded -- copy the result
-			 * into the user's buffer.
-			 */
-			if (copy_to_user(result, &tmp, sizeof(tmp)))
-				ret = -EFAULT;
-		}
-	} else
-		printk(KERN_DEBUG "iocb has no cancel operation\n");
+	if (!ret) {
+		/* Cancellation succeeded -- copy the result
+		 * into the user's buffer.
+		 */
+		if (copy_to_user(result, &res, sizeof(res)))
+			ret = -EFAULT;
+	}
 
 	put_ioctx(ctx);
 
@@ -1694,36 +1291,29 @@ asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb,
 
 /* io_getevents:
  *	Attempts to read at least min_nr events and up to nr events from
- *	the completion queue for the aio_context specified by ctx_id.  May
- *	fail with -EINVAL if ctx_id is invalid, if min_nr is out of range,
- *	if nr is out of range, if when is out of range.  May fail with
- *	-EFAULT if any of the memory specified to is invalid.  May return
- *	0 or < min_nr if no events are available and the timeout specified
- *	by when	has elapsed, where when == NULL specifies an infinite
- *	timeout.  Note that the timeout pointed to by when is relative and
- *	will be updated if not NULL and the operation blocks.  Will fail
- *	with -ENOSYS if not implemented.
+ *	the completion queue for the aio_context specified by ctx_id. If
+ *	it succeeds, the number of read events is returned. May fail with
+ *	-EINVAL if ctx_id is invalid, if min_nr is out of range, if nr is
+ *	out of range, if timeout is out of range.  May fail with -EFAULT
+ *	if any of the memory specified is invalid.  May return 0 or
+ *	< min_nr if the timeout specified by timeout has elapsed
+ *	before sufficient events are available, where timeout == NULL
+ *	specifies an infinite timeout. Note that the timeout pointed to by
+ *	timeout is relative.  Will fail with -ENOSYS if not implemented.
  */
-asmlinkage long sys_io_getevents(aio_context_t ctx_id,
-				 long min_nr,
-				 long nr,
-				 struct io_event __user *events,
-				 struct timespec __user *timeout)
+SYSCALL_DEFINE5(io_getevents, aio_context_t, ctx_id,
+		long, min_nr,
+		long, nr,
+		struct io_event __user *, events,
+		struct timespec __user *, timeout)
 {
 	struct kioctx *ioctx = lookup_ioctx(ctx_id);
 	long ret = -EINVAL;
 
 	if (likely(ioctx)) {
-		if (likely(min_nr <= nr && min_nr >= 0 && nr >= 0))
+		if (likely(min_nr <= nr && min_nr >= 0))
 			ret = read_events(ioctx, min_nr, nr, events, timeout);
 		put_ioctx(ioctx);
 	}
-
 	return ret;
 }
-
-__initcall(aio_setup);
-
-EXPORT_SYMBOL(aio_complete);
-EXPORT_SYMBOL(aio_put_req);
-EXPORT_SYMBOL(wait_on_sync_kiocb);

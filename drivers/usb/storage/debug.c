@@ -1,8 +1,6 @@
 /* Driver for USB Mass Storage compliant devices
  * Debugging Functions Source Code File
  *
- * $Id: debug.c,v 1.9 2002/04/22 03:39:43 mdharm Exp $
- *
  * Current development and maintenance by:
  *   (c) 1999-2002 Matthew Dharm (mdharm-usb@one-eyed-alien.net)
  *
@@ -44,15 +42,19 @@
  * 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <linux/device.h>
 #include <linux/cdrom.h>
+#include <linux/export.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
+#include <scsi/scsi_dbg.h>
 
+#include "usb.h"
 #include "debug.h"
 #include "scsi.h"
 
 
-void usb_stor_show_command(struct scsi_cmnd *srb)
+void usb_stor_show_command(const struct us_data *us, struct scsi_cmnd *srb)
 {
 	char *what = NULL;
 	int i;
@@ -131,6 +133,7 @@ void usb_stor_show_command(struct scsi_cmnd *srb)
 	case 0x5C: what = "READ BUFFER CAPACITY"; break;
 	case 0x5D: what = "SEND CUE SHEET"; break;
 	case GPCMD_BLANK: what = "BLANK"; break;
+	case REPORT_LUNS: what = "REPORT LUNS"; break;
 	case MOVE_MEDIUM: what = "MOVE_MEDIUM or PLAY AUDIO (12)"; break;
 	case READ_12: what = "READ_12"; break;
 	case WRITE_12: what = "WRITE_12"; break;
@@ -149,18 +152,18 @@ void usb_stor_show_command(struct scsi_cmnd *srb)
 	case WRITE_LONG_2: what = "WRITE_LONG_2"; break;
 	default: what = "(unknown command)"; break;
 	}
-	US_DEBUGP("Command %s (%d bytes)\n", what, srb->cmd_len);
-	US_DEBUGP("");
+	usb_stor_dbg(us, "Command %s (%d bytes)\n", what, srb->cmd_len);
+	usb_stor_dbg(us, "bytes: ");
 	for (i = 0; i < srb->cmd_len && i < 16; i++)
 		US_DEBUGPX(" %02x", srb->cmnd[i]);
 	US_DEBUGPX("\n");
 }
 
-void usb_stor_show_sense(
-		unsigned char key,
-		unsigned char asc,
-		unsigned char ascq) {
-
+void usb_stor_show_sense(const struct us_data *us,
+			 unsigned char key,
+			 unsigned char asc,
+			 unsigned char ascq)
+{
 	const char *what, *keystr;
 
 	keystr = scsi_sense_key_string(key);
@@ -171,7 +174,22 @@ void usb_stor_show_sense(
 	if (what == NULL)
 		what = "(unknown ASC/ASCQ)";
 
-	US_DEBUGP("%s: ", keystr);
+	usb_stor_dbg(us, "%s: ", keystr);
 	US_DEBUGPX(what, ascq);
 	US_DEBUGPX("\n");
 }
+
+int usb_stor_dbg(const struct us_data *us, const char *fmt, ...)
+{
+	va_list args;
+	int r;
+
+	va_start(args, fmt);
+
+	r = dev_vprintk_emit(7, &us->pusb_dev->dev, fmt, args);
+
+	va_end(args);
+
+	return r;
+}
+EXPORT_SYMBOL_GPL(usb_stor_dbg);

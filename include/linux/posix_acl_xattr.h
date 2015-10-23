@@ -23,13 +23,13 @@
 #define ACL_UNDEFINED_ID	(-1)
 
 typedef struct {
-	__u16			e_tag;
-	__u16			e_perm;
-	__u32			e_id;
+	__le16			e_tag;
+	__le16			e_perm;
+	__le32			e_id;
 } posix_acl_xattr_entry;
 
 typedef struct {
-	__u32			a_version;
+	__le32			a_version;
 	posix_acl_xattr_entry	a_entries[0];
 } posix_acl_xattr_header;
 
@@ -51,5 +51,22 @@ posix_acl_xattr_count(size_t size)
 		return -1;
 	return size / sizeof(posix_acl_xattr_entry);
 }
+
+#ifdef CONFIG_FS_POSIX_ACL
+void posix_acl_fix_xattr_from_user(void *value, size_t size);
+void posix_acl_fix_xattr_to_user(void *value, size_t size);
+#else
+static inline void posix_acl_fix_xattr_from_user(void *value, size_t size)
+{
+}
+static inline void posix_acl_fix_xattr_to_user(void *value, size_t size)
+{
+}
+#endif
+
+struct posix_acl *posix_acl_from_xattr(struct user_namespace *user_ns, 
+				       const void *value, size_t size);
+int posix_acl_to_xattr(struct user_namespace *user_ns,
+		       const struct posix_acl *acl, void *buffer, size_t size);
 
 #endif	/* _POSIX_ACL_XATTR_H */
