@@ -929,7 +929,7 @@ void sst_handle_vb_timer(struct snd_soc_platform *p, bool enable)
 				SST_TASK_SBA, 0, &cmd, sizeof(cmd.header) + cmd.header.length) == 0) {
 
 			if (sst_dsp->ops->set_generic_params(SST_SET_MONITOR_LPE,
-									(void *)&enable) != 0)
+									(void *)&enable) == 0)
 				pr_err("%s: failed to set recovery timer\n", __func__);
 		} else
 			pr_err("%s: failed to send sst cmd %d\n",
@@ -1015,16 +1015,16 @@ static int sst_get_frame_sync_freq(unsigned int rate)
 	pr_debug("Enter:%s, rate=%x\n", __func__, rate);
 	switch (rate) {
 	case SNDRV_PCM_RATE_8000:
-	case 8000:
+	case SNDRV_INTEL_LARGO_PCM_RATE_8000:
 		return SSP_FS_8_KHZ;
 	case SNDRV_PCM_RATE_16000:
-	case 16000:
+	case SNDRV_INTEL_LARGO_PCM_RATE_16000:
 		return SSP_FS_16_KHZ;
 	case SNDRV_PCM_RATE_44100:
-	case 44100:
+	case SNDRV_INTEL_LARGO_PCM_RATE_44100:
 		return SSP_FS_44_1_KHZ;
 	case SNDRV_PCM_RATE_48000:
-	case 48000:
+	case SNDRV_INTEL_LARGO_PCM_RATE_48000:
 		return SSP_FS_48_KHZ;
 	default:
 		pr_err("Invalid frame sync freq\n");
