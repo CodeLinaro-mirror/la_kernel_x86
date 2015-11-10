@@ -48,6 +48,7 @@
 
 #include <linux/mfd/arizona/registers.h>
 #include "../../codecs/largo.h"
+#include "../platform-libs/controls_v2_dpcm.h"
 
 /* Codec PLL output clk rate */
 #define CODEC_SYSCLK_RATE			49152000
@@ -69,6 +70,38 @@ struct moor_slot_info {
 	unsigned int rx_mask;
 	int slots;
 	int slot_width;
+};
+
+static const struct snd_soc_pcm_stream moor_wm8958_dai_params_ssp1_fm = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = SNDRV_INTEL_LARGO_PCM_RATE_48000,
+	.rate_max = SNDRV_INTEL_LARGO_PCM_RATE_48000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream moor_wm8958_ssp1_bt_nb = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = SNDRV_INTEL_LARGO_PCM_RATE_8000,
+	.rate_max = SNDRV_INTEL_LARGO_PCM_RATE_8000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream moor_wm8958_ssp1_bt_wb = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = SNDRV_INTEL_LARGO_PCM_RATE_16000,
+	.rate_max = SNDRV_INTEL_LARGO_PCM_RATE_16000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream moor_wm8958_ssp1_bt_a2dp = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = SNDRV_INTEL_LARGO_PCM_RATE_48000,
+	.rate_max = SNDRV_INTEL_LARGO_PCM_RATE_48000,
+	.channels_min = 2,
+	.channels_max = 2,
 };
 
 #define MOOR_CONFIG_SLOT(slot_tx_mask, slot_rx_mask, num_slot, width)\
@@ -449,6 +482,54 @@ static int btns_arizona_codec_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+#define BT_DOMAIN_NB	0
+#define BT_DOMAIN_WB	1
+#define BT_DOMAIN_A2DP	2
+
+static int btns_arizona_bt_fm_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_dai *dai)
+{
+	unsigned int fmt;
+	bool is_bt;
+	u16 is_bt_wb;
+	unsigned int mask, reg_val;
+	int ret;
+	struct moor_slot_info *info;
+
+	reg_val = snd_soc_platform_read(dai->platform, SST_MUX_REG);
+	mask = (1 << fls(1)) - 1;
+	is_bt = (reg_val >> SST_BT_FM_MUX_SHIFT) & mask;
+	mask = (1 << fls(2)) - 1;
+	is_bt_wb = (reg_val >> SST_BT_MODE_SHIFT) & mask;
+
+	if (is_bt) {
+		switch (is_bt_wb) {
+		case BT_DOMAIN_WB:
+			dai_link->params = &moor_wm8958_ssp1_bt_wb;
+			info = &MOOR_CONFIG_SLOT(0x01, 0x01, 1, SNDRV_PCM_FORMAT_S16_LE);
+			break;
+		case BT_DOMAIN_NB:
+			dai_link->params = &moor_wm8958_ssp1_bt_nb;
+			info = &MOOR_CONFIG_SLOT(0x01, 0x01, 1, SNDRV_PCM_FORMAT_S16_LE);
+			break;
+		case BT_DOMAIN_A2DP:
+			dai_link->params = &moor_wm8958_ssp1_bt_a2dp;
+			info = &MOOR_CONFIG_SLOT(0x03, 0x00, 2, SNDRV_PCM_FORMAT_S16_LE);
+			break;
+		default:
+			return -EINVAL;
+		}
+
+		fmt = SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_CBS_CFS;
+	} else {
+		fmt = SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_CBS_CFS;
+		dai_link->params = &moor_wm8958_dai_params_ssp1_fm;
+		info = &MOOR_CONFIG_SLOT(0x00, 0x03, 2, SNDRV_PCM_FORMAT_S16_LE);
+	}
+	ret = moor_set_slot_and_format(dai, info, fmt);
+
+	return ret;
+}
+
 static const struct snd_soc_pcm_stream btns_arizona_dai_params = {
 	.formats = SNDRV_PCM_FMTBIT_S24_LE,
 	.rate_min = 48000,
@@ -554,7 +635,8 @@ struct snd_soc_dai_link btns_arizona_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-		.params = &btns_arizona_dai_params,
+		.params = &moor_wm8958_ssp1_bt_nb,
+		.be_fixup = &btns_arizona_bt_fm_fixup,
 		.dsp_loopback = true,
 	},
 
