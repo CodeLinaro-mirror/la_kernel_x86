@@ -513,12 +513,11 @@ static int btns_arizona_bt_fm_fixup(struct snd_soc_dai_link *dai_link, struct sn
 			break;
 		case BT_DOMAIN_A2DP:
 			dai_link->params = &moor_wm8958_ssp1_bt_a2dp;
-			info = &MOOR_CONFIG_SLOT(0x03, 0x00, 2, SNDRV_PCM_FORMAT_S16_LE);
+			info = &MOOR_CONFIG_SLOT(0x03, 0x03, 2, SNDRV_PCM_FORMAT_S16_LE);
 			break;
 		default:
 			return -EINVAL;
 		}
-
 		fmt = SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_CBS_CFS;
 	} else {
 		fmt = SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_CBS_CFS;
