@@ -646,6 +646,9 @@ int arizona_adsp_power_ev(struct snd_soc_dapm_widget *w,
 	unsigned int v;
 	int ret;
 
+	/*set sample rate 1 to 16k*/
+	regmap_write(arizona->regmap, 0x102, 0x12);
+
 	ret = regmap_read(arizona->regmap, ARIZONA_SYSTEM_CLOCK_1, &v);
 	if (ret != 0) {
 		dev_err(codec->dev,

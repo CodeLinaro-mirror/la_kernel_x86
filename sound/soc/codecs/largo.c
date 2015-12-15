@@ -1347,7 +1347,6 @@ static int largo_codec_probe(struct snd_soc_codec *codec)
 	mutex_unlock(&codec->card->dapm_mutex);
 
 	priv->core.arizona->dapm = &codec->dapm;
-#if 0
 	ret = arizona_request_irq(arizona, ARIZONA_IRQ_DSP_IRQ1,
 				  "ADSP2 interrupt 1", adsp2_irq, priv);
 	if (ret != 0) {
@@ -1360,7 +1359,6 @@ static int largo_codec_probe(struct snd_soc_codec *codec)
 		dev_err(arizona->dev,
 			"Failed to set DSP IRQ to wake source: %d\n",
 			ret);
-#endif
 	mutex_lock(&codec->card->dapm_mutex);
 	snd_soc_dapm_enable_pin(&codec->dapm, "DRC2 Signal Activity");
 	mutex_unlock(&codec->card->dapm_mutex);

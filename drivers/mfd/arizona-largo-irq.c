@@ -179,7 +179,7 @@ static struct irq_chip arizona_irq_chip = {
 static int arizona_irq_map(struct irq_domain *h, unsigned int virq,
 			      irq_hw_number_t hw)
 {
-	struct regmap_irq_chip_data *data = h->host_data;
+	struct arizona *data = h->host_data;
 
 	irq_set_chip_data(virq, data);
 	irq_set_chip_and_handler(virq, &arizona_irq_chip, handle_simple_irq);
@@ -339,7 +339,7 @@ int arizona_irq_init(struct arizona *arizona)
 	flags |= arizona->pdata.irq_flags;
 
     /* Allocate a virtual IRQ domain to distribute to the regmap domains */
-	arizona->virq = irq_domain_add_linear(NULL, 2, &arizona_domain_ops,
+	arizona->virq = irq_domain_add_simple(arizona->dev->of_node, 2, 0x300, &arizona_domain_ops,
 					      arizona);
 	if (!arizona->virq) {
 		dev_err(arizona->dev, "Failed to add core IRQ domain\n");
@@ -371,14 +371,14 @@ int arizona_irq_init(struct arizona *arizona)
 	}
 
 	/* Make sure the boot done IRQ is unmasked for resumes */
-	i = arizona_map_irq(arizona, ARIZONA_IRQ_BOOT_DONE);
+	/*i = arizona_map_irq(arizona, ARIZONA_IRQ_BOOT_DONE);
 	ret = request_threaded_irq(i, NULL, arizona_boot_done, IRQF_ONESHOT,
 				   "Boot done", arizona);
 	if (ret != 0) {
 		dev_err(arizona->dev, "Failed to request boot done %d: %d\n",
 			arizona->irq, ret);
 		goto err_boot_done;
-	}
+	}*/
 
 	/* Handle control interface errors in the core */
 	if (ctrlif_error) {

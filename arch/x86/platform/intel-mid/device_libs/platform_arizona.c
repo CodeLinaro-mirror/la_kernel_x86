@@ -26,6 +26,7 @@
 #include <asm/platform_sst_audio.h>
 #include <asm/platform_mrfld_audio.h>
 #include "platform_arizona.h"
+#include <sound/wm_adsp-largo.h>
 
 /***********CS47L241 REGUATOR platform data*************/
 static struct regulator_consumer_supply vcs47l241_consumer[] = {
@@ -126,6 +127,11 @@ static struct platform_device *cs47l24_reg_devices[] __initdata = {
 
 static struct pxa2xx_spi_chip chip;
 
+struct wm_adsp_fw_defs dsp3_fw = {
+	.name = "SoundClear",
+	.file = "soundclear-control",
+	.binfile = "None",
+};
 
 static struct arizona_pdata arizona_pdata = {
 	/* 1 use reset pin  0 use soft reset*/
@@ -142,6 +148,9 @@ static struct arizona_pdata arizona_pdata = {
 	.dmic_ref = {ARIZONA_DMIC_MICBIAS1, 0, 0, 0},
 	.inmode = {ARIZONA_INMODE_DMIC, 0, 0, 0},
 
+	/*DSP3 fw*/
+	.fw_defs[2] = &dsp3_fw,
+	.num_fw_defs[2] = 1,
 };
 
 
@@ -180,6 +189,7 @@ static int arizona_get_irq_data(struct arizona_pdata *pdata,
 		pr_err("%s failed for : %d\n", __func__, codec_gpio);
 		return -EINVAL;
 	}
+	pdata->irq_gpio = codec_gpio;
 	spi_info->irq = codec_gpio + INTEL_MID_IRQ_OFFSET;
 	return codec_gpio;
 }

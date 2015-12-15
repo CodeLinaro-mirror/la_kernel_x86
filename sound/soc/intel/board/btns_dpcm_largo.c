@@ -264,6 +264,65 @@ static int btns_arizona_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static int btns_arizona_set_bias_level(struct snd_soc_card *card,
+		struct snd_soc_dapm_context *dapm,
+		enum snd_soc_bias_level level)
+{
+	struct snd_soc_dai *arizona_dai = btns_arizona_get_codec_dai(card, "largo-aif1");
+	struct snd_soc_codec *arizona_codec = btns_arizona_get_codec(card);
+	int ret = 0;
+
+	if (!arizona_dai || !arizona_codec) {
+		pr_err("%s: couldn't find the dai or codec pointer!\n", __func__);
+		return -ENODEV;
+	}
+
+	if (dapm->dev != arizona_dai->dev)
+		return 0;
+
+	if (level == SND_SOC_BIAS_PREPARE) {
+		if (card->dapm.bias_level == SND_SOC_BIAS_STANDBY)
+			ret = btns_arizona_set_clk_fmt(arizona_codec);
+	}
+
+	pr_debug("%s card(%s)->bias_level %u\n", __func__, card->name,
+			card->dapm.bias_level);
+	return ret;
+}
+
+static int btns_arizona_set_bias_level_post(struct snd_soc_card *card,
+		 struct snd_soc_dapm_context *dapm,
+		 enum snd_soc_bias_level level)
+{
+	struct snd_soc_dai *arizona_dai = btns_arizona_get_codec_dai(card, "largo-aif1");
+	struct snd_soc_codec *arizona_codec = btns_arizona_get_codec(card);
+	struct mrfld_8958_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	int ret = 0;
+
+	if (!arizona_dai || !arizona_codec) {
+		pr_err("%s: couldn't find the dai or codec pointer!\n", __func__);
+		return -ENODEV;
+	}
+
+	if (dapm->dev != arizona_dai->dev)
+		return 0;
+
+	if (level == SND_SOC_BIAS_STANDBY) {
+		/* Turn off PLL for MCLK1 */
+		ret = snd_soc_codec_set_pll(arizona_codec, LARGO_FLL1, 0, 0, 0);
+		if (ret != 0) {
+			dev_err(arizona_codec->dev, "Failed to diasble FLL1 %d\n", ret);
+			return ret;
+		}
+		/* We are in stabdby so turn off 19.2MHz soc osc clock*/
+		/*The 32K Clk of codec is sourced from MCLK2 connected to onboard OSC*/
+		set_soc_osc_clk0(ctx->osc_clk0_reg, false);
+	}
+	card->dapm.bias_level = level;
+	pr_debug("%s card(%s)->bias_level %u\n", __func__, card->name,
+			card->dapm.bias_level);
+	return ret;
+}
 
 
 #define PMIC_ID_ADDR		0x00 /* TBD: Need to get correct PMIC address for version number */
@@ -291,6 +350,8 @@ static const struct snd_soc_dapm_route btns_map[] = {
 
 	{"Ext Spk", NULL, "AIF3TX1"},
 	{"Ext Spk", NULL, "AIF3TX2"},
+
+	{"DMIC", NULL, "DSP3"},
 
 	/*Earpiece*/
 	{ "EP", NULL, "HPOUT3L" },
@@ -340,10 +401,15 @@ static int btns_arizona_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_dai *florida_dai = btns_arizona_get_codec_dai(card, "largo-aif1");
 	struct snd_soc_dai *florida_dai3 = btns_arizona_get_codec_dai(card, "largo-aif3");
 
+	struct snd_soc_codec *florida_codec = btns_arizona_get_codec(card);
+	struct snd_soc_dapm_context *dapm;
 
 	pr_debug("Entry %s\n", __func__);
 
-
+	if (!florida_dai || !florida_codec) {
+		pr_err("%s couldn't find the dai or codec pointer!\n", __func__);
+		return -ENODEV;
+	}
 
 	if (!florida_dai) {
 		pr_err("%s couldn't find the dai or codec pointer!\n", __func__);
@@ -355,7 +421,7 @@ static int btns_arizona_init(struct snd_soc_pcm_runtime *runtime)
 		return -ENODEV;
 	}
 
-
+	dapm = &(florida_codec->dapm);
 
 	ret = snd_soc_dai_set_tdm_slot(florida_dai, 0, 0, 4, 24);
 	/* slot width is set as 25, SNDRV_PCM_FORMAT_S32_LE */
@@ -387,6 +453,7 @@ static int btns_arizona_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 	}
 
+	btns_arizona_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
 
 	card->dapm.idle_bias_off = true;
 
@@ -756,7 +823,8 @@ static struct snd_soc_card snd_soc_card_btns = {
 	.dai_link = btns_arizona_msic_dailink,
 	.num_links = ARRAY_SIZE(btns_arizona_msic_dailink),
 	.late_probe = btns_arizona_mc_late_probe,
-
+	.set_bias_level = btns_arizona_set_bias_level,
+	.set_bias_level_post = btns_arizona_set_bias_level_post,
 	.dapm_widgets = btns_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(btns_widgets),
 	.dapm_routes = btns_map,

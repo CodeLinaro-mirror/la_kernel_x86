@@ -2185,11 +2185,11 @@ int arizona_dev_init(struct arizona *arizona)
 	}
 
 	/* Set up for interrupts */
-	/* ret = arizona_irq_init(arizona);
+	ret = arizona_irq_init(arizona);
 	if (ret != 0)
 		goto err_reset;
 
-	arizona_request_irq(arizona, ARIZONA_IRQ_CLKGEN_ERR, "CLKGEN error",
+	/*arizona_request_irq(arizona, ARIZONA_IRQ_CLKGEN_ERR, "CLKGEN error",
 			    arizona_clkgen_err, arizona);
 	arizona_request_irq(arizona, ARIZONA_IRQ_OVERCLOCKED, "Overclocked",
 			    arizona_overclocked, arizona);
@@ -2242,49 +2242,6 @@ int arizona_dev_init(struct arizona *arizona)
 		goto err_irq;
 	}
 
-
-	ret = regmap_write(arizona->regmap, ARIZONA_AIF1_RX_ENABLES, 0x0001);
-
-	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to write AIF RX ENABLES: %d\n", ret);
-		goto err_irq;
-	}
-
-	int v = 0;
-
-	ret = regmap_read(arizona->regmap, ARIZONA_AIF1_RX_ENABLES, &v);
-
-	pr_debug(KERN_INFO "AIF1 RX enables %x\n", v);
-
-	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to read AIF RX ENABLES: %d\n", ret);
-		goto err_irq;
-	}
-
-	ret = regmap_write(arizona->regmap, ARIZONA_OUTPUT_ENABLES_1, 0x00F0);
-	ret = regmap_write(arizona->regmap, ARIZONA_AIF3_TX_ENABLES, 0x0001);
-	ret = regmap_write(arizona->regmap, ARIZONA_AIF3_RX_ENABLES, 0x0001);
-	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to write output  ENABLES: %d\n", ret);
-		goto err_irq;
-	}
-
-	v = 0;
-	ret = regmap_read(arizona->regmap, ARIZONA_OUTPUT_ENABLES_1, &v);
-	pr_debug(KERN_INFO "output enables %x\n", v);
-
-
-	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to read AIF RX ENABLES: %d\n", ret);
-		goto err_irq;
-	}
-
-	/* TODO: implement a driver to handle this */
-	/* Enable L AMP */
-	gpio_set_value(189,  1);
-
-	/* Enable R AMP */
-	gpio_set_value(15,  1);
 
 	dev_err(dev, "Arizona core dev init done !\n");
 

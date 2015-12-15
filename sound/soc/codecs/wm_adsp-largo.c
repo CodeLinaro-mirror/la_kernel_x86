@@ -868,7 +868,8 @@ static int wm_coeff_get(struct snd_kcontrol *kcontrol,
 
 	mutex_lock(&ctl->lock);
 
-	if (ctl->flags & WMFW_CTL_FLAG_VOLATILE) {
+	/*if (ctl->flags & WMFW_CTL_FLAG_VOLATILE) {*/
+	if (true) {
 		if (ctl->enabled)
 			ret = wm_coeff_read_control(ctl, p, ctl->len);
 		else
@@ -1373,10 +1374,10 @@ static int wm_adsp_load(struct wm_adsp *dsp)
 
 	header = (void *)&firmware->data[0];
 
-	if (memcmp(&header->magic[0], "WMFW", 4) != 0) {
+	/*if (memcmp(&header->magic[0], "WMFW", 4) != 0) {
 		adsp_err(dsp, "%s: invalid magic\n", file);
 		goto out_fw;
-	}
+	}*/
 
 	switch (header->ver) {
 	case 0:
@@ -1940,10 +1941,10 @@ static int wm_adsp_load_coeff(struct wm_adsp *dsp)
 	}
 
 	hdr = (void *)&firmware->data[0];
-	if (memcmp(hdr->magic, "WMDR", 4) != 0) {
+	/*if (memcmp(hdr->magic, "WMDR", 4) != 0) {
 		adsp_err(dsp, "%s: invalid magic\n", file);
 		goto out_fw;
-	}
+	}*/
 
 	switch (be32_to_cpu(hdr->rev) & 0xff) {
 	case 1:
