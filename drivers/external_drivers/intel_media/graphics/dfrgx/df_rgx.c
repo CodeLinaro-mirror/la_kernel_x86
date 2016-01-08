@@ -107,7 +107,7 @@
  *     #define GOVERNOR_TO_USE "userspace"
  *     #define GOVERNOR_TO_USE "powersave"
  */
-#define GOVERNOR_TO_USE "simple_ondemand"
+#define GOVERNOR_TO_USE "powersave"
 #else
 /**
  * Potential governors:
@@ -115,7 +115,7 @@
  *     #define GOVERNOR_TO_USE devfreq_performance
  *     #define GOVERNOR_TO_USE devfreq_powersave
  */
-#define GOVERNOR_TO_USE devfreq_simple_ondemand
+#define GOVERNOR_TO_USE devfreq_powersave
 #endif
 
 
@@ -741,7 +741,7 @@ static int df_rgx_busfreq_probe(struct platform_device *pdev)
 		df->max_freq = DFRGX_FREQ_640_MHZ;
 	}
 	else {
-		df->min_freq = DFRGX_FREQ_457_MHZ;
+		df->min_freq = DFRGX_FREQ_106_MHZ;
 		df->max_freq = DFRGX_FREQ_533_MHZ;
 	}
 	DFRGX_DPF(DFRGX_DEBUG_HIGH, "%s: dev_id = 0x%x, min_freq = %lu, max_freq = %lu\n",
@@ -755,8 +755,8 @@ static int df_rgx_busfreq_probe(struct platform_device *pdev)
 	else
 		bfdata->gpudata[0].freq_limit = DFRGX_FREQ_533_MHZ;
 	bfdata->gpudata[1].freq_limit = DFRGX_FREQ_457_MHZ;
-	bfdata->gpudata[2].freq_limit = DFRGX_FREQ_200_MHZ;
-	bfdata->gpudata[3].freq_limit = DFRGX_FREQ_200_MHZ;
+	bfdata->gpudata[2].freq_limit = DFRGX_FREQ_106_MHZ;
+	bfdata->gpudata[3].freq_limit = DFRGX_FREQ_106_MHZ;
 
 
 	df_rgx_init_available_freq_table(dev);
