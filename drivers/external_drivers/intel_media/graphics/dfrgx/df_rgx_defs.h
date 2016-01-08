@@ -38,20 +38,25 @@
  * driver (as a thermal cooling device by reducing frequency) supports.
  */
 #define THERMAL_COOLING_DEVICE_MAX_STATE	4
-#define NUMBER_OF_LEVELS			8
-#define NUMBER_OF_LEVELS_TNG_A0			4
-#define NUMBER_OF_LEVELS_MAX_FUSE		9
+#define NUMBER_OF_LEVELS			13
+#define NUMBER_OF_LEVELS_TNG_A0			6
+#define NUMBER_OF_LEVELS_MAX_FUSE		14
 
-#define DF_RGX_FREQ_KHZ_MIN             200000
+#define DF_RGX_FREQ_KHZ_MIN             106000
 #define DF_RGX_FREQ_KHZ_MAX             640000
 
 #define DF_RGX_FREQ_KHZ_MIN_INITIAL     DF_RGX_FREQ_KHZ_MIN
 
 #define DF_RGX_INITIAL_FREQ_KHZ         320000
 
-#define DF_RGX_THERMAL_LIMITED_FREQ_KHZ 200000
+#define DF_RGX_THERMAL_LIMITED_FREQ_KHZ 106000
 
 typedef enum _DFRGX_FREQ_ {
+	DFRGX_FREQ_100_MHZ = 100000,
+	DFRGX_FREQ_106_MHZ = 106000,
+	DFRGX_FREQ_133_MHZ = 133000,
+	DFRGX_FREQ_160_MHZ = 160000,
+	DFRGX_FREQ_177_MHZ = 177000,
 	DFRGX_FREQ_200_MHZ = 200000,
 	DFRGX_FREQ_213_MHZ = 213000,
 	DFRGX_FREQ_266_MHZ = 266000,
@@ -187,16 +192,21 @@ struct userspace_gov_data {
 
 /*Available states - freq mapping table*/
 static const struct gpu_utilization_record a_available_state_freq[] = {
-					{DFRGX_FREQ_200_MHZ, 0xF},
+					{DFRGX_FREQ_100_MHZ, 0x1F},
+					{DFRGX_FREQ_106_MHZ, 0x1D},
+					{DFRGX_FREQ_133_MHZ, 0x17},
+					{DFRGX_FREQ_160_MHZ, 0x13},
+					{DFRGX_FREQ_177_MHZ, 0x11},
+					{DFRGX_FREQ_200_MHZ, 0x0F},
 					/*Need a proper value for this freq*/
-					{DFRGX_FREQ_213_MHZ, 0xE},
-					{DFRGX_FREQ_266_MHZ, 0xB},
-					{DFRGX_FREQ_320_MHZ, 0x9},
-					{DFRGX_FREQ_355_MHZ, 0x8},
-					{DFRGX_FREQ_400_MHZ, 0x7},
-					{DFRGX_FREQ_457_MHZ, 0x6},
-					{DFRGX_FREQ_533_MHZ, 0x5},
-					{DFRGX_FREQ_640_MHZ, 0x4}
+					{DFRGX_FREQ_213_MHZ, 0x0E},
+					{DFRGX_FREQ_266_MHZ, 0x0B},
+					{DFRGX_FREQ_320_MHZ, 0x09},
+					{DFRGX_FREQ_355_MHZ, 0x08},
+					{DFRGX_FREQ_400_MHZ, 0x07},
+					{DFRGX_FREQ_457_MHZ, 0x06},
+					{DFRGX_FREQ_533_MHZ, 0x05},
+					{DFRGX_FREQ_640_MHZ, 0x04}
 					};
 
 unsigned int df_rgx_is_valid_freq(unsigned long int freq);
