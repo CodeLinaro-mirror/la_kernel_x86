@@ -163,6 +163,10 @@ static IMG_UINT32 _RGXGPUFreqCalibrationCalculate(PVRSRV_DEVICE_NODE *psDeviceNo
 	         ui32CalibratedClockSpeed,
 	         psGpuDVFSTable->ui64CalibrationOSTimediff));
 
+	/* Reset time deltas to avoid recalibrating the same frequency over and over again */
+	psGpuDVFSTable->ui64CalibrationCRTimediff = 0;
+	psGpuDVFSTable->ui64CalibrationOSTimediff = 0;
+
 	psGpuDVFSTable->aui32DVFSClock[psGpuDVFSTable->ui32CurrentDVFSId] = ui32CalibratedClockSpeed;
 
 	return ui32CalibratedClockSpeed;
@@ -293,9 +297,6 @@ IMG_VOID RGXGPUFreqCalibrateCorrelatePeriodic(IMG_HANDLE hDevHandle)
 	_RGXGPUFreqCalibrationCalculate(psDeviceNode, psGpuDVFSTable);
 	_RGXGPUFreqCalibrationPeriodStart(psDeviceNode, psGpuDVFSTable);
 	_RGXMakeTimeCorrData(psDeviceNode);
-
-	/* Force Accumulate Period to false to not trigger a periodic calibration over and over again */
-	psGpuDVFSTable->bAccumulatePeriod = IMG_FALSE;
 
 	PVRSRVPowerUnlock();
 }
