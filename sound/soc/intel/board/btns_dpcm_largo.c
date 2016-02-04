@@ -596,6 +596,20 @@ static int btns_arizona_bt_fm_fixup(struct snd_soc_dai_link *dai_link, struct sn
 	return ret;
 }
 
+static int arizona_codec_loop_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_dai *dai)
+{
+	int ret;
+	unsigned int fmt;
+	struct moor_slot_info *info;
+
+	info = &MOOR_CONFIG_SLOT(0xF, 0xF, 4, SNDRV_PCM_FORMAT_S24_LE);
+	fmt = SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_IB_NF
+					| SND_SOC_DAIFMT_CBS_CFS;
+	ret = moor_set_slot_and_format(dai, info, fmt);
+
+	return ret;
+}
+
 static const struct snd_soc_pcm_stream btns_arizona_dai_params = {
 	.formats = SNDRV_PCM_FMTBIT_S24_LE,
 	.rate_min = 48000,
@@ -694,6 +708,7 @@ struct snd_soc_dai_link btns_arizona_msic_dailink[] = {
 		.dai_fmt = SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_IB_NF
 						| SND_SOC_DAIFMT_CBS_CFS,
 		.params = &btns_arizona_dai_params,
+		.be_fixup = arizona_codec_loop_fixup,
 		.dsp_loopback = true,
 	},
 	{
