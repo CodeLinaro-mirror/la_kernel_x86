@@ -3689,6 +3689,7 @@ static int synaptics_rmi4_suspend(struct device *dev)
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	struct i2c_client *i2c_client = to_i2c_client(rmi4_data->pdev->dev.parent);
 
+	disable_irq(rmi4_data->irq);
 	if (rmi4_data->stay_awake) {
 		synaptics_rmi4_free_fingers(rmi4_data);
 		if (device_may_wakeup(&i2c_client->dev))
@@ -3740,19 +3741,19 @@ static int synaptics_rmi4_resume(struct device *dev)
         if (device_may_wakeup(&i2c_client->dev))
 		disable_irq_wake(rmi4_data->irq);
 
-	if (rmi4_data->stay_awake)
-		return 0;
-
-	mutex_lock(&exp_data.mutex);
-	if (!list_empty(&exp_data.list)) {
-		list_for_each_entry(exp_fhandler, &exp_data.list, link)
-			if (exp_fhandler->exp_fn->resume != NULL)
-				exp_fhandler->exp_fn->resume(rmi4_data);
+	if (!rmi4_data->stay_awake) {
+		mutex_lock(&exp_data.mutex);
+		if (!list_empty(&exp_data.list)) {
+			list_for_each_entry(exp_fhandler, &exp_data.list, link)
+				if (exp_fhandler->exp_fn->resume != NULL)
+					exp_fhandler->exp_fn->resume(rmi4_data);
+		}
+		mutex_unlock(&exp_data.mutex);
 	}
-	mutex_unlock(&exp_data.mutex);
 
 exit:
 	rmi4_data->suspend = false;
+	enable_irq(rmi4_data->irq);
 
 	return 0;
 }
