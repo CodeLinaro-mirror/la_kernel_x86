@@ -2992,6 +2992,7 @@ int st_lsm6ds3_common_suspend(struct lsm6ds3_data *cdata)
 	int err, i;
 	struct lsm6ds3_sensor_data *sdata;
 
+	disable_irq(cdata->irq);
 	if (!stay_wake && (cdata->sensors_enabled & ST_INDIO_DEV_AG_MASK)) {
 		for (i = 0; i < (ST_INDIO_DEV_GYRO_WK + 1); i++) {
 			sdata = iio_priv(cdata->indio_dev[i]);
@@ -3032,7 +3033,7 @@ EXPORT_SYMBOL(st_lsm6ds3_common_suspend);
 
 int st_lsm6ds3_common_resume(struct lsm6ds3_data *cdata)
 {
-	int err, i;
+	int err = 0, i;
 	struct lsm6ds3_sensor_data *sdata;
 
 	cdata->system_state = SF_RESUME;
@@ -3046,7 +3047,7 @@ int st_lsm6ds3_common_resume(struct lsm6ds3_data *cdata)
 			if ((1 << sdata->sindex) & cdata->sensors_enabled) {
 				err = st_lsm6ds3_set_drdy_irq(sdata, true);
 				if (err < 0)
-					return err;
+					goto out;
 			}
 		}
 	}
@@ -3062,7 +3063,7 @@ int st_lsm6ds3_common_resume(struct lsm6ds3_data *cdata)
 		sdata = iio_priv(cdata->indio_dev[ST_INDIO_DEV_STEP_DETECTOR]);
 		err = st_lsm6ds3_set_drdy_irq(sdata, true);
 		if (err < 0)
-			return err;
+			goto out;
 	}
 
 	/* Enable step counter irq */
@@ -3078,10 +3079,13 @@ int st_lsm6ds3_common_resume(struct lsm6ds3_data *cdata)
 		sdata = iio_priv(cdata->indio_dev[ST_INDIO_DEV_STEP_COUNTER]);
 		err = st_lsm6ds3_set_drdy_irq(sdata, true);
 		if (err < 0)
-			return err;
+			goto out;
 	}
 
-	return 0;
+out:
+	enable_irq(cdata->irq);
+
+	return err;
 }
 EXPORT_SYMBOL(st_lsm6ds3_common_resume);
 #endif /* CONFIG_PM */
