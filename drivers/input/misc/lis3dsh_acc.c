@@ -1863,8 +1863,13 @@ static int lis3dsh_acc_resume(struct i2c_client *client)
 	struct lis3dsh_acc_data *acc = i2c_get_clientdata(client);
 
 	/* lis3dsh should not be disabled in sleep */
-	if (acc->pdata->gpio_int1 > 0)
-		disable_irq_wake(acc->pdata->gpio_int1);
+	if (acc->irq1 > 0) {
+		disable_irq_wake(acc->irq1);
+		enable_irq(acc->irq1);
+	}
+	if (acc->irq2 > 0)
+		enable_irq(acc->irq2);
+
 	return 0;
 }
 
@@ -1873,8 +1878,13 @@ static int lis3dsh_acc_suspend(struct i2c_client *client, pm_message_t mesg)
 	struct lis3dsh_acc_data *acc = i2c_get_clientdata(client);
 
 	/* lis3dsh should not be disabled in sleep */
-	if (acc->pdata->gpio_int1 > 0)
-		enable_irq_wake(acc->pdata->gpio_int1);
+	if (acc->irq2 > 0)
+		disable_irq(acc->irq2);
+	if (acc->irq1 > 0) {
+		disable_irq(acc->irq1);
+		enable_irq_wake(acc->irq1);
+	}
+
 	return 0;
 }
 #else
