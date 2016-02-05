@@ -324,6 +324,30 @@ static int btns_arizona_set_bias_level_post(struct snd_soc_card *card,
 	return ret;
 }
 
+/* turn speaker amplifier on/off depending on use */
+static int btns_arizona_amp_event(struct snd_soc_dapm_widget* w,
+				 struct snd_kcontrol * ctrl, int event)
+{
+     int gpio_l, gpio_r;
+
+     printk("%s\n", __func__);
+     /* Power up the AMPs */
+     gpio_l = get_gpio_by_name("ext_amp_l_en");
+     if (gpio_l < 0) {
+          pr_err("Failed to get the AMP EN GPIO number\n");
+          return gpio_l;
+     }
+     gpio_r = get_gpio_by_name("ext_amp_r_en");
+     if (gpio_r < 0) {
+          pr_err("Failed to get the AMP EN GPIO number\n");
+          return gpio_r;
+     }
+     gpio_set_value(gpio_l, SND_SOC_DAPM_EVENT_ON(event));
+     gpio_set_value(gpio_r, SND_SOC_DAPM_EVENT_ON(event));
+     pr_info("AMP Enable Disable %d\n", SND_SOC_DAPM_EVENT_ON(event));
+
+     return 0;
+}
 
 #define PMIC_ID_ADDR		0x00 /* TBD: Need to get correct PMIC address for version number */
 #define PMIC_CHIP_ID_A0_VAL	0xC0
@@ -331,7 +355,7 @@ static int btns_arizona_set_bias_level_post(struct snd_soc_card *card,
 
 static const struct snd_soc_dapm_widget btns_widgets[] = {
 	SND_SOC_DAPM_HP("Headphones", NULL),
-	SND_SOC_DAPM_SPK("Ext Spk", NULL),
+	SND_SOC_DAPM_SPK("Ext Spk", btns_arizona_amp_event),
 	SND_SOC_DAPM_SPK("EP", NULL),
 	SND_SOC_DAPM_MIC("AMIC", NULL),
 	SND_SOC_DAPM_MIC("DMIC", NULL),
