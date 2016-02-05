@@ -155,7 +155,7 @@ static enum power_supply_type get_power_supply_type(
 		return POWER_SUPPLY_TYPE_USB;
 	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 	default:
-		return POWER_SUPPLY_TYPE_UNKNOWN;
+		return POWER_SUPPLY_TYPE_USB;
 	}
 }
 
@@ -659,7 +659,7 @@ static void bq24232_evt_worker(struct work_struct *work)
 					evt->cap.chrg_evt == POWER_SUPPLY_CHARGER_EVENT_UPDATE ||
 					evt->cap.chrg_evt == POWER_SUPPLY_CHARGER_EVENT_RESUME) {
 				chip->is_charger_enabled = true;
-				if (chip->pow_sply.type != POWER_SUPPLY_TYPE_UNKNOWN)
+				if (chip->cable_type != POWER_SUPPLY_CHARGER_TYPE_NONE)
 					chip->online = 1;
 				else
 					chip->online = 0;
