@@ -1092,6 +1092,13 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		if (sst_drv_ctx->pdata->start_recovery_timer)
 			ret_val = sst_set_timer(&sst_drv_ctx->monitor_lpe, *(bool *)arg);
 		break;
+        }
+	case SST_SET_DSP_LOOPBACK: {
+		bool *enabled = arg;
+		if (arg == NULL)
+			return -EINVAL;
+		sst_drv_ctx->dsp_loopback = *enabled;
+		break;
 	}
 	default:
 		pr_err("Invalid cmd request:%d\n", cmd);

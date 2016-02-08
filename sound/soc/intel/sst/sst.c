@@ -1163,13 +1163,35 @@ static int intel_sst_runtime_resume(struct device *dev)
 	return ret;
 }
 
+static int intel_sst_resume(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
+	int ret;
+	if (ctx->dsp_loopback) {
+		pr_debug("DSP Loopback mode, fake resume\n");
+		pci_restore_state(pdev);
+		ret = pci_enable_device(pdev);
+		if (ret < 0)
+			pr_err("DSP Loopback mode, resume failed\n");
+		return ret;
+	}
+	return intel_sst_runtime_resume(dev);
+}
+
 static int intel_sst_suspend(struct device *dev)
 {
 	int retval = 0, usage_count;
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
+	struct pci_dev *pdev = to_pci_dev(dev);
 
 	usage_count = atomic_read(&ctx->pm_usage_count);
-	if (usage_count) {
+	if (ctx->dsp_loopback == true) {
+		pr_debug("DSP Loopback mode, fake suspend\n");
+		pci_save_state(pdev);
+		pci_disable_device(pdev);
+		return 0;
+	} else if (usage_count) {
 		pr_err("Ret error for suspend:%d\n", usage_count);
 		return -EBUSY;
 	}
@@ -1269,7 +1291,7 @@ static void sst_acpi_shutdown(struct platform_device *pdev)
 
 static const struct dev_pm_ops intel_sst_pm = {
 	.suspend = intel_sst_suspend,
-	.resume = intel_sst_runtime_resume,
+	.resume = intel_sst_resume,
 	.runtime_suspend = intel_sst_runtime_suspend,
 	.runtime_resume = intel_sst_runtime_resume,
 	.runtime_idle = intel_sst_runtime_idle,

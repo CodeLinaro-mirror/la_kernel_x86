@@ -480,7 +480,7 @@ static int btns_arizona_init(struct snd_soc_pcm_runtime *runtime)
 	btns_arizona_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
 
 	card->dapm.idle_bias_off = true;
-
+	snd_soc_dapm_ignore_suspend(&card->dapm, "Ext Spk");
 	ret = snd_soc_add_card_controls(card, btns_controls,
 					ARRAY_SIZE(btns_controls));
 	if (ret) {

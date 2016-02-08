@@ -101,6 +101,7 @@ enum sst_controls {
 	SST_SET_VTSV_INFO =		0x100F,
 	SST_SET_VTSV_LIBS =		0x1010,
 	SST_SET_MONITOR_LPE =		0x1011,
+	SST_SET_DSP_LOOPBACK =		0x1012,
 };
 
 struct pcm_stream_info {

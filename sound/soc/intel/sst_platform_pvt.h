@@ -151,6 +151,7 @@ struct sst_data {
 	struct mutex lock;
 	/* Pipe_id for probe_stream to be saved in stream map */
 	u8 pipe_id;
+	bool dsp_loopback;
 	bool vtsv_enroll;
 	char *vtsv_path;
 	struct sst_lowlatency_deepbuff ll_db;

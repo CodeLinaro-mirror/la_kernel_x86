@@ -584,6 +584,8 @@ struct intel_sst_drv {
 	 */
 	char firmware_name[20];
 	int reboot_notify;
+	/** We have special PM handling during DSP loopback */
+	bool dsp_loopback;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;

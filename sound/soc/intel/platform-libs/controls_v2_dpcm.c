@@ -2143,6 +2143,32 @@ static const struct snd_kcontrol_new sst_debug_controls[] = {
 		       sst_byte_control_get, sst_byte_control_set),
 };
 
+int sst_dsp_loopback_set(struct snd_kcontrol *kcontrol,
+			 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
+
+	sst->dsp_loopback = !!ucontrol->value.enumerated.item[0];
+	sst_dsp->ops->set_generic_params(SST_SET_DSP_LOOPBACK, &sst->dsp_loopback);
+	return 0;
+}
+
+int sst_dsp_loopback_get(struct snd_kcontrol *kcontrol,
+			 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
+
+	ucontrol->value.enumerated.item[0] = sst->dsp_loopback;
+	return 0;
+}
+
+static const struct snd_kcontrol_new sst_loopback_controls[] = {
+	SOC_SINGLE_BOOL_EXT("sst dsp_loopback switch", 0,
+			sst_dsp_loopback_get, sst_dsp_loopback_set),
+};
+
 static inline bool is_sst_dapm_widget(struct snd_soc_dapm_widget *w)
 {
 	if ((w->id == snd_soc_dapm_pga) ||
@@ -2581,6 +2607,8 @@ int sst_dsp_init_v2_dpcm(struct snd_soc_platform *platform)
 			ARRAY_SIZE(sst_vad_enroll));
 	snd_soc_add_platform_controls(platform, sst_vtsv_read,
 			ARRAY_SIZE(sst_vtsv_read));
+	snd_soc_add_platform_controls(platform, sst_loopback_controls,
+			ARRAY_SIZE(sst_loopback_controls));
 
 	/* initialize the names of the probe points */
 	for (i = 0; i < ARRAY_SIZE(sst_probes); i++)
