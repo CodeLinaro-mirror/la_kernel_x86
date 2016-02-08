@@ -8461,6 +8461,9 @@ static int concate_revision_bcm43430(dhd_bus_t *bus, char *fw_path, char *nv_pat
 	} else if (chipver == 0x1) {
 		DHD_ERROR(("----- CHIP bcm43430_A1 -----\n"));
 		strcat(chipver_tag, "_a1");
+	} else if (chipver == 0x2) {
+		DHD_ERROR(("----- CHIP bcm43430_B0 -----\n"));
+		strcat(chipver_tag, "_b0");
 	} else {
 		DHD_ERROR(("----- CHIP bcm43430 unknown revision %d -----\n",
 			chipver));
