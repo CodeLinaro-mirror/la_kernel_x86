@@ -811,8 +811,7 @@ static irqreturn_t lis3dsh_acc_isr_threaded(int irq, void *dev)
 	err = lis3dsh_acc_i2c_read(acc, &val, 1);
 	if (err < 0) {
 		dev_err((struct device *)dev,
-			"unrecoverable error, shutting down lis3dsh driver.\n");
-		lis3dsh_acc_disable(acc);
+			"unrecoverable error, not shutting down lis3dsh driver.\n");
 	}
 exit:
 	mutex_unlock(&acc->lock);
