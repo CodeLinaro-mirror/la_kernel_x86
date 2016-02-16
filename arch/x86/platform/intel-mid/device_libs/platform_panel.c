@@ -40,7 +40,8 @@ static struct support_panel_list_t
 		{SDC_25x16_CMD, "PNC_SDC_25x16"},
 		{AUO_CMD, "AUO_CMD"},
 		{TIANMA_CMD, "TIANMA_CMD"},
-		{INNOLUX_CMD, "INNOLUX_CMD"}
+		{INNOLUX_CMD, "INNOLUX_CMD"},
+		{AUO_CMD_4x4, "AUO_CMD_4x4"}
 	};
 
 #define NUM_SUPPORT_PANELS (sizeof( \

@@ -113,6 +113,7 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/auo_cmd.o \
 	$(DISPLAYDIR)/tianma_cmd.o \
 	$(DISPLAYDIR)/innolux_cmd.o \
+	$(DISPLAYDIR)/auo4x4_cmd.o \
 	$(DISPLAYDIR)/cmi_vid.o \
 	$(DISPLAYDIR)/cmi_cmd.o \
 	$(DISPLAYDIR)/sharp10x19_vid.o \

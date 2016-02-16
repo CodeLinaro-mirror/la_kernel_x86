@@ -1449,6 +1449,7 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 		case AUO_CMD:
 		case TIANMA_CMD:
 		case INNOLUX_CMD:
+		case AUO_CMD_4x4:
 		case JDI_7x12_CMD:
 			if (p_funcs && p_funcs->reset)
 				p_funcs->reset(dsi_config);
