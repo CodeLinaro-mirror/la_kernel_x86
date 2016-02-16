@@ -52,10 +52,42 @@ static int ssp0_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_d
 	return ret;
 }
 
+static int ssp1_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_dai *dai)
+{
+	int ret;
+
+	/* tx_mask = 3 | rx_mask = 0 | 2 slots | 16 bits */
+	ret = snd_soc_dai_set_tdm_slot(dai, 0x3, 0x0, 0x2, SNDRV_PCM_FORMAT_S16_LE);
+	if (ret < 0) {
+		pr_err("can't set bt i2s format: %d\n", ret);
+		return ret;
+	}
+
+	/* I2S | DSP is master | framesync active high  */
+	ret = snd_soc_dai_set_fmt(dai,
+			SND_SOC_DAIFMT_I2S |
+			SND_SOC_DAIFMT_CBS_CFS |
+			SND_SOC_DAIFMT_NB_IF);
+	if (ret < 0) {
+		pr_err("can't set codec DAI configuration: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 static const struct snd_soc_pcm_stream ssp0_dai_params = {
 	.formats = SNDRV_PCM_FMTBIT_S24_LE,
 	.rate_min = SNDRV_PCM_RATE_16000,
 	.rate_max = SNDRV_PCM_RATE_16000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream ssp1_dai_params = {
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	.rate_min = SNDRV_PCM_RATE_48000,
+	.rate_max = SNDRV_PCM_RATE_48000,
 	.channels_min = 2,
 	.channels_max = 2,
 };
@@ -84,6 +116,17 @@ static struct snd_soc_dai_link dai_links[] = {
 		.be_fixup = ssp0_config_fixup,
 		.dsp_loopback = true,
 	},
+	{
+		.name = "BT-Loop Port",
+		.stream_name = "CDP BT-Loop",
+		.cpu_dai_name = "ssp1-port",
+		.codec_name = "snd-soc-dummy",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.platform_name = "sst-platform",
+		.params = &ssp1_dai_params,
+		.be_fixup = ssp1_config_fixup,
+		.dsp_loopback = true,
+	},
 	/* back-ends */
 	{
 		.name = "SSP0-DMIC",
@@ -95,11 +138,23 @@ static struct snd_soc_dai_link dai_links[] = {
 		.ignore_suspend = 1,
 		.no_pcm = 1,
 	},
+	{
+		.name = "SSP1-BT",
+		.cpu_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.platform_name = "snd-soc-dummy",
+		.be_id = 2,
+		.ignore_suspend = 1,
+		.no_pcm = 1,
+	},
 };
 
 static struct snd_soc_dapm_route dapm_route[] = {
 	{ "ssp0 Tx", NULL, "modem_out"},
 	{ "modem_in", NULL, "ssp0 Rx" },
+	{ "ssp1 Tx", NULL, "bt_fm_out"},
+	{ "bt_fm_in", NULL, "ssp1 Rx" },
 };
 
 static struct snd_soc_card snd_cdp_card = {
