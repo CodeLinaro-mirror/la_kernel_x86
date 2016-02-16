@@ -48,6 +48,7 @@
 #include "displays/auo_cmd.h"
 #include "displays/tianma_cmd.h"
 #include "displays/innolux_cmd.h"
+#include "displays/auo4x4_cmd.h"
 #include "psb_drv.h"
 #include "android_hdmi.h"
 
@@ -68,6 +69,7 @@ static struct intel_mid_panel_list panel_list[] = {
 	{AUO_CMD, MDFLD_DSI_ENCODER_DBI, auo_cmd_init},
 	{TIANMA_CMD, MDFLD_DSI_ENCODER_DBI, tianma_cmd_init},
 	{INNOLUX_CMD, MDFLD_DSI_ENCODER_DBI, innolux_cmd_init},
+	{AUO_CMD_4x4, MDFLD_DSI_ENCODER_DBI, auo4x4_cmd_init},
 };
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)

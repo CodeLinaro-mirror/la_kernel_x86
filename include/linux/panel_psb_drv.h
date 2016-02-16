@@ -55,6 +55,7 @@ enum panel_type {
 	AUO_CMD,
 	TIANMA_CMD,
 	INNOLUX_CMD,
+	AUO_CMD_4x4,
 	GCT_DETECT
 };
 
