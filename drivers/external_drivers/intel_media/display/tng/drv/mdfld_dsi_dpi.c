@@ -791,7 +791,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			if (!is_dual_dsi(dev))
 				power_island_put(OSPM_DISPLAY_C);
 
-			DRM_INFO("skip panle power setting for first boot! "
+			DRM_INFO("skip panel power setting for first boot! "
 				 "panel is already powered on\n");
 			goto fun_exit;
 		}
