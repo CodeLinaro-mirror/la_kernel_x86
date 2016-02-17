@@ -937,7 +937,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			 */
 			mdfld_dsi_error_detector_wakeup(dsi_connector);
 
-			DRM_INFO("skip panle power setting for first boot!");
+			DRM_INFO("skip panel power setting for first boot!");
 			goto fun_exit;
 		}
 

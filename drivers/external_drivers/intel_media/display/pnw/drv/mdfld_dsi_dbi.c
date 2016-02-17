@@ -834,7 +834,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
 		if (Check_fw_initilized_reusable(dsi_config, p_funcs)) {
-			DRM_INFO("skip panle power setting for first boot!"
+			DRM_INFO("skip panel power setting for first boot!"
 					" panel is already powered on\n");
 			if (on) {
 				/* When using smooth transition, enable TE
