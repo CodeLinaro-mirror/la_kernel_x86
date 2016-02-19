@@ -33,8 +33,7 @@ void *isl97698_brightness_platform_data(void *info)
 	if (INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG))
 		isl97698_pdata.isl_brightness_val_max = 0x6F;
-	else if (INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
-		INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG))
+	else
 		isl97698_pdata.isl_brightness_val_max = 0x7F;
 
 	return &isl97698_pdata;
