@@ -104,6 +104,16 @@ static struct snd_soc_dai_link dai_links[] = {
 		.ignore_suspend = 1,
 		.dynamic = 1,
 	},
+	[MERR_DPCM_DB] = {
+		.name = "DB Audio Port",
+		.stream_name = "Deep Buffer Audio",
+		.cpu_dai_name = "Deepbuffer-cpu-dai",
+		.codec_name = "snd-soc-dummy",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.platform_name = "sst-platform",
+		.ignore_suspend = 1,
+		.dynamic = 1,
+	},
 	/* back-end <-> back-end link */
 	{
 		.name = "DMIC-Loop Port",
