@@ -204,6 +204,7 @@ static void  populate_platform_data(void)
 			set_mrfld_platform_config();
 			sst_platform_pdata.dont_register_snd_effects = 1;
 			sst_platform_pdata.dont_override_stream_map = 1;
+			sst_platform_pdata.dfw_bin_name = "dfw_sst_largo.bin";
 		}
 	} else if ((INTEL_MID_BOARD(1, TABLET, CHT))) {
 		set_cht_platform_config();

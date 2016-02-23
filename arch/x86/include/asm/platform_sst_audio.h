@@ -167,6 +167,7 @@ struct sst_platform_data {
 	 * to perform sample decimation at DSP level
 	 */
 	bool decimate_extra_samples_ssp0;
+	const char *dfw_bin_name;
 };
 
 int add_sst_platform_device(void);

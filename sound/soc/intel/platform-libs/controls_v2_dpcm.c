@@ -2634,6 +2634,7 @@ int sst_dsp_init_v2_dpcm(struct snd_soc_platform *platform)
 int sst_dsp_init_v2_dpcm_dfw(struct snd_soc_platform *platform)
 {
 	int i, ret = 0;
+	const char* dfw_bin_name;
 	const struct firmware *fw;
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
@@ -2657,7 +2658,8 @@ int sst_dsp_init_v2_dpcm_dfw(struct snd_soc_platform *platform)
 		return -ENOMEM;
 	}
 
-	ret = request_firmware(&fw, "dfw_sst.bin", platform->dev);
+	dfw_bin_name = sst->pdata->dfw_bin_name ? sst->pdata->dfw_bin_name : "dfw_sst.bin";
+	ret = request_firmware(&fw, dfw_bin_name, platform->dev);
 	if (fw == NULL) {
 		pr_err("config firmware request failed with %d\n", ret);
 		return ret;
