@@ -178,6 +178,30 @@ TRACE_EVENT(synaptics_abs,
 		__entry->value)
 );
 
+TRACE_EVENT(synaptics_slot_state,
+
+	TP_PROTO(int finger, int tool_type, int active),
+
+	TP_ARGS(finger, tool_type, active),
+
+	TP_STRUCT__entry(
+		__field(int, finger)
+		__field(int, tool_type)
+		__field(int, active)
+	),
+
+	TP_fast_assign(
+		__entry->finger = finger;
+		__entry->tool_type = tool_type;
+		__entry->active = active;
+	),
+
+	TP_printk("finger=%d tool_type=%d active=%d",
+		__entry->finger,
+		__entry->tool_type,
+		__entry->active)
+);
+
 #endif
 
 /* This part must be outside protection */
