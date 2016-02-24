@@ -549,6 +549,15 @@ static struct kobj_attribute virtual_key_map_attr = {
 	.show = synaptics_rmi4_virtual_key_map_show,
 };
 
+static void input_mt_report_slot_state_traced(struct input_dev *idev, int finger,
+					      int tool_type, int active)
+{
+	trace_synaptics_slot_state(finger, tool_type, active);
+
+	input_mt_slot(idev, finger);
+	input_mt_report_slot_state(idev, tool_type, active);
+}
+
 static void input_report_key_traced(struct input_dev *idev, int key, int press)
 {
 	trace_synaptics_key_press(key, press);
@@ -928,8 +937,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		 * 11 = reserved
 		 */
 #ifdef TYPE_B_PROTOCOL
-		input_mt_slot(rmi4_data->input_dev, finger);
-		input_mt_report_slot_state(rmi4_data->input_dev,
+		input_mt_report_slot_state_traced(rmi4_data->input_dev, finger,
 				MT_TOOL_FINGER, finger_status);
 #endif
 
@@ -1155,9 +1163,8 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		case F12_STYLUS_STATUS:
 		case F12_GLOVED_FINGER_STATUS:
 #ifdef TYPE_B_PROTOCOL
-			input_mt_slot(rmi4_data->input_dev, finger);
-			input_mt_report_slot_state(rmi4_data->input_dev,
-					MT_TOOL_FINGER, 1);
+			input_mt_report_slot_state_traced(rmi4_data->input_dev,
+							  finger, MT_TOOL_FINGER, 1);
 #endif
 
 			input_report_key_traced(rmi4_data->input_dev,
@@ -1212,9 +1219,8 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			break;
 		default:
 #ifdef TYPE_B_PROTOCOL
-			input_mt_slot(rmi4_data->input_dev, finger);
-			input_mt_report_slot_state(rmi4_data->input_dev,
-					MT_TOOL_FINGER, 0);
+			input_mt_report_slot_state_traced(rmi4_data->input_dev,
+							  finger, MT_TOOL_FINGER, 0);
 #endif
 			break;
 		}
@@ -2937,8 +2943,7 @@ static int synaptics_rmi4_free_fingers(struct synaptics_rmi4_data *rmi4_data)
 
 #ifdef TYPE_B_PROTOCOL
 	for (ii = 0; ii < rmi4_data->num_of_fingers; ii++) {
-		input_mt_slot(rmi4_data->input_dev, ii);
-		input_mt_report_slot_state(rmi4_data->input_dev,
+		input_mt_report_slot_state_traced(rmi4_data->input_dev, ii,
 				MT_TOOL_FINGER, 0);
 	}
 #endif
