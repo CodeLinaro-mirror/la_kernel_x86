@@ -161,6 +161,12 @@ struct sst_platform_data {
 	unsigned int strm_map_size;
 	bool dont_register_snd_effects;
 	bool dont_override_stream_map;
+	/* Quirk: on some platforms, we have bit slips on SSP0 due to
+	 * clocking mismatch between the SoC and the peripherals.
+	 * Enabling this flags allows to request the sst firmware
+	 * to perform sample decimation at DSP level
+	 */
+	bool decimate_extra_samples_ssp0;
 };
 
 int add_sst_platform_device(void);

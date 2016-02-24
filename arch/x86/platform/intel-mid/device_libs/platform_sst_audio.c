@@ -163,6 +163,12 @@ static void set_mrfld_platform_config(void)
 	sst_platform_pdata.pdev_effs.effs_num_map = ARRAY_SIZE(mrfld_effs_map);
 }
 
+static void set_cdp_platform_config(void)
+{
+	set_mrfld_platform_config();
+	sst_platform_pdata.decimate_extra_samples_ssp0 = 1;
+}
+
 static void  populate_platform_data(void)
 {
 	sst_platform_pdata.spid = &spid;
@@ -183,8 +189,7 @@ static void  populate_platform_data(void)
 			(INTEL_MID_BOARD(1, TABLET, MRFL)) ||
 			(INTEL_MID_BOARD(1, PHONE, MOFD)) ||
 			(INTEL_MID_BOARD(1, TABLET, MOFD))) {
-		set_mrfld_platform_config();
-		if (!(INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
+		if ((INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
 					INTEL_MID_BOARD(2, PHONE, MRFL, RBY, ENG) ||
 					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
 					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
@@ -194,6 +199,9 @@ static void  populate_platform_data(void)
 					INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
 					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
 					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) )) {
+			set_cdp_platform_config();
+		} else {
+			set_mrfld_platform_config();
 			sst_platform_pdata.dont_register_snd_effects = 1;
 			sst_platform_pdata.dont_override_stream_map = 1;
 		}

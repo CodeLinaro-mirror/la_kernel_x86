@@ -1125,6 +1125,15 @@ int sst_fill_ssp_config(struct sst_data *sst, unsigned int id, unsigned int fmt,
 		return ssp_id;
 	cmd->selection = ssp_id;
 	ret = sst_get_ssp_protocol(fmt, cmd);
+	if (ssp_id == SST_SSP_PORT0 && cmd->ssp_protocol== SSP_MODE_I2S &&
+			sst->pdata->decimate_extra_samples_ssp0) {
+		/* Quirk: enable DSP firmware ASRC to compensate bit slip
+		 * this is triggered by setting frame_sync_width to 64
+		 * and being in i2s mode
+		 */
+		pr_info("%s: enabling cdp sample decimation on SSP0\n", __func__);
+		cmd->frame_sync_width = 64;
+	}
 	if (ret < 0)
 		return ret;
 	fs_polarity = sst_get_frame_sync_polarity(fmt);
