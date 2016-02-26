@@ -36,6 +36,7 @@
 
 #include "displays/innolux_cmd.h"
 #include "innolux_init.h"
+#include "innolux_gamma.h"
 
 static int select_init_code;
 
@@ -500,6 +501,96 @@ int innolux_cmd_exit_deep_standby(
 }
 
 static
+bool innolux_cmd_gamma_check(
+		struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+	int i;
+	u8 *cmd, *arg;
+	u8 data;
+	u32 power_island = 0;
+	bool ret = true;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!sender) {
+		DRM_ERROR("Failed to get DSI packet sender\n");
+		return false;
+	}
+
+	cmd = (u8 *)gamma_setting_code;
+	arg = cmd + 1;
+
+	for (i = 0; i < ARRAY_SIZE(gamma_setting_code); i++) {
+		data = *arg;
+
+		switch (*cmd) {
+		case 0xFF:
+			err = mdfld_dsi_send_mcs_short_lp(sender,
+					*cmd, *arg, 1,
+					MDFLD_DSI_SEND_PACKAGE);
+			if (err < 0)
+				DRM_INFO("gamma set cmd page error %d\n", err);
+			break;
+		default:
+			err = mdfld_dsi_read_mcs_lp(sender, *cmd, &data, 1);
+			if (err < 0)
+				DRM_INFO("gamma readback error %d\n", err);
+			break;
+		}
+
+		if (data != *arg) {
+			DRM_ERROR("gamma check fail\n");
+			ret = false;
+			break;
+		}
+
+		cmd += 2;
+		arg += 2;
+	}
+
+	return ret;
+}
+
+static
+int innolux_cmd_gamma_set(
+		struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+	int i;
+	u8 *cmd, *arg;
+	u32 power_island = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!sender) {
+		DRM_ERROR("Failed to get DSI packet sender\n");
+		return -EINVAL;
+	}
+
+	cmd = (u8 *)gamma_setting_code;
+	arg = cmd + 1;
+
+	for (i = 0; i < ARRAY_SIZE(gamma_setting_code); i++) {
+		err = mdfld_dsi_send_mcs_short_lp(sender,
+				*cmd, *arg, 1,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err < 0) {
+			DRM_ERROR("gamma set fail\n");
+			break;
+		}
+		cmd += 2;
+		arg += 2;
+	}
+
+	return err;
+}
+
+static
 struct drm_display_mode *innolux_cmd_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
@@ -615,6 +706,8 @@ void innolux_cmd_init(struct drm_device *dev,
 	p_funcs->detect = innolux_cmd_panel_connection_detect;
 	p_funcs->set_brightness = innolux_cmd_set_brightness;
 	p_funcs->exit_deep_standby = innolux_cmd_exit_deep_standby;
+	p_funcs->gamma_check = innolux_cmd_gamma_check;
+	p_funcs->gamma_set = innolux_cmd_gamma_set;
 
 	/* debugfs */
 	dbgfs_dsi_config = NULL;
