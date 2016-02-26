@@ -83,6 +83,8 @@ struct panel_info {
  *@drv_ic_init: initialize panel driver IC and additional HW initialization.
  *@detect: return the panel physical connection status.
  *@dsi_controller_init: Initialize MIPI IP for this panel.
+ *@gamma_check: command mode panel only. check panel gamma register settings.
+ *@gamma_set: command mode panel only. set panel gamma register with assigned values.
  *@power_on: turn on panel. e.g. send a TURN_ON special packet.
  *@power_off: turn off panel. e.g. send a SHUT_DOWN special packet.
  *
@@ -100,6 +102,8 @@ struct panel_funcs {
 	int (*exit_low_power)(struct mdfld_dsi_config *dsi_config);
 	int (*enter_low_power)(struct mdfld_dsi_config *dsi_config);
 	int (*sleep_in)(struct mdfld_dsi_config *dsi_config);
+	bool(*gamma_check)(struct mdfld_dsi_config *dsi_config);
+	int (*gamma_set)(struct mdfld_dsi_config *dsi_config);
 	int (*detect)(struct mdfld_dsi_config *dsi_config);
 	int (*power_on)(struct mdfld_dsi_config *dsi_config);
 	int (*power_off)(struct mdfld_dsi_config *dsi_config);

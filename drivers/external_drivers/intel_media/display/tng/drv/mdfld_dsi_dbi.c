@@ -601,6 +601,13 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config, bool from_dsr)
 	 * in non-normal boot modes.
 	 */
 	mdfld_enable_te(dev, dsi_config->pipe);
+
+	/* innolux mipi command mode panel gamma reconfigure */
+	if (dsi_config->dsi_hw_context.panel_on && p_funcs && p_funcs->gamma_set) {
+		err = p_funcs->gamma_set(dsi_config);
+		DRM_INFO("reconfigure gamma return %d\n", err);
+	}
+
 	return err;
 
 power_on_err:
