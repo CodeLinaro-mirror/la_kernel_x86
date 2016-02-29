@@ -134,3 +134,23 @@ void *merfld_wm8958_audio_platform_data(void *info)
 
 	return NULL;
 }
+
+void *merfld_sst_ics43432_audio_platform_data(void *info)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	ret = add_sst_platform_device();
+	if (ret < 0) {
+		pr_err("%s failed to sst_platform device\n", __func__);
+		return NULL;
+	}
+
+	pdev = platform_device_register_simple("cdp_dpcm_ics43432", 0, NULL, 0);
+	if (!pdev) {
+		pr_err("failed to register cdp_dpcm_ics43432 platform device\n");
+		return NULL;
+	}
+
+	return NULL;
+}
