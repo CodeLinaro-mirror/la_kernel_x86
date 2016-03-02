@@ -107,6 +107,7 @@
 #include "device_libs/platform_wm8994.h"
 #include <asm/platform_cs42l73.h>
 
+#include "device_libs/platform_arizona.h"
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9e013.h"
 #include "device_libs/platform_mt9d113.h"
@@ -213,6 +214,7 @@ struct devs_id __initconst device_ids[] = {
 	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data, NULL},
 	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data, NULL},
 	{"synaptics_3402", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data, NULL},
+	{"cs47l24", SFI_DEV_TYPE_SPI, 0, &arizona_platform_data, NULL},
 
 	/* I2C devices*/
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},

@@ -44,6 +44,26 @@ config SND_YUKKABEACH_MACHINE
           Say Y if you have such a device
           If unsure select "N".
 
+config SND_INTEL_LARGO_MACHINE
+	tristate "SOC Machine Audio driver for Intel SST_LARGO MID platform"
+		depends on INTEL_SCU_IPC && X86
+		select SND_SOC_LM49453
+		select SND_SOC_LARGO
+		select SND_SOC_WM_ADSP_LARGO
+		select MFD_CORE
+		select MFD_ARIZONA_LARGO_SPI
+		select SND_SST_PLATFORM
+		select SND_SST_MACHINE
+		select SND_INTEL_SST
+		select SND_EFFECTS_OFFLOAD
+		default n
+		help
+			This adds support for ASoC machine driver for Intel(R) MID Merrifield platform
+			used as alsa device in audio substem in Intel(R) MID devices
+			Say Y if you have such a device
+			If unsure select "N".
+
+
 config SND_MRFLD_MACHINE
 	tristate "SOC Machine Audio driver for Intel Merrifield MID platform"
 	depends on INTEL_SCU_IPC && X86
