@@ -130,6 +130,8 @@ struct sst_platform_info {
 	const struct sst_lib_dnld_info *lib_info;
 	bool enable_recovery;
 	bool start_recovery_timer;
+	bool use_alternative_mrfl_tstamp;
+	bool use_alternative_mrfl_mailbox_size;
 };
 
 #endif

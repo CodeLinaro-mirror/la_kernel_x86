@@ -1015,7 +1015,7 @@ config MFD_ARIZONA
 	depends on !MFD_ARIZONA_LARGO
 	bool
 
-config MFD_ARIZONA_LARGO
+config MFD_LARGO
 	select REGMAP
 	select REGMAP_IRQ
 	select MFD_CORE
@@ -1043,7 +1043,7 @@ config MFD_ARIZONA_SPI
 
 config MFD_ARIZONA_LARGO_SPI
 	tristate "Wolfson Microelectronics Arizona largo platform with SPI"
-	select MFD_ARIZONA_LARGO
+	select MFD_LARGO
 	select REGMAP_SPI
 	depends on SPI_MASTER && GENERIC_HARDIRQS
 	help
@@ -1052,14 +1052,13 @@ config MFD_ARIZONA_LARGO_SPI
 
 config MFD_CS47L24
 	tristate "cs47l24 codec"
-	select MFD_CORE
 	select MFD_ARIZONA_LARGO_SPI
 	help
 	  Support for cs47l24
 
 config MFD_WM5102
 	bool "Wolfson Microelectronics WM5102"
-	select MFD_CORE
+
 	depends on MFD_ARIZONA
 	help
 	  Support for Wolfson Microelectronics WM5102 low power audio SoC
@@ -1067,7 +1066,7 @@ config MFD_WM5102
 
 config MFD_WM5110
 	bool "Wolfson Microelectronics WM5110"
-	select MFD_CORE
+
 	depends on MFD_ARIZONA
 	help
 	  Support for Wolfson Microelectronics WM5110 low power audio SoC

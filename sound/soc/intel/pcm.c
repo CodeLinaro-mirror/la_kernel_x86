@@ -1156,7 +1156,8 @@ static int sst_soc_probe(struct snd_soc_platform *platform)
 			ret = sst_dsp_init(platform);
 		if (ret)
 			return ret;
-		ret = snd_soc_register_effect(platform->card, &effects_ops);
+		if (!ctx->pdata->dont_register_snd_effects)
+			ret = snd_soc_register_effect(platform->card, &effects_ops);
 	}
 	if (INTEL_MID_BOARD(1, TABLET, CHT)) {
 		if (dpcm_enable == 1 && dfw_enable == 1)
@@ -1308,7 +1309,8 @@ static int sst_platform_probe(struct platform_device *pdev)
 		pr_info("dpcm enabled; overriding stream map\n");
 		pdata->pdev_strm_map = dpcm_strm_map;
 
-		if (INTEL_MID_BOARD(1, PHONE, MRFL) || INTEL_MID_BOARD(1, TABLET, MRFL)) {
+		if ((INTEL_MID_BOARD(1, PHONE, MRFL) || INTEL_MID_BOARD(1, TABLET, MRFL)) &&
+				!(pdata->dont_override_stream_map)) {
 			pdata->pdev_strm_map = dpcm_strm_map_mrfld;
 			pr_info("override dpcm stream map for sand\n");
 		}

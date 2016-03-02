@@ -211,6 +211,8 @@ void __init *arizona_platform_data(void *info)
 
 		platform_add_devices(cs47l24_reg_devices,
 			ARRAY_SIZE(cs47l24_reg_devices));
+		irq = arizona_get_irq_data(&arizona_pdata, spi_info,
+						"audiocodec_int");
 
 		if (irq < 0)
 			return NULL;

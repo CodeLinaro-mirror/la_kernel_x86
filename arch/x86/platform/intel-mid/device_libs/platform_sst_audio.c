@@ -184,6 +184,19 @@ static void  populate_platform_data(void)
 			(INTEL_MID_BOARD(1, PHONE, MOFD)) ||
 			(INTEL_MID_BOARD(1, TABLET, MOFD))) {
 		set_mrfld_platform_config();
+		if (!(INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, RBY, ENG) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) )) {
+			sst_platform_pdata.dont_register_snd_effects = 1;
+			sst_platform_pdata.dont_override_stream_map = 1;
+		}
 	} else if ((INTEL_MID_BOARD(1, TABLET, CHT))) {
 		set_cht_platform_config();
 	} else {

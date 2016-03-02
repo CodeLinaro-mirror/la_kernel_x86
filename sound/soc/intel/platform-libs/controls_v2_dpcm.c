@@ -1015,12 +1015,16 @@ static int sst_get_frame_sync_freq(unsigned int rate)
 	pr_debug("Enter:%s, rate=%x\n", __func__, rate);
 	switch (rate) {
 	case SNDRV_PCM_RATE_8000:
+	case 8000:
 		return SSP_FS_8_KHZ;
 	case SNDRV_PCM_RATE_16000:
+	case 16000:
 		return SSP_FS_16_KHZ;
 	case SNDRV_PCM_RATE_44100:
+	case 44100:
 		return SSP_FS_44_1_KHZ;
 	case SNDRV_PCM_RATE_48000:
+	case 48000:
 		return SSP_FS_48_KHZ;
 	default:
 		pr_err("Invalid frame sync freq\n");

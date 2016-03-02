@@ -417,8 +417,19 @@ int sst_driver_ops(struct intel_sst_drv *sst)
 
 	switch (sst->pci_id) {
 	case SST_MRFLD_PCI_ID:
-		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		if (sst->pdata->use_alternative_mrfl_tstamp) {
+			sst->tstamp = SST_TIME_STAMP_MOFD;
+		} else {
+			sst->tstamp = SST_TIME_STAMP_MRFLD;
+		}
 		sst->ops = &mrfld_ops;
+
+		if (!sst->pdata->enable_recovery) {
+			pr_debug("Recovery disabled for this mofd platform\n");
+			sst->ops->do_recovery = sst_debug_dump;
+		} else
+			pr_debug("Recovery enabled for this mofd platform\n");
+
 		return 0;
 	case PCI_DEVICE_ID_INTEL_SST_MOOR:
 		sst->tstamp = SST_TIME_STAMP_MOFD;
@@ -741,7 +752,8 @@ static int intel_sst_probe(struct pci_dev *pci,
 	}
 	pr_debug("SRAM Ptr %p\n", sst_drv_ctx->mailbox);
 
-	if (sst_drv_ctx->pci_id == PCI_DEVICE_ID_INTEL_SST_MOOR) {
+	if ((sst_drv_ctx->pci_id == PCI_DEVICE_ID_INTEL_SST_MOOR) ||
+			(sst_drv_ctx->pdata->use_alternative_mrfl_mailbox_size)) {
 		sst_drv_ctx->ipc_mailbox = sst_drv_ctx->ddr + SST_DDR_MAILBOX_BASE;
 		sst_drv_ctx->mailbox_size = SST_MAILBOX_SIZE_MOFD;
 	} else {

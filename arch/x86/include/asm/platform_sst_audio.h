@@ -159,6 +159,8 @@ struct sst_platform_data {
 	struct sst_dev_stream_map *pdev_strm_map;
 	struct sst_dev_effects pdev_effs;
 	unsigned int strm_map_size;
+	bool dont_register_snd_effects;
+	bool dont_override_stream_map;
 };
 
 int add_sst_platform_device(void);
