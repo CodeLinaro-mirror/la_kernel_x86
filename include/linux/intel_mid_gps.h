@@ -25,8 +25,11 @@
  * @gpio_reset:		GPS reset GPIO number
  * @gpio_enable:	GPS enable GPIO number
  * @gpio_hostwake:	GPS hostwake GPIO number
+ * @gpio_mcu_req:	GPS mcu_req GPIO number
+ * @gpio_mcu_req_resp:	GPS mcu_req_resp GPIO number
  * @reset:		GPS reset GPIO current value
  * @enable:		GPS enable GPIO current value
+ * @mcu_req:		GPS mcu_req GPIO current value
  * @hsu_port:		HSU port number
  */
 
@@ -36,8 +39,11 @@ struct intel_mid_gps_platform_data {
 	int gpio_reset;
 	int gpio_enable;
 	int gpio_hostwake;
+	int gpio_mcu_req;
+	int gpio_mcu_req_resp;
 	unsigned int reset;
 	unsigned int enable;
+	unsigned int mcu_req;
 	unsigned int hsu_port;
 };
 

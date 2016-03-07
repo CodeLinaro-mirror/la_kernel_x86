@@ -32,6 +32,7 @@
 
 #define DRIVER_NAME "intel_mid_gps"
 
+#define ACPI_DEVICE_ID_BCM4774  "BCM4774"
 #define ACPI_DEVICE_ID_BCM4752  "BCM4752"
 #define ACPI_DEVICE_ID_BCM47521 "BCM47521"
 #define ACPI_DEVICE_ID_BCM47531 "BCM47531"
@@ -264,6 +265,48 @@ static int intel_mid_gps_init(struct platform_device *pdev)
 		}
 	}
 
+	/* Handle MCU_req GPIO */
+	if (gpio_is_valid(pdata->gpio_mcu_req)) {
+
+		/* Request gpio */
+		ret = gpio_request(pdata->gpio_mcu_req, "intel_mid_gps_mcu_req");
+		if (ret < 0) {
+			pr_err("%s: Unable to request GPIO:%d, err:%d\n",
+					__func__, pdata->gpio_mcu_req, ret);
+			goto error_gpio_mcu_req_request;
+		}
+
+		/* set gpio direction */
+		ret = gpio_direction_output(pdata->gpio_mcu_req, pdata->mcu_req);
+		if (ret < 0) {
+			pr_err("%s: Unable to set GPIO:%d direction, err:%d\n",
+					__func__, pdata->gpio_mcu_req, ret);
+			goto error_gpio_mcu_req_direction;
+		}
+	}
+
+	/* Handle MCU_req_resp GPIO */
+	if (gpio_is_valid(pdata->gpio_mcu_req_resp)) {
+
+		/* Request gpio */
+		ret = gpio_request(pdata->gpio_mcu_req_resp, "intel_mid_gps_mcu_req_resp");
+		if (ret < 0) {
+			pr_err("%s: Unable to request GPIO:%d, err:%d\n",
+					__func__, pdata->gpio_mcu_req_resp, ret);
+			goto error_gpio_mcu_req_resp_request;
+		}
+
+		/* set gpio direction */
+		ret = gpio_direction_input(pdata->gpio_mcu_req_resp);
+		if (ret < 0) {
+			pr_err("%s: Unable to set GPIO:%d direction, err:%d\n",
+					__func__, pdata->gpio_mcu_req_resp, ret);
+			goto error_gpio_mcu_req_resp_direction;
+		}
+		// no IRQ to configure; signal is polled
+	}
+
+
 	/* Handle hostwake GPIO */
 	if (gpio_is_valid(pdata->gpio_hostwake)) {
 		int irq_id = -EINVAL;
@@ -309,7 +352,13 @@ error_gpio_hostwake_direction:
 error_gpio_hostwake_request:
 error_gpio_enable_direction:
 	gpio_free(pdata->gpio_enable);
+error_gpio_mcu_req_direction:
+	gpio_free(pdata->gpio_mcu_req);
+error_gpio_mcu_req_resp_direction:
+	gpio_free(pdata->gpio_mcu_req_resp);
 error_gpio_enable_request:
+error_gpio_mcu_req_request:
+error_gpio_mcu_req_resp_request:
 error_gpio_reset_direction:
 	gpio_free(pdata->gpio_reset);
 error_gpio_reset_request:
@@ -327,6 +376,12 @@ static void intel_mid_gps_deinit(struct platform_device *pdev)
 
 	if (gpio_is_valid(pdata->gpio_reset))
 		gpio_free(pdata->gpio_reset);
+
+	if (gpio_is_valid(pdata->gpio_mcu_req))
+		gpio_free(pdata->gpio_mcu_req);
+
+	if (gpio_is_valid(pdata->gpio_mcu_req_resp))
+		gpio_free(pdata->gpio_mcu_req_resp);
 
 	if (gpio_is_valid(pdata->gpio_hostwake)) {
 		free_irq(gpio_to_irq(pdata->gpio_hostwake), &pdev->dev);
@@ -356,10 +411,12 @@ static int intel_mid_gps_probe(struct platform_device *pdev)
 
 		pdata->gpio_reset = acpi_get_gpio_by_name(&pdev->dev,"RSET", NULL);
 		pdata->gpio_enable = acpi_get_gpio_by_name(&pdev->dev,"ENAB", NULL);
+		pdata->gpio_mcu_req = acpi_get_gpio_by_name(&pdev->dev,"MREQ", NULL);
+		pdata->gpio_mcu_req_resp = acpi_get_gpio_by_name(&pdev->dev,"MRSP", NULL);
 		pdata->gpio_hostwake = acpi_get_gpio_by_name(&pdev->dev,"HSTW", NULL);
 
-		pr_info("%s enable: %d, reset: %d, hostwake: %d\n", __func__,
-			pdata->gpio_enable, pdata->gpio_reset, pdata->gpio_hostwake);
+		pr_info("%s enable: %d, reset: %d, hostwake: %d, mcu_req: %d, mcu_req_resp: %d\n", __func__,
+			pdata->gpio_enable, pdata->gpio_reset, pdata->gpio_hostwake, pdata->gpio_mcu_req, pdata->gpio_mcu_req_resp);
 
 		if (ACPI_FAILURE(acpi_evaluate_integer((acpi_handle)ACPI_HANDLE(&pdev->dev),
 						       "UART", NULL, &port)))
@@ -414,6 +471,7 @@ static void intel_mid_gps_shutdown(struct platform_device *pdev)
 #ifdef CONFIG_ACPI
 static struct acpi_device_id acpi_gps_id_table[] = {
 	/* ACPI IDs here */
+	{ ACPI_DEVICE_ID_BCM4774,  0 },
 	{ ACPI_DEVICE_ID_BCM4752,  0 },
 	{ ACPI_DEVICE_ID_BCM47521, 0 },
 	{ ACPI_DEVICE_ID_BCM47531, 0 },
