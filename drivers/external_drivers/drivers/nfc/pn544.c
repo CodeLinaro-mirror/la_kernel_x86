@@ -588,8 +588,11 @@ static const struct dev_pm_ops pn544_pm_ops = {
 
 static const struct i2c_device_id pn544_id[] = {
 	{ "pn544", 0 },
+	{ "pn547", 0 },
+	{ "pn548", 0 },
 	{ }
 };
+MODULE_DEVICE_TABLE(i2c, pn544_id);
 
 #ifdef CONFIG_ACPI
 static struct acpi_device_id acpi_ids[] = {

@@ -8,6 +8,7 @@ obj-y				+= leds/
 obj-y               		+= lpss/
 obj-y				+= misc/
 obj-$(CONFIG_MDM_CTRL)		+= modem_control/
+obj-$(CONFIG_NFC_PN544_PLATFORM_DATA) += nfc/
 obj-y				+= pinctrl/
 obj-y                           += platform/x86/
 obj-$(CONFIG_POWER_SUPPLY)	+= power/
