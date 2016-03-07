@@ -14,8 +14,10 @@
 #define _PLATFORM_GPS_H_
 
 #define GPS_GPIO_RESET	"GPS-Reset"
-#define GPS_GPIO_ENABLE	"GPS-Enable"
-#define GPS_GPIO_HOSTWAKE	"GPS-Hostwake"
+#define GPS_GPIO_ENABLE	"GPS-On"
+#define GPS_GPIO_HOSTWAKE	"GPS-Hostreq"
+#define GPS_GPIO_MCU_REQ	"GPS-Mcureq" 
+#define GPS_GPIO_MCU_REQ_RESP	"GPS-Mcureq_Resp"
 
 #ifdef CONFIG_INTEL_MID_GPS
 void *intel_mid_gps_device_init(void *info);

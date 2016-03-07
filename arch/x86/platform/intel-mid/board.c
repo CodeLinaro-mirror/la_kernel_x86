@@ -179,6 +179,7 @@ static void __init *no_platform_data(void *info)
 
 struct devs_id __initconst device_ids[] = {
 	/* UART devices */
+	{"bcm4774", SFI_DEV_TYPE_UART, 0, &intel_mid_gps_device_init, NULL},
 	{"bcm4752", SFI_DEV_TYPE_UART, 0, &intel_mid_gps_device_init, NULL},
 	{"bcm47521", SFI_DEV_TYPE_UART, 0, &intel_mid_gps_device_init, NULL},
 	{"bcm47531", SFI_DEV_TYPE_UART, 0, &intel_mid_gps_device_init, NULL},
