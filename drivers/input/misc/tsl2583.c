@@ -1180,6 +1180,7 @@ static int taos_probe(struct i2c_client *clientp,
 	if (!taos_tsl258x_device(buf)) {
 		dev_info(&clientp->dev, "i2c device found but does not match "
 			"expected id in taos_probe()\n");
+		ret = -ENODEV;
 		goto err_tsl_hw_failed;
 	}
 
