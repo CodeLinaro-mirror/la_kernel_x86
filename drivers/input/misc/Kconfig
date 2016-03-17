@@ -676,4 +676,11 @@ config INPUT_TSL2584
 	  and tsl2584tsv devices.
 	  Access ALS data via input, sysfs.
 
+config INPUT_TMD26723
+	tristate "AMS TMD26723 proximity sensor support"
+	depends on I2C
+	help
+	 Provides support for the AMS tmd26723
+	 and tsl26723tsv devices.
+	 Access proximity data via input, sysfs.
 endif

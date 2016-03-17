@@ -64,3 +64,4 @@ obj-$(CONFIG_INPUT_XEN_KBDDEV_FRONTEND)	+= xen-kbdfront.o
 obj-$(CONFIG_INPUT_YEALINK)		+= yealink.o
 obj-$(CONFIG_ST_LIS3DSH)	+= lis3dsh_acc.o
 obj-$(CONFIG_INPUT_TSL2584)		+= tsl2583.o
+obj-$(CONFIG_INPUT_TMD26723)		+= tmd26723.o
