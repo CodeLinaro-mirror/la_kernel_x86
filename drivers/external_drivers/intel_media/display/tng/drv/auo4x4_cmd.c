@@ -496,9 +496,17 @@ static const struct file_operations dbgfs_read_hs_ops = {
 void auo4x4_cmd_init(struct drm_device *dev,
 		struct panel_funcs *p_funcs)
 {
+	int disp0_enable;
+
 	if (!dev || !p_funcs) {
 		DRM_ERROR("Invalid parameters\n");
 		return;
+	}
+
+	disp0_enable = get_gpio_by_name("disp0_vci_en");
+	if (disp0_enable != -1) {
+		gpio_request(disp0_enable, "DISP_VCI_EN");
+		gpio_direction_output(disp0_enable, 1);
 	}
 
 	bias_en_gpio = get_gpio_by_name("disp0_bias_en");
