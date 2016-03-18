@@ -154,12 +154,12 @@ void auo4x4_cmd_controller_init(
 	hw_ctx->lp_rx_timeout = 0xFFFFFF;
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->turn_around_timeout = 0x1a;
-	hw_ctx->high_low_switch_count = 0xe;
-	hw_ctx->clk_lane_switch_time_cnt = 0xe0008;
+	hw_ctx->high_low_switch_count = 0xf;
+	hw_ctx->clk_lane_switch_time_cnt = 0xf0008;
 	hw_ctx->lp_byteclk = 0x2;
 	hw_ctx->dphy_param = 0x120a2b0c;
 	hw_ctx->eot_disable = 0x3;
-	hw_ctx->init_count = 0xf0;
+	hw_ctx->init_count = 0x7d0;
 	hw_ctx->dbi_bw_ctrl = 1390;
 	hw_ctx->hs_ls_dbi_enable = 0x0;
 	hw_ctx->dsi_func_prg = ((DBI_DATA_WIDTH_OPT2 << 13) |
