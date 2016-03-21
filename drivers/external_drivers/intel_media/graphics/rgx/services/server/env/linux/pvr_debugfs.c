@@ -258,6 +258,8 @@ static int _DebugFSFileOpen(struct inode *psINode, struct file *psFile)
 	IMG_BOOL bRefRet = IMG_FALSE;
 	PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry = NULL;
 
+	mutex_lock(&gDebugFSLock);
+
 	PVR_ASSERT(psINode);
 	psPrivData = (PVR_DEBUGFS_PRIV_DATA *)psINode->i_private;
 
@@ -274,6 +276,7 @@ static int _DebugFSFileOpen(struct inode *psINode, struct file *psFile)
 			if (psDebugFSEntry)
 			{
 				bRefRet = _RefDebugFSEntry(psDebugFSEntry);
+				mutex_unlock(&gDebugFSLock);
 				if (bRefRet)
 				{
 					iResult = seq_open(psFile, psPrivData->psReadOps);
@@ -290,9 +293,11 @@ static int _DebugFSFileOpen(struct inode *psINode, struct file *psFile)
 						PVR_DPF((PVR_DBG_ERROR, "%s: Failed to seq_open psFile, returning %d", __FUNCTION__, iResult));
 					}
 				}
+				return iResult;
 			}
 		}
 	}
+	mutex_unlock(&gDebugFSLock);
 
 	return iResult;
 }
@@ -734,16 +739,12 @@ static IMG_BOOL _RefDebugFSEntry(PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry)
 
 	PVR_ASSERT(psDebugFSEntry != NULL);
 
-	mutex_lock(&gDebugFSLock);
-
 	bResult = (psDebugFSEntry->ui32RefCount > 0);
 	if (bResult)
 	{
 		/* Increment refCount of psDebugFSEntry */
 		psDebugFSEntry->ui32RefCount++;
 	}
-
-	mutex_unlock(&gDebugFSLock);
 
 	return bResult;
 }
@@ -770,6 +771,7 @@ static void _UnrefAndMaybeDestroyDebugFSEntry(PVR_DEBUGFS_ENTRY_DATA *psDebugFSE
 					psPrivData->bValid = IMG_FALSE;
 					psPrivData->psDebugFSEntry = NULL;
 					OSFreeMemstatMem(psEntry->d_inode->i_private);
+					psEntry->d_inode->i_private = NULL;
 				}
 				debugfs_remove(psEntry);
 			}
@@ -841,6 +843,9 @@ static IMG_BOOL _UnrefAndMaybeDestroyStatEntry(PVR_DEBUGFS_DRIVER_STAT *psStatEn
 				/* call function to drop reference on the memory holding the stat */
 				psStatEntry->pfnDecStatMemRefCount((void*)psStatEntry->pvData);
 			}
+
+			/* now free the memory allocated for psStatEntry */
+			OSFreeMemstatMem(psStatEntry);
 		}
 		else
 		{
