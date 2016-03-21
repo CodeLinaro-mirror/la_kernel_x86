@@ -51,6 +51,7 @@ obj-$(subst m,y,$(CONFIG_SENSORS_MPU3050)) += platform_mpu3050.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X)) += platform_tca6416.o
 obj-$(subst m,y,$(CONFIG_CHARGER_BQ24192)) += platform_bq24192.o
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER)) += platform_bq24261.o
+obj-$(subst m,y,$(CONFIG_BQ25898_CHARGER)) += platform_bq25898.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_CS42L73)) += platform_cs42l73.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM8994)) += platform_wm8994.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_LARGO)) += platform_arizona.o

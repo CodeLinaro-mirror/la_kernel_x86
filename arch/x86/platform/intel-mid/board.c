@@ -83,6 +83,7 @@
 #include "device_libs/platform_rmi4.h"
 #include "device_libs/platform_bq24192.h"
 #include "device_libs/platform_bq24261.h"
+#include "device_libs/platform_bq25898.h"
 #include "device_libs/platform_r69001.h"
 #include "device_libs/platform_it7260.h"
 #include "device_libs/platform_s1222.h"
@@ -222,6 +223,7 @@ struct devs_id __initconst device_ids[] = {
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
+	{"bq25898_charger", SFI_DEV_TYPE_I2C, 1, &bq25898_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"fdp", SFI_DEV_TYPE_I2C, 0, &fdp_platform_data, NULL},
 	{"l3gd20", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data, NULL},
