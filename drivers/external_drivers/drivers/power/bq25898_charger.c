@@ -65,7 +65,6 @@
 #define DEV_MANUFACTURER_NAME_SIZE	4
 
 #define BQ25898_POSTCHARGE_DEFAULT_DURATION_MN	30
-#define BQ25898_WDT_RESET_DELAY			(5 * HZ)
 #define BQ25898_BAT_MONITOR_DELAY		(60 * HZ)
 
 #define BQ25898_I2C_SLAVE_ADDR			0x6B
@@ -464,6 +463,12 @@ struct bq25898_debugfs_file {
 	u8 regnr;
 };
 
+enum bq25898_wdt_state {
+	WDT_UNKNOWN,
+	WDT_ENABLED,
+	WDT_DISABLED
+};
+
 struct bq25898_charger {
 	struct mutex stat_lock;
 	struct mutex sysfs_lock;
@@ -490,6 +495,7 @@ struct bq25898_charger {
 	u32 irq_counter;
 	bool ship_mode_scheduled;
 	bool is_charge_complete;	/* charge stopped after termination done */
+	enum bq25898_wdt_state watchdog_state;
 };
 
 static enum power_supply_property bq25898_battery_properties[] = {
@@ -523,8 +529,7 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 		case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 			/* cancel battery monitor */
 			cancel_delayed_work(&chip->batmon_work);
-
-			/* ensure charge termination is enabled */
+			/* ensure charge termination is enabled and if needed watchdog disabled */
 			cancel_delayed_work_sync(&chip->sw_term_work);
 			queue_work(system_nrt_wq, &chip->sw_config_work);
 			break;
@@ -1670,6 +1675,44 @@ static DEVICE_ATTR(ship_mode, S_IRUGO | S_IWUSR,
 	get_ship_mode, set_ship_mode);
 #endif /* !CONFIG_SYSFS */
 
+static int bq25898_wdt_configure(struct i2c_client *client, enum bq25898_wdt_timing val)
+{
+	int reg;
+
+	if (!client)
+		return -EINVAL;
+
+	reg = bq25898_read_reg(client, BQ25898_TERM_WDT_SFTY_CTRL_REG);
+	if (reg < 0)
+		return reg;
+
+	dev_dbg(&client->dev, "current wdt reg: 0x%02x\n", reg);
+
+	switch (val) {
+	case BQ25898_WDT_TIMER_DISABLE:
+		reg &= ~(I2C_WDT_TIMER_SETTINGS1 | I2C_WDT_TIMER_SETTINGS0);
+		break;
+	case BQ25898_WDT_TIMER_40S:
+		reg &= ~I2C_WDT_TIMER_SETTINGS1;
+		reg |= I2C_WDT_TIMER_SETTINGS0;
+		break;
+	case BQ25898_WDT_TIMER_80S:
+		reg &= ~I2C_WDT_TIMER_SETTINGS0;
+		reg |= I2C_WDT_TIMER_SETTINGS1;
+		break;
+	case BQ25898_WDT_TIMER_160S:
+		reg |= (I2C_WDT_TIMER_SETTINGS1 | I2C_WDT_TIMER_SETTINGS0);
+		break;
+	}
+
+	dev_dbg(&client->dev, "wdt new value: 0x%02x\n", reg);
+
+	reg = bq25898_write_reg(client, BQ25898_TERM_WDT_SFTY_CTRL_REG, reg);
+	dev_dbg(&client->dev, "wdt ret: 0x%02x\n", reg);
+
+	return reg;
+}
+
 /* Don't call this function directly from interrupt context! */
 static int bq25898_enable_charging(struct i2c_client *client)
 {
@@ -1758,43 +1801,20 @@ static int bq25898_charger_configure(struct i2c_client *client)
 }
 
 
-static int bq25898_wdt_configure(struct i2c_client *client, enum bq25898_wdt_timing val)
+static int bq25898_wdt_kick(struct bq25898_charger *chip)
 {
-	u8 reg;
+	int ret = 0;
 
-	if (!client)
+	if (!chip)
 		return -EINVAL;
 
-	reg = bq25898_read_reg(client, BQ25898_TERM_WDT_SFTY_CTRL_REG);
-	if (reg < 0)
-		return reg;
+	ret = bq25898_read_modify_reg(chip->client,
+				BQ25898_CHARGE_CTRL_REG,
+				WDT_TIMER_RESET, WDT_TIMER_RESET);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "fail to kick watchdog:%d\n", ret);
 
-	dev_dbg(&client->dev, "current wdt reg: 0x%02x\n", reg);
-
-	switch (val) {
-	case BQ25898_WDT_TIMER_DISABLE:
-		reg &= ~(I2C_WDT_TIMER_SETTINGS1 | I2C_WDT_TIMER_SETTINGS0);
-		dev_info(&client->dev, "wdt disabled, reg: 0x%02x\n", reg);
-		break;
-	case BQ25898_WDT_TIMER_40S:
-		reg &= I2C_WDT_TIMER_SETTINGS1;
-		reg |= I2C_WDT_TIMER_SETTINGS0;
-		break;
-	case BQ25898_WDT_TIMER_80S:
-		reg &= I2C_WDT_TIMER_SETTINGS0;
-		reg |= I2C_WDT_TIMER_SETTINGS1;
-		break;
-	case BQ25898_WDT_TIMER_160S:
-		reg |= (I2C_WDT_TIMER_SETTINGS1 | I2C_WDT_TIMER_SETTINGS0);
-		break;
-	}
-
-	dev_dbg(&client->dev, "wdt new value: 0x%02x\n", reg);
-
-	reg = bq25898_write_reg(client, BQ25898_TERM_WDT_SFTY_CTRL_REG, reg);
-	dev_dbg(&client->dev, "wdt ret: 0x%02x\n", reg);
-
-	return reg;
+	return ret;
 }
 
 static void bq25898_handle_charging_worker(struct work_struct *work)
@@ -1924,6 +1944,15 @@ static void bq25898_sw_config_worker(struct work_struct *work)
 
 	ret = bq25898_enable_charging(chip->client);
 	dev_dbg(&chip->client->dev, "charging enabled: 0x%x\n", ret);
+
+	if (chip->watchdog_state != WDT_DISABLED) {
+		dev_dbg(&chip->client->dev, "disabling watchdog: 0x%02x\n", ret);
+		ret = bq25898_wdt_configure(chip->client, BQ25898_WDT_TIMER_DISABLE);
+		if (ret < 0)
+			dev_err(&chip->client->dev, "error disabling watchdog %d\n", ret);
+		else
+			chip->watchdog_state = WDT_DISABLED;
+	}
 }
 
 static void bq25898_sw_charge_term_worker(struct work_struct *work)
@@ -1951,11 +1980,30 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 {
 	struct bq25898_charger *chip = container_of(work, struct bq25898_charger,
 						batmon_work.work);
+	int ret;
 
 	if (!chip)
 		return;
 
 	dev_dbg(&chip->client->dev, "running battery monitor\n");
+
+	/* ensure watchdog is enabled */
+	if (chip->watchdog_state != WDT_ENABLED) {
+		ret = bq25898_wdt_configure(chip->client, BQ25898_WDT_TIMER_160S);
+		if (ret < 0)
+			dev_err(&chip->client->dev, "error enabling watchdog %d\n", ret);
+		else
+			chip->watchdog_state = WDT_ENABLED;
+	}
+
+	/* kick watchdog */
+	mutex_lock(&chip->sysfs_lock);
+	ret = bq25898_wdt_kick(chip);
+	mutex_unlock(&chip->sysfs_lock);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "failure to kick watchdog: %d\n", ret);
+	else
+		dev_dbg(&chip->client->dev, "watchdog kicked\n");
 
 
 	/*
@@ -2369,6 +2417,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->irq_counter = 0;
 	chip->ship_mode_scheduled = false;
 	chip->is_charge_complete = false;
+	chip->watchdog_state = WDT_DISABLED;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
