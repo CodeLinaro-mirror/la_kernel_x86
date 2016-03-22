@@ -77,6 +77,7 @@ static const char * const iio_chan_type_name_spec[] = {
 	[IIO_GRAVITY] = "gravity",
 	[IIO_TAP] = "tap",
 	[IIO_TAP_TAP] = "tap_tap",
+	[IIO_WRIST_TILT_GESTURE] = "wrist",
 	[IIO_TILT] = "tilt",
 	[IIO_ACTIVITY] = "activity",
 	[IIO_FACEUP_FACEDOWN] = "faceup_facedown",
