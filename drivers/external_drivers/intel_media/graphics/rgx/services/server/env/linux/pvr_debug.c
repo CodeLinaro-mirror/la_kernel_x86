@@ -77,6 +77,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* Handle used by DebugFS to get GPU utilisation stats */
 static IMG_HANDLE ghGpuUtilUserDebugFS = NULL;
+static DEFINE_MUTEX(gsSeqFileLock);
 
 #if defined(PVRSRV_NEED_PVR_DPF)
 
@@ -928,13 +929,14 @@ static int _DebugDumpDebugSeqShow(struct seq_file *psSeqFile, void *pvData)
 	if (pvData != NULL  &&  pvData != SEQ_START_TOKEN)
 	{
 		PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)pvData;
-		
+
 		if (psDeviceNode->pvDevice != NULL)
 		{
+			mutex_lock(&gsSeqFileLock);
 			gpsDumpDebugPrintfSeqFile = psSeqFile;
 			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, _DumpDebugSeqPrintf);
 			gpsDumpDebugPrintfSeqFile = IMG_NULL;
-			
+			mutex_unlock(&gsSeqFileLock);
 		}
 	}
 
