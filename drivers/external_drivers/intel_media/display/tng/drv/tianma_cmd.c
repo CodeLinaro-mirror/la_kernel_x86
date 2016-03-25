@@ -144,6 +144,46 @@ int tianma_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		goto ic_init_err;
 	}
 
+	/* change command page */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xff, 0xe0, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xff cmd\n",
+		__func__, __LINE__);
+		goto ic_init_err;
+	}
+
+	/* bypass reload MTP */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xfb, 0x01, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xfb cmd\n",
+		__func__, __LINE__);
+		goto ic_init_err;
+	}
+
+	/* enhance OSC bias current */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xaf, 0x80, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xaf cmd\n",
+		__func__, __LINE__);
+		goto ic_init_err;
+	}
+
+	/* change command page */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xff, 0x10, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xff cmd\n",
+		__func__, __LINE__);
+		goto ic_init_err;
+	}
+
 	readback_initcode(dsi_config);
 
 	return 0;
