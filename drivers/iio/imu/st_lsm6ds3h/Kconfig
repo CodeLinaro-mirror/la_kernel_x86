@@ -91,4 +91,11 @@ config ST_LSM6DS3H_XL_DATA_INJECTION
 	  support. The device functions may so use an injected
 	  pattern instead of taking the real sensor data.
 
+config ST_LSM6DS3H_IIO_ALGO_UPLOAD
+	bool "Enable firmware upload feature"
+	depends on ST_LSM6DS3H_IIO
+	default n
+	help
+	  If enabled firmware upload feature is present.
+
 endif #ST_LSM6DS3H_IIO
