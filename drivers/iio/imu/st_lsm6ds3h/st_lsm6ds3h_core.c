@@ -30,9 +30,14 @@
 #include <linux/iio/common/st_sensors.h>
 #include "st_lsm6ds3h.h"
 
-#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD
-#define ST_LSM6DS3H_DATA_FW			"st_lsm6ds3h_data_fw"
-#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+#define ST_LSM6DS3H_DATA_FW		"st_lsm6ds3h_wrist_tilt_data.fw"
+static const u8 st_lsm6ds3h_fw[] = {
+	#include "st_lsm6ds3h_wrist_tilt_data.fw"
+};
+
+DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 #define MS_TO_NS(msec)				((msec) * 1000 * 1000)
 
@@ -56,6 +61,7 @@
 #define ST_LSM6DS3H_ACCEL_DRDY_IRQ_MASK			0x01
 #define ST_LSM6DS3H_GYRO_DRDY_IRQ_MASK			0x02
 #define ST_LSM6DS3H_MD1_ADDR				0x5e
+#define ST_LSM6DS3H_MD2_ADDR				0x5f
 #define ST_LSM6DS3H_ODR_LIST_NUM			6
 #define ST_LSM6DS3H_ODR_POWER_OFF_VAL			0x00
 #define ST_LSM6DS3H_ODR_13HZ_VAL			0x01
@@ -201,12 +207,18 @@
 #define ST_LSM6DS3H_TILT_EN_MASK			0x20
 #define ST_LSM6DS3H_TILT_DRDY_IRQ_MASK			0x02
 
+/* CUSTOM VALUES FOR WRIST TILT SENSOR */
+#define ST_LSM6DS3H_WRIST_TILT_EN_ADDR			0x11
+#define ST_LSM6DS3H_WRIST_TILT_EN_MASK			0x01
+#define ST_LSM6DS3H_WRIST_TILT_DRDY_IRQ_MASK		0x01
+
 #define ST_LSM6DS3H_ACCEL_SUFFIX_NAME			"accel"
 #define ST_LSM6DS3H_GYRO_SUFFIX_NAME			"gyro"
 #define ST_LSM6DS3H_STEP_COUNTER_SUFFIX_NAME		"step_c"
 #define ST_LSM6DS3H_STEP_DETECTOR_SUFFIX_NAME		"step_d"
 #define ST_LSM6DS3H_SIGN_MOTION_SUFFIX_NAME		"sign_motion"
 #define ST_LSM6DS3H_TILT_SUFFIX_NAME			"tilt"
+#define ST_LSM6DS3H_WRIST_TILT_SUFFIX_NAME		"wrist"
 
 #define ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ() \
 		IIO_DEV_ATTR_SAMP_FREQ(S_IWUSR | S_IRUGO, \
@@ -361,6 +373,13 @@ static const struct iio_chan_spec st_lsm6ds3h_tilt_ch[] = {
 	IIO_CHAN_SOFT_TIMESTAMP(0)
 };
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+static const struct iio_chan_spec st_lsm6ds3h_wrist_tilt_ch[] = {
+	ST_LSM6DS3H_FLUSH_CHANNEL(IIO_WRIST_TILT_GESTURE),
+	IIO_CHAN_SOFT_TIMESTAMP(0)
+};
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 
 int st_lsm6ds3h_write_data_with_mask(struct lsm6ds3h_data *cdata,
 				u8 reg_addr, u8 mask, u8 data, bool b_lock)
@@ -387,6 +406,10 @@ static inline int st_lsm6ds3h_enable_embedded_page_regs(struct lsm6ds3h_data *cd
 
 	if (enable)
 		value = ST_LSM6DS3H_FUNC_CFG_REG2_MASK;
+
+#ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+	value |= ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 
 	return cdata->tf->write(cdata, ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &value, false);
 }
@@ -775,6 +798,12 @@ int st_lsm6ds3h_set_drdy_irq(struct lsm6ds3h_sensor_data *sdata, bool state)
 		reg_addr = ST_LSM6DS3H_MD1_ADDR;
 		mask = ST_LSM6DS3H_TILT_DRDY_IRQ_MASK;
 		break;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	case ST_MASK_ID_WRIST_TILT:
+		reg_addr = ST_LSM6DS3H_MD2_ADDR;
+		mask = ST_LSM6DS3H_WRIST_TILT_DRDY_IRQ_MASK;
+		break;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	case ST_MASK_ID_EXT0:
 		reg_addr = ST_LSM6DS3H_INT1_ADDR;
@@ -1446,6 +1475,25 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			return err;
 
 		break;
+	case ST_MASK_ID_WRIST_TILT:
+		if (enable)
+			reg_value = ST_LSM6DS3H_EN_BIT;
+		else
+			reg_value = ST_LSM6DS3H_DIS_BIT;
+
+		err = st_lsm6ds3h_write_data_with_mask(sdata->cdata,
+					ST_LSM6DS3H_WRIST_TILT_EN_ADDR,
+					ST_LSM6DS3H_WRIST_TILT_EN_MASK,
+					reg_value, true);
+		if (err < 0)
+			return err;
+
+		err = lsm6ds3h_enable_digital_func(sdata->cdata,
+						enable, ST_MASK_ID_WRIST_TILT);
+		if (err < 0)
+			return err;
+
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1610,14 +1658,7 @@ static int st_lsm6ds3h_reset_steps(struct lsm6ds3h_data *cdata)
 static int st_lsm6ds3h_init_sensor(struct lsm6ds3h_data *cdata)
 {
 	int err;
-	u8 default_reg_value = ST_LSM6DS3H_RESET_MASK;
-
-	err = cdata->tf->write(cdata, ST_LSM6DS3H_RESET_ADDR, 1,
-					&default_reg_value, true);
-	if (err < 0)
-		return err;
-
-	msleep(200);
+	u8 default_reg_value = 0x00;
 
 	/* Latch interrupts */
 	err = st_lsm6ds3h_write_data_with_mask(cdata, ST_LSM6DS3H_LIR_ADDR,
@@ -1649,8 +1690,6 @@ static int st_lsm6ds3h_init_sensor(struct lsm6ds3h_data *cdata)
 	err = st_lsm6ds3h_reset_steps(cdata);
 	if (err < 0)
 		return err;
-
-	default_reg_value = 0x00;
 
 	err = st_lsm6ds3h_write_embedded_registers(cdata,
 					ST_LSM6DS3H_STEP_COUNTER_DURATION_ADDR,
@@ -2380,7 +2419,12 @@ static ssize_t st_lsm6ds3h_sysfs_get_injection_sensors(struct device *dev,
 }
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
 
-#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+static inline int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
+{
+	return 0;
+}
+#else /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 {
 	int err, err2;
@@ -2391,6 +2435,12 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		return err;
 
+	/* Stop current algo */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &data, true);
+	if (err < 0)
+		goto release_firmware;
+
 	/* Reserve HALF FIFO for algo to be uploaded */
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_FIFO_CTRL4_ADDR,
@@ -2399,35 +2449,31 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		goto release_firmware;
 
-	/* Stop current algo */
-	err = cdata->tf->write(cdata,
-			ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &data, true);
-	if (err < 0)
-		goto release_firmware;
+	mutex_lock(&cdata->bank_registers_lock);
 
 	/* Start the upload algo procedure */
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
-				ST_LSM6DS3H_EN_BIT, true);
+				ST_LSM6DS3H_EN_BIT, false);
 	if (err < 0)
-		goto release_firmware;
+		goto close_upload_procedure;
 
 	/* Set upload start address (LSB) */
 	err = cdata->tf->write(cdata,
-			ST_LSM6DS3H_FUNC_CFG_START1_ADDR, 1, &data, true);
+			ST_LSM6DS3H_FUNC_CFG_START1_ADDR, 1, &data, false);
 	if (err < 0)
 		goto close_upload_procedure;
 
 	/* Set upload start address (MSB) */
 	err = cdata->tf->write(cdata,
-			ST_LSM6DS3H_FUNC_CFG_START2_ADDR, 1, &data, true);
+			ST_LSM6DS3H_FUNC_CFG_START2_ADDR, 1, &data, false);
 	if (err < 0)
 		goto close_upload_procedure;
 
 	/* upload algo */
 	err = cdata->tf->write(cdata, ST_LSM6DS3H_FUNC_CFG_DATA_WRITE_ADDR,
-					fw->size, (u8 *)fw->data, true);
+					fw->size, (u8 *)fw->data, false);
 	if (err < 0)
 		goto close_upload_procedure;
 
@@ -2435,9 +2481,11 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
-				ST_LSM6DS3H_DIS_BIT, true);
+				ST_LSM6DS3H_DIS_BIT, false);
 	if (err < 0)
 		goto close_upload_procedure;
+
+	mutex_unlock(&cdata->bank_registers_lock);
 
 	/* Run the algo */
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
@@ -2446,6 +2494,10 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 				ST_LSM6DS3H_EN_BIT, true);
 	if (err < 0)
 		goto release_firmware;
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	cdata->wrist_tilt_available = true;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 	dev_info(cdata->dev, "algo upload completed\n");
 
@@ -2461,16 +2513,13 @@ close_upload_procedure:
 					ST_LSM6DS3H_DIS_BIT, true);
 		msleep(200);
 	} while (err2 < 0);
+
+	mutex_unlock(&cdata->bank_registers_lock);
 release_firmware:
 	release_firmware(fw);
 	return err;
 }
-#else /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
-static inline int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
-{
-	return 0;
-}
-#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 
 static ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ();
 static ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ_AVAIL();
@@ -2632,6 +2681,24 @@ static const struct iio_info st_lsm6ds3h_tilt_info = {
 	.attrs = &st_lsm6ds3h_tilt_attribute_group,
 };
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+static struct attribute *st_lsm6ds3h_wrist_tilt_attributes[] = {
+#ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
+	&iio_dev_attr_injection_sensors.dev_attr.attr,
+#endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
+	NULL,
+};
+
+static const struct attribute_group st_lsm6ds3h_wrist_tilt_attribute_group = {
+	.attrs = st_lsm6ds3h_wrist_tilt_attributes,
+};
+
+static const struct iio_info st_lsm6ds3h_wrist_tilt_info = {
+	.driver_module = THIS_MODULE,
+	.attrs = &st_lsm6ds3h_wrist_tilt_attribute_group,
+};
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 #ifdef CONFIG_IIO_TRIGGER
 static const struct iio_trigger_ops st_lsm6ds3h_trigger_ops = {
 	.owner = THIS_MODULE,
@@ -2647,6 +2714,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	u8 wai = 0x00;
 	int i, n, err;
 	struct lsm6ds3h_sensor_data *sdata;
+	u8 reset_value = ST_LSM6DS3H_RESET_MASK;
 
 	mutex_init(&cdata->bank_registers_lock);
 	mutex_init(&cdata->fifo_lock);
@@ -2657,6 +2725,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->fifo_status = BYPASS;
 	cdata->enable_digfunc_mask = 0;
 	cdata->enable_pedometer_mask = 0;
+	cdata->wrist_tilt_available = false;
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	cdata->enable_sensorhub_mask = 0;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
@@ -2822,6 +2891,13 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->indio_dev[ST_MASK_ID_TILT]->num_channels =
 					ARRAY_SIZE(st_lsm6ds3h_tilt_ch);
 
+	err = cdata->tf->write(cdata, ST_LSM6DS3H_RESET_ADDR, 1,
+							&reset_value, true);
+	if (err < 0)
+		goto iio_device_free;
+
+	msleep(200);
+
 	err = st_lsm6ds3h_upload_algo(cdata);
 	if (err < 0)
 		dev_err(cdata->dev, "failed to upload fw\n");
@@ -2829,6 +2905,34 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	err = st_lsm6ds3h_init_sensor(cdata);
 	if (err < 0)
 		goto iio_device_free;
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available) {
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT] = iio_device_alloc(sizeof(struct lsm6ds3h_sensor_data));
+		if (!cdata->indio_dev[ST_MASK_ID_WRIST_TILT]) {
+			cdata->wrist_tilt_available = false;
+			err = -ENOMEM;
+			goto iio_device_free;
+		}
+
+		sdata = iio_priv(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+		sdata->cdata = cdata;
+		sdata->sindex = ST_MASK_ID_WRIST_TILT;
+		sdata->num_data_channels = 0;
+
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->modes = INDIO_DIRECT_MODE;
+
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->name =
+				kasprintf(GFP_KERNEL, "%s_%s", cdata->name,
+					ST_LSM6DS3H_WRIST_TILT_SUFFIX_NAME);
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->info =
+						&st_lsm6ds3h_wrist_tilt_info;
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->channels =
+						st_lsm6ds3h_wrist_tilt_ch;
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->num_channels =
+					ARRAY_SIZE(st_lsm6ds3h_wrist_tilt_ch);
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 	err = st_lsm6ds3h_allocate_rings(cdata);
 	if (err < 0)
@@ -2846,6 +2950,14 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 		if (err)
 			goto iio_device_unregister_and_trigger_deallocate;
 	}
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available) {
+		err = iio_device_register(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+		if (err)
+			goto iio_device_unregister_and_trigger_deallocate;
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 	st_lsm6ds3h_i2c_master_probe(cdata);
 
@@ -2875,6 +2987,11 @@ void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq)
 {
 	int i;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available)
+		iio_device_unregister(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++)
 		iio_device_unregister(cdata->indio_dev[i]);
 
@@ -2882,6 +2999,11 @@ void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq)
 		st_lsm6ds3h_deallocate_triggers(cdata);
 
 	st_lsm6ds3h_deallocate_rings(cdata);
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available)
+		iio_device_free(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++)
 		iio_device_free(cdata->indio_dev[i]);
@@ -2903,7 +3025,8 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 	tmp_sensors_enabled = cdata->sensors_enabled;
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
-		if ((i == ST_MASK_ID_SIGN_MOTION) || (i == ST_MASK_ID_TILT))
+		if ((i == ST_MASK_ID_SIGN_MOTION) ||
+						(i == ST_MASK_ID_TILT))
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);
@@ -2931,7 +3054,8 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 	struct lsm6ds3h_sensor_data *sdata;
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
-		if ((i == ST_MASK_ID_SIGN_MOTION) || (i == ST_MASK_ID_TILT))
+		if ((i == ST_MASK_ID_SIGN_MOTION) ||
+						(i == ST_MASK_ID_TILT))
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);

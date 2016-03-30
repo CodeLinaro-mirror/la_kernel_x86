@@ -463,8 +463,24 @@ int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		goto buffer_cleanup_step_detector;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available) {
+		err = iio_triggered_buffer_setup(
+				cdata->indio_dev[ST_MASK_ID_WRIST_TILT],
+				&st_lsm6ds3h_handler_empty, NULL,
+				&st_lsm6ds3h_buffer_setup_ops);
+		if (err < 0)
+			goto buffer_cleanup_tilt;
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 	return 0;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+buffer_cleanup_tilt:
+	iio_triggered_buffer_cleanup(
+				cdata->indio_dev[ST_MASK_ID_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 buffer_cleanup_step_detector:
 	iio_triggered_buffer_cleanup(
 				cdata->indio_dev[ST_MASK_ID_STEP_DETECTOR]);
@@ -483,6 +499,11 @@ buffer_cleanup_accel:
 
 void st_lsm6ds3h_deallocate_rings(struct lsm6ds3h_data *cdata)
 {
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available)
+		iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_TILT]);
 	iio_triggered_buffer_cleanup(
 				cdata->indio_dev[ST_MASK_ID_STEP_DETECTOR]);

@@ -29,6 +29,7 @@
 #define ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL		0x10
 #define ST_LSM6DS3H_SRC_SIGN_MOTION_DATA_AVL		0x40
 #define ST_LSM6DS3H_SRC_TILT_DATA_AVL			0x20
+#define ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL		0x02
 #define ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL		0x80
 #define ST_LSM6DS3H_FIFO_DATA_AVL			0x80
 #define ST_LSM6DS3H_FIFO_DATA_OVR			0x40
@@ -123,6 +124,12 @@ read_fifo_status:
 		st_lsm6ds3h_push_data_with_timestamp(cdata,
 				ST_MASK_ID_TILT, NULL, cdata->timestamp);
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (src_dig_func & ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL)
+		st_lsm6ds3h_push_data_with_timestamp(cdata,
+				ST_MASK_ID_WRIST_TILT, NULL, cdata->timestamp);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 exit_irq:
 	return IRQ_HANDLED;
 }
@@ -162,6 +169,30 @@ int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 		cdata->indio_dev[n]->trig = cdata->trig[n];
 	}
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available) {
+		cdata->trig[ST_MASK_ID_WRIST_TILT] = iio_trigger_alloc("%s-trigger",
+				cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->name);
+		if (!cdata->trig[ST_MASK_ID_WRIST_TILT]) {
+			dev_err(cdata->dev,
+					"failed to allocate iio trigger.\n");
+			err = -ENOMEM;
+			goto free_irq;
+		}
+
+		iio_trigger_set_drvdata(cdata->trig[ST_MASK_ID_WRIST_TILT], cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+		cdata->trig[ST_MASK_ID_WRIST_TILT]->ops = trigger_ops;
+		cdata->trig[ST_MASK_ID_WRIST_TILT]->dev.parent = cdata->dev;
+
+		err = iio_trigger_register(cdata->trig[ST_MASK_ID_WRIST_TILT]);
+		if (err < 0) {
+			dev_err(cdata->dev, "failed to register iio trigger.\n");
+			goto free_irq;
+		}
+		cdata->indio_dev[ST_MASK_ID_WRIST_TILT]->trig = cdata->trig[ST_MASK_ID_WRIST_TILT];
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 	return 0;
 
 free_irq:
@@ -184,6 +215,11 @@ void st_lsm6ds3h_deallocate_triggers(struct lsm6ds3h_data *cdata)
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++)
 		iio_trigger_unregister(cdata->trig[i]);
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+	if (cdata->wrist_tilt_available)
+		iio_trigger_unregister(cdata->trig[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 }
 EXPORT_SYMBOL(st_lsm6ds3h_deallocate_triggers);
 
