@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/irq.h>
+#include <linux/firmware.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/iio/trigger.h>
@@ -28,6 +29,10 @@
 
 #include <linux/iio/common/st_sensors.h>
 #include "st_lsm6ds3h.h"
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD
+#define ST_LSM6DS3H_DATA_FW			"st_lsm6ds3h_data_fw"
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
 
 #define MS_TO_NS(msec)				((msec) * 1000 * 1000)
 
@@ -72,6 +77,7 @@
 #define ST_LSM6DS3H_FUNC_CFG_REG2_MASK			0x80
 #define ST_LSM6DS3H_FUNC_CFG_START1_ADDR		0x62
 #define ST_LSM6DS3H_FUNC_CFG_START2_ADDR		0x63
+#define ST_LSM6DS3H_FUNC_CFG_DATA_WRITE_ADDR		0x64
 #define ST_LSM6DS3H_SENSORHUB_ADDR			0x1a
 #define ST_LSM6DS3H_SENSORHUB_MASK			0x01
 #define ST_LSM6DS3H_SENSORHUB_TRIG_MASK			0x10
@@ -119,6 +125,10 @@
 #define ST_LSM6DS3H_SELFTEST_NA_MS			"na"
 #define ST_LSM6DS3H_SELFTEST_FAIL_MS			"fail"
 #define ST_LSM6DS3H_SELFTEST_PASS_MS			"pass"
+
+/* VALUES TO UPLOAD FIRMWARE */
+#define ST_LSM6DS3H_FIFO_CTRL4_ADDR			0x09
+#define ST_LSM6DS3H_RESERVE_HALF_FIFO			0x80
 
 /* CUSTOM VALUES FOR ACCEL SENSOR */
 #define ST_LSM6DS3H_ACCEL_ODR_ADDR			0x10
@@ -2370,6 +2380,98 @@ static ssize_t st_lsm6ds3h_sysfs_get_injection_sensors(struct device *dev,
 }
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD
+static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
+{
+	int err, err2;
+	u8 data = 0x00;
+	const struct firmware *fw;
+
+	err = request_firmware(&fw, ST_LSM6DS3H_DATA_FW, cdata->dev);
+	if (err < 0)
+		return err;
+
+	/* Reserve HALF FIFO for algo to be uploaded */
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_FIFO_CTRL4_ADDR,
+				ST_LSM6DS3H_RESERVE_HALF_FIFO,
+				ST_LSM6DS3H_EN_BIT, true);
+	if (err < 0)
+		goto release_firmware;
+
+	/* Stop current algo */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &data, true);
+	if (err < 0)
+		goto release_firmware;
+
+	/* Start the upload algo procedure */
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+	if (err < 0)
+		goto release_firmware;
+
+	/* Set upload start address (LSB) */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_START1_ADDR, 1, &data, true);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	/* Set upload start address (MSB) */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_START2_ADDR, 1, &data, true);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	/* upload algo */
+	err = cdata->tf->write(cdata, ST_LSM6DS3H_FUNC_CFG_DATA_WRITE_ADDR,
+					fw->size, (u8 *)fw->data, true);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	/* End the upload algo procedure */
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
+				ST_LSM6DS3H_DIS_BIT, true);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	/* Run the algo */
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2,
+				ST_LSM6DS3H_EN_BIT, true);
+	if (err < 0)
+		goto release_firmware;
+
+	dev_info(cdata->dev, "algo upload completed\n");
+
+	release_firmware(fw);
+
+	return 0;
+
+close_upload_procedure:
+	do {
+		err2 = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+					ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
+					ST_LSM6DS3H_DIS_BIT, true);
+		msleep(200);
+	} while (err2 < 0);
+release_firmware:
+	release_firmware(fw);
+	return err;
+}
+#else /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
+static inline int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
+{
+	return 0;
+}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD */
+
 static ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ();
 static ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ_AVAIL();
 static ST_LSM6DS3H_DEV_ATTR_SCALE_AVAIL(in_accel_scale_available);
@@ -2719,6 +2821,10 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->indio_dev[ST_MASK_ID_TILT]->channels = st_lsm6ds3h_tilt_ch;
 	cdata->indio_dev[ST_MASK_ID_TILT]->num_channels =
 					ARRAY_SIZE(st_lsm6ds3h_tilt_ch);
+
+	err = st_lsm6ds3h_upload_algo(cdata);
+	if (err < 0)
+		dev_err(cdata->dev, "failed to upload fw\n");
 
 	err = st_lsm6ds3h_init_sensor(cdata);
 	if (err < 0)
