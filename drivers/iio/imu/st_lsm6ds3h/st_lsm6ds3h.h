@@ -28,6 +28,7 @@ enum st_mask_id {
 	ST_MASK_ID_STEP_DETECTOR,
 	ST_MASK_ID_TILT,
 	ST_MASK_ID_EXT0,
+	ST_MASK_ID_WRIST_TILT,
 	ST_MASK_ID_HW_PEDOMETER,
 	ST_MASK_ID_SENSOR_HUB,
 	ST_MASK_ID_DIGITAL_FUNC,
@@ -51,7 +52,8 @@ enum st_mask_id {
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 #define ST_LSM6DS3H_WAKE_UP_SENSORS	(BIT(ST_MASK_ID_SIGN_MOTION) | \
-					BIT(ST_MASK_ID_TILT))
+					BIT(ST_MASK_ID_TILT) | \
+					BIT(ST_MASK_ID_WRIST_TILT))
 #else /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
 #define ST_LSM6DS3H_WAKE_UP_SENSORS	(BIT(ST_MASK_ID_SIGN_MOTION) | \
 					BIT(ST_MASK_ID_TILT) | \
@@ -59,7 +61,8 @@ enum st_mask_id {
 					BIT(ST_MASK_ID_GYRO) | \
 					BIT(ST_MASK_ID_STEP_COUNTER) | \
 					BIT(ST_MASK_ID_STEP_DETECTOR) | \
-					BIT(ST_MASK_ID_EXT0))
+					BIT(ST_MASK_ID_EXT0) | \
+					BIT(ST_MASK_ID_WRIST_TILT))
 #endif /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
@@ -208,6 +211,7 @@ struct lsm6ds3h_data {
 	struct mutex odr_lock;
 
 	bool reset_steps;
+	bool wrist_tilt_available;
 
 	u8 *fifo_data;
 	int8_t gyro_selftest_status;
@@ -231,8 +235,8 @@ struct lsm6ds3h_data {
 	struct work_struct data_work;
 
 	struct device *dev;
-	struct iio_dev *indio_dev[ST_INDIO_DEV_NUM + 1];
-	struct iio_trigger *trig[ST_INDIO_DEV_NUM + 1];
+	struct iio_dev *indio_dev[ST_INDIO_DEV_NUM + 2];
+	struct iio_trigger *trig[ST_INDIO_DEV_NUM + 2];
 	struct mutex bank_registers_lock;
 	struct mutex fifo_lock;
 
