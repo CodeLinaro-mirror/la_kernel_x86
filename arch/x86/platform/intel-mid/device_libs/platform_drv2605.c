@@ -76,17 +76,16 @@ static const unsigned char LRA_autocal_sequence_prod1[] = {
 
 static void setup_parameter_sequence(struct drv2605_platform_data *pdata)
 {
-if (INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
-	INTEL_MID_BOARD(2, PHONE, MRFL, RBY, ENG)) {
+if (INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 0) ||
+	INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 0) ||
+	INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 1) ||
+	INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 1)) {
 	pdata->effect_library = LIBRARY_F; /* >> LRA close loop */
 	pdata->real_time_playback = 0x7F;/* 100% of rated voltage (closed loop)*/
 	pdata->repeat_autocal_sequence = true;
 	pdata->size_autocal_sequence = ARRAY_SIZE(LRA_autocal_sequence_prod1);
 	pdata->parameter_autocal_sequence = LRA_autocal_sequence_prod1;
-} else if (INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
-	INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
-	INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
-	INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG)) {
+} else if (INTEL_MID_BOARD_CDP_ALL()) {
 	pdata->effect_library = LIBRARY_A; /* ERM open loop */
 	pdata->real_time_playback = 0x7F; /* ~100% of overdrive voltage (open loop)*/
 	pdata->repeat_autocal_sequence = true;
