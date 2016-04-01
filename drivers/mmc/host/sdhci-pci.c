@@ -842,7 +842,7 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case INTEL_MRFL_SDIO:
 		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
-		slot->host->quirks2 |= SDHCI_QUIRK2_FAKE_VDD;
+		slot->host->quirks2 |= SDHCI_QUIRK2_FAKE_VDD | SDHCI_QUIRK2_NO_1_8_V;
 		break;
 	}
 
