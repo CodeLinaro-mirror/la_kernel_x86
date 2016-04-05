@@ -1,0 +1,9 @@
+STMicroelectronics IIO sensors drivers package v1.0.1
+
+The package contains those drivers:
+- LIS2DG, LIS2DS12, LSM6DS3, LSM303AGR, LSM6DSM, LSM6DS33, LSM6DS3H.
+
+Revision history:
+v1.0.0		Initial version.
+v1.0.1		Added support for LSM6DS33 & LSM6DS3H, LSM6DS3 driver rework
+		in order to support 13Hz and more devices on I2C master.

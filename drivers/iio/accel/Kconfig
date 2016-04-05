@@ -52,4 +52,20 @@ config IIO_ST_ACCEL_SPI_3AXIS
 	depends on IIO_ST_ACCEL_3AXIS
 	depends on IIO_ST_SENSORS_SPI
 
+config LIS2DG
+	tristate "STMicroelectronics LIS2DG Accelerometer Driver"
+	depends on I2C && SYSFS
+	select IIO_BUFFER
+	select IIO_TRIGGERED_BUFFER
+	help
+	  Say yes here to build support for the LIS2DG accelerometer.
+
+config IIO_ST_LIS2DS12
+	tristate "STMicroelectronics LIS2DS12 Accelerometer Driver"
+	depends on I2C && SYSFS
+	select IIO_BUFFER
+	select IIO_TRIGGERED_BUFFER
+	help
+	  Say yes here to build support for the LIS2DS12 accelerometer.
+
 endmenu

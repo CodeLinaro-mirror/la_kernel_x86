@@ -1,7 +1,7 @@
-/* STMicroelectronics lsm6ds3 sensor */
+/* STMicroelectronics lsm6dsm sensor */
 
 Required properties:
-	- compatible : should be "st,lsm6ds3"
+	- compatible : should be "st,lsm6dsm"
 	- reg : the I2C address of the sensor
 
 Optional properties:
@@ -11,8 +11,8 @@ Optional properties:
 
 Example:
 
-lsm6ds3@6b {
-	compatible = "st,lsm6ds3";
+lsm6dsm@6b {
+	compatible = "st,lsm6dsm";
 	reg = <0x6b>;
 	interrupt-parent = <&gpio>;
 	interrupts = <1 IRQ_TYPE_LEVEL_HIGH>;
