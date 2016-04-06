@@ -64,7 +64,8 @@ static int mrfld_pmu_init(void)
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 as unused on PRh */
-	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA)) {
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA) ||
+			INTEL_MID_BOARD_CDP_ALL()) {
 		mid_pmu_cxt->os_sss[0] |= \
 			SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08);
 	}
@@ -197,7 +198,8 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 as unused on PRh */
-	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA)) {
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA) ||
+			INTEL_MID_BOARD_CDP_ALL()) {
 		pmu_config->pmu2_states[0] |= \
 			SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08);
 	}
