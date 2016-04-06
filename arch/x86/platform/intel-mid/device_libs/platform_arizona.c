@@ -62,6 +62,12 @@ static struct platform_device vcs47l241_device = {
 
 /***********CS47L242 REGUATOR platform data*************/
 static struct regulator_consumer_supply vcs47l242_consumer[] = {
+	REGULATOR_SUPPLY("AVDD", "spi3.0"),
+	REGULATOR_SUPPLY("DBVDD", "spi3.0"),
+	REGULATOR_SUPPLY("DCVDD", "spi3.0"),
+	REGULATOR_SUPPLY("MICVDD", "spi3.0"),
+	REGULATOR_SUPPLY("CPVDD1", "spi3.0"),
+	REGULATOR_SUPPLY("CPVDD2", "spi3.0"),
 	REGULATOR_SUPPLY("SPKVDD1", "spi3.0"),
 	REGULATOR_SUPPLY("SPKVDD2", "spi3.0"),
 };
@@ -172,8 +178,14 @@ static int gpio_init(void)
 		return -1;
 
 	int err = gpio_request(arizona_pdata.cs_gpio, "audiocodec_cs");
+	if (err < 0)
+		pr_err("%s unable to request gpio %d:%d\n",
+                       __func__, arizona_pdata.cs_gpio, err);
 
 	err = gpio_direction_output(arizona_pdata.cs_gpio, 1);
+	if (err < 0)
+		pr_err("%s unable to set dir gpio %d:%d\n",
+                       __func__, arizona_pdata.cs_gpio, err);
 
 	return 0;
 }
