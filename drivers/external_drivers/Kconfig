@@ -53,3 +53,11 @@ menuconfig EXTERNAL_CAMERA_IPU
 source "drivers/external_drivers/ipu/Kconfig"
 
 endif
+
+menuconfig EXTERNAL_DRIVERS_OPTIONAL
+        bool "Enable support to optional external Intel drivers"
+        default n
+        help
+          Enable support to optional external Intel drivers.
+
+source "drivers/external_drivers/Kconfig.optional"
