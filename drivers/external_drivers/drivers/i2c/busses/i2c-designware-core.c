@@ -367,7 +367,7 @@ static struct  dw_controller  dw_controllers[] = {
 	},
 	[merrifield_1] = {
 		.bus_num     = 2,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 64,
 		.rx_fifo_depth = 64,
 		.enable_stop = 1,
