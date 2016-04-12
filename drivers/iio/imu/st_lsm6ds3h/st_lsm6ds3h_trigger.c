@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/trigger.h>
 #include <linux/interrupt.h>
@@ -34,18 +35,43 @@
 #define ST_LSM6DS3H_FIFO_DATA_AVL			0x80
 #define ST_LSM6DS3H_FIFO_DATA_OVR			0x40
 
+static struct mutex lsm6ds3h_irq_mutex;
+static struct workqueue_struct *st_lsm6ds3h_wq;
 
-static irqreturn_t lsm6ds3h_irq_management(int irq, void *private)
+irqreturn_t lsm6ds3h_save_timestamp(int irq, void *private)
 {
-	int err;
-	bool push;
-	struct timespec ts;
-	bool force_read_accel = false;
 	struct lsm6ds3h_data *cdata = private;
-	u8 src_accel_gyro = 0, src_dig_func = 0;
+	struct timespec ts;
 
 	get_monotonic_boottime(&ts);
 	cdata->timestamp = timespec_to_ns(&ts);
+	queue_work(st_lsm6ds3h_wq, &cdata->data_work);
+
+	disable_irq_nosync(irq);
+
+	return IRQ_HANDLED;
+}
+
+static void lsm6ds3h_irq_management(struct work_struct *data_work)
+{
+	int err;
+	bool push;
+	bool force_read_accel = false;
+	struct lsm6ds3h_data *cdata;
+	u8 src_accel_gyro = 0, src_dig_func = 0;
+
+	cdata = container_of((struct work_struct*)data_work,
+						struct lsm6ds3h_data, data_work);
+
+	mutex_lock(&lsm6ds3h_irq_mutex);
+	err = cdata->tf->read(cdata, ST_LSM6DS3H_SRC_FUNC_ADDR,
+						1, &src_dig_func, true);
+	if (err < 0) {
+		mutex_unlock(&lsm6ds3h_irq_mutex);
+		goto exit_irq;
+	}
+
+	mutex_unlock(&lsm6ds3h_irq_mutex);
 
 	if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) &
 			(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_GYRO) |
@@ -102,11 +128,6 @@ read_fifo_status:
 	if (cdata->sensors_use_fifo)
 		st_lsm6ds3h_read_fifo(cdata);
 
-	err = cdata->tf->read(cdata, ST_LSM6DS3H_SRC_FUNC_ADDR,
-						1, &src_dig_func, true);
-	if (err < 0)
-		goto exit_irq;
-
 	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL)
 		st_lsm6ds3h_push_data_with_timestamp(cdata,
 			ST_MASK_ID_STEP_DETECTOR, NULL, cdata->timestamp);
@@ -125,19 +146,32 @@ read_fifo_status:
 				ST_MASK_ID_TILT, NULL, cdata->timestamp);
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
-	if (src_dig_func & ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL)
-		st_lsm6ds3h_push_data_with_timestamp(cdata,
-				ST_MASK_ID_WRIST_TILT, NULL, cdata->timestamp);
+	if (src_dig_func & ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL) {
+		iio_push_event(cdata->indio_dev[ST_MASK_ID_WRIST_TILT],
+				IIO_UNMOD_EVENT_CODE(IIO_WRIST_TILT_GESTURE,
+				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
+				cdata->timestamp);
+	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 exit_irq:
-	return IRQ_HANDLED;
+	enable_irq(cdata->irq);
 }
 
 int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 				const struct iio_trigger_ops *trigger_ops)
 {
 	int err, i, n;
+
+	mutex_init(&lsm6ds3h_irq_mutex);
+
+	if (!st_lsm6ds3h_wq)
+		st_lsm6ds3h_wq = create_workqueue(cdata->name);
+
+	if (!st_lsm6ds3h_wq)
+		return -EINVAL;
+
+	INIT_WORK(&cdata->data_work, lsm6ds3h_irq_management);
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
 		cdata->trig[i] = iio_trigger_alloc("%s-trigger",
@@ -153,7 +187,7 @@ int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 		cdata->trig[i]->dev.parent = cdata->dev;
 	}
 
-	err = request_threaded_irq(cdata->irq, NULL, lsm6ds3h_irq_management,
+	err = request_threaded_irq(cdata->irq, lsm6ds3h_save_timestamp, NULL,
 					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 					cdata->name, cdata);
 	if (err)
