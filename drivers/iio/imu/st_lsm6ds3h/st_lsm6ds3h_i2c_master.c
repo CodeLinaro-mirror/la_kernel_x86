@@ -249,6 +249,10 @@ struct st_lsm6ds3h_i2c_master_odr_table {
 static int st_lsm6ds3h_i2c_master_read_raw(struct iio_dev *indio_dev,
 		struct iio_chan_spec const *ch, int *val, int *val2, long mask);
 
+static const struct iio_event_spec st_lsm6ds3h_event_spec[] = {
+	{}
+};
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_EXT0_LPS22HB
 static const struct iio_chan_spec st_lsm6ds3h_ext0_ch[] = {
 	ST_LSM6DS3H_LSM_CHANNELS(IIO_PRESSURE, 0, 0, IIO_NO_MOD, IIO_LE,

@@ -315,6 +315,10 @@ static struct st_lsm6ds3h_fs_table {
 	}
 };
 
+static const struct iio_event_spec st_lsm6ds3h_event_spec[] = {
+	{}
+};
+
 static const struct iio_chan_spec st_lsm6ds3h_accel_ch[] = {
 	ST_LSM6DS3H_LSM_CHANNELS(IIO_ACCEL, 1, 0, IIO_MOD_X, IIO_LE,
 				16, 16, ST_LSM6DS3H_ACCEL_OUT_X_L_ADDR, 's'),
@@ -338,13 +342,7 @@ static const struct iio_chan_spec st_lsm6ds3h_gyro_ch[] = {
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_sign_motion_ch[] = {
-	{
-		.type = IIO_SIGN_MOTION,
-		.channel = 0,
-		.modified = 0,
-		.event_mask = IIO_EV_BIT(IIO_EV_TYPE_THRESH, IIO_EV_DIR_RISING),
-	},
-	IIO_CHAN_SOFT_TIMESTAMP(1)
+	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_SIGN_MOTION, 0),
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
@@ -360,24 +358,20 @@ static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
 			.endianness = IIO_LE,
 		},
 	},
-	ST_LSM6DS3H_FLUSH_CHANNEL(IIO_STEP_COUNTER),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_d_ch[] = {
-	ST_LSM6DS3H_FLUSH_CHANNEL(IIO_STEP_DETECTOR),
 	IIO_CHAN_SOFT_TIMESTAMP(0)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_tilt_ch[] = {
-	ST_LSM6DS3H_FLUSH_CHANNEL(IIO_TILT),
 	IIO_CHAN_SOFT_TIMESTAMP(0)
 };
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 static const struct iio_chan_spec st_lsm6ds3h_wrist_tilt_ch[] = {
-	ST_LSM6DS3H_FLUSH_CHANNEL(IIO_WRIST_TILT_GESTURE),
-	IIO_CHAN_SOFT_TIMESTAMP(0)
+	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_WRIST_TILT_GESTURE, 0),
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 

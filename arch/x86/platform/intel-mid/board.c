@@ -99,6 +99,7 @@
 #include "device_libs/platform_drv2605.h"
 #include "device_libs/platform_lis3dsh.h"
 #include "device_libs/platform_lsm6ds3.h"
+#include "device_libs/platform_lsm6ds3h.h"
 #include "device_libs/platform_tsl258x.h"
 #include "device_libs/platform_isl97698.h"
 
@@ -256,7 +257,12 @@ struct devs_id __initconst device_ids[] = {
 	{"bq27520f", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 #endif
 	{"lis3dsh_acc", SFI_DEV_TYPE_I2C, 0, &lis3dsh_platform_data, NULL},
+#if CONFIG_ST_LSM6DS3_IIO
 	{"lsm6ds3", SFI_DEV_TYPE_I2C, 0, &lsm6ds3_platform_data, NULL},
+#endif
+#if CONFIG_ST_LSM6DS3H_IIO
+	{"lsm6ds3h", SFI_DEV_TYPE_I2C, 0, &lsm6ds3h_platform_data, NULL},
+#endif
 	{"tsl2584", SFI_DEV_TYPE_I2C, 0, &tsl258x_als_platform_data, NULL},
 	{"isl97698", SFI_DEV_TYPE_I2C, 0, &isl97698_brightness_platform_data, NULL},
 

@@ -14,6 +14,8 @@
 #include <linux/i2c.h>
 #include <linux/of.h>
 #include <linux/iio/iio.h>
+#include <linux/gpio.h>
+#include <linux/platform_data/st_lsm6ds3h_pdata.h>
 
 #include "st_lsm6ds3h.h"
 
@@ -91,6 +93,12 @@ static int st_lsm6ds3h_i2c_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, cdata);
 
 	cdata->tf = &st_lsm6ds3h_tf_i2c;
+
+	if (((struct st_lsm6ds3h_platform_data *)client->dev.platform_data)->gpio_int1 > 0)
+		client->irq = gpio_to_irq(((struct st_lsm6ds3h_platform_data *)client->dev.platform_data)->gpio_int1);
+
+	if(((struct st_lsm6ds3h_platform_data *)client->dev.platform_data)->gpio_conf)
+		((struct st_lsm6ds3h_platform_data *)client->dev.platform_data)->gpio_conf();
 
 	err = st_lsm6ds3h_common_probe(cdata, client->irq);
 	if (err < 0)
