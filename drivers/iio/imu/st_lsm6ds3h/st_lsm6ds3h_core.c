@@ -615,6 +615,10 @@ static int lsm6ds3h_write_decimators(struct lsm6ds3h_data *cdata,
 	decimators_reg[0] = value[0] | (value[1] << 3);
 	decimators_reg[1] = value[2];
 
+#ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+	decimators_reg[1] |= ST_LSM6DS3H_RESERVE_HALF_FIFO;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
+
 	return cdata->tf->write(cdata, ST_LSM6DS3H_FIFO_DECIMATOR_ADDR,
 			ARRAY_SIZE(decimators_reg), decimators_reg, true);
 }
