@@ -211,7 +211,12 @@ struct lsm6ds3h_data {
 	struct mutex odr_lock;
 
 	bool reset_steps;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	bool wrist_tilt_available;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+#ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+	bool fifo2_algo_available;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 
 	u8 *fifo_data;
 	int8_t gyro_selftest_status;
