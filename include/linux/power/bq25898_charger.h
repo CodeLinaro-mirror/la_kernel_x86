@@ -38,9 +38,4 @@ struct bq25898_plat_data {
 	void (*dump_master_regs) (void);
 };
 
-
-#ifdef CONFIG_BQ25898_CHARGER
-extern void bq25898_notify_charge_status_change(bool chg_stat);
-#endif
-
 #endif

@@ -123,19 +123,6 @@ void __init *mrfl_pmic_ccsm_platform_data(void *info)
 #else
 		pmic_pdata.notify_charging_stat = NULL;
 #endif
-	} else if  (INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 25) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 25) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 26) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 26) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
-#ifdef CONFIG_BQ25898_CHARGER
-		pmic_pdata.notify_charging_stat = bq25898_notify_charge_status_change;
-#else
-		pmic_pdata.notify_charging_stat = NULL;
-#endif
 	}
 
 	register_rpmsg_service("rpmsg_pmic_ccsm", RPROC_SCU,
