@@ -330,9 +330,19 @@ static int st_lsm6ds3h_buffer_postenable(struct iio_dev *indio_dev)
 	int err, err2 = 0;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
-	if ((sdata->cdata->hwfifo_enabled[sdata->sindex]) &&
-		(indio_dev->buffer->length < 2 * ST_LSM6DS3H_MAX_FIFO_LENGHT))
-		return -EINVAL;
+	switch (sdata->sindex) {
+	case ST_MASK_ID_ACCEL:
+	case ST_MASK_ID_GYRO:
+		if ((sdata->cdata->hwfifo_enabled[sdata->sindex]) &&
+				(indio_dev->buffer->length <
+					2 * ST_LSM6DS3H_MAX_FIFO_LENGHT))
+			return -EINVAL;
+
+		break;
+
+	default:
+		break;
+	}
 
 	sdata->buffer_data = kmalloc(indio_dev->scan_bytes, GFP_KERNEL);
 	if (!sdata->buffer_data)
