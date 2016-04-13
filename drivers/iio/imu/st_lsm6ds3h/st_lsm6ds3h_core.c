@@ -84,6 +84,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_FUNC_CFG_START1_ADDR		0x62
 #define ST_LSM6DS3H_FUNC_CFG_START2_ADDR		0x63
 #define ST_LSM6DS3H_FUNC_CFG_DATA_WRITE_ADDR		0x64
+#define ST_LSM6DS3H_FUNC_CFG_DATA_READ_ADDR		0x65
 #define ST_LSM6DS3H_SENSORHUB_ADDR			0x1a
 #define ST_LSM6DS3H_SENSORHUB_MASK			0x01
 #define ST_LSM6DS3H_SENSORHUB_TRIG_MASK			0x10
@@ -2433,19 +2434,29 @@ static inline int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 #else /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 {
-	int err, err2;
-	u8 data = 0x00;
+	int err, err2, i;
+	u8 data = 0x00, *fw_check_data;
 	const struct firmware *fw;
+#if (CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO > 0)
+	u16 address = 0;
+	int remaining_byte, read_size = CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
 
 	err = request_firmware(&fw, ST_LSM6DS3H_DATA_FW, cdata->dev);
 	if (err < 0)
 		return err;
 
+	fw_check_data = kmalloc(fw->size, GFP_KERNEL);
+	if (!fw_check_data) {
+		err = -ENOMEM;
+		goto release_firmware;
+	}
+
 	/* Stop current algo */
 	err = cdata->tf->write(cdata,
 			ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &data, true);
 	if (err < 0)
-		goto release_firmware;
+		goto free_fw_check_data;
 
 	/* Reserve HALF FIFO for algo to be uploaded */
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
@@ -2453,7 +2464,7 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 				ST_LSM6DS3H_RESERVE_HALF_FIFO,
 				ST_LSM6DS3H_EN_BIT, true);
 	if (err < 0)
-		goto release_firmware;
+		goto free_fw_check_data;
 
 	mutex_lock(&cdata->bank_registers_lock);
 
@@ -2483,6 +2494,69 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		goto close_upload_procedure;
 
+#if (CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO == 0)
+	/* Set upload start address (LSB) */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_START1_ADDR, 1, &data, false);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	/* Set upload start address (MSB) */
+	err = cdata->tf->write(cdata,
+			ST_LSM6DS3H_FUNC_CFG_START2_ADDR, 1, &data, false);
+	if (err < 0)
+		goto close_upload_procedure;
+
+	err = cdata->tf->read(cdata, ST_LSM6DS3H_WAI_ADDRESS,
+					fw->size, fw_check_data, false);
+	if (err < 0)
+		goto close_upload_procedure;
+#else /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
+	remaining_byte = fw->size;
+
+	do {
+		data = *(u8 *)&address;
+
+		/* Set upload start address (LSB) */
+		err = cdata->tf->write(cdata,
+					ST_LSM6DS3H_FUNC_CFG_START1_ADDR,
+					1, &data, false);
+		if (err < 0)
+			goto close_upload_procedure;
+
+		data = *((u8 *)&address + 1);
+
+		/* Set upload start address (MSB) */
+		err = cdata->tf->write(cdata,
+					ST_LSM6DS3H_FUNC_CFG_START2_ADDR,
+					1, &data, false);
+		if (err < 0)
+			goto close_upload_procedure;
+
+		if (remaining_byte < read_size)
+			read_size = remaining_byte;
+
+		err = cdata->tf->read(cdata,
+				ST_LSM6DS3H_FUNC_CFG_DATA_READ_ADDR, read_size,
+				&fw_check_data[fw->size - remaining_byte],
+				false);
+		if (err < 0)
+			goto close_upload_procedure;
+
+		remaining_byte -= read_size;
+		address += read_size;
+	} while (remaining_byte > 0);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
+
+	/* Verify fw sent is same */
+	for (i = 0; i < fw->size; i++) {
+		if (fw_check_data[i] != fw->data[i]) {
+			dev_err(cdata->dev, "uploaded fw not valid.\n");
+			err = -EINVAL;
+			goto close_upload_procedure;
+		}
+	}
+
 	/* End the upload algo procedure */
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
@@ -2498,8 +2572,10 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2,
 				ST_LSM6DS3H_EN_BIT, true);
-	if (err < 0)
+	if (err < 0) {
+		kfree(fw_check_data);
 		goto release_firmware;
+	}
 
 #ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
 	cdata->fifo2_algo_available = true;
@@ -2509,6 +2585,8 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 	dev_info(cdata->dev, "algo upload completed\n");
+
+	kfree(fw_check_data);
 
 	release_firmware(fw);
 
@@ -2524,6 +2602,8 @@ close_upload_procedure:
 	} while (err2 < 0);
 
 	mutex_unlock(&cdata->bank_registers_lock);
+free_fw_check_data:
+	kfree(fw_check_data);
 release_firmware:
 	release_firmware(fw);
 	return err;
