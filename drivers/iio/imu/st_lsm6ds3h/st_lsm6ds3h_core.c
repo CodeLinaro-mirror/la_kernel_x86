@@ -408,7 +408,8 @@ static inline int st_lsm6ds3h_enable_embedded_page_regs(struct lsm6ds3h_data *cd
 		value = ST_LSM6DS3H_FUNC_CFG_REG2_MASK;
 
 #ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
-	value |= ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2;
+	if (cdata->fifo2_algo_available)
+		value |= ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 
 	return cdata->tf->write(cdata, ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR, 1, &value, false);
@@ -616,7 +617,8 @@ static int lsm6ds3h_write_decimators(struct lsm6ds3h_data *cdata,
 	decimators_reg[1] = value[2];
 
 #ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
-	decimators_reg[1] |= ST_LSM6DS3H_RESERVE_HALF_FIFO;
+	if (cdata->fifo2_algo_available)
+		decimators_reg[1] |= ST_LSM6DS3H_RESERVE_HALF_FIFO;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 
 	return cdata->tf->write(cdata, ST_LSM6DS3H_FIFO_DECIMATOR_ADDR,
@@ -2499,6 +2501,9 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		goto release_firmware;
 
+#ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+	cdata->fifo2_algo_available = true;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	cdata->wrist_tilt_available = true;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
@@ -2729,7 +2734,14 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->fifo_status = BYPASS;
 	cdata->enable_digfunc_mask = 0;
 	cdata->enable_pedometer_mask = 0;
+
+#ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
+	cdata->fifo2_algo_available = false;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED */
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	cdata->wrist_tilt_available = false;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	cdata->enable_sensorhub_mask = 0;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
