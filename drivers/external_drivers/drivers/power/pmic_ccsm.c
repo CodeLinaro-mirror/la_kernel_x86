@@ -156,6 +156,48 @@ u16 pmic_inlmt[][2] = {
 	{ 2500, CHGRCTRL1_FUSB_INLMT_1500},
 };
 
+static ATOMIC_NOTIFIER_HEAD(pmic_chain);
+
+/**
+ * register_pmic_notifier - register a notifier to pmic actions
+ * @nb: notifier block
+ *
+ * Register oneself to pmic atomic notifications (ie. interrupt mode).  These
+ * ones usually come from an interrupt, signaling a specific condition, such as
+ * an overheat of a charging status change.
+ *
+ * The notifier action will be an enum pmic_notifier_action. The value is
+ * dependant on the action, but most usually is an unsigned long casted to a
+ * void *.
+ *
+ * Returns 0 on success, negative value on error
+ */
+int register_pmic_notifier(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&pmic_chain, nb);
+}
+EXPORT_SYMBOL_GPL(register_pmic_notifier);
+
+/**
+ * unregister_pmic_notifier - unregister a notifier registered previously
+ * @nb: notifier block
+ *
+ * Unregister the notifier block registered previously with register_pmic_notifier().
+ */
+void unregister_pmic_notifier(struct notifier_block *nb)
+{
+	atomic_notifier_chain_unregister(&pmic_chain, nb);
+}
+EXPORT_SYMBOL_GPL(unregister_pmic_notifier);
+
+static int pmic_notify(enum pmic_notifier_action val, void *v)
+{
+	int ret;
+
+	ret = atomic_notifier_call_chain(&pmic_chain, val, v);
+
+	return notifier_to_errno(ret);
+}
 
 static inline struct power_supply *get_psy_battery(void)
 {
@@ -732,6 +774,8 @@ static void pmic_bat_zone_changed(void)
 	if (psy_bat && psy_bat->external_power_changed)
 		psy_bat->external_power_changed(psy_bat);
 
+	pmic_notify(PMIC_ACTION_BATTERY_ZONE_CHANGED,
+		    (void *)(unsigned long)(cur_zone));
 	return;
 }
 
@@ -741,6 +785,8 @@ static void pmic_battery_overheat_handler(bool stat)
 		chc.health = POWER_SUPPLY_HEALTH_OVERHEAT;
 	else
 		chc.health = POWER_SUPPLY_HEALTH_GOOD;
+	pmic_notify(PMIC_ACTION_OVERHEAT, (void *)(unsigned long)(chc.health));
+
 	return;
 }
 
@@ -748,6 +794,8 @@ static void pmic_battery_charging_handler(bool chg_stat)
 {
 	if (chc.pdata->notify_charging_stat)
 		chc.pdata->notify_charging_stat(chg_stat);
+	pmic_notify(PMIC_ACTION_CHARGING_STATUS,
+		    (void *)(unsigned long)(chg_stat));
 }
 
 int pmic_get_health(void)

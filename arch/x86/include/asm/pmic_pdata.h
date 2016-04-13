@@ -7,6 +7,8 @@ struct temp_lookup {
 	int temp_err;
 };
 
+struct notifier_block;
+
 /*
  * pmic cove charger driver info
  */
@@ -14,7 +16,7 @@ struct pmic_platform_data {
 	void (*cc_to_reg)(int, u8*);
 	void (*cv_to_reg)(int, u8*);
 	void (*inlmt_to_reg)(int, u8*);
-	void (*notify_charging_stat)(bool);
+	void (*notify_charging_stat)(bool) __deprecated;
 	int max_tbl_row_cnt;
 	struct temp_lookup *adc_tbl;
 };
@@ -44,5 +46,15 @@ static int pmic_get_battery_pack_temp(int *temp)
 	return 0;
 }
 #endif
+
+enum pmic_notifier_action {
+	PMIC_ACTION_BATTERY_ZONE_CHANGED,
+	PMIC_ACTION_OVERHEAT,
+	PMIC_ACTION_CHARGING_STATUS,
+	PMIC_ACTION_MAX
+};
+
+extern int register_pmic_notifier(struct notifier_block *nb);
+extern void unregister_pmic_notifier(struct notifier_block *nb);
 
 #endif
