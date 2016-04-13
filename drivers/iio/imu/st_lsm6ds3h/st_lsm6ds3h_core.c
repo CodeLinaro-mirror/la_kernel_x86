@@ -136,7 +136,9 @@
 #define ST_LSM6DS3H_ACCEL_OUT_X_L_ADDR			0x28
 #define ST_LSM6DS3H_ACCEL_OUT_Y_L_ADDR			0x2a
 #define ST_LSM6DS3H_ACCEL_OUT_Z_L_ADDR			0x2c
-#define ST_LSM6DS3H_ACCEL_STD				3
+#define ST_LSM6DS3H_ACCEL_STD_52HZ			1
+#define ST_LSM6DS3H_ACCEL_STD_104HZ			2
+#define ST_LSM6DS3H_ACCEL_STD_208HZ			3
 #define ST_LSM6DS3H_SELFTEST_ACCEL_ADDR			0x10
 #define ST_LSM6DS3H_SELFTEST_ACCEL_REG_VALUE		0x40
 #define ST_LSM6DS3H_SELFTEST_ACCEL_MIN			1492
@@ -158,7 +160,10 @@
 #define ST_LSM6DS3H_GYRO_OUT_X_L_ADDR			0x22
 #define ST_LSM6DS3H_GYRO_OUT_Y_L_ADDR			0x24
 #define ST_LSM6DS3H_GYRO_OUT_Z_L_ADDR			0x26
-#define ST_LSM6DS3H_GYRO_STD				6
+#define ST_LSM6DS3H_GYRO_STD_13HZ			2
+#define ST_LSM6DS3H_GYRO_STD_52HZ			3
+#define ST_LSM6DS3H_GYRO_STD_104HZ			5
+#define ST_LSM6DS3H_GYRO_STD_208HZ			8
 #define ST_LSM6DS3H_SELFTEST_GYRO_ADDR			0x11
 #define ST_LSM6DS3H_SELFTEST_GYRO_REG_VALUE		0x4c
 #define ST_LSM6DS3H_SELFTEST_GYRO_MIN			2142
@@ -532,14 +537,14 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 		return err;
 
 	if (enable_fifo) {
-		cdata->fifo_status = CONTINUOS;
 		get_monotonic_boottime(&ts);
-		cdata->fifo_output[ST_MASK_ID_GYRO].timestamp =
-							timespec_to_ns(&ts);
-		cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp =
-							timespec_to_ns(&ts);
-	} else
-		cdata->fifo_status = BYPASS;
+		cdata->fifo_enable_timestamp = timespec_to_ns(&ts);
+		cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = 0;
+		cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = 0;
+		cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = 0;
+	}
+
+	cdata->fifo_status = fm;
 
 	return 0;
 }
@@ -610,15 +615,8 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 			(new_v_odr[ST_MASK_ID_EXT0] != 0) && cdata->magn_on)
 		ext_decimator = trigger_odr / new_v_odr[ST_MASK_ID_EXT0];
 
-	new_deltatime[ST_MASK_ID_EXT0] = (1000000000ULL /
-						new_v_odr[ST_MASK_ID_EXT0]);
 	new_fifo_decimator[ST_MASK_ID_EXT0] = 1;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
-
-	new_deltatime[ST_MASK_ID_ACCEL] = (1000000000ULL /
-						new_v_odr[ST_MASK_ID_ACCEL]);
-	new_deltatime[ST_MASK_ID_GYRO] = (1000000000ULL /
-						new_v_odr[ST_MASK_ID_GYRO]);
 
 	new_fifo_decimator[ST_MASK_ID_ACCEL] = 1;
 	new_fifo_decimator[ST_MASK_ID_GYRO] = 1;
@@ -630,18 +628,12 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 			if ((accel_decimator / min_decimator) == 1) {
 				accel_decimator = 1;
 				new_fifo_decimator[ST_MASK_ID_ACCEL] = min_decimator;
-				new_deltatime[ST_MASK_ID_ACCEL] = (1000000000ULL /
-					(new_v_odr[ST_MASK_ID_ACCEL] * min_decimator));
 			} else if ((gyro_decimator / min_decimator) == 1) {
 				gyro_decimator = 1;
 				new_fifo_decimator[ST_MASK_ID_GYRO] = min_decimator;
-				new_deltatime[ST_MASK_ID_GYRO] = (1000000000ULL /
-					(new_v_odr[ST_MASK_ID_GYRO] * min_decimator));
 			} else if ((ext_decimator / min_decimator) == 1) {
 				ext_decimator = 1;
 				new_fifo_decimator[ST_MASK_ID_EXT0] = min_decimator;
-				new_deltatime[ST_MASK_ID_EXT0] = (1000000000ULL /
-					(new_v_odr[ST_MASK_ID_EXT0] * min_decimator));
 			}
 			min_decimator = 1;
 		}
@@ -671,35 +663,42 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 		max_decimator = MAX(MAX(accel_decimator, gyro_decimator), ext_decimator);
 	}
 
-#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
-	if ((accel_decimator != cdata->hwfifo_decimator[ST_MASK_ID_ACCEL]) ||
-			(ext_decimator != cdata->hwfifo_decimator[ST_MASK_ID_EXT0]) ||
-			(gyro_decimator != cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
-#else /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
-	if ((accel_decimator != cdata->hwfifo_decimator[ST_MASK_ID_ACCEL]) ||
-			(gyro_decimator != cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
-#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
-		decimators[0] = accel_decimator;
-		if (accel_decimator > 0)
-			samples_in_pattern[0] = max_decimator / accel_decimator;
-		else
-			samples_in_pattern[0] = 0;
-
-		decimators[1] = gyro_decimator;
-		if (gyro_decimator > 0)
-			samples_in_pattern[1] = max_decimator / gyro_decimator;
-		else
-			samples_in_pattern[1] = 0;
-
-#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
-		decimators[2] = ext_decimator;
-		if (ext_decimator > 0)
-			samples_in_pattern[2] = max_decimator / ext_decimator;
-		else
-			samples_in_pattern[2] = 0;
-#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+	decimators[0] = accel_decimator;
+	if (accel_decimator > 0) {
+		new_deltatime[ST_MASK_ID_ACCEL] = accel_decimator *
+						(1000000000U / trigger_odr);
+		samples_in_pattern[0] = max_decimator / accel_decimator;
 	} else
+		samples_in_pattern[0] = 0;
+
+	decimators[1] = gyro_decimator;
+	if (gyro_decimator > 0) {
+		new_deltatime[ST_MASK_ID_GYRO] = gyro_decimator *
+						(1000000000U / trigger_odr);
+		samples_in_pattern[1] = max_decimator / gyro_decimator;
+	} else
+		samples_in_pattern[1] = 0;
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+	decimators[2] = ext_decimator;
+	if (ext_decimator > 0) {
+		new_deltatime[ST_MASK_ID_EXT0] = ext_decimator *
+						(1000000000U / trigger_odr);
+		samples_in_pattern[2] = max_decimator / ext_decimator;
+	} else
+		samples_in_pattern[2] = 0;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+	if ((accel_decimator == cdata->hwfifo_decimator[ST_MASK_ID_ACCEL]) &&
+			(ext_decimator == cdata->hwfifo_decimator[ST_MASK_ID_EXT0]) &&
+			(gyro_decimator == cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
+#else /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+	if ((accel_decimator == cdata->hwfifo_decimator[ST_MASK_ID_ACCEL]) &&
+			(gyro_decimator != cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
+#endif /* CONFIG_ST_LSM6DS3_IIO_MASTER_SUPPORT */
 		return false;
+	}
 
 	return true;
 }
@@ -904,30 +903,30 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 					case 13:
 					case 26:
 					case 52:
-						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 1;
+						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_52HZ;
 						break;
 					case 104:
-						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 2;
+						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_104HZ;
 						break;
 					default:
-						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD;
+						sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_208HZ;
 						break;
 					}
 				}
 
 				switch (temp_hw_odr[ST_MASK_ID_GYRO]) {
 				case 13:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 2;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_13HZ;
 					break;
 				case 26:
 				case 52:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 3;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_52HZ;
 					break;
 				case 104:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_104HZ;
 					break;
 				default:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 8;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_208HZ;
 					break;
 				}
 			}
@@ -994,32 +993,38 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 				case 13:
 				case 26:
 				case 52:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 1;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_52HZ;
 					break;
 				case 104:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 2;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_104HZ;
 					break;
 				default:
-					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD;
+					sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_208HZ;
 					break;
 				}
 			}
 
 			switch (temp_hw_odr[ST_MASK_ID_GYRO]) {
 			case 13:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 2;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_13HZ;
 				break;
 			case 26:
 			case 52:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 3;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_52HZ;
 				break;
 			case 104:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_104HZ;
 				break;
 			default:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 8;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_208HZ;
 				break;
 			}
+
+			sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime = new_deltatime[ST_MASK_ID_ACCEL];
+			sdata->cdata->fifo_output[ST_MASK_ID_GYRO].deltatime = new_deltatime[ST_MASK_ID_GYRO];
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+			sdata->cdata->fifo_output[ST_MASK_ID_EXT0].deltatime = new_deltatime[ST_MASK_ID_EXT0];
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 			if ((sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip > 0) ||
 					(sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip > 0) ||
@@ -1089,30 +1094,30 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			case 13:
 			case 26:
 			case 52:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 1;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_52HZ;
 				break;
 			case 104:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = 2;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_104HZ;
 				break;
 			default:
-				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD;
+				sdata->cdata->samples_to_discard[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_STD_208HZ;
 				break;
 			}
 		}
 
 		switch (sdata->cdata->hw_odr[ST_MASK_ID_GYRO]) {
 		case 13:
-			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 2;
+			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_13HZ;
 			break;
 		case 26:
 		case 52:
-			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 3;
+			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_52HZ;
 			break;
 		case 104:
-			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD;
+			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_104HZ;
 			break;
 		default:
-			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = 8;
+			sdata->cdata->samples_to_discard[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_STD_208HZ;
 			break;
 		}
 
@@ -1266,22 +1271,6 @@ static int lsm6ds3h_enable_pedometer(struct lsm6ds3h_data *cdata,
 						true, ST_MASK_ID_HW_PEDOMETER);
 			if (err < 0)
 				return err;
-		} else {
-			if (id == ST_MASK_ID_SIGN_MOTION) {
-				err = st_lsm6ds3h_write_data_with_mask(cdata,
-						ST_LSM6DS3H_PEDOMETER_EN_ADDR,
-						ST_LSM6DS3H_PEDOMETER_EN_MASK,
-						ST_LSM6DS3H_DIS_BIT, true);
-				if (err < 0)
-					return err;
-
-				err = st_lsm6ds3h_write_data_with_mask(cdata,
-						ST_LSM6DS3H_PEDOMETER_EN_ADDR,
-						ST_LSM6DS3H_PEDOMETER_EN_MASK,
-						ST_LSM6DS3H_EN_BIT, true);
-				if (err < 0)
-					return err;
-			}
 		}
 		cdata->enable_pedometer_mask |= BIT(id);
 	} else {
@@ -1289,7 +1278,7 @@ static int lsm6ds3h_enable_pedometer(struct lsm6ds3h_data *cdata,
 			err =  st_lsm6ds3h_write_data_with_mask(cdata,
 						ST_LSM6DS3H_PEDOMETER_EN_ADDR,
 						ST_LSM6DS3H_PEDOMETER_EN_MASK,
-						ST_LSM6DS3H_EN_BIT, true);
+						ST_LSM6DS3H_DIS_BIT, true);
 			if (err < 0)
 				return err;
 

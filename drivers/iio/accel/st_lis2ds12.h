@@ -71,6 +71,12 @@
 #define LIS2DS12_FS_8G_VAL			0x03
 #define LIS2DS12_FS_16G_VAL			0x01
 
+/* Advanced Configuration Registers */
+#define LIS2DS12_FUNC_CFG_ENTER_ADDR		LIS2DS12_CTRL2_ADDR
+#define LIS2DS12_FUNC_CFG_EXIT_ADDR			0x3F
+#define LIS2DS12_FUNC_CFG_EN_MASK			0x10
+#define LIS2DS12_STEP_COUNT_DELTA			0x3A
+
 /*
  * Sensitivity for the 16-bit data
  */
@@ -185,6 +191,7 @@
 #define LIS2DS12_MAX_FIFO_LENGHT		256
 #define LIS2DS12_MAX_CHANNEL_SPEC		4
 #define LIS2DS12_EVENT_CHANNEL_SPEC_SIZE	2
+#define LIS2DS12_MIN_DURATION_MS		1638
 
 #define LIS2DS12_DEV_NAME			"lis2ds12"
 #define SET_BIT(a, b)				{a |= (1 << b);}
@@ -220,9 +227,9 @@ struct lis2ds12_data;
 
 struct lis2ds12_transfer_function {
 	int (*write)(struct lis2ds12_data *cdata, u8 reg_addr, int len,
-								u8 *data);
+								u8 *data, bool b_lock);
 	int (*read)(struct lis2ds12_data *cdata, u8 reg_addr, int len,
-								u8 *data);
+								u8 *data, bool b_lock);
 };
 
 struct lis2ds12_sensor_data {
@@ -267,7 +274,7 @@ int lis2ds12_allocate_triggers(struct lis2ds12_data *cdata,
 			     const struct iio_trigger_ops *trigger_ops);
 int lis2ds12_trig_set_state(struct iio_trigger *trig, bool state);
 int lis2ds12_read_register(struct lis2ds12_data *cdata, u8 reg_addr,
-							int data_len, u8 *data);
+							int data_len, u8 *data, bool b_lock);
 int lis2ds12_update_drdy_irq(struct lis2ds12_sensor_data *sdata, bool state);
 int lis2ds12_set_enable(struct lis2ds12_sensor_data *sdata, bool enable);
 int lis2ds12_update_fifo(struct lis2ds12_data *cdata);

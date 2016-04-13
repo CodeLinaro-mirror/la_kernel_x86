@@ -75,9 +75,9 @@ static irqreturn_t lis2ds12_irq_management(int irq, void *private)
 	get_monotonic_boottime(&ts);
 	cdata->timestamp = timespec_to_ns(&ts);
 
-	cdata->tf->read(cdata, LIS2DS12_STATUS_DUP_ADDR, 4, status);
-	cdata->tf->read(cdata, LIS2DS12_FUNC_CK_GATE_ADDR, 2, func);
-	cdata->tf->read(cdata, LIS2DS12_FIFO_SRC_ADDR, 1, &fifo);
+	cdata->tf->read(cdata, LIS2DS12_STATUS_DUP_ADDR, 4, status, true);
+	cdata->tf->read(cdata, LIS2DS12_FUNC_CK_GATE_ADDR, 2, func, true);
+	cdata->tf->read(cdata, LIS2DS12_FIFO_SRC_ADDR, 1, &fifo, true);
 
 	if (fifo & LIS2DS12_FIFO_SRC_FTH_MASK)
 		lis2ds12_read_fifo(cdata, true);

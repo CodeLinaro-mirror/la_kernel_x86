@@ -778,7 +778,7 @@ skip_i2c_write:
 static int st_lsm6ds3h_i2c_master_set_enable(
 				struct lsm6ds3h_sensor_data *sdata, bool enable)
 {
-	int err, err2;
+	int err;
 	u8 reg_value;
 
 	/* If odr != power this part should enable/disable sensor */
@@ -796,19 +796,19 @@ static int st_lsm6ds3h_i2c_master_set_enable(
 			return err;
 	}
 
-	err = st_lsm6ds3h_i2c_master_set_odr(sdata,
-			enable ? sdata->cdata->v_odr[sdata->sindex] : 0, true);
-	if (err < 0)
-		return err;
-
 	err =  st_lsm6ds3h_enable_sensor_hub(sdata->cdata,
 						enable, ST_MASK_ID_EXT0);
 	if (err < 0)
-		goto restore_odr;
+		return err;
+
+	err = st_lsm6ds3h_i2c_master_set_odr(sdata,
+			enable ? sdata->cdata->v_odr[sdata->sindex] : 0, true);
+	if (err < 0)
+		goto disable_sensorhub;
 
 	err = st_lsm6ds3h_set_drdy_irq(sdata, enable);
 	if (err < 0)
-		goto disable_sensorhub;;
+		goto restore_odr;
 
 	if (enable)
 		sdata->cdata->sensors_enabled |= BIT(sdata->sindex);
@@ -817,18 +817,11 @@ static int st_lsm6ds3h_i2c_master_set_enable(
 
 	return 0;
 
-disable_sensorhub:
-	do {
-		err2 =  st_lsm6ds3h_enable_sensor_hub(sdata->cdata,
-						!enable, ST_MASK_ID_EXT0);
-		msleep(200);
-	} while (err2 < 0);
 restore_odr:
-	do {
-		err2 = st_lsm6ds3h_i2c_master_set_odr(sdata,
+	st_lsm6ds3h_i2c_master_set_odr(sdata,
 			enable ? 0 : sdata->cdata->v_odr[sdata->sindex], true);
-		msleep(200);
-	} while (err2 < 0);
+disable_sensorhub:
+	st_lsm6ds3h_enable_sensor_hub(sdata->cdata, !enable, ST_MASK_ID_EXT0);
 
 	return err;
 }
@@ -907,13 +900,19 @@ static int st_lsm6ds3h_i2c_master_read_raw(struct iio_dev *indio_dev,
 
 static int st_lsm6ds3h_i2c_master_buffer_preenable(struct iio_dev *indio_dev)
 {
+#ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
+	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
+
+	if (sdata->cdata->injection_mode)
+		return -EBUSY;
+#endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
+
 	return iio_sw_buffer_preenable(indio_dev);
 }
 
 static int st_lsm6ds3h_i2c_master_buffer_postenable(struct iio_dev *indio_dev)
 {
 	int err, err2 = 0;
-	struct timespec ts;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
 	if ((sdata->cdata->hwfifo_enabled[ST_MASK_ID_EXT0]) &&
@@ -925,9 +924,6 @@ static int st_lsm6ds3h_i2c_master_buffer_postenable(struct iio_dev *indio_dev)
 		return -ENOMEM;
 
 	mutex_lock(&sdata->cdata->odr_lock);
-
-	get_monotonic_boottime(&ts);
-	sdata->cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = timespec_to_ns(&ts);
 
 	err = st_lsm6ds3h_i2c_master_set_enable(sdata, true);
 	if (err < 0) {

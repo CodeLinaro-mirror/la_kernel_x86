@@ -69,7 +69,7 @@ void lis2ds12_read_fifo(struct lis2ds12_data *cdata, bool check_fifo_len)
 
 	if (check_fifo_len) {
 		err = lis2ds12_read_register(cdata, LIS2DS12_FIFO_SRC, 2,
-								fifo_src);
+								fifo_src, true);
 		if (err < 0)
 			return;
 
@@ -86,7 +86,7 @@ void lis2ds12_read_fifo(struct lis2ds12_data *cdata, bool check_fifo_len)
 		return;
 
 	err = lis2ds12_read_register(cdata, LIS2DS12_OUTX_L_ADDR, read_len,
-							cdata->fifo_data);
+							cdata->fifo_data, true);
 	if (err < 0)
 		return;
 
@@ -101,7 +101,7 @@ void lis2ds12_read_step_c(struct lis2ds12_data *cdata)
 	struct iio_dev *indio_dev = cdata->iio_sensors_dev[LIS2DS12_STEP_C];
 
 	err = lis2ds12_read_register(cdata, (u8)indio_dev->channels[0].address,
-								2, buffer);
+								2, buffer, true);
 	if (err < 0)
 		goto lis2ds12_step_counter_done;
 

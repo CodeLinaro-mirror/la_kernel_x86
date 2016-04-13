@@ -17,7 +17,7 @@
 #include "st_lis2ds12.h"
 
 static int lis2ds12_i2c_read(struct lis2ds12_data *cdata, u8 reg_addr, int len,
-								u8 * data)
+								u8 * data, bool b_lock)
 {
 	int err = 0;
 	struct i2c_msg msg[2];
@@ -33,15 +33,18 @@ static int lis2ds12_i2c_read(struct lis2ds12_data *cdata, u8 reg_addr, int len,
 	msg[1].len = len;
 	msg[1].buf = data;
 
-	mutex_lock(&cdata->i2c_lock);
-	err = i2c_transfer(client->adapter, msg, 2);
-	mutex_unlock(&cdata->i2c_lock);
+	if (b_lock) {
+		mutex_lock(&cdata->i2c_lock);
+		err = i2c_transfer(client->adapter, msg, 2);
+		mutex_unlock(&cdata->i2c_lock);
+	} else
+		err = i2c_transfer(client->adapter, msg, 2);
 
 	return err;
 }
 
 static int lis2ds12_i2c_write(struct lis2ds12_data *cdata, u8 reg_addr, int len,
-								u8 * data)
+								u8 * data, bool b_lock)
 {
 	int err = 0;
 	u8 send[len + 1];
@@ -57,9 +60,12 @@ static int lis2ds12_i2c_write(struct lis2ds12_data *cdata, u8 reg_addr, int len,
 	msg.len = len;
 	msg.buf = send;
 
-	mutex_lock(&cdata->i2c_lock);
-	err = i2c_transfer(client->adapter, &msg, 1);
-	mutex_unlock(&cdata->i2c_lock);
+	if (b_lock) {
+		mutex_lock(&cdata->i2c_lock);
+		err = i2c_transfer(client->adapter, &msg, 1);
+		mutex_unlock(&cdata->i2c_lock);
+	} else
+		err = i2c_transfer(client->adapter, &msg, 1);
 
 	return err;
 }

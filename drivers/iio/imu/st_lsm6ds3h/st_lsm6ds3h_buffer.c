@@ -74,14 +74,17 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 
 		do {
 			if (gyro_sip > 0) {
-				cdata->fifo_output[ST_MASK_ID_GYRO].timestamp += cdata->fifo_output[ST_MASK_ID_GYRO].deltatime;
+				if (cdata->fifo_output[ST_MASK_ID_GYRO].timestamp == 0)
+					cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_GYRO].deltatime / 2);
+				else
+					cdata->fifo_output[ST_MASK_ID_GYRO].timestamp += cdata->fifo_output[ST_MASK_ID_GYRO].deltatime;
 
 				if (cdata->samples_to_discard[ST_MASK_ID_GYRO] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_GYRO]--;
 				else {
 					cdata->fifo_output[ST_MASK_ID_GYRO].num_samples++;
 
-					if ((cdata->fifo_output[ST_MASK_ID_GYRO].num_samples % cdata->fifo_output[ST_MASK_ID_GYRO].decimator) == 0) {
+					if (cdata->fifo_output[ST_MASK_ID_GYRO].num_samples >= cdata->fifo_output[ST_MASK_ID_GYRO].decimator) {
 						cdata->fifo_output[ST_MASK_ID_GYRO].timestamp_p = cdata->fifo_output[ST_MASK_ID_GYRO].timestamp;
 						cdata->fifo_output[ST_MASK_ID_GYRO].num_samples = 0;
 						st_lsm6ds3h_push_data_with_timestamp(
@@ -96,14 +99,17 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 			}
 
 			if (accel_sip > 0) {
-				cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp += cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime;
+				if (cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp == 0)
+					cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime / 2);
+				else
+					cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp += cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime;
 
 				if (cdata->samples_to_discard[ST_MASK_ID_ACCEL] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_ACCEL]--;
 				else {
 					cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples++;
 
-					if ((cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples % cdata->fifo_output[ST_MASK_ID_ACCEL].decimator) == 0) {
+					if (cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples >= cdata->fifo_output[ST_MASK_ID_ACCEL].decimator) {
 						cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp_p = cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp;
 						cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples = 0;
 						st_lsm6ds3h_push_data_with_timestamp(
@@ -119,14 +125,17 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 			if (ext0_sip > 0) {
-				cdata->fifo_output[ST_MASK_ID_EXT0].timestamp += cdata->fifo_output[ST_MASK_ID_EXT0].deltatime;
+				if (cdata->fifo_output[ST_MASK_ID_EXT0].timestamp == 0)
+					cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_EXT0].deltatime / 2);
+				else
+					cdata->fifo_output[ST_MASK_ID_EXT0].timestamp += cdata->fifo_output[ST_MASK_ID_EXT0].deltatime;
 
 				if (cdata->samples_to_discard[ST_MASK_ID_EXT0] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_EXT0]--;
 				else {
 					cdata->fifo_output[ST_MASK_ID_EXT0].num_samples++;
 
-					if ((cdata->fifo_output[ST_MASK_ID_EXT0].num_samples % cdata->fifo_output[ST_MASK_ID_EXT0].decimator) == 0) {
+					if (cdata->fifo_output[ST_MASK_ID_EXT0].num_samples >= cdata->fifo_output[ST_MASK_ID_EXT0].decimator) {
 						cdata->fifo_output[ST_MASK_ID_EXT0].timestamp_p = cdata->fifo_output[ST_MASK_ID_EXT0].timestamp;
 						cdata->fifo_output[ST_MASK_ID_EXT0].num_samples = 0;
 						st_lsm6ds3h_push_data_with_timestamp(
@@ -305,7 +314,6 @@ static int st_lsm6ds3h_buffer_preenable(struct iio_dev *indio_dev)
 		switch (sdata->sindex) {
 		case ST_MASK_ID_ACCEL:
 		case ST_MASK_ID_GYRO:
-		case ST_MASK_ID_EXT0:
 			return -EBUSY;
 
 		default:
