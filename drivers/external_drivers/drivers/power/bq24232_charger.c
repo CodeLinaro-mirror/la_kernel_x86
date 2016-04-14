@@ -228,6 +228,9 @@ static struct chging_profile *select_chging_profile(struct bq24232_charger *chip
 	int vbat_hysis_l = 0, vbat_hysis_h = 0;
 	struct chging_profile *current_profile = chip->curr_chging_profile;
 
+	if (!current_profile && chip->pdata->num_chging_profiles)
+		current_profile = &(chip->pdata->chging_profiles[0]);
+
 	ret = get_psy_property_val(chip->bat_psy, POWER_SUPPLY_TYPE_BATTERY,
 			POWER_SUPPLY_PROP_TEMP, &bat_temp);
 	if (ret) {
@@ -277,6 +280,11 @@ static inline bool bq24232_can_enable_charging(struct bq24232_charger *chip)
 	bq24232_update_pgood_status(chip);
 
 	chip->curr_chging_profile = select_chging_profile(chip, true);
+
+	if (!chip->curr_chging_profile) {
+		dev_warn(chip->dev, "%s: current charging profile NULL\n", __func__);
+		return false;
+	}
 
 	if (!chip->pgood_valid || !chip->is_charger_enabled || !chip->curr_chging_profile->mode || chip->force_disable_charging) {
 		dev_warn(chip->dev,
@@ -335,6 +343,11 @@ static void bq24232_update_chrg_current_status(struct bq24232_charger *chip)
 
 static bool bq24232_charger_can_enable_boost(struct bq24232_charger *chip)
 {
+	if (!chip->curr_chging_profile) {
+		dev_warn(chip->dev, "%s: current charging profile NULL\n", __func__);
+		return false;
+	}
+
 	return (chip->curr_chging_profile->mode == CHGING_CURRENT_HIGH);
 }
 
