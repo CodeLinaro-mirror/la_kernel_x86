@@ -349,7 +349,7 @@ static int tianma_cmd_power_off(
 
 	/* set display off */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-			set_display_off, 0x00, 1,
+			set_display_off, 0x00, 0,
 			MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: Set Display Off\n",
@@ -359,7 +359,7 @@ static int tianma_cmd_power_off(
 
 	/* set sleep in */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-			enter_sleep_mode, 0x00, 1,
+			enter_sleep_mode, 0x00, 0,
 			MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: Set Sleep-in\n",
