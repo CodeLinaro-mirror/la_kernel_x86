@@ -493,7 +493,7 @@ static void __init sfi_handle_sd_dev(struct sfi_device_table_entry *pentry,
 	sd_info.platform_data = pdata;
 }
 
-struct devs_id __init *get_device_id(u8 type, char *name)
+struct devs_id __init  __attribute__((weak)) *get_device_id(u8 type, char *name)
 {
 	struct devs_id *dev = device_ids;
 
