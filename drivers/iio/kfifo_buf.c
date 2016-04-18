@@ -31,7 +31,7 @@ static int iio_request_update_kfifo(struct iio_buffer *r)
 	int ret = 0;
 	struct iio_kfifo *buf = iio_to_kfifo(r);
 
-	if (!buf->update_needed)
+	if (!buf->update_needed || (buf->buffer.bytes_per_datum == 0))
 		goto error_ret;
 	kfifo_free(&buf->kf);
 	ret = __iio_allocate_kfifo(buf, buf->buffer.bytes_per_datum,
