@@ -200,72 +200,59 @@ int auo4x4_cmd_power_on(
 
 	PSB_DEBUG_ENTRY("\n");
 
-	usleep_range(300000, 301000);
+	msleep(5);
 
-	/* Exit sleep mode */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		exit_sleep_mode, 0, 0,
+		write_mode_page, 0x00, 1,
 		MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: Exit Sleep Mode\n",
+		DRM_ERROR("%s: %d: write_mode_page\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+
+	/* set TE on */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		set_tear_on, 0x00, 1,
+		MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: set_tear_on\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+
+	/* set backlight on */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		write_ctrl_display, 0x20, 1,
+		MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: write_ctrl_display\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+
+	/* set sleep-out */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		exit_sleep_mode, 0x00, 0,
+		MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: exit_sleep_mode\n",
 		__func__, __LINE__);
 		goto power_err;
 	}
 
 	msleep(120);
 
-	/* turn on display */
+	/* set display on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_display_on, 0, 0,
+		set_display_on, 0x00, 0,
 		MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: Set Display On\n", __func__, __LINE__);
-		goto power_err;
-	}
-
-	msleep(60);
-
-	/* set backlight on */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_ctrl_display, 0x2c, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set Backlight On\n",
+		DRM_ERROR("%s: %d: set_display_on\n",
 		__func__, __LINE__);
 		goto power_err;
 	}
 
-	/* set backlight brightness */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_display_brightness, 0xff, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set Backlight Brightness\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-#if 0
-	/* set CABC/IE disable */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-			write_ctrl_cabc, 0x00, 1,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set CABC/IE Disable\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-#endif
-	/* set tearing effect on */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_tear_on, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set Tear On\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-
-	usleep_range(20000, 20100);
 	return 0;
 
 power_err:
@@ -286,27 +273,7 @@ static int auo4x4_cmd_power_off(
 		return -EINVAL;
 	}
 
-	/* set backlight off */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_ctrl_display, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set Backlight Off\n",
-		__func__, __LINE__);
-		goto power_off_err;
-	}
-
-	/* set backlight brightness */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_display_brightness, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: Set Backlight Brightness\n",
-		__func__, __LINE__);
-		goto power_off_err;
-	}
-
-	usleep_range(1000, 1100);
+	msleep(10);
 
 	/* set display off */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
@@ -328,12 +295,7 @@ static int auo4x4_cmd_power_off(
 		goto power_off_err;
 	}
 
-	/* assert panel reset : delay > 85 ms */
-	usleep_range(85000, 85100);
-	gpio_set_value(mipi_reset_gpio, 0);
-
-	if (bias_en_gpio)
-		gpio_set_value(bias_en_gpio, 0);
+	msleep(120);
 
 	return 0;
 

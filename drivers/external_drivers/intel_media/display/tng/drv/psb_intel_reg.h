@@ -1282,6 +1282,9 @@ When in Sleep Mode, the value returned by get_scanline is undefined.
 #define write_gamma_setting		0x58
 #define write_cabc_min_bright		0x5e
 #define write_kbbc_profile		0x60
+
+#define write_mode_page                 0xfe
+
 /**** TMD MCS ****/
 #define tmd_write_display_brightness	0x8c
 #define set_video_mode 0xc2
