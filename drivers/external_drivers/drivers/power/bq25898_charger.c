@@ -23,7 +23,7 @@
  */
 /*
  *  To enable dev_dbg, add this to the cmdline:
- *	dyndbg = "module bq25898 +p"
+ *	dyndbg = "module bq25898_charger +p"
  *  or at compile time:
  *	#define DEBUG
  */
@@ -2165,11 +2165,9 @@ static int bq25898_probe(struct i2c_client *client,
 {
 	struct i2c_adapter *adapter;
 	struct bq25898_charger *chip;
-	int bq25898x_rev;
 	int ret;
 
 	dev_dbg(&client->dev, ">probe");
-	pm_runtime_enable(&client->dev);
 
 	adapter = to_i2c_adapter(client->dev.parent);
 
@@ -2185,28 +2183,12 @@ static int bq25898_probe(struct i2c_client *client,
 		return -EIO;
 	}
 
-	bq25898x_rev = bq25898_read_reg(client, BQ25898_DEVREG_CTRL_REG);
-	if (bq25898x_rev < 0) {
-		dev_err(&client->dev,
-			"error in reading ctrl reg %02x:%d\n", BQ25898_DEVREG_CTRL_REG, bq25898x_rev);
-		return bq25898x_rev;
-	}
-
-	/* Disable watchdog for the POC, TBD add a watchdog kicker */
-	ret = bq25898_wdt_configure(client, BQ25898_WDT_TIMER_DISABLE);
-	dev_dbg(&client->dev, "disabling watchdog: 0x%02x\n", ret);
-	if (ret < 0) {
-		dev_err(&client->dev, "error disabling watchdog %d\n", ret);
-		return ret;
-	}
 
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip) {
 		dev_err(&client->dev, "mem alloc failed\n");
 		return -ENOMEM;
 	}
-
-	i2c_set_clientdata(client, chip);
 
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
@@ -2220,7 +2202,6 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->postcharge_duration = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
 	chip->current_now = 0;
 	chip->irq_counter = 0;
-	chip->revision = bq25898x_rev;
 	chip->ship_mode_status = false;
 
 	strncpy(chip->model_name,
@@ -2228,6 +2209,25 @@ static int bq25898_probe(struct i2c_client *client,
 		MODEL_NAME_SIZE);
 	strncpy(chip->manufacturer, DEV_MANUFACTURER,
 		DEV_MANUFACTURER_NAME_SIZE);
+
+	i2c_set_clientdata(client, chip);
+
+	pm_runtime_enable(&client->dev);
+
+	ret = chip->revision = bq25898_read_reg(client, BQ25898_DEVREG_CTRL_REG);
+	if (ret < 0) {
+		dev_err(&client->dev,
+			"error in reading ctrl reg %02x:%d\n", BQ25898_DEVREG_CTRL_REG, ret);
+		goto error_freemem;
+	}
+
+	/* Disable watchdog for the POC, TBD add a watchdog kicker */
+	ret = bq25898_wdt_configure(client, BQ25898_WDT_TIMER_DISABLE);
+	dev_dbg(&client->dev, "disabling watchdog: 0x%02x\n", ret);
+	if (ret < 0) {
+		dev_err(&client->dev, "error disabling watchdog %d\n", ret);
+		goto error_freemem;
+	}
 
 	mutex_init(&chip->stat_lock);
 	mutex_init(&chip->sysfs_lock);
@@ -2283,8 +2283,10 @@ error1:
 error0:
 	bq25898_debugfs_exit(chip);
 
+error_freemem:
 	pm_runtime_disable(&client->dev);
 
+	kfree(chip);
 	return ret;
 }
 
