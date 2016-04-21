@@ -462,6 +462,7 @@ struct bq25898_debugfs_file {
 struct bq25898_charger {
 	struct mutex stat_lock;
 	struct mutex sysfs_lock;
+	struct mutex ship_mode_lock;
 	struct i2c_client *client;
 	struct bq25898_plat_data *pdata;
 	struct power_supply psy_usb;
@@ -482,6 +483,7 @@ struct bq25898_charger {
 	int temperature;		/* tbd whom provide this */
 	int postcharge_duration;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
+	bool ship_mode_status;
 };
 
 static enum power_supply_property bq25898_battery_properties[] = {
@@ -1523,6 +1525,100 @@ static int bq25898_debugfs_exit(struct bq25898_charger *chip)
 }
 #endif /* !CONFIG_DEBUG_FS */
 
+static int enable_ship_mode(struct i2c_client *bq25898_client)
+{
+	int ret = 0;
+
+	/* Enable I2C Ship mode */
+
+	ret = bq25898_read_modify_reg(bq25898_client, BQ25898_SAFETY_TIMER_CTRL_REG,
+			BATFET_DISABLE, 1);
+	if (ret < 0) {
+		dev_err(&bq25898_client->dev,
+			"I2C ship mode enable write failed: %d", ret);
+		return ret;
+	}
+
+	dev_info(&bq25898_client->dev, "Ship mode enabled.");
+
+	return ret;
+}
+
+static int disable_ship_mode(struct i2c_client *bq25898_client)
+{
+	int ret = 0;
+
+	/* Disable I2C Ship mode */
+
+	ret = bq25898_read_modify_reg(bq25898_client, BQ25898_SAFETY_TIMER_CTRL_REG,
+			BATFET_DISABLE, 0);
+	if (ret < 0) {
+		dev_err(&bq25898_client->dev,
+			"I2C ship mode disable write failed: %d", ret);
+		return ret;
+	}
+
+	dev_info(&bq25898_client->dev, "Ship mode disabled.");
+
+	return ret;
+}
+
+/**
+ * get_ship_mode_status - get function for sysfs ship_mode
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t get_ship_mode_status(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+	return scnprintf(buf, 4, "%d\n", chip->ship_mode_status);
+}
+
+/**
+ * set_ship_mode_status - set function for sysfs ship_mode
+ * Parameters as defined by sysfs interface
+ * ship_mode_status can take the values 0 and 1
+ */
+static ssize_t set_ship_mode_status(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+	unsigned long value;
+	int ret = 0;
+
+	if (kstrtoul(buf, 10, &value))
+		return -EINVAL;
+
+	/* allow only 0 or 1 */
+	if (value > 1)
+		return -EINVAL;
+
+	if (value) {
+		mutex_lock(&chip->ship_mode_lock);
+		ret = enable_ship_mode(bq25898_client);
+		mutex_unlock(&chip->ship_mode_lock);
+		if (ret < 0)
+			return ret;
+		chip->ship_mode_status = true;
+	}  else {
+		mutex_lock(&chip->ship_mode_lock);
+		ret = disable_ship_mode(bq25898_client);
+		mutex_unlock(&chip->ship_mode_lock);
+		if (ret < 0)
+			return ret;
+		chip->ship_mode_status = false;
+	}
+
+	return count;
+}
+
+#ifdef CONFIG_SYSFS
+static DEVICE_ATTR(ship_mode, S_IRUGO | S_IWUSR,
+	get_ship_mode_status, set_ship_mode_status);
+#endif /* !CONFIG_SYSFS */
 
 /* Don't call this function directly from interrupt context! */
 static int bq25898_charger_configure(struct i2c_client *client)
@@ -1531,6 +1627,22 @@ static int bq25898_charger_configure(struct i2c_client *client)
 
 	if (!client)
 		return -EINVAL;
+
+	dev_dbg(&client->dev, "Reconfigure charger, setting ship_mode delay to 10s\n");
+
+	/* ship mode delay to 10s */
+	ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
+			BATFET_DLY, 1);
+	if (ret < 0)
+		dev_err(&client->dev, "error setting ship mode delay to 10s\n");
+
+	dev_dbg(&client->dev, "Reconfigure charger, disabling ship mode\n");
+
+	/* disable ship mode */
+	ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
+			BATFET_DISABLE, 0);
+	if (ret < 0)
+		dev_err(&client->dev, "error disabling ship mode %d\n", ret);
 
 	dev_dbg(&client->dev, "Reconfigure charger, disabling charging\n");
 
@@ -2048,6 +2160,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->current_now = 0;
 	chip->irq_counter = 0;
 	chip->revision = bq25898x_rev;
+	chip->ship_mode_status = false;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
@@ -2057,6 +2170,7 @@ static int bq25898_probe(struct i2c_client *client,
 
 	mutex_init(&chip->stat_lock);
 	mutex_init(&chip->sysfs_lock);
+	mutex_init(&chip->ship_mode_lock);
 
 	INIT_DELAYED_WORK(&chip->sw_term_work, bq25898_sw_charge_term_worker);
 
@@ -2079,6 +2193,14 @@ static int bq25898_probe(struct i2c_client *client,
 		dev_err(&client->dev, "error registering to PMIC notification: %d\n", ret);
 		goto error0;
 	}
+
+#ifdef CONFIG_SYSFS
+	/* create sysfs file to enable shutdown mode */
+	ret = device_create_file(&client->dev,
+			&dev_attr_ship_mode);
+	if (ret < 0)
+		dev_warn(&client->dev, "cannot create sysfs entry for ship mode\n");
+#endif /* !CONFIG_SYSFS */
 
 	/* register for usb change */
 	ret = register_otg_notification(chip);
@@ -2129,6 +2251,10 @@ static int bq25898_remove(struct i2c_client *client)
 	power_supply_unregister(&chip->psy_usb);
 
 	bq25898_debugfs_exit(chip);
+
+#ifdef CONFIG_SYSFS
+	device_remove_file(&client->dev, &dev_attr_ship_mode);
+#endif /* !CONFIG_SYSFS */
 
 	pm_runtime_disable(&client->dev);
 
