@@ -53,6 +53,8 @@
 #define BYT_CRV2_BATT_MIN_VOLT	3400	/* 3400mV */
 #define BYT_CRV2_BATT_MAX_VOLT	4350	/* 4350mV */
 
+#define TEMP_MADE_UP_20C	20
+
 void max17042_i2c_reset_workaround(void)
 {
 /* toggle clock pin of I2C to recover devices from abnormal status.
@@ -280,6 +282,13 @@ static int ctp_get_battery_temp(int *temp)
 	return platform_get_battery_pack_temp(temp);
 }
 
+static int made_up_20C_get_temp(int *temp)
+{
+	*temp = TEMP_MADE_UP_20C;
+
+	return 0;
+}
+
 static int mrfl_get_bat_health(void)
 {
 
@@ -462,12 +471,16 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 26) ||
 			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 26) ||
 			INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
+			INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG)) {
 		pdata->get_vmin_threshold = mrfl_get_vsys_min;
 		pdata->get_vmax_threshold = mrfl_get_volt_max;
 		pdata->battery_status = NULL;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+		   INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
+		pdata->get_vmin_threshold = mrfl_get_vsys_min;
+		pdata->get_vmax_threshold = mrfl_get_volt_max;
+		pdata->battery_status = NULL;
+		pdata->battery_pack_temp = made_up_20C_get_temp;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)
 			|| INTEL_MID_BOARD(1, TABLET, MRFL)
 			|| INTEL_MID_BOARD(1, PHONE, MOFD)
@@ -637,11 +650,15 @@ static void init_platform_thresholds(struct max17042_platform_data *pdata)
 				INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
-				INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
-				INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
-				INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
+				INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG)) {
 		pdata->temp_min_lim = -20;
 		pdata->temp_max_lim = 60;
+		pdata->volt_min_lim = 3200;
+		pdata->volt_max_lim = 4350;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) ||
+		   INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO)) {
+		pdata->temp_min_lim = TEMP_MADE_UP_20C;
+		pdata->temp_max_lim = TEMP_MADE_UP_20C;
 		pdata->volt_min_lim = 3200;
 		pdata->volt_max_lim = 4350;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
