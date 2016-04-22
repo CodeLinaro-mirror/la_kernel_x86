@@ -1548,20 +1548,6 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		mutex_lock(&indio_dev->mlock);
 
-		if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED) {
-			mutex_unlock(&indio_dev->mlock);
-			return -EBUSY;
-		}
-
-		mutex_lock(&sdata->cdata->odr_lock);
-
-		err = st_lsm6ds3h_set_enable(sdata, true);
-		if (err < 0) {
-			mutex_unlock(&sdata->cdata->odr_lock);
-			mutex_unlock(&indio_dev->mlock);
-			return err;
-		}
-
 		if (sdata->sindex == ST_MASK_ID_ACCEL)
 			msleep(40);
 
@@ -1571,8 +1557,6 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 		err = sdata->cdata->tf->read(sdata->cdata, ch->address,
 				ST_LSM6DS3H_BYTE_FOR_CHANNEL, outdata, true);
 		if (err < 0) {
-			st_lsm6ds3h_set_enable(sdata, false);
-			mutex_unlock(&sdata->cdata->odr_lock);
 			mutex_unlock(&indio_dev->mlock);
 			return err;
 		}
@@ -1580,9 +1564,6 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 		*val = (s16)get_unaligned_le16(outdata);
 		*val = *val >> ch->scan_type.shift;
 
-		st_lsm6ds3h_set_enable(sdata, false);
-
-		mutex_unlock(&sdata->cdata->odr_lock);
 		mutex_unlock(&indio_dev->mlock);
 
 		return IIO_VAL_INT;
