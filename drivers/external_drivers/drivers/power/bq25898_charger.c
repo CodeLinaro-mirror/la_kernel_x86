@@ -490,6 +490,7 @@ static enum power_supply_property bq25898_battery_properties[] = {
 	POWER_SUPPLY_PROP_STATUS,		/* charging status */
 	POWER_SUPPLY_PROP_HEALTH,		/* battery health */
 	POWER_SUPPLY_PROP_PRESENT,		/* battery present */
+	POWER_SUPPLY_PROP_ONLINE,		/* power supply online */
 	POWER_SUPPLY_PROP_TEMP,			/* battery temperature */
 	POWER_SUPPLY_PROP_TECHNOLOGY,		/* battery technology */
 	POWER_SUPPLY_PROP_CURRENT_NOW		/* battery current */
@@ -2010,6 +2011,17 @@ static int bq25898_get_prop_status(struct bq25898_charger *chip)
 	return POWER_SUPPLY_STATUS_UNKNOWN;
 }
 
+static int bq25898_get_prop_online(struct bq25898_charger *chip)
+{
+	int val;
+
+	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+
+	if (val & (VBUS_STATUS0 | VBUS_STATUS1 | VBUS_STATUS2))
+		return 1;
+	else
+		return 0;
+}
 
 static int bq25898_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
@@ -2036,6 +2048,9 @@ static int bq25898_get_property(struct power_supply *psy,
 		dev_dbg(&chip->client->dev, "%s health:%d", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
+		val->intval = bq25898_get_prop_online(chip);
+		dev_dbg(&chip->client->dev, "%s online:%d", __func__, val->intval);
+		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = 1;
 		break;
