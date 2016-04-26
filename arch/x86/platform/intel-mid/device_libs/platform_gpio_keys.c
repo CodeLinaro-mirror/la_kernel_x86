@@ -18,14 +18,9 @@
 #include <linux/platform_device.h>
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
-#include <linux/gpio.h>
-#include <linux/gpio_keys.h>
-#include <linux/input.h>
-#include <linux/platform_device.h>
 #include <linux/pnp.h>
 #include <asm/intel_vlv2.h>
 #include <asm/io_apic.h>
-#include <asm/acpi.h>
 #include <asm/hw_irq.h>
 #include <asm/intel-mid.h>
 #include "platform_gpio_keys.h"
@@ -58,6 +53,8 @@ static struct gpio_keys_button gpio_button[] = {
 	{SW_MUTE,               -1, 1, "mute_enable",   EV_SW,  0, 20},
 	{KEY_CAMERA,            -1, 1, "camera0_sb1",   EV_KEY, 0, 20},
 	{KEY_CAMERA_FOCUS,      -1, 1, "camera0_sb2",   EV_KEY, 0, 20},
+	{BTN_8,			1, 1, "top_bttn",	EV_KEY, 1, 20},
+	{BTN_9,			1, 1, "btm_bttn",	EV_KEY, 1, 20},
 };
 
 static struct gpio_keys_platform_data gpio_keys = {
