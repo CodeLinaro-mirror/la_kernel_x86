@@ -493,7 +493,8 @@ static enum power_supply_property bq25898_battery_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,		/* power supply online */
 	POWER_SUPPLY_PROP_TEMP,			/* battery temperature */
 	POWER_SUPPLY_PROP_TECHNOLOGY,		/* battery technology */
-	POWER_SUPPLY_PROP_CURRENT_NOW		/* battery current */
+	POWER_SUPPLY_PROP_CURRENT_NOW,		/* battery current */
+	POWER_SUPPLY_PROP_VOLTAGE_NOW		/* battery voltage */
 };
 
 static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned long action,
@@ -1088,32 +1089,39 @@ static void bq25898_regd_to_human(struct seq_file *seq, u8 reg, u8 val)
 	seq_printf(seq, "VINDPM Absolute threshold %dmV\n", res);
 }
 
+/* Convert register to uV value. Ignores THERM_STAT bit */
+static inline int bq25898_rege_convert_uv(u8 val)
+{
+	int res = 2304000;
+
+	if (val & ADC_CONV_BATV6)
+		res += 1280000;
+	if (val & ADC_CONV_BATV5)
+		res += 640000;
+	if (val & ADC_CONV_BATV4)
+		res += 320000;
+	if (val & ADC_CONV_BATV3)
+		res += 160000;
+	if (val & ADC_CONV_BATV2)
+		res += 80000;
+	if (val & ADC_CONV_BATV1)
+		res += 40000;
+	if (val & ADC_CONV_BATV0)
+		res += 20000;
+
+	return res;
+}
+
 static void bq25898_rege_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
-	int res = 2304;
-
 	seq_puts(seq, "THERM_STAT ");
 	if (val & THERM_STAT)
 		seq_puts(seq, "in thermal regulation\n");
 	else
 		seq_puts(seq, "normal thermal\n");
 
-	if (val & ADC_CONV_BATV6)
-		res += 1280;
-	if (val & ADC_CONV_BATV5)
-		res += 640;
-	if (val & ADC_CONV_BATV4)
-		res += 320;
-	if (val & ADC_CONV_BATV3)
-		res += 160;
-	if (val & ADC_CONV_BATV2)
-		res += 80;
-	if (val & ADC_CONV_BATV1)
-		res += 40;
-	if (val & ADC_CONV_BATV6)
-		res += 20;
-
-	seq_printf(seq, "ADC_CONV ADC Conversion BAT voltage %dmV\n", res);
+	seq_printf(seq, "ADC_CONV ADC Conversion BAT voltage %duV\n",
+		   bq25898_rege_convert_uv(val));
 
 }
 
@@ -2023,6 +2031,38 @@ static int bq25898_get_prop_online(struct bq25898_charger *chip)
 		return 0;
 }
 
+static int bq25898_get_prop_voltage_now(struct bq25898_charger *chip)
+{
+	int val;
+	int ret;
+	int i;
+
+	/* Start one-shot adc conversion */
+	ret = bq25898_read_modify_reg(chip->client, BQ25898_ADC_CTRL_REG,
+				      ADC_CONV_START, ADC_CONV_START);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"ADC start failed: %d", ret);
+		return ret;
+	}
+
+	/* Conversion takes usually 80ms */
+	for (i = 0; i < NR_RETRY_CNT; i++) {
+		if (bq25898_read_reg(chip->client, BQ25898_ADC_CTRL_REG) & ADC_CONV_START)
+			msleep(100);
+		else
+			break;
+	}
+
+	if (i >= NR_RETRY_CNT) {
+		dev_err(&chip->client->dev, "ADC conversion timed out");
+		return -EIO;
+	}
+
+	val = bq25898_read_reg(chip->client, BQ25898_BAT_VOLT_REG);
+	return bq25898_rege_convert_uv(val);
+}
+
 static int bq25898_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
 				union power_supply_propval *val)
@@ -2063,6 +2103,11 @@ static int bq25898_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = chip->current_now;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		val->intval = bq25898_get_prop_voltage_now(chip);
+		if (val->intval < 0)
+			return val->intval;
 		break;
 	default:
 		break;
