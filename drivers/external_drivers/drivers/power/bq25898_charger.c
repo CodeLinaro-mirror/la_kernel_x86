@@ -1039,23 +1039,23 @@ static void bq25898_regc_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else
 		seq_puts(seq, "Normal\n");
 
-	seq_puts(seq, "NTC_FAULT");
+	seq_puts(seq, "NTC_FAULT ");
 	if (!(val & NTC_FAULT2) && !(val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Normal");
+		seq_puts(seq, "Normal\n");
 	else if (!(val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "TS Cold");
+		seq_puts(seq, "TS Cold\n");
 	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "TS Hot or Warm (buck mode)");
+		seq_puts(seq, "TS Hot or Warm (buck mode)\n");
 	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "cool");
+		seq_puts(seq, "cool\n");
 	else if ((val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "Cold");
+		seq_puts(seq, "Cold\n");
 	else if ((val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Hot (buck mode)");
+		seq_puts(seq, "Hot (buck mode)\n");
 	else if ((val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "Cold (boost mode)");
+		seq_puts(seq, "Cold (boost mode)\n");
 	else if ((val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Hot (boost mode)");
+		seq_puts(seq, "Hot (boost mode)\n");
 }
 
 static void bq25898_regd_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -1258,7 +1258,7 @@ static void bq25898_reg14_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else
 		seq_puts(seq, "detection in progress or disabled\n");
 
-	seq_printf(seq, "Revision: %d", (BQ25898_DEVREG_CTRL_REG & (DEV_REV1 | DEV_REV0)) & 0x3);
+	seq_printf(seq, "Revision: %d\n", (val & (DEV_REV1 | DEV_REV0)));
 }
 
 /* invoked by reading content of register >= BQ25898_ALL_REGISTER
@@ -1390,12 +1390,13 @@ static int bq25898_reg_show(struct seq_file *seq, void *unused)
 	dbgfs_file = (struct bq25898_debugfs_file *) seq->private;
 
 	reg = (u8) (dbgfs_file->regnr);
-	val = bq25898_read_reg(dbgfs_file->parent->client, reg);
-	seq_printf(seq, "0x%02x\n", val);
-
 	/* if we want to have a human output -dump all register */
-	if (reg >= BQ25898_ALL_REGISTER)
+	if (reg >= BQ25898_ALL_REGISTER) {
 		bq25898_regall_to_human(dbgfs_file->parent->client, seq);
+	} else {
+		val = bq25898_read_reg(dbgfs_file->parent->client, reg);
+		seq_printf(seq, "0x%02x\n", val);
+	}
 
 	return 0;
 }
