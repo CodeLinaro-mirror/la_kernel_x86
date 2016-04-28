@@ -1532,7 +1532,7 @@ static int enable_ship_mode(struct i2c_client *bq25898_client)
 	/* Enable I2C Ship mode */
 
 	ret = bq25898_read_modify_reg(bq25898_client, BQ25898_SAFETY_TIMER_CTRL_REG,
-			BATFET_DISABLE, 1);
+			BATFET_DISABLE, 0x20);
 	if (ret < 0) {
 		dev_err(&bq25898_client->dev,
 			"I2C ship mode enable write failed: %d", ret);
@@ -1632,7 +1632,7 @@ static int bq25898_charger_configure(struct i2c_client *client)
 
 	/* ship mode delay to 10s */
 	ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
-			BATFET_DLY, 1);
+			BATFET_DLY, 0x8);
 	if (ret < 0)
 		dev_err(&client->dev, "error setting ship mode delay to 10s\n");
 
