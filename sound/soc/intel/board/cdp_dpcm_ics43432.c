@@ -52,22 +52,66 @@ static int ssp0_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_d
 	return ret;
 }
 
+static int ssp1_mfg_mode;
+
+static int snd_cdp_get_mfg_mode_ssp1(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = ssp1_mfg_mode;
+
+	return 0;
+}
+
+static int snd_cdp_put_mfg_mode_ssp1(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	bool control_updated;
+
+	control_updated =
+		(ssp1_mfg_mode != ucontrol->value.integer.value[0]);
+	ssp1_mfg_mode = ucontrol->value.integer.value[0];
+
+	return control_updated;
+}
+
+
+static const struct snd_kcontrol_new snd_cdp_controls[] = {
+	SOC_SINGLE_BOOL_EXT("BT Mfg Switch", 0,
+	snd_cdp_get_mfg_mode_ssp1, snd_cdp_put_mfg_mode_ssp1),
+};
+
+
 static int ssp1_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_dai *dai)
 {
 	int ret;
-
+	/* default bt chip mode */
 	/* tx_mask = 3 | rx_mask = 0 | 2 slots | 16 bits */
-	ret = snd_soc_dai_set_tdm_slot(dai, 0x3, 0x0, 0x2, SNDRV_PCM_FORMAT_S16_LE);
+	unsigned int tx_mask = 0x3;
+	unsigned int rx_mask = 0x0;
+	int slots = 2;
+	/* I2S | DSP is master | framesync active high  */
+	unsigned int fmt = SND_SOC_DAIFMT_I2S |
+			SND_SOC_DAIFMT_CBS_CFS |
+			SND_SOC_DAIFMT_NB_IF;
+
+	if (ssp1_mfg_mode) {
+		/* mfg mode allows loopback and format is
+		 * PCM, left justified, clocked MSB first */
+		rx_mask = 0x3;
+		slots = 1;
+		fmt = SND_SOC_DAIFMT_DSP_A |
+			SND_SOC_DAIFMT_CBS_CFS |
+			SND_SOC_DAIFMT_NB_IF;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(dai, tx_mask, rx_mask, slots,
+		SNDRV_PCM_FORMAT_S16_LE);
 	if (ret < 0) {
 		pr_err("can't set bt i2s format: %d\n", ret);
 		return ret;
 	}
 
-	/* I2S | DSP is master | framesync active high  */
-	ret = snd_soc_dai_set_fmt(dai,
-			SND_SOC_DAIFMT_I2S |
-			SND_SOC_DAIFMT_CBS_CFS |
-			SND_SOC_DAIFMT_NB_IF);
+	ret = snd_soc_dai_set_fmt(dai, fmt);
 	if (ret < 0) {
 		pr_err("can't set codec DAI configuration: %d\n", ret);
 		return ret;
@@ -213,6 +257,13 @@ static int snd_cdp_probe(struct platform_device *pdev)
 		return ret;
 	}
 	platform_set_drvdata(pdev, &snd_cdp_card);
+
+	ret = snd_soc_add_card_controls(&snd_cdp_card, snd_cdp_controls,
+					ARRAY_SIZE(snd_cdp_controls));
+	if (ret < 0) {
+		pr_err("snd_soc_add_controls failed: %d\n", ret);
+		return ret;
+	}
 	pr_info("%s successful\n", __func__);
 
 	return ret;
