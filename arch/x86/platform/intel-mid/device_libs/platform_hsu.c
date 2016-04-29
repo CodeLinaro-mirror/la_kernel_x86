@@ -241,7 +241,7 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 			[hsu_port1] = {
 				.id = 1,
 				.name = HSU_GPS_PORT,
-				.wake_gpio = 130,
+				.wake_gpio = 180,//host_wake
 				.rx_gpio = 130,
 				.rx_alt = 1,
 				.cts_gpio = 128,
@@ -487,7 +487,6 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.index = 1,
 			.name = HSU_GPS_PORT,
 			.idle = 40,
-			.preamble = 1,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
 			.hw_set_rts = intel_mid_hsu_rts,
@@ -767,25 +766,15 @@ void intel_mid_hsu_suspend(int port, struct device *dev, irq_handler_t wake_isr)
 	info->dev = dev;
 	info->wake_isr = wake_isr;
 
-	if (info->wake_gpio) {
-		lnw_gpio_set_alt(info->wake_gpio, LNW_GPIO);
-		gpio_direction_input(info->wake_gpio);
-		udelay(10);
-		ret = request_irq(gpio_to_irq(info->wake_gpio), info->wake_isr,
-				IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING,
-				info->name, info->dev);
-		if (ret)
-			dev_err(info->dev, "failed to register wakeup irq\n");
-	}
+	if (info->wake_gpio && device_may_wakeup(dev))
+		enable_irq_wake(gpio_to_irq(info->wake_gpio));
 }
 
 void intel_mid_hsu_resume(int port, struct device *dev)
 {
 	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
-
-	if (info->wake_gpio)
-		free_irq(gpio_to_irq(info->wake_gpio), info->dev);
-
+	if (info->wake_gpio && device_may_wakeup(dev))
+		disable_irq_wake(gpio_to_irq(info->wake_gpio));
 	if (info->rx_gpio) {
 		lnw_gpio_set_alt(info->rx_gpio, info->rx_alt);
 		gpio_direction_input(info->rx_gpio);
@@ -929,10 +918,11 @@ int intel_mid_hsu_func_to_port(unsigned int func)
 	return -1;
 }
 
-int intel_mid_hsu_init(struct device *dev, int port)
+int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr)
 {
 	struct hsu_port_cfg *port_cfg = platform_hsu_info + port;
-	struct hsu_port_pin_cfg *info;
+        struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
+	int ret = 0;
 
 	if (port >= hsu_port_max)
 		return -ENODEV;
@@ -940,6 +930,10 @@ int intel_mid_hsu_init(struct device *dev, int port)
 	port_cfg->dev = dev;
 
 	info = hsu_port_gpio_mux + port;
+
+	info->dev = dev;
+	info->wake_isr = wake_isr;
+
 	if (info->wake_gpio)
 		gpio_request(info->wake_gpio, "hsu");
 	if (info->rx_gpio)
@@ -951,7 +945,17 @@ int intel_mid_hsu_init(struct device *dev, int port)
 	if (info->rts_gpio)
 		gpio_request(info->rts_gpio, "hsu");
 
-	return 1;
+	if (info->wake_gpio) {
+		gpio_direction_input(info->wake_gpio);
+		if (info->wake_gpio != info->rx_gpio) {
+			ret = request_irq(gpio_to_irq(info->wake_gpio), info->wake_isr,
+					IRQ_TYPE_EDGE_RISING, info->name, info->dev);
+			if (ret)
+				dev_err(info->dev, "failed to register wakeup irq\n");
+		}
+	}
+
+	return ret;
 }
 
 static void hsu_platform_clk(enum intel_mid_cpu_type cpu_type, ulong plat)
