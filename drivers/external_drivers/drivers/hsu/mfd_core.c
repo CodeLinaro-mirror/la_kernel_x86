@@ -2269,7 +2269,7 @@ static int serial_port_setup(struct uart_hsu_port *up,
 		up->use_dma = 0;
 
 	if (cfg->hw_init)
-		cfg->hw_init(up->dev, index);
+		cfg->hw_init(up->dev, index, wakeup_irq);
 	mutex_init(&up->q_mutex);
 	tasklet_init(&up->tasklet, serial_hsu_tasklet,
 				(unsigned long)up);

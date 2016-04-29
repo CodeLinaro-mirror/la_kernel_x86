@@ -53,7 +53,7 @@ struct hsu_port_cfg {
 	int hw_context_save;
 	int hw_ctrl_cts;
 	struct device *dev;
-	int (*hw_init)(struct device *dev, int port);
+	int (*hw_init)(struct device *dev, int port, irq_handler_t wake_isr);
 	void(*hw_set_alt)(int port);
 	void(*hw_set_rts)(int port, int value);
 	void(*hw_suspend)(int port, struct device *dev, irq_handler_t wake_isr);
@@ -74,7 +74,7 @@ void intel_mid_hsu_rts(int port, int value);
 void intel_mid_hsu_switch(int port);
 void intel_mid_hsu_force_cfg(enum hsu_cfg config);
 int intel_mid_hsu_plat_init(int port, ulong plat, struct device *dev);
-int intel_mid_hsu_init(struct device *dev, int port);
+int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr);
 int intel_mid_hsu_func_to_port(unsigned int func);
 unsigned int intel_mid_hsu_get_clk(void);
 int hsu_register_board_info(void *inf);
