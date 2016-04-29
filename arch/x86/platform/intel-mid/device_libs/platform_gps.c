@@ -20,7 +20,6 @@
 static struct intel_mid_gps_platform_data gps_data = {
 	.gpio_reset  = -EINVAL,
 	.gpio_enable = -EINVAL,
-	.gpio_hostwake = -EINVAL,
 	.gpio_mcu_req = -EINVAL,
 	.gpio_mcu_req_resp = -EINVAL,
 	.reset  = RESET_ON,
@@ -43,7 +42,6 @@ void  __init *intel_mid_gps_device_init(void *info)
 
 	gps_data.gpio_reset  = get_gpio_by_name(GPS_GPIO_RESET);
 	gps_data.gpio_enable = get_gpio_by_name(GPS_GPIO_ENABLE);
-	gps_data.gpio_hostwake = get_gpio_by_name(GPS_GPIO_HOSTWAKE);
 	gps_data.gpio_mcu_req = get_gpio_by_name(GPS_GPIO_MCU_REQ);
 	gps_data.gpio_mcu_req_resp  = get_gpio_by_name(GPS_GPIO_MCU_REQ_RESP);
 	gps_data.hsu_port = entry->host_num;
