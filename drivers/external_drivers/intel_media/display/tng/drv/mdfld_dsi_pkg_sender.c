@@ -1403,10 +1403,11 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 		mutex_lock(&sender->lock);
 
 		/*handle DSI error*/
-		if (dsi_error_handler(sender)) {
+		err = dsi_error_handler(sender);
+		if (err) {
 			mutex_unlock(&sender->lock);
 			DRM_ERROR("Error handling failed\n");
-			return  -EAGAIN;
+			return err;
 		}
 		/**
 		 * check the whether is there any write_mem_start already being
