@@ -38,7 +38,6 @@
 #define ACPI_DEVICE_ID_BCM47531 "BCM47531"
 
 struct device *tty_dev = NULL;
-struct wake_lock hostwake_lock;
 
 /*********************************************************************
  *		Driver GPIO toggling functions
@@ -153,36 +152,6 @@ static struct attribute_group intel_mid_gps_attr_group = {
 /*********************************************************************
  *		Driver GPIO probe/remove functions
  *********************************************************************/
-
-static irqreturn_t intel_mid_gps_hostwake_isr(int irq, void *dev)
-{
-	struct intel_mid_gps_platform_data *pdata = dev_get_drvdata(dev);
-	int hostwake;
-
-	hostwake = gpio_get_value(pdata->gpio_hostwake);
-
-	tty_dev = intel_mid_hsu_set_wake_peer(pdata->hsu_port, NULL);
-	if (!tty_dev) {
-		pr_err("%s: unable to get the HSU tty device \n", __func__);
-	}
-
-	irq_set_irq_type(irq, hostwake ? IRQF_TRIGGER_FALLING :
-			 IRQF_TRIGGER_RISING);
-
-	if (hostwake) {
-		wake_lock(&hostwake_lock);
-		if (tty_dev)
-			pm_runtime_get(tty_dev);
-	}
-	else {
-		if (tty_dev)
-			pm_runtime_put(tty_dev);
-		wake_unlock(&hostwake_lock);
-	}
-
-	return IRQ_HANDLED;
-}
-
 static int intel_mid_gps_init(struct platform_device *pdev)
 {
 	int ret;
@@ -306,50 +275,8 @@ static int intel_mid_gps_init(struct platform_device *pdev)
 		// no IRQ to configure; signal is polled
 	}
 
-
-	/* Handle hostwake GPIO */
-	if (gpio_is_valid(pdata->gpio_hostwake)) {
-		int irq_id = -EINVAL;
-
-		/* Request gpio */
-		ret = gpio_request(pdata->gpio_hostwake, "intel_mid_gps_hostwake");
-		if (ret < 0) {
-			pr_err("%s: Unable to request GPIO:%d, err:%d\n",
-					__func__, pdata->gpio_hostwake, ret);
-			goto error_gpio_hostwake_request;
-		}
-
-		/* Force GPIO muxmode */
-		lnw_gpio_set_alt(pdata->gpio_hostwake, LNW_GPIO);
-
-		/* set gpio direction */
-		ret = gpio_direction_input(pdata->gpio_hostwake);
-		if (ret < 0) {
-			pr_err("%s: Unable to set GPIO:%d direction, err:%d\n",
-					__func__, pdata->gpio_hostwake, ret);
-			goto error_gpio_hostwake_direction;
-		}
-
-		/* configure irq handling */
-		irq_id = gpio_to_irq(pdata->gpio_hostwake);
-		irq_set_irq_wake(irq_id, 1);
-
-		ret = request_irq(irq_id, intel_mid_gps_hostwake_isr,
-				  IRQF_TRIGGER_RISING,
-				  "gps_hostwake", &pdev->dev);
-		if (ret) {
-			pr_err("%s: unable to request irq %d \n", __func__, irq_id);
-			goto error_gpio_hostwake_direction;
-		}
-
-		wake_lock_init(&hostwake_lock, WAKE_LOCK_SUSPEND, "gps_hostwake_lock");
-	}
-
 	return 0;
 
-error_gpio_hostwake_direction:
-	gpio_free(pdata->gpio_hostwake);
-error_gpio_hostwake_request:
 error_gpio_enable_direction:
 	gpio_free(pdata->gpio_enable);
 error_gpio_mcu_req_direction:
@@ -383,12 +310,6 @@ static void intel_mid_gps_deinit(struct platform_device *pdev)
 	if (gpio_is_valid(pdata->gpio_mcu_req_resp))
 		gpio_free(pdata->gpio_mcu_req_resp);
 
-	if (gpio_is_valid(pdata->gpio_hostwake)) {
-		free_irq(gpio_to_irq(pdata->gpio_hostwake), &pdev->dev);
-		gpio_free(pdata->gpio_hostwake);
-		wake_lock_destroy(&hostwake_lock);
-	}
-
 	sysfs_remove_group(&pdev->dev.kobj, &intel_mid_gps_attr_group);
 }
 
@@ -413,10 +334,9 @@ static int intel_mid_gps_probe(struct platform_device *pdev)
 		pdata->gpio_enable = acpi_get_gpio_by_name(&pdev->dev,"ENAB", NULL);
 		pdata->gpio_mcu_req = acpi_get_gpio_by_name(&pdev->dev,"MREQ", NULL);
 		pdata->gpio_mcu_req_resp = acpi_get_gpio_by_name(&pdev->dev,"MRSP", NULL);
-		pdata->gpio_hostwake = acpi_get_gpio_by_name(&pdev->dev,"HSTW", NULL);
 
-		pr_info("%s enable: %d, reset: %d, hostwake: %d, mcu_req: %d, mcu_req_resp: %d\n", __func__,
-			pdata->gpio_enable, pdata->gpio_reset, pdata->gpio_hostwake, pdata->gpio_mcu_req, pdata->gpio_mcu_req_resp);
+		pr_info("%s enable: %d, reset: %d,  mcu_req: %d, mcu_req_resp: %d\n", __func__,
+			pdata->gpio_enable, pdata->gpio_reset, pdata->gpio_mcu_req, pdata->gpio_mcu_req_resp);
 
 		if (ACPI_FAILURE(acpi_evaluate_integer((acpi_handle)ACPI_HANDLE(&pdev->dev),
 						       "UART", NULL, &port)))

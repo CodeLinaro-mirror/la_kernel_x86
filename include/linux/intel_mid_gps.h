@@ -38,7 +38,6 @@ struct intel_mid_gps_platform_data {
 	unsigned int has_enable;
 	int gpio_reset;
 	int gpio_enable;
-	int gpio_hostwake;
 	int gpio_mcu_req;
 	int gpio_mcu_req_resp;
 	unsigned int reset;
