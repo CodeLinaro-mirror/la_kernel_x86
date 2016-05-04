@@ -46,6 +46,7 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <linux/wakelock.h>
+#include <linux/reboot.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/pmic_pdata.h>
@@ -445,6 +446,10 @@
 
 #define BQ25898_INT_COUNTER "bq25898_irq_counter"
 
+#define DEFAULT_SHIP_MODE_DELAY_10S 1
+
+static bool ship_mode_delay_10s = DEFAULT_SHIP_MODE_DELAY_10S;
+
 static int bq25898_charger_configure(struct i2c_client *client);
 
 enum bq25898_wdt_timing {
@@ -473,6 +478,7 @@ struct bq25898_charger {
 	struct work_struct charge_status_work;
 	struct notifier_block otg_usb_change;
 	struct notifier_block pmic_notifier;
+	struct notifier_block reboot_notifier;
 	struct usb_phy *transceiver;
 	struct dentry *dbgfs_dir;
 	struct bq25898_debugfs_file dbgfs_file[BQ25898_ALL_REGISTER+1];
@@ -483,7 +489,7 @@ struct bq25898_charger {
 	int temperature;		/* tbd whom provide this */
 	int postcharge_duration;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
-	bool ship_mode_status;
+	bool ship_mode_scheduled;
 };
 
 static enum power_supply_property bq25898_battery_properties[] = {
@@ -1574,30 +1580,30 @@ static int disable_ship_mode(struct i2c_client *bq25898_client)
 }
 
 /**
- * get_ship_mode_status - get function for sysfs ship_mode
+ * get_ship_mode - get function for sysfs ship_mode
  * Parameters as defined by sysfs interface
  */
-static ssize_t get_ship_mode_status(struct device *dev,
+static ssize_t get_ship_mode(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
 	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
-	return scnprintf(buf, 4, "%d\n", chip->ship_mode_status);
+
+	return scnprintf(buf, 4, "%d\n", chip->ship_mode_scheduled);
 }
 
 /**
- * set_ship_mode_status - set function for sysfs ship_mode
+ * set_ship_mode - set function for sysfs ship_mode
  * Parameters as defined by sysfs interface
- * ship_mode_status can take the values 0 and 1
+ * ship_mode can take the values 0 and 1
  */
-static ssize_t set_ship_mode_status(struct device *dev,
+static ssize_t set_ship_mode(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 				size_t count)
 {
 	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
 	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
 	unsigned long value;
-	int ret = 0;
 
 	if (kstrtoul(buf, 10, &value))
 		return -EINVAL;
@@ -1606,55 +1612,29 @@ static ssize_t set_ship_mode_status(struct device *dev,
 	if (value > 1)
 		return -EINVAL;
 
-	if (value) {
-		mutex_lock(&chip->ship_mode_lock);
-		ret = enable_ship_mode(bq25898_client);
-		mutex_unlock(&chip->ship_mode_lock);
-		if (ret < 0)
-			return ret;
-		chip->ship_mode_status = true;
-	}  else {
-		mutex_lock(&chip->ship_mode_lock);
-		ret = disable_ship_mode(bq25898_client);
-		mutex_unlock(&chip->ship_mode_lock);
-		if (ret < 0)
-			return ret;
-		chip->ship_mode_status = false;
-	}
+	mutex_lock(&chip->ship_mode_lock);
+	if (value)
+		/* ship_mode is enabled after a reboot notification */
+		chip->ship_mode_scheduled = true;
+	else
+		chip->ship_mode_scheduled = false;
+	mutex_unlock(&chip->ship_mode_lock);
 
 	return count;
 }
 
 #ifdef CONFIG_SYSFS
 static DEVICE_ATTR(ship_mode, S_IRUGO | S_IWUSR,
-	get_ship_mode_status, set_ship_mode_status);
+	get_ship_mode, set_ship_mode);
 #endif /* !CONFIG_SYSFS */
 
 /* Don't call this function directly from interrupt context! */
-static int bq25898_charger_configure(struct i2c_client *client)
+static int bq25898_enable_charging(struct i2c_client *client)
 {
 	int ret = 0;
 
 	if (!client)
 		return -EINVAL;
-
-	dev_dbg(&client->dev, "Reconfigure charger, setting ship_mode delay to 10s\n");
-
-	/* ship mode delay to 10s */
-	ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
-			BATFET_DLY, 0x8);
-	if (ret < 0)
-		dev_err(&client->dev, "error setting ship mode delay to 10s\n");
-
-	dev_dbg(&client->dev, "Reconfigure charger, disabling ship mode\n");
-
-	/* disable ship mode */
-	ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
-			BATFET_DISABLE, 0);
-	if (ret < 0)
-		dev_err(&client->dev, "error disabling ship mode %d\n", ret);
-
-	dev_dbg(&client->dev, "Reconfigure charger, disabling charging\n");
 
 	/* disable charging */
 	ret = bq25898_read_modify_reg(client, BQ25898_CHARGE_CTRL_REG,
@@ -1680,6 +1660,51 @@ static int bq25898_charger_configure(struct i2c_client *client)
 
 	if (ret < 0)
 		dev_err(&client->dev, "error enabling charging %d\n", ret);
+
+	return ret;
+}
+
+static int bq25898_ship_mode_configure(struct i2c_client *client)
+{
+	int ret = 0;
+	struct bq25898_charger *chip = i2c_get_clientdata(client);
+
+	if (!chip)
+		return -EINVAL;
+
+	dev_dbg(&client->dev, "Configure charger, setting default values for ship_mode\n");
+
+	/* disable ship_mode */
+	mutex_lock(&chip->ship_mode_lock);
+	ret = disable_ship_mode(client);
+	mutex_unlock(&chip->ship_mode_lock);
+	if (ret < 0) {
+		dev_err(&client->dev, "error disabling ship mode\n");
+		return ret;
+	}
+	/* set ship mode delay to 10s */
+	if (ship_mode_delay_10s) {
+		ret = bq25898_read_modify_reg(client, BQ25898_SAFETY_TIMER_CTRL_REG,
+				BATFET_DLY, 0x8);
+		if (ret < 0)
+			dev_err(&client->dev, "error setting ship mode delay to 10s\n");
+	}
+
+	return ret;
+}
+
+/* Don't call this function directly from interrupt context! */
+static int bq25898_charger_configure(struct i2c_client *client)
+{
+	int ret = 0;
+
+	if (!client)
+		return -EINVAL;
+
+	ret = bq25898_ship_mode_configure(client);
+	if (ret < 0)
+		return ret;
+	ret = bq25898_enable_charging(client);
 
 	return ret;
 }
@@ -1820,6 +1845,25 @@ static int bq25898_notify_charge_status_change(struct notifier_block *self,
 	}
 }
 
+static int bq25898_notify_reboot(struct notifier_block *self,
+					unsigned long action, void *param)
+{
+	int ret = 0;
+	struct bq25898_charger *chip = container_of(self, struct bq25898_charger,
+						reboot_notifier);
+
+	if (!chip)
+		return NOTIFY_BAD;
+
+	if (chip->ship_mode_scheduled) {
+		ret = enable_ship_mode(chip->client);
+		if (ret < 0)
+			dev_err(&chip->client->dev, "Error enabling ship_mode\n");
+	}
+
+	return NOTIFY_DONE;
+}
+
 static void bq25898_sw_config_worker(struct work_struct *work)
 {
 	int ret = 0;
@@ -1829,8 +1873,8 @@ static void bq25898_sw_config_worker(struct work_struct *work)
 	if (!chip)
 		return;
 
-	ret = bq25898_charger_configure(chip->client);
-	dev_dbg(&chip->client->dev, "notifier charger configure: 0x%x\n", ret);
+	ret = bq25898_enable_charging(chip->client);
+	dev_dbg(&chip->client->dev, "charging enabled: 0x%x\n", ret);
 }
 
 
@@ -1970,6 +2014,12 @@ static int register_pmic_notification(struct bq25898_charger *chip)
 	}
 
 	return 0;
+}
+
+static int register_reboot_notification(struct bq25898_charger *chip)
+{
+	chip->reboot_notifier.notifier_call = bq25898_notify_reboot;
+	return register_reboot_notifier(&chip->reboot_notifier);
 }
 
 static int bq25898_get_prop_health(struct bq25898_charger *chip)
@@ -2202,7 +2252,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->postcharge_duration = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
 	chip->current_now = 0;
 	chip->irq_counter = 0;
-	chip->ship_mode_status = false;
+	chip->ship_mode_scheduled = false;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
@@ -2243,8 +2293,20 @@ static int bq25898_probe(struct i2c_client *client,
 
 	/* default configuration */
 	ret = bq25898_charger_configure(client);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&client->dev, "error configuring charger: %d\n", ret);
+		return ret;
+	}
+
+#ifdef CONFIG_SYSFS
+	/* create sysfs file to enable ship_mode */
+	ret = device_create_file(&client->dev,
+			&dev_attr_ship_mode);
+	if (ret < 0) {
+		dev_err(&client->dev, "cannot create sysfs entry for ship mode\n");
+		return ret;
+	}
+#endif /* !CONFIG_SYSFS */
 
 	bq25898_debugfs_init(chip);
 
@@ -2255,19 +2317,18 @@ static int bq25898_probe(struct i2c_client *client,
 		goto error0;
 	}
 
-#ifdef CONFIG_SYSFS
-	/* create sysfs file to enable shutdown mode */
-	ret = device_create_file(&client->dev,
-			&dev_attr_ship_mode);
-	if (ret < 0)
-		dev_warn(&client->dev, "cannot create sysfs entry for ship mode\n");
-#endif /* !CONFIG_SYSFS */
-
 	/* register for usb change */
 	ret = register_otg_notification(chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "error registering to OTG notification: %d\n", ret);
 		goto error1;
+	}
+
+	/* register for reboot notification */
+	ret = register_reboot_notification(chip);
+	if (ret < 0) {
+		dev_err(&client->dev, "error registering to REBOOT notification: %d\n", ret);
+		goto error2;
 	}
 
 	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
@@ -2278,6 +2339,8 @@ static int bq25898_probe(struct i2c_client *client,
 
 	return ret;
 
+error2:
+	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 error1:
 	unregister_pmic_notifier(&chip->pmic_notifier);
 error0:
@@ -2310,7 +2373,7 @@ static int bq25898_remove(struct i2c_client *client)
 		usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 
 	unregister_pmic_notifier(&chip->pmic_notifier);
-
+	unregister_reboot_notifier(&chip->reboot_notifier);
 	power_supply_unregister(&chip->psy_usb);
 
 	bq25898_debugfs_exit(chip);
@@ -2354,4 +2417,10 @@ module_i2c_driver(bq25898_driver);
 MODULE_AUTHOR("Kamel Slimani <kamel.slimani@intel.com>");
 MODULE_AUTHOR("Marc Blassin <marc.blassin@intel.com>");
 MODULE_DESCRIPTION("BQ25898 Charger Driver");
+
+module_param(ship_mode_delay_10s, bool, 0);
+MODULE_PARM_DESC(ship_mode_delay_10s,
+                 "Set to 0 if an immediate poweroff of the system is \
+                 needed during reboot when ship_mode is enabled, default "
+                 __MODULE_STRING(DEFAULT_SHIP_MODE_DELAY_10S));
 MODULE_LICENSE("GPL");
