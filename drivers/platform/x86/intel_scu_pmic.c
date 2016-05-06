@@ -43,7 +43,7 @@
 static struct kobject *scu_pmic_kobj;
 static struct rpmsg_instance *pmic_instance;
 
-static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
+static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub, bool wait)
 {
 	int i, err, inlen = 0, outlen = 0;
 
@@ -77,7 +77,11 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 	} else
 		pr_err("IPC command not supported\n");
 
-	err = rpmsg_send_command(pmic_instance, cmd, sub, wbuf,
+	if(wait)
+		err = rpmsg_send_command(pmic_instance, cmd, sub, wbuf,
+			(u32 *)rbuf, inlen, outlen);
+	else
+		err = rpmsg_atomic_send_command(pmic_instance, cmd, sub, wbuf,
 			(u32 *)rbuf, inlen, outlen);
 
 	if (sub == IPC_CMD_PCNTRL_R) {
@@ -90,20 +94,20 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 
 int intel_scu_ipc_ioread8(u16 addr, u8 *data)
 {
-	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
+	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_ioread8);
 
 int intel_scu_ipc_iowrite8(u16 addr, u8 data)
 {
-	return pwr_reg_rdwr(&addr, &data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
+	return pwr_reg_rdwr(&addr, &data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_iowrite8);
 
 int intel_scu_ipc_iowrite32(u16 addr, u32 data)
 {
 	u16 x[4] = {addr, addr + 1, addr + 2, addr + 3};
-	return pwr_reg_rdwr(x, (u8 *)&data, 4, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
+	return pwr_reg_rdwr(x, (u8 *)&data, 4, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_iowrite32);
 
@@ -112,7 +116,7 @@ int intel_scu_ipc_readv(u16 *addr, u8 *data, int len)
 	if (len < 1 || len > 8)
 		return -EINVAL;
 
-	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
+	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_readv);
 
@@ -121,16 +125,23 @@ int intel_scu_ipc_writev(u16 *addr, u8 *data, int len)
 	if (len < 1 || len > 4)
 		return -EINVAL;
 
-	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
+	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_writev);
 
 int intel_scu_ipc_update_register(u16 addr, u8 bits, u8 mask)
 {
 	u8 data[2] = { bits, mask };
-	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_M);
+	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_M, true);
 }
 EXPORT_SYMBOL(intel_scu_ipc_update_register);
+
+int intel_scu_ipc_atomic_update_register(u16 addr, u8 bits, u8 mask)
+{
+	u8 data[2] = { bits, mask };
+	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_M, false);
+}
+EXPORT_SYMBOL(intel_scu_ipc_atomic_update_register);
 
 /* pmic sysfs for debug */
 

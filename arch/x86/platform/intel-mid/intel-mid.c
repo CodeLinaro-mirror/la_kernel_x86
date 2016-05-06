@@ -153,9 +153,7 @@ static void intel_mid_reboot(void)
 #ifdef CONFIG_X86_MDFLD
 			pmu_power_off();
 #else
-			/*  this will cause context execution error when rebooting */
-			/*  in panic, but this is the very last action we take     */
-			rpmsg_send_generic_simple_command(RP_COLD_OFF, 0);
+			rpmsg_atomic_send_generic_simple_command(RP_COLD_OFF, 0);
 #endif
 			break;
 		case REBOOT_FORCE_ON:
@@ -205,19 +203,19 @@ static int intel_mid_check_ship_mode(void)
 	ff_d = BATTERY_LATCH_FF_D_GPIO_PMIC;
 	ff_clk = BATTERY_LATCH_FF_CLK_GPIO_PMIC;
 
-	retval = intel_scu_ipc_update_register(ff_clk,
+	retval = intel_scu_ipc_atomic_update_register(ff_clk,
 			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_VAL,
 			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_MASK);
 	if (retval < 0)
 		goto gpio_err;
-	retval = intel_scu_ipc_update_register(ff_d,
+	retval = intel_scu_ipc_atomic_update_register(ff_d,
 			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_VAL,
 			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_MASK);
 	if (retval < 0)
 		goto gpio_err;
 
 	if (force_battery_disconnect) {
-		retval = intel_scu_ipc_update_register(ff_clk,
+		retval = intel_scu_ipc_atomic_update_register(ff_clk,
 				1, BATTERY_LATCH_FF_CLK_GPIO_PMIC_OUTVAL_MASK);
 		if (retval < 0)
 			goto gpio_err;

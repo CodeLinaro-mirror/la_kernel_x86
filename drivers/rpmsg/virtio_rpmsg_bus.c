@@ -756,7 +756,8 @@ int rpmsg_send_offchannel_raw(struct rpmsg_channel *rpdev, u32 src, u32 dst,
 
 	sg_init_one(&sg, msg, sizeof(*msg) + len);
 
-	mutex_lock(&vrp->tx_lock);
+	if (wait)
+		mutex_lock(&vrp->tx_lock);
 
 	/* add message to the remote processor's virtqueue */
 	err = virtqueue_add_outbuf(vrp->svq, &sg, 1, msg, GFP_KERNEL);
@@ -773,7 +774,8 @@ int rpmsg_send_offchannel_raw(struct rpmsg_channel *rpdev, u32 src, u32 dst,
 	/* tell the remote processor it has a pending message to read */
 	virtqueue_kick(vrp->svq);
 out:
-	mutex_unlock(&vrp->tx_lock);
+	if (wait)
+		mutex_unlock(&vrp->tx_lock);
 	return err;
 }
 EXPORT_SYMBOL(rpmsg_send_offchannel_raw);
