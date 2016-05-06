@@ -489,6 +489,7 @@ struct bq25898_charger {
 	int postcharge_duration;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
 	bool ship_mode_scheduled;
+	bool is_charge_complete;	/* charge stopped after termination done */
 };
 
 static enum power_supply_property bq25898_battery_properties[] = {
@@ -524,6 +525,7 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			cancel_delayed_work(&chip->batmon_work);
 
 			/* ensure charge termination is enabled */
+			cancel_delayed_work_sync(&chip->sw_term_work);
 			queue_work(system_nrt_wq, &chip->sw_config_work);
 			break;
 		default:
@@ -1672,8 +1674,13 @@ static DEVICE_ATTR(ship_mode, S_IRUGO | S_IWUSR,
 static int bq25898_enable_charging(struct i2c_client *client)
 {
 	int ret = 0;
+	struct bq25898_charger *chip;
 
 	if (!client)
+		return -EINVAL;
+
+	chip = i2c_get_clientdata(client);
+	if (!chip)
 		return -EINVAL;
 
 	/* disable charging */
@@ -1691,6 +1698,7 @@ static int bq25898_enable_charging(struct i2c_client *client)
 
 	if (ret < 0)
 		dev_err(&client->dev, "error enabling charge termination %d\n", ret);
+	chip->is_charge_complete = false;
 
 	dev_dbg(&client->dev, "enabling charging\n");
 
@@ -1845,6 +1853,7 @@ static void bq25898_handle_charging_worker(struct work_struct *work)
 		dev_info(&chip->client->dev, "charge restarted for %d mn\n", chip->postcharge_duration);
 
 		/* the timer will stop the charging when fired and will reenable charge termination */
+		cancel_work_sync(&chip->sw_config_work);
 		schedule_delayed_work(&chip->sw_term_work, (chip->postcharge_duration * 60 * HZ));
 	} else
 		dev_dbg(&chip->client->dev,
@@ -1917,7 +1926,6 @@ static void bq25898_sw_config_worker(struct work_struct *work)
 	dev_dbg(&chip->client->dev, "charging enabled: 0x%x\n", ret);
 }
 
-
 static void bq25898_sw_charge_term_worker(struct work_struct *work)
 {
 	int ret = 0;
@@ -1935,6 +1943,8 @@ static void bq25898_sw_charge_term_worker(struct work_struct *work)
 	if (ret < 0)
 		dev_err(&chip->client->dev, "error disabling charging\n");
 
+	/* Mark battery as full */
+	chip->is_charge_complete = true;
 }
 
 static void bq25898_sw_batmon_worker(struct work_struct *work)
@@ -2070,6 +2080,8 @@ static int bq25898_get_prop_health(struct bq25898_charger *chip)
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 
 	val = bq25898_read_reg(chip->client, BQ25898_FAULT_REG);
+	if (val < 0)
+		return val;
 
 	if (val & WATCHDOG_FAULT)
 		return POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE;
@@ -2098,13 +2110,25 @@ static int bq25898_get_prop_status(struct bq25898_charger *chip)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
 
 	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+	if (val < 0)
+		return val;
 
-	if ((!(val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)) ||
-		((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)))
-		return POWER_SUPPLY_STATUS_NOT_CHARGING;
-	else if ((!(val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) ||
-		((val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)))
+	if (!(val & PG_STAT))
+		return POWER_SUPPLY_STATUS_DISCHARGING;
+
+	/* Pre-charge or fast charge */
+	if ((!(val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) ||
+	    ((val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)))
 		return POWER_SUPPLY_STATUS_CHARGING;
+	/* Charge termination done */
+	else if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0))
+		return POWER_SUPPLY_STATUS_FULL;
+	/* Not charging */
+	else if (!(val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0))
+		if (chip->is_charge_complete)
+			return POWER_SUPPLY_STATUS_FULL;
+		else
+			return POWER_SUPPLY_STATUS_NOT_CHARGING;
 
 	return POWER_SUPPLY_STATUS_UNKNOWN;
 }
@@ -2114,8 +2138,10 @@ static int bq25898_get_prop_online(struct bq25898_charger *chip)
 	int val;
 
 	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+	if (val < 0)
+		return val;
 
-	if (val & (VBUS_STATUS0 | VBUS_STATUS1 | VBUS_STATUS2))
+	if (val & PG_STAT)
 		return 1;
 	else
 		return 0;
@@ -2206,15 +2232,27 @@ static int bq25898_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = bq25898_get_prop_status(chip);
+		ret = bq25898_get_prop_status(chip);
+		if (ret < 0)
+			return ret;
+
+		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s prop status:%d", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = bq25898_get_prop_health(chip);
+		ret = bq25898_get_prop_health(chip);
+		if (ret < 0)
+			return ret;
+
+		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s health:%d", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = bq25898_get_prop_online(chip);
+		ret = bq25898_get_prop_online(chip);
+		if (ret < 0)
+			return ret;
+
+		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s online:%d", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
@@ -2234,9 +2272,12 @@ static int bq25898_get_property(struct power_supply *psy,
 		val->intval = chip->current_now;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		val->intval = bq25898_get_prop_voltage_now(chip);
-		if (val->intval < 0)
-			return val->intval;
+		ret = bq25898_get_prop_voltage_now(chip);
+		if (ret < 0)
+			return ret;
+
+		val->intval = ret;
+		dev_dbg(&chip->client->dev, "%s voltage_now:%d", __func__, val->intval);
 		break;
 	default:
 		break;
@@ -2308,7 +2349,6 @@ static int bq25898_probe(struct i2c_client *client,
 		return -EIO;
 	}
 
-
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip) {
 		dev_err(&client->dev, "mem alloc failed\n");
@@ -2328,6 +2368,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->current_now = 0;
 	chip->irq_counter = 0;
 	chip->ship_mode_scheduled = false;
+	chip->is_charge_complete = false;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
@@ -2407,13 +2448,17 @@ static int bq25898_probe(struct i2c_client *client,
 	}
 
 	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&client->dev, "error registering power supply: %d\n", ret);
+		goto error3;
+	}
 
 	dev_dbg(&client->dev, "<probe");
 
 	return ret;
 
+error3:
+	unregister_reboot_notifier(&chip->reboot_notifier);
 error2:
 	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 error1:
