@@ -387,6 +387,12 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 				clk_n = 1;
 				clock.m = 131;
 				break;
+		case HIMAX_CMD:
+				clock.p1 = 8;
+				clk_n = 1;
+				clock.m = 131;
+				break;
+
 		default:
 			/* for JDI_7x12_CMD */
 				clock.p1 = 4;

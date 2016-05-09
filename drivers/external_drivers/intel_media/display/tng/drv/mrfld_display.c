@@ -284,7 +284,8 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 				(get_panel_type(dev, pipe) == AUO_CMD) ||
 				(get_panel_type(dev, pipe) == TIANMA_CMD) ||
 				(get_panel_type(dev, pipe) == INNOLUX_CMD) ||
-				(get_panel_type(dev, pipe) == AUO_CMD_4x4))) {
+				(get_panel_type(dev, pipe) == AUO_CMD_4x4) ||
+				(get_panel_type(dev, pipe) == HIMAX_CMD))) {
 		return;
 	}
 #endif

@@ -1272,6 +1272,7 @@ When in Sleep Mode, the value returned by get_scanline is undefined.
 #define write_display_profile		0x50
 #define write_display_brightness	0x51
 #define write_ctrl_display		0x53
+#define read_ctrl_display		0x54
 #define write_ctrl_cabc			0x55
 #define read_ctrl_cabc			0x56
 #define CABC_MODE_OFF			0x00
