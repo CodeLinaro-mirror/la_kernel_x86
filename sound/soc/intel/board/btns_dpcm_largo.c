@@ -721,6 +721,17 @@ struct snd_soc_dai_link btns_arizona_msic_dailink[] = {
 		.dynamic = 1,
 		.ops = &btns_arizona_ops,
 	},
+        [MERR_DPCM_BT_CODEC] = {
+		.name = "Merrifield BT-Codec Port",
+		.stream_name = "Saltbay BT-Codec",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.platform_name = "sst-platform",
+		.codec_dai_name = "largo-aif2",
+		.codec_name = "largo-codec",
+		.ops = &btns_arizona_ops,
+		.dsp_loopback = true,
+	},
+
 	/* CODEC<->CODEC link */
 	{
 		.name = "Merrifield Codec-Loop Port",
