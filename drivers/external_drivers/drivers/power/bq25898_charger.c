@@ -486,7 +486,6 @@ struct bq25898_charger {
 	char model_name[MODEL_NAME_SIZE];
 	char manufacturer[DEV_MANUFACTURER_NAME_SIZE];
 	int current_now;		/* provided by healthd */
-	int temperature;		/* tbd whom provide this */
 	int postcharge_duration;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
 	bool ship_mode_scheduled;
@@ -1151,6 +1150,47 @@ static void bq25898_regf_to_human(struct seq_file *seq, u8 reg, u8 val)
 		res += 20;
 
 	seq_printf(seq, "ADDC_CONV ADDC Conversion SYS voltage %dmV\n", res);
+}
+
+/* Return value in 10th of degree Celsius */
+static inline int bq25898_reg10_convert_c(u8 val)
+{
+	static const int temp_lookup[] = {
+		848, 837, 826, 816,
+		806, 796, 786, 776,
+		767, 757, 748, 739,
+		730, 721, 713, 704,
+		696, 687, 679, 671,
+		663, 655, 647, 639,
+		632, 624, 616, 609,
+		602, 594, 587, 580,
+		573, 566, 558, 551,
+		545, 538, 531, 524,
+		517, 511, 504, 497,
+		491, 484, 477, 471,
+		464, 458, 451, 445,
+		439, 432, 426, 419,
+		413, 407, 400, 394,
+		388, 381, 375, 369,
+		362, 356, 350, 343,
+		337, 331, 324, 318,
+		312, 305, 299, 292,
+		286, 280, 273, 266,
+		260, 253, 247, 240,
+		233, 227, 220, 213,
+		206, 199, 192, 185,
+		178, 171, 164, 156,
+		149, 141, 134, 126,
+		118, 110, 102,  94,
+		 86,  78,  69,  60,
+		 51,  42,  33,  24,
+		 14,   4,  -5, -16,
+		-27, -38, -49, -61,
+		-74, -86, -100, -114,
+		-129, -144, -161, -179,
+	};
+
+	return temp_lookup[val];
 }
 
 static void bq25898_reg10_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -2081,42 +2121,78 @@ static int bq25898_get_prop_online(struct bq25898_charger *chip)
 		return 0;
 }
 
-static int bq25898_get_prop_voltage_now(struct bq25898_charger *chip)
+/* Launch an ADC conversion and wait for its completion */
+static int bq25898_adc_convert(struct i2c_client *client)
 {
-	int val;
 	int ret;
 	int i;
 
 	/* Start one-shot adc conversion */
-	ret = bq25898_read_modify_reg(chip->client, BQ25898_ADC_CTRL_REG,
+	ret = bq25898_read_modify_reg(client, BQ25898_ADC_CTRL_REG,
 				      ADC_CONV_START, ADC_CONV_START);
 	if (ret < 0) {
-		dev_err(&chip->client->dev,
+		dev_err(&client->dev,
 			"ADC start failed: %d", ret);
 		return ret;
 	}
 
 	/* Conversion takes usually 80ms */
 	for (i = 0; i < NR_RETRY_CNT; i++) {
-		if (bq25898_read_reg(chip->client, BQ25898_ADC_CTRL_REG) & ADC_CONV_START)
+		if (bq25898_read_reg(client, BQ25898_ADC_CTRL_REG) & ADC_CONV_START)
 			msleep(100);
 		else
 			break;
 	}
 
 	if (i >= NR_RETRY_CNT) {
-		dev_err(&chip->client->dev, "ADC conversion timed out");
+		dev_err(&client->dev, "ADC conversion timed out");
 		return -EIO;
 	}
 
+	return 0;
+}
+
+static int bq25898_get_prop_voltage_now(struct bq25898_charger *chip)
+{
+	int val;
+
+	val = bq25898_adc_convert(chip->client);
+	if (val < 0)
+		return val;
+
 	val = bq25898_read_reg(chip->client, BQ25898_BAT_VOLT_REG);
+	if (val < 0)
+		return val;
+
 	return bq25898_rege_convert_uv(val);
+}
+
+static int bq25898_get_prop_temp(struct bq25898_charger *chip, int *temp)
+{
+	int val;
+
+	val = bq25898_adc_convert(chip->client);
+	if (val < 0)
+		return val;
+
+	val = bq25898_read_reg(chip->client, BQ25898_ADC_TSPCPT_REG);
+	if (val < 0)
+		return val;
+
+	/* 7-bit ADC */
+	if (val >= 128)
+		return -ERANGE;
+
+	*temp = bq25898_reg10_convert_c(val);
+
+	return 0;
 }
 
 static int bq25898_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
 				union power_supply_propval *val)
 {
+	int ret;
 	struct bq25898_charger *chip = container_of(psy,
 						struct bq25898_charger,
 						psy_usb);
@@ -2145,7 +2221,10 @@ static int bq25898_get_property(struct power_supply *psy,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		val->intval = chip->temperature;
+		ret = bq25898_get_prop_temp(chip, &val->intval);
+		if (ret < 0)
+			return ret;
+
 		dev_dbg(&chip->client->dev, "%s temperature:%d", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
@@ -2181,10 +2260,6 @@ static int bq25898_set_property(struct power_supply *psy,
 	mutex_lock(&chip->sysfs_lock);
 
 	switch (psp) {
-	case POWER_SUPPLY_PROP_TEMP:
-		dev_dbg(&chip->client->dev, "%s temperature:%d", __func__, val->intval);
-		chip->temperature = val->intval;
-		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		dev_dbg(&chip->client->dev, "%s prop current:%d", __func__, val->intval);
 		chip->current_now = val->intval;
