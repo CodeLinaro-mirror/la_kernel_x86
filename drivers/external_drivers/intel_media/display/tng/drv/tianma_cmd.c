@@ -683,8 +683,8 @@ void tianma_cmd_get_panel_info(int pipe,
 	PSB_DEBUG_ENTRY("\n");
 
 	if (pipe == 0) {
-		pi->width_mm = 40;
-		pi->height_mm = 40;
+		pi->width_mm = 38;
+		pi->height_mm = 34;
 	}
 }
 
