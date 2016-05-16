@@ -35,6 +35,15 @@
 #define ST_LSM6DS3H_FIFO_DATA_AVL			0x80
 #define ST_LSM6DS3H_FIFO_DATA_OVR			0x40
 
+#define ST_LSM6DS3H_TAP_SRC_ADDR			0x1C
+#define ST_LSM6DS3H_TAP_SRC_SINGLE_TAP_MASK		0x20
+#define ST_LSM6DS3H_TAP_SRC_DOUBLE_TAP_MASK		0x10
+#define ST_LSM6DS3H_TAP_SRC_TAP_SIGN_MASK		0x08
+#define ST_LSM6DS3H_TAP_SRC_X_TAP_MASK			0x04
+#define ST_LSM6DS3H_TAP_SRC_Y_TAP_MASK			0x02
+#define ST_LSM6DS3H_TAP_SRC_Z_TAP_MASK			0x01
+#define ST_LSM6DS3H_TAP_SRC_ANY_TAP_MASK		0x77
+
 static struct mutex lsm6ds3h_irq_mutex;
 static struct workqueue_struct *st_lsm6ds3h_wq;
 
@@ -59,8 +68,9 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 	bool force_read_accel = false;
 	struct lsm6ds3h_data *cdata;
 	u8 src_accel_gyro = 0, src_dig_func = 0;
+	u8 src_tap_tap = 0;
 
-	cdata = container_of((struct work_struct*)data_work,
+	cdata = container_of((struct work_struct *)data_work,
 						struct lsm6ds3h_data, data_work);
 
 	mutex_lock(&lsm6ds3h_irq_mutex);
@@ -70,6 +80,15 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 		mutex_unlock(&lsm6ds3h_irq_mutex);
 		goto exit_irq;
 	}
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	err = cdata->tf->read(cdata, ST_LSM6DS3H_TAP_SRC_ADDR,
+						1, &src_tap_tap, true);
+	if (err < 0) {
+		mutex_unlock(&lsm6ds3h_irq_mutex);
+		goto exit_irq;
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 	mutex_unlock(&lsm6ds3h_irq_mutex);
 
@@ -154,6 +173,16 @@ read_fifo_status:
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	if (src_tap_tap & ST_LSM6DS3H_TAP_SRC_ANY_TAP_MASK) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_TAP_TAP detected\n");
+		iio_push_event(cdata->indio_dev[ST_MASK_ID_TAP_TAP],
+				IIO_UNMOD_EVENT_CODE(IIO_TAP_TAP,
+				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
+				cdata->timestamp);
+	}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 exit_irq:
 	enable_irq(cdata->irq);
 }
@@ -227,8 +256,40 @@ int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	cdata->trig[ST_MASK_ID_TAP_TAP] = iio_trigger_alloc("%s-trigger",
+			cdata->indio_dev[ST_MASK_ID_TAP_TAP]->name);
+	if (!cdata->trig[ST_MASK_ID_TAP_TAP]) {
+		dev_err(cdata->dev,
+				"failed to allocate iio trigger for tap_tap.\n");
+		err = -ENOMEM;
+		goto free_trigger;
+	}
+
+	iio_trigger_set_drvdata(cdata->trig[ST_MASK_ID_TAP_TAP], cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+	cdata->trig[ST_MASK_ID_TAP_TAP]->ops = trigger_ops;
+	cdata->trig[ST_MASK_ID_TAP_TAP]->dev.parent = cdata->dev;
+
+	err = iio_trigger_register(cdata->trig[ST_MASK_ID_TAP_TAP]);
+	if (err < 0) {
+		dev_err(cdata->dev, "failed to register iio trigger for tap_tap.\n");
+		goto unregister_trigger;
+	}
+	cdata->indio_dev[ST_MASK_ID_TAP_TAP]->trig = cdata->trig[ST_MASK_ID_WRIST_TILT];
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 	return 0;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+unregister_trigger:
+	iio_trigger_unregister(cdata->trig[ST_MASK_ID_TAP_TAP]);
+	if (cdata->wrist_tilt_available)
+		iio_trigger_unregister(cdata->trig[ST_MASK_ID_WRIST_TILT]);
+free_trigger:
+	iio_trigger_free(cdata->trig[ST_MASK_ID_TAP_TAP]);
+	if (cdata->wrist_tilt_available)
+		iio_trigger_free(cdata->trig[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 free_irq:
 	free_irq(cdata->irq, cdata);
 	for (n--; n >= 0; n--)
@@ -254,6 +315,10 @@ void st_lsm6ds3h_deallocate_triggers(struct lsm6ds3h_data *cdata)
 	if (cdata->wrist_tilt_available)
 		iio_trigger_unregister(cdata->trig[ST_MASK_ID_WRIST_TILT]);
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	iio_trigger_unregister(cdata->trig[ST_MASK_ID_TAP_TAP]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 }
 EXPORT_SYMBOL(st_lsm6ds3h_deallocate_triggers);
 

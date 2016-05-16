@@ -484,7 +484,22 @@ int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata)
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	err = iio_triggered_buffer_setup(
+				cdata->indio_dev[ST_MASK_ID_TAP_TAP],
+				&st_lsm6ds3h_handler_empty, NULL,
+				&st_lsm6ds3h_buffer_setup_ops);
+	if (err < 0)
+		goto buffer_cleanup_tap_tap;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 	return 0;
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+buffer_cleanup_tap_tap:
+	iio_triggered_buffer_cleanup(
+				cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 buffer_cleanup_tilt:
@@ -509,6 +524,10 @@ buffer_cleanup_accel:
 
 void st_lsm6ds3h_deallocate_rings(struct lsm6ds3h_data *cdata)
 {
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	if (cdata->wrist_tilt_available)
 		iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);

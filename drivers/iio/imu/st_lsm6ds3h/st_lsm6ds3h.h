@@ -29,6 +29,7 @@ enum st_mask_id {
 	ST_MASK_ID_TILT,
 	ST_MASK_ID_EXT0,
 	ST_MASK_ID_WRIST_TILT,
+	ST_MASK_ID_TAP_TAP,
 	ST_MASK_ID_HW_PEDOMETER,
 	ST_MASK_ID_SENSOR_HUB,
 	ST_MASK_ID_DIGITAL_FUNC,
@@ -255,8 +256,8 @@ struct lsm6ds3h_data {
 	struct work_struct data_work;
 
 	struct device *dev;
-	struct iio_dev *indio_dev[ST_INDIO_DEV_NUM + 2];
-	struct iio_trigger *trig[ST_INDIO_DEV_NUM + 2];
+	struct iio_dev *indio_dev[ST_INDIO_DEV_NUM + 3];
+	struct iio_trigger *trig[ST_INDIO_DEV_NUM + 3];
 	struct mutex bank_registers_lock;
 	struct mutex fifo_lock;
 
