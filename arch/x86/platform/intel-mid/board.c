@@ -104,6 +104,7 @@
 #include "device_libs/platform_tsl258x.h"
 #include "device_libs/platform_isl97698.h"
 #include "device_libs/platform_tmd26723.h"
+#include "device_libs/platform_lps22hb.h"
 /* SW devices */
 #include "device_libs/platform_panel.h"
 
@@ -268,6 +269,7 @@ struct devs_id __initconst device_ids[] = {
 #endif
 	{"tsl2584", SFI_DEV_TYPE_I2C, 0, &tsl258x_als_platform_data, NULL},
 	{"isl97698", SFI_DEV_TYPE_I2C, 0, &isl97698_brightness_platform_data, NULL},
+	{"lps22hb", SFI_DEV_TYPE_I2C, 0, &lps22hb_platform_data, NULL},
 	{"tmd26723", SFI_DEV_TYPE_I2C, 0, &tmd26723_ps_platform_data, NULL},
 	/* MSIC subdevices */
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,

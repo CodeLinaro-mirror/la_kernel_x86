@@ -2990,6 +2990,12 @@ CONFIG_DX_SEP54=y
 #
 # CONFIG_AD5933 is not set
 
+# Pressure
+#
+CONFIG_ST_LPS22HB_IIO=y
+CONFIG_ST_LPS22HB_I2C_IIO=y
+# CONFIG_ST_LPS22HB_SPI_IIO is not set
+
 #
 # Light sensors
 #
