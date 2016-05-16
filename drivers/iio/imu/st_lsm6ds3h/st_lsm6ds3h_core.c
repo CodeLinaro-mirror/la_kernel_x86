@@ -217,6 +217,26 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_WRIST_TILT_EN_MASK			0x01
 #define ST_LSM6DS3H_WRIST_TILT_DRDY_IRQ_MASK		0x01
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+/* CUSTOM VALUES FOR TAP_TAP SENSOR */
+#define ST_LSM6DS3H_TAP_CFG_ADDR			0x58
+#define ST_LSM6DS3H_TAP_CFG_TAP_X_EN_MASK		0x08
+#define ST_LSM6DS3H_TAP_CFG_TAP_Y_EN_MASK		0x04
+#define ST_LSM6DS3H_TAP_CFG_TAP_Z_EN_MASK		0x02
+#define ST_LSM6DS3H_TAP_THS_6D_ADDR			0x59
+#define ST_LSM6DS3H_TAP_THS_MASK			0x1F
+#define ST_LSM6DS3H_TAP_THS_DEF_VAL			0x0C /* 750 mg */
+#define ST_LSM6DS3H_WAKE_UP_THS_ADDR			0x5B
+#define ST_LSM6DS3H_WAKE_UP_THS_SINGLE_DOUBLE_TAP_MASK	0x80
+#define ST_LSM6DS3H_INT_DUR2_ADDR			0x5A
+#define ST_LSM6DS3H_INT_DUR2_MASK			0xFF
+#define ST_LSM6DS3H_INT_DUR2_DEF_VAL			0x7F /* Duration, Quiet and Shock time */
+#define ST_LSM6DS3H_MD1_CFG_INT1_DOUBLE_TAP_MASK	0x08
+#define ST_LSM6DS3H_TAP_TAP_EN_ADDR			ST_LSM6DS3H_TAP_CFG_ADDR
+#define ST_LSM6DS3H_TAP_TAP_EN_MASK			0x0E
+#define ST_LSM6DS3H_TAP_TAP_DRDY_IRQ_MASK		ST_LSM6DS3H_MD1_CFG_INT1_DOUBLE_TAP_MASK
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 #define ST_LSM6DS3H_ACCEL_SUFFIX_NAME			"accel"
 #define ST_LSM6DS3H_GYRO_SUFFIX_NAME			"gyro"
 #define ST_LSM6DS3H_STEP_COUNTER_SUFFIX_NAME		"step_c"
@@ -224,6 +244,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_SIGN_MOTION_SUFFIX_NAME		"sign_motion"
 #define ST_LSM6DS3H_TILT_SUFFIX_NAME			"tilt"
 #define ST_LSM6DS3H_WRIST_TILT_SUFFIX_NAME		"wrist"
+#define ST_LSM6DS3H_TAP_TAP_SUFFIX_NAME			"tap_tap"
 
 #define ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ() \
 		IIO_DEV_ATTR_SAMP_FREQ(S_IWUSR | S_IRUGO, \
@@ -380,6 +401,12 @@ static const struct iio_chan_spec st_lsm6ds3h_wrist_tilt_ch[] = {
 	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_WRIST_TILT_GESTURE, 0),
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+static const struct iio_chan_spec st_lsm6ds3h_tap_tap_ch[] = {
+	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_TAP_TAP, 0),
+};
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 
 int st_lsm6ds3h_write_data_with_mask(struct lsm6ds3h_data *cdata,
@@ -548,9 +575,102 @@ static int lsm6ds3h_set_watermark(struct lsm6ds3h_data *cdata)
 	return 0;
 }
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+/*
+ * Configure Threshold, Duration, Quiet and Shock time.
+ */
+static int lsm6ds3h_config_tap_tap(struct lsm6ds3h_data *cdata)
+{
+	int err;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_THS_6D_ADDR,
+				ST_LSM6DS3H_TAP_THS_MASK,
+				ST_LSM6DS3H_TAP_THS_DEF_VAL, false);
+	if (err < 0)
+		return err;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_INT_DUR2_ADDR,
+				ST_LSM6DS3H_INT_DUR2_MASK,
+				ST_LSM6DS3H_INT_DUR2_DEF_VAL, false);
+	if (err < 0)
+		return err;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_WAKE_UP_THS_ADDR,
+				ST_LSM6DS3H_WAKE_UP_THS_SINGLE_DOUBLE_TAP_MASK,
+				ST_LSM6DS3H_EN_BIT, false);
+	if (err < 0)
+		return err;
+
+	return 0;
+}
+
+/*
+ * Enable tap_tap event in all directions (X,Y,Z) for testing.
+ * In production code only one direction will be enabled.
+ */
+static int lsm6ds3h_enable_tap_tap(struct lsm6ds3h_data *cdata, bool enable)
+{
+	int err;
+
+	if (enable) {
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_X_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_Y_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_Z_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+	} else {
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_TAP_EN_MASK,
+				ST_LSM6DS3H_DIS_BIT, true);
+		if (err < 0)
+			return err;
+	}
+
+	return 0;
+}
+
+int lsm6ds3h_get_fifo_odr_value(struct lsm6ds3h_data *cdata)
+{
+	int i, fifo_odr = 0, odr_value = 0;
+
+	fifo_odr = MAX(cdata->v_odr[ST_MASK_ID_ACCEL], cdata->v_odr[ST_MASK_ID_GYRO]);
+
+	for (i = 0; i < ST_LSM6DS3H_ODR_LIST_NUM; i++) {
+		if (st_lsm6ds3h_odr_table.odr_avl[i].hz == fifo_odr)
+			break;
+	}
+	if (i == ST_LSM6DS3H_ODR_LIST_NUM)
+		return -EINVAL;
+
+	odr_value = st_lsm6ds3h_odr_table.odr_avl[i].value;
+
+	return odr_value;
+}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 {
 	int err;
+	int fifo_odr = 0;
 	u8 reg_value;
 	bool enable_fifo;
 	struct timespec ts;
@@ -561,7 +681,14 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 		enable_fifo = false;
 		break;
 	case CONTINUOS:
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+		fifo_odr = lsm6ds3h_get_fifo_odr_value(cdata);
+		if (fifo_odr < 0)
+			return -EINVAL;
+		reg_value = (ST_LSM6DS3H_FIFO_MODE_CONTINUOS | (fifo_odr << 3));
+#else
 		reg_value = ST_LSM6DS3H_FIFO_MODE_CONTINUOS | ST_LSM6DS3H_FIFO_ODR_MAX;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 		enable_fifo = true;
 		break;
 	default:
@@ -806,6 +933,12 @@ int st_lsm6ds3h_set_drdy_irq(struct lsm6ds3h_sensor_data *sdata, bool state)
 		reg_addr = ST_LSM6DS3H_MD1_ADDR;
 		mask = ST_LSM6DS3H_TILT_DRDY_IRQ_MASK;
 		break;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	case ST_MASK_ID_TAP_TAP:
+		reg_addr = ST_LSM6DS3H_MD1_ADDR;
+		mask = ST_LSM6DS3H_TAP_TAP_DRDY_IRQ_MASK;
+		break;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	case ST_MASK_ID_WRIST_TILT:
 		reg_addr = ST_LSM6DS3H_MD2_ADDR;
@@ -890,8 +1023,14 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			reg_value = 0xff;
 		else
 			reg_value = st_lsm6ds3h_odr_table.odr_avl[i].value;
-	} else
+	} else {
 		reg_value = ST_LSM6DS3H_ODR_POWER_OFF_VAL;
+	}
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	if ((sdata->sindex == ST_MASK_ID_ACCEL) && (reg_value != 0xff))
+		reg_value = ST_LSM6DS3H_ODR_416HZ_VAL;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 	if (sdata->cdata->sensors_use_fifo > 0) {
 		/* someone is using fifo */
@@ -1502,6 +1641,14 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			return err;
 
 		break;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	case ST_MASK_ID_TAP_TAP:
+		err = lsm6ds3h_enable_tap_tap(sdata->cdata, enable);
+		if (err < 0)
+			return err;
+
+		break;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 	default:
 		return -EINVAL;
 	}
@@ -1688,6 +1835,12 @@ static int st_lsm6ds3h_init_sensor(struct lsm6ds3h_data *cdata)
 	err = st_lsm6ds3h_reset_steps(cdata);
 	if (err < 0)
 		return err;
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	err = lsm6ds3h_config_tap_tap(cdata);
+	if (err < 0)
+		return err;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 	err = st_lsm6ds3h_write_embedded_registers(cdata,
 					ST_LSM6DS3H_STEP_COUNTER_DURATION_ADDR,
@@ -2781,6 +2934,21 @@ static const struct iio_info st_lsm6ds3h_wrist_tilt_info = {
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+static struct attribute *st_lsm6ds3h_tap_tap_attributes[] = {
+	NULL,
+};
+
+static const struct attribute_group st_lsm6ds3h_tap_tap_attribute_group = {
+	.attrs = st_lsm6ds3h_tap_tap_attributes,
+};
+
+static const struct iio_info st_lsm6ds3h_tap_tap_info = {
+	.driver_module = THIS_MODULE,
+	.attrs = &st_lsm6ds3h_tap_tap_attribute_group,
+};
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 #ifdef CONFIG_IIO_TRIGGER
 static const struct iio_trigger_ops st_lsm6ds3h_trigger_ops = {
 	.owner = THIS_MODULE,
@@ -2881,7 +3049,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 
 	if (irq > 0) {
 		cdata->irq = irq;
-		dev_info(cdata->dev, "driver use DRDY int pin 1.\n");
+		dev_info(cdata->dev, "driver use DRDY int pin 1 at irq:%d\n", irq);
 	} else {
 		err = -EINVAL;
 		dev_info(cdata->dev,
@@ -3023,6 +3191,34 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
+	st_lsm6ds3h_i2c_master_probe(cdata);
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP] = iio_device_alloc(sizeof(struct lsm6ds3h_sensor_data));
+		if (!cdata->indio_dev[ST_MASK_ID_TAP_TAP]) {
+			dev_err(cdata->dev, "failed to allocate TapTap device\n");
+			err = -ENOMEM;
+			goto iio_device_free;
+		}
+
+		sdata = iio_priv(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+		sdata->cdata = cdata;
+		sdata->sindex = ST_MASK_ID_TAP_TAP;
+		sdata->num_data_channels = 0;
+
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP]->modes = INDIO_DIRECT_MODE;
+
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP]->name =
+				kasprintf(GFP_KERNEL, "%s_%s", cdata->name,
+					ST_LSM6DS3H_TAP_TAP_SUFFIX_NAME);
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP]->info =
+						&st_lsm6ds3h_tap_tap_info;
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP]->channels =
+						st_lsm6ds3h_tap_tap_ch;
+		cdata->indio_dev[ST_MASK_ID_TAP_TAP]->num_channels =
+					ARRAY_SIZE(st_lsm6ds3h_tap_tap_ch);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 	err = st_lsm6ds3h_allocate_rings(cdata);
 	if (err < 0)
 		goto iio_device_free;
@@ -3048,7 +3244,11 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
-	st_lsm6ds3h_i2c_master_probe(cdata);
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	err = iio_device_register(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+	if (err)
+		goto iio_device_unregister_and_trigger_deallocate;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 	device_init_wakeup(cdata->dev, true);
 
@@ -3076,6 +3276,10 @@ void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq)
 {
 	int i;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	iio_device_unregister(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	if (cdata->wrist_tilt_available)
 		iio_device_unregister(cdata->indio_dev[ST_MASK_ID_WRIST_TILT]);
@@ -3088,6 +3292,10 @@ void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq)
 		st_lsm6ds3h_deallocate_triggers(cdata);
 
 	st_lsm6ds3h_deallocate_rings(cdata);
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+	iio_device_free(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	if (cdata->wrist_tilt_available)
