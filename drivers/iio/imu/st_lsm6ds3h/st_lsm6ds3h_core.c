@@ -216,6 +216,16 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_WRIST_TILT_EN_ADDR			0x11
 #define ST_LSM6DS3H_WRIST_TILT_EN_MASK			0x01
 #define ST_LSM6DS3H_WRIST_TILT_DRDY_IRQ_MASK		0x01
+#define ST_LSM6DS3H_WRIST_TILT_FILTER_ADDR		0x27
+#define ST_LSM6DS3H_WRIST_TILT_LATENCY_ADDR		0x28
+#define ST_LSM6DS3H_WRIST_TILT_THS1_ADDR		0x29
+#define ST_LSM6DS3H_WRIST_TILT_AXES_ADDR		0x2b
+#define ST_LSM6DS3H_WRIST_TILT_AXES_XPOS_EN		0x80
+#define ST_LSM6DS3H_WRIST_TILT_AXES_XNEG_EN		0x40
+#define ST_LSM6DS3H_WRIST_TILT_AXES_YPOS_EN		0x20
+#define ST_LSM6DS3H_WRIST_TILT_AXES_YNEG_EN		0x10
+#define ST_LSM6DS3H_WRIST_TILT_AXES_ZPOS_EN		0x08
+#define ST_LSM6DS3H_WRIST_TILT_AXES_ZNEG_EN		0x04
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 /* CUSTOM VALUES FOR TAP_TAP SENSOR */
@@ -2064,6 +2074,104 @@ static ssize_t st_lsm6ds3h_sysfs_get_selftest_status(struct device *dev,
 	return sprintf(buf, "%s\n", message);
 }
 
+#if CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+int st_lsm6ds3h_wrist_tilt_conf(struct device *dev, u8 *value, char type)
+{
+	int err = 0;
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
+	struct lsm6ds3h_data *cdata = sdata->cdata;
+
+	switch (type) {
+	case 'l':
+		err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_LATENCY_ADDR, value, 1);
+		break;
+	case 'a':
+		err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_AXES_ADDR, value, 1);
+		break;
+	case 't':
+		err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_THS1_ADDR, value, 1);
+		break;
+	case 'f':
+		err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_FILTER_ADDR, value, 1);
+		break;
+	default:
+		dev_err(dev, "Unknown command, failed to set embedded register for wrist tilt");
+		err = -EINVAL;
+	}
+
+	return err;
+}
+
+static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_latency(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err;
+	u8 latency_value;
+
+	err = kstrtou8(buf, 10, &latency_value);
+	if (err < 0)
+		return -EINVAL;
+
+	err = st_lsm6ds3h_wrist_tilt_conf(dev, &latency_value, 'l');
+	if (err < 0)
+		return err;
+
+	return size;
+}
+
+static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_axes(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err;
+	u8 axes_value;
+
+	err = kstrtou8(buf, 10, &axes_value);
+	if (err < 0)
+		return -EINVAL;
+
+	err = st_lsm6ds3h_wrist_tilt_conf(dev, &axes_value, 'a');
+	if (err < 0)
+		return err;
+
+	return size;
+}
+
+static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_threshold(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err;
+	u8 threshold_value;
+
+	err = kstrtou8(buf, 10, &threshold_value);
+	if (err < 0)
+		return -EINVAL;
+
+	err = st_lsm6ds3h_wrist_tilt_conf(dev, &threshold_value, 't');
+	if (err < 0)
+		return err;
+
+	return size;
+}
+
+static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_filter_timer(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err;
+	u8 filter_value;
+
+	err = kstrtou8(buf, 10, &filter_value);
+	if (err < 0)
+		return -EINVAL;
+
+	err = st_lsm6ds3h_wrist_tilt_conf(dev, &filter_value, 'f');
+	if (err < 0)
+		return err;
+
+	return size;
+}
+#endif
+
 static ssize_t st_lsm6ds3h_sysfs_start_selftest_status(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -2812,6 +2920,17 @@ static IIO_DEVICE_ATTR(selftest, S_IWUSR | S_IRUGO,
 				st_lsm6ds3h_sysfs_get_selftest_status,
 				st_lsm6ds3h_sysfs_start_selftest_status, 0);
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+static IIO_DEVICE_ATTR(wrist_tilt_latency, S_IWUSR,
+				NULL, st_lsm6ds3h_sysfs_set_wrist_tilt_latency, 0);
+static IIO_DEVICE_ATTR(wrist_tilt_axes, S_IWUSR,
+				NULL, st_lsm6ds3h_sysfs_set_wrist_tilt_axes, 0);
+static IIO_DEVICE_ATTR(wrist_tilt_threshold, S_IWUSR,
+				NULL, st_lsm6ds3h_sysfs_set_wrist_tilt_threshold, 0);
+static IIO_DEVICE_ATTR(wrist_tilt_filter_timer, S_IWUSR,
+				NULL, st_lsm6ds3h_sysfs_set_wrist_tilt_filter_timer, 0);
+#endif
+
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 static IIO_DEVICE_ATTR(injection_mode, S_IWUSR | S_IRUGO,
 				st_lsm6ds3h_sysfs_get_injection_mode,
@@ -2948,6 +3067,10 @@ static const struct iio_info st_lsm6ds3h_tilt_info = {
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 static struct attribute *st_lsm6ds3h_wrist_tilt_attributes[] = {
+	&iio_dev_attr_wrist_tilt_latency.dev_attr.attr,
+	&iio_dev_attr_wrist_tilt_axes.dev_attr.attr,
+	&iio_dev_attr_wrist_tilt_threshold.dev_attr.attr,
+	&iio_dev_attr_wrist_tilt_filter_timer.dev_attr.attr,
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 	&iio_dev_attr_injection_sensors.dev_attr.attr,
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
