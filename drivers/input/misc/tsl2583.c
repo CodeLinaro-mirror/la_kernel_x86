@@ -98,6 +98,8 @@
 #define ALS_TIME_TO_COUNT(ms)		((((ms) * 100 + 135) / 270) ? (((ms) * 100 + 135) / 270) : 1)
 #define ALS_COUNT_TO_TIME(count)	(((count) * 27 + 5) / 10)
 
+#define GAIN_RATIO 16
+
 /*******************************************************************
 start TSL2584TSV lux equation defines
 The lux equation is of the form:
@@ -415,11 +417,12 @@ static int taos_set_gain(struct tsl258x_chip *chip, int gain)
 		return -EINVAL;
 
 	ret = toas_i2c_smbus_write_data(chip->client,
-			TSL258X_CMD_REG | TSL258X_GAIN, gain);
+			TSL258X_CMD_REG | TSL258X_GAIN, tsl2584_als_gain_tbl[i].gain_idex);
 	if (ret < 0)
 		return ret;
 
 	chip->taos_settings.als_gain_idex = tsl2584_als_gain_tbl[i].gain_idex;
+
 	return ret;
 }
 
@@ -558,6 +561,7 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 		if ((lux1 < 0) && (lux2 < 0))
 			return -ERANGE;
 		lux = (lux1 >= lux2) ? lux1 : lux2;
+		lux /= GAIN_RATIO;
 	} else {
 		/* calculate ratio */
 		ratio = (ch1 << 15) / ch0;
