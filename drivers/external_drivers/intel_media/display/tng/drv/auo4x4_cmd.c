@@ -157,7 +157,7 @@ void auo4x4_cmd_controller_init(
 	hw_ctx->high_low_switch_count = 0xf;
 	hw_ctx->clk_lane_switch_time_cnt = 0xf0008;
 	hw_ctx->lp_byteclk = 0x2;
-	hw_ctx->dphy_param = 0x120a2b0c;
+	hw_ctx->dphy_param = 0x1f0a2b0c;
 	hw_ctx->eot_disable = 0x3;
 	hw_ctx->init_count = 0x7d0;
 	hw_ctx->dbi_bw_ctrl = 1390;
