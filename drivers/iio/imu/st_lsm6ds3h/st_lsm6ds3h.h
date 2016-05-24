@@ -19,6 +19,9 @@
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 #define LSM6DS3H_DEV_NAME			"lsm6ds3h"
+#define ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE		6
+#define ST_INDIO_DEV_ACCEL				0
+#define ST_INDIO_DEV_GYRO				1
 
 enum st_mask_id {
 	ST_MASK_ID_ACCEL = 0,
@@ -78,6 +81,7 @@ enum st_mask_id {
 	.type = device_type, \
 	.modified = modif, \
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) | \
+			BIT(IIO_CHAN_INFO_OFFSET) | \
 			BIT(IIO_CHAN_INFO_SCALE), \
 	.scan_index = index, \
 	.channel2 = mod, \

@@ -256,6 +256,20 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_WRIST_TILT_SUFFIX_NAME		"wrist"
 #define ST_LSM6DS3H_TAP_TAP_SUFFIX_NAME			"tap_tap"
 
+#define DELAY_FOR_OUT_STABLE				200/* 200ms */
+#define MAX_WHILE_COUNTER				150
+#define SAMPLE_WAIT_DELAY				39
+
+/* Macro for calibrate */
+#define CALIBRATE_SAMPLE_COUNT				50
+#define GRAVITY_ACCEL_LSB_2G				(1000000 / ST_LSM6DS3H_ACCEL_FS_2G_SENSITIVITY)
+#define SIGN_X_A			1
+#define SIGN_Y_A			1
+#define SIGN_Z_A			(-1)
+#define SIGN_X_G			1
+#define SIGN_Y_G			1
+#define SIGN_Z_G			1
+#define ST_LSM6DS3H_ACCEL_FS_2G_SENSITIVITY		61      /*  ug/LSB */
 #define ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ() \
 		IIO_DEV_ATTR_SAMP_FREQ(S_IWUSR | S_IRUGO, \
 			st_lsm6ds3h_sysfs_get_sampling_frequency, \
@@ -271,6 +285,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 
 #define RETRY_COUNTER_LIMITATION 10
 
+static int accel_cal_data[3], gyro_cal_data[3];
 static struct st_lsm6ds3h_selftest_table {
 	char *string_mode;
 	u8 accel_value;
@@ -882,7 +897,7 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 }
 
 int st_lsm6ds3h_flush_work_fifo(struct lsm6ds3h_data *cdata,
-						bool disable_irq_and_flush)
+				bool disable_irq_and_flush)
 {
 	int err;
 
@@ -1761,6 +1776,16 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 		mutex_unlock(&indio_dev->mlock);
 
 		return IIO_VAL_INT;
+	case IIO_CHAN_INFO_OFFSET:
+		if (sdata->sindex == ST_INDIO_DEV_ACCEL) {
+			*val = accel_cal_data[ch->scan_index];
+			return IIO_VAL_INT;
+		}
+		if (sdata->sindex == ST_INDIO_DEV_GYRO) {
+			*val = gyro_cal_data[ch->scan_index];
+			return IIO_VAL_INT;
+		}
+		break;
 	case IIO_CHAN_INFO_SCALE:
 		*val = 0;
 		*val2 = sdata->c_gain[0];
@@ -1789,6 +1814,15 @@ static int st_lsm6ds3h_write_raw(struct iio_dev *indio_dev,
 
 		err = st_lsm6ds3h_set_fs(sdata, val2);
 		mutex_unlock(&indio_dev->mlock);
+		break;
+	case IIO_CHAN_INFO_OFFSET:
+		err = 0;
+		if (sdata->sindex == ST_INDIO_DEV_ACCEL)
+			accel_cal_data[chan->scan_index] = val;
+		else if (sdata->sindex == ST_INDIO_DEV_GYRO)
+			gyro_cal_data[chan->scan_index] = val;
+		else
+			err = -EINVAL;
 		break;
 	default:
 		return -EINVAL;
@@ -2708,6 +2742,82 @@ static ssize_t st_lsm6ds3h_sysfs_get_injection_sensors(struct device *dev,
 }
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
 
+int st_lsm6ds3h_average_sample(struct lsm6ds3h_sensor_data *sdata,
+				s32 *out_data, int sample_count)
+{
+	int i, err, counter = 0;
+	u8 hw_data[ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE];
+	u8 stat_reg;
+	struct lsm6ds3h_data *cdata = sdata->cdata;
+	if (sample_count <= 0) {
+		return -ERANGE;
+	}
+	msleep(DELAY_FOR_OUT_STABLE);
+
+	/* first sample will be discarded */
+	for (i = 0; i < (sample_count + 1); i++) {
+		msleep(SAMPLE_WAIT_DELAY);
+		/* Now data is ready */
+		err = cdata->tf->read(cdata, cdata->indio_dev[sdata->sindex]->channels->address,
+				ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE, hw_data, true);
+		if (err < 0) {
+			dev_err(cdata->dev, "failed to read out data.\n");
+			return err;
+		}
+		dev_dbg(cdata->dev, "hw_data[x]=%x,hw_data[y]=%x, hw_data[z]=%x\n",
+			(s16)((hw_data[1] << 8 | hw_data[0])),
+			(s16)((hw_data[3] << 8 | hw_data[2])),
+			(s16)((hw_data[5] << 8 | hw_data[4])));
+		if (i != 0) {
+			out_data[0] += (s16)((hw_data[1] << 8 | hw_data[0]));
+			out_data[1] += (s16)((hw_data[3] << 8 | hw_data[2]));
+			out_data[2] += (s16)((hw_data[5] << 8 | hw_data[4]));
+		}
+	}
+
+	out_data[0] /= sample_count;
+	out_data[1] /= sample_count;
+	out_data[2] /= sample_count;
+	dev_dbg(cdata->dev, "out_data[x]=%d, out_data[y]=%d, out_data[z]=%d\n", out_data[0], out_data[1], out_data[2]);
+
+	return 0;
+}
+
+
+ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int err;
+	s32 no_cali[3] = {0};
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
+
+	err = st_lsm6ds3h_average_sample(sdata, no_cali, CALIBRATE_SAMPLE_COUNT);
+	if (err < 0)
+		return err;
+
+	/* The 4th parameter used for data sum check */
+	if (sdata->sindex == ST_INDIO_DEV_ACCEL)
+		return sprintf(buf, "%d %d %d %d\n",
+				0 * SIGN_X_A - no_cali[0],
+				0 * SIGN_Y_A - no_cali[1],
+				GRAVITY_ACCEL_LSB_2G * SIGN_Z_A - no_cali[2],
+				0 * SIGN_X_A + 0 * SIGN_Y_A + GRAVITY_ACCEL_LSB_2G * SIGN_Z_A -
+				no_cali[0] - no_cali[1] - no_cali[2]);
+	else
+		return sprintf(buf, "%d %d %d %d\n",
+				0 * SIGN_X_G - no_cali[0],
+				0 * SIGN_Y_G - no_cali[1],
+				0 * SIGN_Z_G - no_cali[2],
+				0 * SIGN_X_G + 0 * SIGN_Y_G + 0 * SIGN_Z_G -
+				no_cali[0] - no_cali[1] - no_cali[2]);
+
+}
+
+static IIO_DEVICE_ATTR(do_calibrate, S_IRUGO,
+				st_lsm6ds3h_sysfs_do_calibrate,
+				NULL, 0);
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
 static inline int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 {
@@ -2959,6 +3069,9 @@ static struct attribute *st_lsm6ds3h_accel_attributes[] = {
 	&iio_dev_attr_injection_mode.dev_attr.attr,
 	&iio_dev_attr_in_accel_injection_raw.dev_attr.attr,
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
+
+	&iio_dev_attr_do_calibrate.dev_attr.attr,
+
 	NULL,
 };
 
@@ -2984,6 +3097,7 @@ static struct attribute *st_lsm6ds3h_gyro_attributes[] = {
 	&iio_dev_attr_hwfifo_watermark_min.dev_attr.attr,
 	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
 	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
+	&iio_dev_attr_do_calibrate.dev_attr.attr,
 	NULL,
 };
 
