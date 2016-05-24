@@ -1128,6 +1128,7 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	struct mdfld_dsi_config *dsi_config;
 	struct drm_device *dev;
 	int pipe;
+	u32 power_island;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1138,10 +1139,12 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
 	dev = dsi_config->dev;
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
+		return;
 
 	DCLockMutex();
-	DC_MRFLD_onPowerOff(pipe);
-
 
 	drm_handle_vblank(dev, pipe);
 
@@ -1150,9 +1153,11 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 
 	/* Make the pending flip request as completed. */
 	DCUnAttachPipe(pipe);
+	DC_MRFLD_onPowerOff(pipe);
 	mdfld_generic_dsi_dbi_set_power(encoder, false);
 
 	DCUnLockMutex();
+	power_island_put(power_island);
 }
 
 static
