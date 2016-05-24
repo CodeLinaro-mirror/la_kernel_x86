@@ -106,8 +106,12 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_INT2_ON_INT1_ADDR			0x13
 #define ST_LSM6DS3H_INT2_ON_INT1_MASK			0x20
 #define ST_LSM6DS3H_MIN_DURATION_MS			1638
+#define ST_LSM6DS3H_XL_HM_MODE_ADDR			0x15
+#define ST_LSM6DS3H_XL_HM_MODE_MASK			0x01
+#define ST_LSM6DS3H_XL_HM_MODE_DISABLE		0x01
 #define ST_LSM6DS3H_ROUNDING_ADDR			0x16
-#define ST_LSM6DS3H_ROUNDING_MASK			0x04
+#define ST_LSM6DS3H_G_HM_MODE_DISABLE		0x80
+#define ST_LSM6DS3H_ROUNDING_MASK			0x84
 #define ST_LSM6DS3H_FIFO_MODE_ADDR			0x0a
 #define ST_LSM6DS3H_FIFO_MODE_MASK			0x07
 #define ST_LSM6DS3H_FIFO_MODE_BYPASS			0x00
@@ -1657,7 +1661,16 @@ static int st_lsm6ds3h_init_sensor(struct lsm6ds3h_data *cdata)
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 					ST_LSM6DS3H_ROUNDING_ADDR,
 					ST_LSM6DS3H_ROUNDING_MASK,
-					ST_LSM6DS3H_EN_BIT, true);
+					ST_LSM6DS3H_G_HM_MODE_DISABLE | ST_LSM6DS3H_EN_BIT,
+					true);
+	if (err < 0)
+		return err;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_XL_HM_MODE_ADDR,
+					ST_LSM6DS3H_XL_HM_MODE_MASK,
+					ST_LSM6DS3H_XL_HM_MODE_DISABLE,
+					true);
 	if (err < 0)
 		return err;
 
