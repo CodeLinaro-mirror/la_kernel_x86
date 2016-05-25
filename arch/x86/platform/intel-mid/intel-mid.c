@@ -193,8 +193,8 @@ static int intel_mid_check_ship_mode(void)
 
 	/* Control of a D flip flop is necessary.
 	 * Two GPIOs have been assigned on the PMIC for this function.
-	 * - GP5 is the pin connected to the D pin on the flip flop.
-	 * - GP4 is connected to the CLK pin on the flip flop.
+	 * - GP3 is the pin connected to the D pin on the flip flop.
+	 * - GP2 is connected to the CLK pin on the flip flop.
 	 * The D state is latched on the flip flop output (Q) on CLK rising edge
 	 * The Q state must be set to:
 	 * - high when we want to keep the battery load switch engaged
