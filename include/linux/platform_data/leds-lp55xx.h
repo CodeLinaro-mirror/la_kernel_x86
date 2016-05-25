@@ -20,6 +20,8 @@
 #define LP55XX_CLOCK_INT	1
 #define LP55XX_CLOCK_EXT	2
 
+#include <linux/types.h>
+
 struct lp55xx_led_config {
 	const char *name;
 	u8 chan_nr;
@@ -67,6 +69,7 @@ struct lp55xx_platform_data {
 	/* Predefined pattern data */
 	struct lp55xx_predef_pattern *patterns;
 	unsigned int num_patterns;
+	u8 current_mode;
 };
 
 #endif /* _LEDS_LP55XX_H */

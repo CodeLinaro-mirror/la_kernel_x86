@@ -79,6 +79,7 @@ obj-$(subst m,y,$(CONFIG_ST_LSM6DS3H_IIO)) += platform_lsm6ds3h.o
 obj-$(subst m,y,$(CONFIG_INPUT_TSL2584)) += platform_tsl258x.o
 obj-$(subst m,y,$(CONFIG_BRIGHTNESS_ISL97698)) += platform_isl97698.o
 obj-$(subst m,y,$(CONFIG_INPUT_TMD26723)) += platform_tmd26723.o
+obj-$(subst m,y,$(CONFIG_LEDS_LP5562)) += platform_lp5562.o
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110)) += platform_max3111.o
 obj-$(subst m,y,$(CONFIG_SERIAL_XMM2230)) += platform_xmm2230.o
