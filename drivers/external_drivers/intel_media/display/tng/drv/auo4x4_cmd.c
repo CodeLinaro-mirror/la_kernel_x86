@@ -39,6 +39,8 @@
 static int mipi_reset_gpio;
 static int bias_en_gpio;
 
+static bool reset_enable = false;
+
 typedef struct {
 	struct dentry *dir;
 /* atomic ops */
@@ -167,6 +169,13 @@ void auo4x4_cmd_controller_init(
 	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE |
 			BANDGAP_CHICKEN_BIT |
 			TE_TRIGGER_GPIO_PIN;
+
+	/* We take for granted that IAFW has already initialized
+	 * the panel properly */
+	hw_ctx->panel_on = true;
+
+	/* re-enable reset function*/
+	reset_enable = true;
 }
 
 static
@@ -332,6 +341,9 @@ int auo4x4_cmd_panel_reset(
 	u8 value;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	if (reset_enable == false)
+		return 0;
 
 	if (dbgfs_dsi_config == NULL)
 		dbgfs_dsi_config = dsi_config;
