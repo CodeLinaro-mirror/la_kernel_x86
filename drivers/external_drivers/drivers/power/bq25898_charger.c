@@ -48,6 +48,7 @@
 #include <linux/wakelock.h>
 #include <linux/reboot.h>
 #include <linux/gpio.h>
+#include <linux/time.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/pmic_pdata.h>
@@ -66,7 +67,10 @@
 #define DEV_MANUFACTURER_NAME_SIZE	4
 
 #define BQ25898_POSTCHARGE_DEFAULT_DURATION_MN	30
-#define BQ25898_BAT_MONITOR_DELAY		(60 * HZ)
+#define ONE_MINUTE                              (60 * HZ)
+#define BQ25898_BAT_MONITOR_DELAY               ONE_MINUTE
+#define BQ25898_CURR_CHECK_INTERVAL_DEFAULT     ONE_MINUTE
+#define BQ25898_CURR_EOC_LIMIT_DEFAULT          20000  /* uA */
 
 #define BQ25898_I2C_SLAVE_ADDR			0x6B
 
@@ -446,7 +450,10 @@
 
 #define BQ25898_INT_COUNTER "bq25898_irq_counter"
 
-#define DEFAULT_SHIP_MODE_DELAY_10S 1
+#define DEFAULT_SHIP_MODE_DELAY_10S     1
+#define MAX_POSTCHARGE_DURATION         120    /* max postcharge duration in minutes : 120 => 2 hours */
+#define MAX_CURR_EOC_LIMIT              64000
+#define MAX_CURR_CHECK_INTERVAL         120
 
 static bool ship_mode_delay_10s = DEFAULT_SHIP_MODE_DELAY_10S;
 
@@ -491,12 +498,15 @@ struct bq25898_charger {
 	char model_name[MODEL_NAME_SIZE];
 	char manufacturer[DEV_MANUFACTURER_NAME_SIZE];
 	int current_now;		/* provided by healthd */
-	int postcharge_duration;	/* duration in mn after charge termination interrupt */
+	unsigned int postcharge_duration_mn;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
 	bool ship_mode_scheduled;
 	bool is_charge_complete;	/* charge stopped after termination done */
 	enum bq25898_wdt_state watchdog_state;
 	int irq;
+	unsigned long postcharge_start_time_sec;
+	unsigned int curr_check_interval;
+	unsigned int curr_eoc_limit;
 };
 
 static int bq25898_charger_configure(struct i2c_client *client);
@@ -1608,7 +1618,7 @@ static int enable_ship_mode(struct i2c_client *bq25898_client)
 		return ret;
 	}
 
-	dev_info(&bq25898_client->dev, "Ship mode enabled.");
+	dev_dbg(&bq25898_client->dev, "Ship mode enabled.");
 
 	return ret;
 }
@@ -1627,7 +1637,7 @@ static int disable_ship_mode(struct i2c_client *bq25898_client)
 		return ret;
 	}
 
-	dev_info(&bq25898_client->dev, "Ship mode disabled.");
+	dev_dbg(&bq25898_client->dev, "Ship mode disabled.");
 
 	return ret;
 }
@@ -1643,6 +1653,45 @@ static ssize_t get_ship_mode(struct device *dev,
 	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
 
 	return scnprintf(buf, 4, "%d\n", chip->ship_mode_scheduled);
+}
+
+/**
+ * get_postcharge_duration - get function for sysfs postcharge_duration
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t get_postcharge_duration(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+
+	return scnprintf(buf, 4, "%d\n", chip->postcharge_duration_mn);
+}
+
+/**
+ * get_curr_check_interval - get function for sysfs curr_check_interval
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t get_curr_check_interval(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+
+	return scnprintf(buf, 8, "%d\n", chip->curr_check_interval / ONE_MINUTE);
+}
+
+/**
+ * get_curr_eoc_limit - get function for sysfs curr_eoc_limit
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t get_curr_eoc_limit(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+
+	return scnprintf(buf, 8, "%d\n", chip->curr_eoc_limit);
 }
 
 /**
@@ -1676,9 +1725,97 @@ static ssize_t set_ship_mode(struct device *dev,
 	return count;
 }
 
+/**
+ * set_postcharge_duration - set function for sysfs postcharge_duration
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t set_postcharge_duration(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+	unsigned long value;
+
+	if (kstrtoul(buf, 10, &value) ||
+		(value > MAX_POSTCHARGE_DURATION))
+		return -EINVAL;
+
+	mutex_lock(&chip->sysfs_lock);
+	chip->postcharge_duration_mn = value;
+	mutex_unlock(&chip->sysfs_lock);
+
+	return count;
+}
+
+/**
+ * set_curr_check_interval - set function for sysfs curr_check_interval
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t set_curr_check_interval(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+	unsigned long value;
+
+	if (kstrtoul(buf, 10, &value) ||
+		(value > MAX_CURR_CHECK_INTERVAL) || (value == 0))
+		return -EINVAL;
+
+	mutex_lock(&chip->sysfs_lock);
+	chip->curr_check_interval = value * ONE_MINUTE;
+	mutex_unlock(&chip->sysfs_lock);
+
+	return count;
+}
+
+/**
+ * set_curr_eoc_limit - set function for sysfs curr_eoc_limit
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t set_curr_eoc_limit(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct i2c_client *bq25898_client = container_of(dev, struct i2c_client, dev);
+	struct bq25898_charger *chip = i2c_get_clientdata(bq25898_client);
+	unsigned long value;
+
+	if (kstrtoul(buf, 10, &value) ||
+		(value > MAX_CURR_EOC_LIMIT))
+		return -EINVAL;
+
+	mutex_lock(&chip->sysfs_lock);
+	chip->curr_eoc_limit = value;
+	mutex_unlock(&chip->sysfs_lock);
+
+	return count;
+}
+
 #ifdef CONFIG_SYSFS
 static DEVICE_ATTR(ship_mode, S_IRUGO | S_IWUSR,
 	get_ship_mode, set_ship_mode);
+static DEVICE_ATTR(postcharge_duration_mn, S_IRUGO | S_IWUSR,
+	get_postcharge_duration, set_postcharge_duration);
+static DEVICE_ATTR(curr_check_interval_mn, S_IRUGO | S_IWUSR,
+	get_curr_check_interval, set_curr_check_interval);
+static DEVICE_ATTR(curr_eoc_limit, S_IRUGO | S_IWUSR,
+	get_curr_eoc_limit, set_curr_eoc_limit);
+
+static struct attribute *sysfs_attrs_ctrl[] = {
+	&dev_attr_ship_mode.attr,
+	&dev_attr_postcharge_duration_mn.attr,
+	&dev_attr_curr_check_interval_mn.attr,
+	&dev_attr_curr_eoc_limit.attr,
+	NULL
+};
+
+static struct attribute_group bq25898_attribute_group = {
+	.attrs = sysfs_attrs_ctrl,
+};
+
 #endif /* !CONFIG_SYSFS */
 
 static int bq25898_wdt_configure(struct i2c_client *client, enum bq25898_wdt_timing val)
@@ -1935,18 +2072,25 @@ static void bq25898_sw_charge_term_worker(struct work_struct *work)
 	if (!chip)
 		return;
 
-	dev_dbg(&chip->client->dev, "timer expired, disabling charging\n");
-	/* disable charging, we will need to reenable termination when usb
-	 * will be unpluggeg/plugged */
-	mutex_lock(&chip->charge_config_lock);
-	ret = bq25898_read_modify_reg(chip->client, BQ25898_CHARGE_CTRL_REG,
+	dev_dbg(&chip->client->dev, "Postcharging phase started at : %lu, current_time : %lu, current_now value %d",
+		chip->postcharge_start_time_sec, CURRENT_TIME.tv_sec, chip->current_now);
+	if ((chip->current_now < chip->curr_eoc_limit) ||
+		(((CURRENT_TIME.tv_sec - chip->postcharge_start_time_sec) / 60) >= chip->postcharge_duration_mn)) {
+		dev_dbg(&chip->client->dev, "Disabling charging\n");
+		/* disable charging, we will need to reenable termination when usb
+		* will be unpluggeg/plugged */
+		mutex_lock(&chip->charge_config_lock);
+		ret = bq25898_read_modify_reg(chip->client, BQ25898_CHARGE_CTRL_REG,
 				CHG_CONFIG, 0);
-	if (ret < 0)
-		dev_err(&chip->client->dev, "error disabling charging\n");
+		if (ret < 0)
+			dev_err(&chip->client->dev, "error disabling charging\n");
+		mutex_unlock(&chip->charge_config_lock);
 
-	/* Mark battery as full */
-	chip->is_charge_complete = true;
-	mutex_unlock(&chip->charge_config_lock);
+		/* Mark battery as full */
+		chip->is_charge_complete = true;
+	} else {
+		schedule_delayed_work(&chip->sw_term_work, chip->curr_check_interval);
+	}
 }
 
 static void bq25898_sw_batmon_worker(struct work_struct *work)
@@ -1980,14 +2124,13 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 
 
 	/*
-	 * ** THIS IS A PLACEHOLDER **
-	 * This is here that we will handle battery profile
-	 * Temperature handling, SHOULD BE REFINED before MERGE:
-	 *  0 to 10 deg : charging 100mA
-	 * 10 to 45 deg : charging 330mA
-	 * 45 to 50 deg :	V > 4.1v -> Stop charging
-	 *			V < 4.1v -> Charging 330 mA
-	 * greater than	 50 deg: Stop charging (HW handling)
+	 * This is the current battery profile handling
+	 * done by the bq25898 (HW handling)
+	 * Temperature below 0 deg : stop charging
+	 *  0 to 10 deg : charging at ICHG/2 (96mA) and VREG (4.352V)
+	 * 10 to 45 deg : charging at ICHG and VREG
+	 * 45 to 60 deg : charging at ICHG and 200mV
+	 * greater than	 60 deg: Stop charging
 	 */
 
 	/* reschedule ourself */
@@ -2390,11 +2533,14 @@ static int bq25898_force_charging(struct bq25898_charger *chip)
 		return ret;
 	}
 
-	dev_info(&chip->client->dev, "charge restarted for %d mn\n", chip->postcharge_duration);
+	dev_info(&chip->client->dev, "charge restarted for a maximum of %d mn\n", chip->postcharge_duration_mn);
 
-	/* the timer will stop the charging when fired and will reenable charge termination */
+	/* the sw_term_work will disable the forced charging when "chip->current_now" < BQ25898_CURR_TERM_LIMIT
+	 * or when "chip->postcharge_duration" minutes has been elapsed */
 	cancel_work_sync(&chip->sw_config_work);
-	schedule_delayed_work(&chip->sw_term_work, (chip->postcharge_duration * 60 * HZ));
+	chip->postcharge_start_time_sec = CURRENT_TIME.tv_sec;
+	schedule_delayed_work(&chip->sw_term_work, chip->curr_check_interval);
+
 	return 0;
 }
 
@@ -2429,8 +2575,7 @@ static irqreturn_t bq25898_thread_handler(int id, void *data)
 	chip->irq_counter++;
 
 	/*
-	 * kick hack for the POC
-	 * if charge termination, then schedule a charging for 30 more mn.
+	 * if charge termination, then force charging for a maximum of 30 mn.
 	 */
 
 	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) {
@@ -2486,12 +2631,15 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->psy_usb.set_property = bq25898_set_property;
 	chip->psy_usb.get_property = bq25898_get_property;
 	chip->psy_usb.property_is_writeable = bq25898_property_is_writeable;
-	chip->postcharge_duration = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
+	chip->postcharge_duration_mn = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
 	chip->current_now = 0;
 	chip->irq_counter = 0;
 	chip->ship_mode_scheduled = false;
 	chip->is_charge_complete = false;
 	chip->watchdog_state = WDT_DISABLED;
+	chip->postcharge_start_time_sec = 0;
+	chip->curr_check_interval = BQ25898_CURR_CHECK_INTERVAL_DEFAULT;
+	chip->curr_eoc_limit = BQ25898_CURR_EOC_LIMIT_DEFAULT;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
@@ -2537,11 +2685,10 @@ static int bq25898_probe(struct i2c_client *client,
 	}
 
 #ifdef CONFIG_SYSFS
-	/* create sysfs file to enable ship_mode */
-	ret = device_create_file(&client->dev,
-			&dev_attr_ship_mode);
+	/* create sysfs attribute group */
+	ret = sysfs_create_group(&client->dev.kobj, &bq25898_attribute_group);
 	if (ret < 0) {
-		dev_err(&client->dev, "cannot create sysfs entry for ship mode\n");
+		dev_err(&client->dev, "cannot create sysfs attribute group\n");
 		goto error0;
 	}
 #endif /* !CONFIG_SYSFS */
@@ -2625,9 +2772,12 @@ error2:
 		gpio_free(chip->pdata->gpio_charger_int_n);
 error1:
 	bq25898_debugfs_exit(chip);
+#ifdef CONFIG_SYSFS
+	sysfs_remove_group(&client->dev.kobj, &bq25898_attribute_group);
+#endif /* !CONFIG_SYSFS */
 error0:
 	pm_runtime_disable(&client->dev);
-	
+
 	return ret;
 }
 
@@ -2656,7 +2806,7 @@ static int bq25898_remove(struct i2c_client *client)
 	bq25898_debugfs_exit(chip);
 
 #ifdef CONFIG_SYSFS
-	device_remove_file(&client->dev, &dev_attr_ship_mode);
+	sysfs_remove_group(&client->dev.kobj, &bq25898_attribute_group);
 #endif /* !CONFIG_SYSFS */
 
 	pm_runtime_disable(&client->dev);
