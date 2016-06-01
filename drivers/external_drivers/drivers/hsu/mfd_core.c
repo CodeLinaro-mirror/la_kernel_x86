@@ -888,6 +888,8 @@ static void check_modem_status(struct uart_hsu_port *up)
 		if (status & UART_MSR_DDCD)
 			uart_handle_dcd_change(&up->port,
 					status & UART_MSR_DCD);
+		if (status & UART_MSR_DCTS)
+			uart_handle_cts_change(&up->port, status & UART_MSR_CTS);
 		delta_msr = 1;
 	}
 
