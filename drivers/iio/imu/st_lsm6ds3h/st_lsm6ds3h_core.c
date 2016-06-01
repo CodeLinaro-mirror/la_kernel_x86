@@ -238,6 +238,8 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 		IIO_DEVICE_ATTR(name, S_IRUGO, \
 			st_lsm6ds3h_sysfs_scale_avail, NULL , 0);
 
+#define RETRY_COUNTER_LIMITATION 10
+
 static struct st_lsm6ds3h_selftest_table {
 	char *string_mode;
 	u8 accel_value;
@@ -418,6 +420,7 @@ int st_lsm6ds3h_write_embedded_registers(struct lsm6ds3h_data *cdata,
 					u8 reg_addr, u8 *data, int len)
 {
 	int err = 0, err2;
+	int retry_counter = 0;
 
 	mutex_lock(&cdata->bank_registers_lock);
 
@@ -467,7 +470,7 @@ restore_bank_regs:
 	do {
 		msleep(200);
 		err2 = st_lsm6ds3h_enable_embedded_page_regs(cdata, false);
-	} while (err2 < 0);
+	} while (err2 < 0 && retry_counter++ < RETRY_COUNTER_LIMITATION);
 
 restore_digfunc:
 	if (!cdata->enable_digfunc_mask) {
@@ -2429,6 +2432,7 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	u16 address = 0;
 	int remaining_byte, read_size = CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
+	int retry_counter = 0;
 
 	err = request_firmware(&fw, ST_LSM6DS3H_DATA_FW, cdata->dev);
 	if (err < 0)
@@ -2581,15 +2585,16 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 	return 0;
 
 close_upload_procedure:
+	mutex_unlock(&cdata->bank_registers_lock);
+
 	do {
 		err2 = st_lsm6ds3h_write_data_with_mask(cdata,
 					ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
 					ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK,
 					ST_LSM6DS3H_DIS_BIT, true);
 		msleep(200);
-	} while (err2 < 0);
+	} while (err2 < 0 && retry_counter++ < RETRY_COUNTER_LIMITATION);
 
-	mutex_unlock(&cdata->bank_registers_lock);
 free_fw_check_data:
 	kfree(fw_check_data);
 release_firmware:
