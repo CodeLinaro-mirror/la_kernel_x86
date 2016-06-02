@@ -133,6 +133,7 @@ static int moor_set_slot_and_format(struct snd_soc_dai *dai,
 struct mrfld_8958_mc_private {
 	u8 pmic_id;
 	void __iomem    *osc_clk0_reg;
+	int gpio_ext_amp;
 };
 
 /* set_osc_clk0-	enable/disables the osc clock0
@@ -328,22 +329,15 @@ static int btns_arizona_set_bias_level_post(struct snd_soc_card *card,
 static int btns_arizona_amp_event(struct snd_soc_dapm_widget* w,
 				 struct snd_kcontrol * ctrl, int event)
 {
-     int gpio_l, gpio_r;
+     int gpio_ext_amp;
 
-     printk("%s\n", __func__);
      /* Power up the AMPs */
-     gpio_l = get_gpio_by_name("ext_amp_l_en");
-     if (gpio_l < 0) {
-          pr_err("Failed to get the AMP EN GPIO number\n");
-          return gpio_l;
+     gpio_ext_amp = get_gpio_by_name("audiocodec_amp");
+     if (gpio_ext_amp < 0) {
+          pr_err("Failed to get gpio audiocodec_amp number\n");
+          return gpio_ext_amp;
      }
-     gpio_r = get_gpio_by_name("ext_amp_r_en");
-     if (gpio_r < 0) {
-          pr_err("Failed to get the AMP EN GPIO number\n");
-          return gpio_r;
-     }
-     gpio_set_value(gpio_l, SND_SOC_DAPM_EVENT_ON(event));
-     gpio_set_value(gpio_r, SND_SOC_DAPM_EVENT_ON(event));
+     gpio_set_value(gpio_ext_amp, SND_SOC_DAPM_EVENT_ON(event));
      pr_info("AMP Enable Disable %d\n", SND_SOC_DAPM_EVENT_ON(event));
 
      return 0;
@@ -901,6 +895,14 @@ static int snd_btns_arizona_mc_probe(struct platform_device *pdev)
 	if (!drv->osc_clk0_reg) {
 		pr_err("osc clk0 ctrl ioremap failed\n");
 		ret_val = -1;
+		goto unalloc;
+	}
+
+	ret_val = devm_gpio_request_one(&pdev->dev, drv->gpio_ext_amp,
+									GPIOF_DIR_OUT | GPIOF_INIT_LOW,
+									"audiocodec_amp");
+	if (ret_val != 0) {
+		dev_err(&pdev->dev, "Failed to request audiocodec_amp: %d\n", ret_val);
 		goto unalloc;
 	}
 
