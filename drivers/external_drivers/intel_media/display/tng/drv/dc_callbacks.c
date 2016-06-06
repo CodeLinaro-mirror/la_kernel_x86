@@ -254,6 +254,12 @@ void DCCBFlipSprite(struct drm_device *dev,
 		dsi_config = dev_priv->dsi_configs[1];
 	}
 
+	if ((dev_priv->panel_id == INNOLUX_CMD) && dev_priv->rotated) {
+		DRM_DEBUG("Flat tire # Sprite 180 rotation for innolux panel.\n");
+		ctx->cntr |= DISPPLANE_180_ROTATION;
+		ctx->update_mask |= SPRITE_UPDATE_SURFACE;
+		ctx->linoff = (ctx->size & 0xfff)*4 + ((ctx->size & 0xfff0000)>>16)*ctx->stride;
+	}
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
 
@@ -318,6 +324,12 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	} else
 		return;
 
+	if ((dev_priv->panel_id == INNOLUX_CMD) && dev_priv->rotated) {
+		DRM_DEBUG("Flat tire # Primary 180 rotation for innolux panel.\n");
+		ctx->cntr |= DISPPLANE_180_ROTATION;
+		ctx->update_mask |= SPRITE_UPDATE_SURFACE;
+		ctx->linoff = (ctx->size & 0xfff)*4 + ((ctx->size & 0xfff0000)>>16)*ctx->stride;
+	}
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
 

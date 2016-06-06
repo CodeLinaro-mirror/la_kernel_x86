@@ -79,6 +79,7 @@ struct mdfld_dbi_dsr_info {
 #define set_column_address	0x2a
 #define set_page_addr		0x2b
 #define write_mem_start		0x2c
+#define set_address_mode	0x36
 
 /*offsets*/
 #define CMD_MEM_ADDR_OFFSET	0

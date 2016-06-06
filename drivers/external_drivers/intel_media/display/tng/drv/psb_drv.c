@@ -563,6 +563,10 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 	DRM_IOW(DRM_PSB_UPDATE_CURSOR_POS + DRM_COMMAND_BASE,\
 			struct intel_dc_cursor_ctx)
 
+#define DRM_IOCTL_PSB_PANEL_RESET	\
+	DRM_IOW(DRM_COMMAND_BASE + DRM_PSB_PANEL_RESET, \
+			 int)
+
 struct user_printk_arg {
 	char string[512];
 };
@@ -661,6 +665,9 @@ static int psb_idle_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 static int psb_update_cursor_pos_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
+static int psb_panel_reset_ioctl(struct drm_device *dev, void *data,
+				struct drm_file *file_priv);
+
 static int user_printk_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
 {
@@ -831,6 +838,10 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_UPDATE_CURSOR_POS,
 		psb_update_cursor_pos_ioctl, DRM_AUTH),
+
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_PANEL_RESET,
+		      psb_panel_reset_ioctl, DRM_AUTH),
+
 };
 
 static void psb_set_uopt(struct drm_psb_uopt *uopt)
@@ -1580,6 +1591,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
         mutex_init(&dev_priv->gamma_csc_lock);
 	mutex_init(&dev_priv->dsr_mutex);
 	mutex_init(&dev_priv->vsync_lock);
+
+	mutex_init(&dev_priv->rotate_lock);
+	dev_priv->rotated = false;
 
 	spin_lock_init(&dev_priv->reloc_lock);
 	spin_lock_init(&dev_priv->irqmask_lock);
@@ -3211,6 +3225,22 @@ static int psb_update_cursor_pos_ioctl(struct drm_device *dev, void *data,
 	}
 
 	return DCUpdateCursorPos(ctx->pipe, ctx->pos);
+}
+
+static int psb_panel_reset_ioctl(struct drm_device *dev, void *data,
+						 struct drm_file *file_priv)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+
+	if (!IS_ANN(dev)) {
+		if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI &&
+			dsi_config &&
+			dsi_config->dsi_hw_context.panel_on) {
+			schedule_work(&dev_priv->reset_panel_work);
+		}
+	}
+	return 0;
 }
 
 /* always available as we are SIGIO'd */

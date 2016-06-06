@@ -1082,6 +1082,8 @@ typedef struct tagHDMITESTREGREADWRITE {
 
 #define DRM_PSB_PM_SET                  0x3D
 
+#define DRM_PSB_PANEL_RESET             0x3E
+
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
 /* OEM IOCTLs */
