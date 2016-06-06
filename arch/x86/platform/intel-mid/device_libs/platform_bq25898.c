@@ -68,7 +68,15 @@ void __initdata *bq25898_platform_data(void *info)
 	bq25898_pdata.enable_charger = NULL;
 	bq25898_pdata.set_iterm = NULL;
 	bq25898_pdata.boost_mode_ma = BOOST_CUR_LIM;
-	bq25898_pdata.gpio_charger_int_n = get_gpio_by_name("charger_stat_n");
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
+		bq25898_pdata.gpio_charger_int_n = get_gpio_by_name("charger_stat_n");
+		bq25898_pdata.is_pmic_notifier = 0;
+	} else {
+		bq25898_pdata.is_pmic_notifier = 1;
+	}
 
 	return &bq25898_pdata;
 }

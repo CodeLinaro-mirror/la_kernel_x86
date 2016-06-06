@@ -450,10 +450,6 @@
 
 static bool ship_mode_delay_10s = DEFAULT_SHIP_MODE_DELAY_10S;
 
-static int bq25898_charger_configure(struct i2c_client *client);
-static irqreturn_t bq25898_handler(int irq, void *data);
-static irqreturn_t bq25898_thread_handler(int id, void *data);
-
 enum bq25898_wdt_timing {
 	BQ25898_WDT_TIMER_DISABLE,
 	BQ25898_WDT_TIMER_40S,
@@ -487,6 +483,7 @@ struct bq25898_charger {
 	struct work_struct charge_status_work;
 	struct notifier_block otg_usb_change;
 	struct notifier_block reboot_notifier;
+	struct notifier_block pmic_notifier;
 	struct usb_phy *transceiver;
 	struct dentry *dbgfs_dir;
 	struct bq25898_debugfs_file dbgfs_file[BQ25898_ALL_REGISTER+1];
@@ -501,6 +498,11 @@ struct bq25898_charger {
 	enum bq25898_wdt_state watchdog_state;
 	int irq;
 };
+
+static int bq25898_charger_configure(struct i2c_client *client);
+static irqreturn_t bq25898_handler(int irq, void *data);
+static irqreturn_t bq25898_thread_handler(int id, void *data);
+static int bq25898_force_charging(struct bq25898_charger *chip);
 
 static enum power_supply_property bq25898_battery_properties[] = {
 	POWER_SUPPLY_PROP_STATUS,		/* charging status */
@@ -1820,6 +1822,68 @@ static int bq25898_wdt_kick(struct bq25898_charger *chip)
 	return ret;
 }
 
+static void bq25898_handle_charging_worker(struct work_struct *work)
+{
+	int ret, val;
+	struct bq25898_charger *chip = container_of(work, struct bq25898_charger,
+						charge_status_work);
+
+	if (!chip)
+		return;
+
+	dev_dbg(&chip->client->dev, "Received charger interrupt\n");
+
+	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+	if (val < 0) {
+		dev_dbg(&chip->client->dev, "Error reading charger reg %d:%d\n",
+			BQ25898_STATUS_REG, val);
+		return;
+	}
+
+	dev_dbg(&chip->client->dev, "Charger_status (0x%02x):0x%02x\n", BQ25898_STATUS_REG, val);
+
+	chip->irq_counter++;
+
+	/*
+	 * kick hack for the POC
+	 * if charge termination, then schedule a charging for 30 more mn.
+	 */
+
+	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) {
+		mutex_lock(&chip->charge_config_lock);
+		ret = bq25898_force_charging(chip);
+		mutex_unlock(&chip->charge_config_lock);
+		if (ret < 0)
+			return;
+	} else
+		dev_dbg(&chip->client->dev,
+			"Discarding received charger interrupt through pmic_notifier\n");
+
+	return;
+}
+
+static int bq25898_notify_charge_status_change(struct notifier_block *self,
+					unsigned long action, void *param)
+{
+	struct bq25898_charger *chip = container_of(self, struct bq25898_charger,
+						pmic_notifier);
+
+	if (!chip)
+		return NOTIFY_DONE;
+
+	dev_dbg(&chip->client->dev, "Received PMIC notification action:%lu\n", action);
+
+	switch (action)	{
+	case PMIC_ACTION_CHARGING_STATUS:
+		queue_work(system_nrt_wq, &chip->charge_status_work);
+		return NOTIFY_OK;
+	case PMIC_ACTION_BATTERY_ZONE_CHANGED:
+	case PMIC_ACTION_OVERHEAT:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 static int bq25898_notify_reboot(struct notifier_block *self,
 					unsigned long action, void *param)
 {
@@ -1936,7 +2000,7 @@ static int bq25898_suspend(struct device *dev)
 	struct bq25898_charger *chip;
 
 	chip = dev_get_drvdata(dev);
-	if (chip->irq) {
+	if (chip->irq && !chip->pdata->is_pmic_notifier) {
 		disable_irq(chip->irq);
 		enable_irq_wake(chip->irq);
 	}
@@ -1950,7 +2014,7 @@ static int bq25898_resume(struct device *dev)
 
 	chip = dev_get_drvdata(dev);
 
-	if (chip->irq) {
+	if (chip->irq && !chip->pdata->is_pmic_notifier) {
 		disable_irq_wake(chip->irq);
 		enable_irq(chip->irq);
 	}
@@ -2008,6 +2072,22 @@ static int register_otg_notification(struct bq25898_charger *chip)
 	if (retval) {
 		dev_err(&chip->client->dev, "failed to register otg notifier:%d\n",
 			retval);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int register_pmic_notification(struct bq25898_charger *chip)
+{
+	int ret;
+
+	chip->pmic_notifier.notifier_call = bq25898_notify_charge_status_change;
+
+	ret = register_pmic_notifier(&chip->pmic_notifier);
+	if (ret) {
+		dev_err(&chip->client->dev, "failed to register pmic notifier:%d\n",
+			ret);
 		return -EINVAL;
 	}
 
@@ -2419,22 +2499,6 @@ static int bq25898_probe(struct i2c_client *client,
 	strncpy(chip->manufacturer, DEV_MANUFACTURER,
 		DEV_MANUFACTURER_NAME_SIZE);
 
-	if (!gpio_is_valid(chip->pdata->gpio_charger_int_n)) {
-		dev_err(&client->dev, "Invalid gpio gpio_charger_int_n pin\n");
-		ret = -EINVAL;
-		goto error0;
-	}
-	ret = gpio_request(chip->pdata->gpio_charger_int_n, DEV_NAME);
-	if (ret) {
-		dev_err(&client->dev, "Failed to request gpio pin gpio_charger_int_n: %d\n", ret);
-		goto error0;
-	}
-	ret = gpio_direction_input(chip->pdata->gpio_charger_int_n);
-	if (ret) {
-		dev_err(&client->dev, "Failed to set gpio gpio_charger_int_n to input: %d\n", ret);
-		goto error1;
-	}
-
 	i2c_set_clientdata(client, chip);
 
 	pm_runtime_enable(&client->dev);
@@ -2443,7 +2507,7 @@ static int bq25898_probe(struct i2c_client *client,
 	if (ret < 0) {
 		dev_err(&client->dev,
 			"error in reading ctrl reg %02x:%d\n", BQ25898_DEVREG_CTRL_REG, ret);
-		goto error2;
+		goto error0;
 	}
 
 	/* Disable watchdog for the POC, TBD add a watchdog kicker */
@@ -2451,7 +2515,7 @@ static int bq25898_probe(struct i2c_client *client,
 	dev_dbg(&client->dev, "disabling watchdog: 0x%02x\n", ret);
 	if (ret < 0) {
 		dev_err(&client->dev, "error disabling watchdog %d\n", ret);
-		goto error2;
+		goto error0;
 	}
 
 	mutex_init(&chip->stat_lock);
@@ -2463,28 +2527,13 @@ static int bq25898_probe(struct i2c_client *client,
 	/* monitor battery status and react accordingly */
 	INIT_DELAYED_WORK(&chip->batmon_work, bq25898_sw_batmon_worker);
 	INIT_WORK(&chip->sw_config_work, bq25898_sw_config_worker);
+	INIT_WORK(&chip->charge_status_work, bq25898_handle_charging_worker);
 
 	/* default configuration */
 	ret = bq25898_charger_configure(client);
 	if (ret < 0) {
 		dev_err(&client->dev, "error configuring charger: %d\n", ret);
-		goto error2;
-	}
-
-	irq = gpio_to_irq(chip->pdata->gpio_charger_int_n);
-	if (irq < 0) {
-		dev_err(&client->dev, "gpio_to_irq fails: %d\n", ret);
-		goto error2;
-	} else {
-		ret = request_threaded_irq(irq, bq25898_handler,
-			bq25898_thread_handler, IRQF_SHARED | IRQF_TRIGGER_FALLING,
-			DEV_NAME, chip);
-		if (ret < 0) {
-			dev_err(&client->dev, "Failed to request irq: %d\n", ret);
-			goto error2;
-		} else {
-			chip->irq = irq;
-		}
+		goto error0;
 	}
 
 #ifdef CONFIG_SYSFS
@@ -2493,50 +2542,92 @@ static int bq25898_probe(struct i2c_client *client,
 			&dev_attr_ship_mode);
 	if (ret < 0) {
 		dev_err(&client->dev, "cannot create sysfs entry for ship mode\n");
-		goto error3;
+		goto error0;
 	}
 #endif /* !CONFIG_SYSFS */
 
 	bq25898_debugfs_init(chip);
 
+	if (!chip->pdata->is_pmic_notifier) {
+		if (!gpio_is_valid(chip->pdata->gpio_charger_int_n)) {
+			dev_err(&client->dev, "Invalid gpio gpio_charger_int_n pin\n");
+			ret = -EINVAL;
+			goto error1;
+		}
+		ret = gpio_request(chip->pdata->gpio_charger_int_n, DEV_NAME);
+		if (ret) {
+			dev_err(&client->dev, "Failed to request gpio pin gpio_charger_int_n: %d\n", ret);
+			goto error1;
+		}
+		ret = gpio_direction_input(chip->pdata->gpio_charger_int_n);
+		if (ret) {
+			dev_err(&client->dev, "Failed to set gpio gpio_charger_int_n to input: %d\n", ret);
+			goto error2;
+		}
+
+		irq = gpio_to_irq(chip->pdata->gpio_charger_int_n);
+		if (irq < 0) {
+			dev_err(&client->dev, "gpio_to_irq fails: %d\n", ret);
+			goto error2;
+		}
+		ret = request_threaded_irq(irq, bq25898_handler,
+			bq25898_thread_handler, IRQF_SHARED | IRQF_TRIGGER_FALLING,
+			DEV_NAME, chip);
+		if (ret < 0) {
+			dev_err(&client->dev, "Failed to request irq: %d\n", ret);
+			goto error2;
+		}
+		chip->irq = irq;
+	} else {
+		/* register for pmic notifications */
+		ret = register_pmic_notification(chip);
+		if (ret < 0) {
+			dev_err(&client->dev, "error registering to PMIC notification: %d\n", ret);
+			goto error1;
+		}
+	}
+
 	/* register for usb change */
 	ret = register_otg_notification(chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "error registering to OTG notification: %d\n", ret);
-		goto error4;
+		goto error3;
 	}
 
 	/* register for reboot notification */
 	ret = register_reboot_notification(chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "error registering to REBOOT notification: %d\n", ret);
-		goto error5;
+		goto error4;
 	}
 
 	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
 	if (ret < 0) {
 		dev_err(&client->dev, "error registering power supply: %d\n", ret);
-		goto error6;
+		goto error5;
 	}
 
 	dev_dbg(&client->dev, "<probe");
 
 	return ret;
 
-error6:
-	unregister_reboot_notifier(&chip->reboot_notifier);
 error5:
-	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
+	unregister_reboot_notifier(&chip->reboot_notifier);
 error4:
-	bq25898_debugfs_exit(chip);
+	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 error3:
-	free_irq(chip->irq, chip);
+	if (chip->pdata->is_pmic_notifier)
+		unregister_pmic_notifier(&chip->pmic_notifier);
+	else if (chip->irq)
+		free_irq(chip->irq, chip);
 error2:
-	pm_runtime_disable(&client->dev);
+	if (!chip->pdata->is_pmic_notifier)
+		gpio_free(chip->pdata->gpio_charger_int_n);
 error1:
-	gpio_free(chip->pdata->gpio_charger_int_n);
+	bq25898_debugfs_exit(chip);
 error0:
-
+	pm_runtime_disable(&client->dev);
+	
 	return ret;
 }
 
@@ -2554,6 +2645,7 @@ static int bq25898_remove(struct i2c_client *client)
 
 	flush_scheduled_work();
 	flush_work(&chip->sw_config_work);
+	flush_work(&chip->charge_status_work);
 
 	if (chip->transceiver)
 		usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
@@ -2568,9 +2660,12 @@ static int bq25898_remove(struct i2c_client *client)
 #endif /* !CONFIG_SYSFS */
 
 	pm_runtime_disable(&client->dev);
-	if (chip->irq)
+	if (chip->pdata->is_pmic_notifier) {
+		unregister_pmic_notifier(&chip->pmic_notifier);
+	} else if (chip->irq) {
 		free_irq(chip->irq, chip);
-	gpio_free(chip->pdata->gpio_charger_int_n);
+		gpio_free(chip->pdata->gpio_charger_int_n);
+	}
 
 	return 0;
 }

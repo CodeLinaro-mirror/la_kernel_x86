@@ -26,6 +26,7 @@ struct bq25898_plat_data {
 	int max_cv;
 	bool is_wdt_kick_needed;
 	int gpio_charger_int_n;
+	int is_pmic_notifier;
 
 	int (*enable_charging) (bool val);
 	int (*enable_charger) (bool val);
