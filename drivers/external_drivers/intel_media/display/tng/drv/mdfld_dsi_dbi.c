@@ -657,6 +657,10 @@ reset_recovery:
 	if (p_funcs && p_funcs->exit_deep_standby)
 		p_funcs->exit_deep_standby(dsi_config);
 
+	mutex_lock(&dev_priv->rotate_lock);
+	dev_priv->rotated = !(dev_priv->rotated);
+	mutex_unlock(&dev_priv->rotate_lock);
+
 	if (__dbi_power_on(dsi_config, false)) {
 		DRM_ERROR("Failed to init display controller!\n");
 		err = -EAGAIN;
@@ -1446,7 +1450,9 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 				power_island |= OSPM_DISPLAY_MIO;
 
-		power_island_put(power_island);
+		if (is_island_on(power_island)) {
+			power_island_put(power_island);
+		}
 		power_island_get(power_island);
 
 		if (__dbi_panel_power_off(dsi_config, p_funcs))

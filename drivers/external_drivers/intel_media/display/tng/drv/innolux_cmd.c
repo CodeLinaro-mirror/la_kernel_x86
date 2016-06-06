@@ -282,9 +282,14 @@ int innolux_cmd_power_on(
 
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
 	usleep_range(300000, 301000);
 
@@ -299,6 +304,81 @@ int innolux_cmd_power_on(
 	}
 
 	msleep(120);
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xFF, 0x20, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xFF\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+	usleep_range(1000, 1100);
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xFB, 0x01, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xFB\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+	usleep_range(1000, 1100);
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0x14, 0x01, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0x14\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+	usleep_range(1000, 1100);
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xFF, 0x10, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xFB\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+	usleep_range(1000, 1100);
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			0xFB, 0x01, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: 0xFB\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+	usleep_range(1000, 1100);
+
+	if (dev_priv->rotated) {
+		/* rotate screen 180 degree */
+		DRM_DEBUG("%s: Panel 180 degree rotation\n", __func__);
+		err = mdfld_dsi_send_mcs_short_lp(sender,
+				set_address_mode, 0x03, 1,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s: %d: Rotate screen 180 degree\n",
+			__func__, __LINE__);
+			goto power_err;
+		}
+	} else {
+		/* rotate screen 0 degree */
+		DRM_DEBUG("%s: Panel 0 degree rotation\n", __func__);
+		err = mdfld_dsi_send_mcs_short_lp(sender,
+				set_address_mode, 0x00, 1,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s: %d: Rotate screen 0 degree\n",
+			__func__, __LINE__);
+			goto power_err;
+		}
+	}
+	usleep_range(16000, 16100);
 
 	/* turn on display */
 	err = mdfld_dsi_send_mcs_short_lp(sender,

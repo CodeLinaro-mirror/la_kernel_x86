@@ -462,6 +462,9 @@ struct drm_psb_private {
 	atomic_t *vblank_count;
 	bool vsync_enabled[3];
 
+	struct mutex rotate_lock;
+	bool rotated;
+
 	bool pipea_dpi_underrun_count;
 	bool pipec_dpi_underrun_count;
 
