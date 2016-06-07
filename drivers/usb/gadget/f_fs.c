@@ -1556,14 +1556,17 @@ static void ffs_func_eps_disable(struct ffs_function *func)
 	spin_lock_irqsave(&func->ffs->eps_lock, flags);
 	do {
 		/* pending requests get nuked */
-		if (ep->ep && epfile->ep) {
+		if (ep->ep) {
 			usb_ep_disable(ep->ep);
 			ep->ep->driver_data = NULL;
 		}
-		epfile->ep = NULL;
 
 		++ep;
-		++epfile;
+
+		if (epfile) {
+			epfile->ep = NULL;
+			++epfile;
+		}
 	} while (--count);
 	spin_unlock_irqrestore(&func->ffs->eps_lock, flags);
 }
