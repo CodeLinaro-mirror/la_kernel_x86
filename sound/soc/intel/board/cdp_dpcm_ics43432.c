@@ -81,6 +81,30 @@ static const struct snd_kcontrol_new snd_cdp_controls[] = {
 };
 
 
+static const struct snd_soc_pcm_stream ssp0_dai_params = {
+	.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	.rate_min = SNDRV_PCM_RATE_16000,
+	.rate_max = SNDRV_PCM_RATE_16000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream ssp1_dai_a2dp_params = {
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	.rate_min = SNDRV_PCM_RATE_48000,
+	.rate_max = SNDRV_PCM_RATE_48000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream ssp1_dai_mfg_mode_params = {
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	.rate_min = SNDRV_PCM_RATE_16000,
+	.rate_max = SNDRV_PCM_RATE_16000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
 static int ssp1_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_dai *dai)
 {
 	int ret;
@@ -93,15 +117,18 @@ static int ssp1_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_d
 	unsigned int fmt = SND_SOC_DAIFMT_I2S |
 			SND_SOC_DAIFMT_CBS_CFS |
 			SND_SOC_DAIFMT_NB_IF;
+	dai_link->params = &ssp1_dai_a2dp_params;
 
 	if (ssp1_mfg_mode) {
 		/* mfg mode allows loopback and format is
 		 * PCM, left justified, clocked MSB first */
-		rx_mask = 0x3;
+		tx_mask = 0x1;
+		rx_mask = 0x1;
 		slots = 1;
 		fmt = SND_SOC_DAIFMT_DSP_A |
 			SND_SOC_DAIFMT_CBS_CFS |
 			SND_SOC_DAIFMT_NB_IF;
+		dai_link->params = &ssp1_dai_mfg_mode_params;
 	}
 
 	ret = snd_soc_dai_set_tdm_slot(dai, tx_mask, rx_mask, slots,
@@ -119,22 +146,6 @@ static int ssp1_config_fixup(struct snd_soc_dai_link *dai_link, struct snd_soc_d
 
 	return ret;
 }
-
-static const struct snd_soc_pcm_stream ssp0_dai_params = {
-	.formats = SNDRV_PCM_FMTBIT_S24_LE,
-	.rate_min = SNDRV_PCM_RATE_16000,
-	.rate_max = SNDRV_PCM_RATE_16000,
-	.channels_min = 2,
-	.channels_max = 2,
-};
-
-static const struct snd_soc_pcm_stream ssp1_dai_params = {
-	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	.rate_min = SNDRV_PCM_RATE_48000,
-	.rate_max = SNDRV_PCM_RATE_48000,
-	.channels_min = 2,
-	.channels_max = 2,
-};
 
 static struct snd_soc_dai_link dai_links[] = {
 	/* front ends */
@@ -177,7 +188,7 @@ static struct snd_soc_dai_link dai_links[] = {
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.platform_name = "sst-platform",
-		.params = &ssp1_dai_params,
+		.params = &ssp1_dai_a2dp_params,
 		.be_fixup = ssp1_config_fixup,
 		.dsp_loopback = true,
 	},
