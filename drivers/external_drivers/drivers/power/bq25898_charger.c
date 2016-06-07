@@ -2536,7 +2536,7 @@ error2:
 error1:
 	gpio_free(chip->pdata->gpio_charger_int_n);
 error0:
-	kfree(chip);
+
 	return ret;
 }
 
