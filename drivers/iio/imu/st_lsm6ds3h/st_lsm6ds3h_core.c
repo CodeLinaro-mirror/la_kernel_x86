@@ -871,6 +871,30 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 	return true;
 }
 
+int st_lsm6ds3h_flush_work_fifo(struct lsm6ds3h_data *cdata,
+						bool disable_irq_and_flush)
+{
+	int err;
+
+	dev_dbg(cdata->dev, "st_lsm6ds3h_flush_work_fifo!\n");
+
+	if (disable_irq_and_flush) {
+		disable_irq(cdata->irq);
+		st_lsm6ds3h_flush_workqueue(cdata);
+	}
+
+	mutex_lock(&cdata->fifo_lock);
+	err = st_lsm6ds3h_read_fifo(cdata);
+	if (err < 0)
+		dev_warn(cdata->dev,"Read_fifo error in st_lsm6ds3h_flush_work_fifo!\n");
+	mutex_unlock(&cdata->fifo_lock);
+
+	if (disable_irq_and_flush)
+		enable_irq(cdata->irq);
+
+	return err;
+}
+
 int st_lsm6ds3h_set_drdy_irq(struct lsm6ds3h_sensor_data *sdata, bool state)
 {
 	int err;

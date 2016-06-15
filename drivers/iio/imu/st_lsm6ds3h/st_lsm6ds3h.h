@@ -296,6 +296,8 @@ void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 
 int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq);
 void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq);
+int st_lsm6ds3h_flush_work_fifo(struct lsm6ds3h_data *cdata,
+				bool disable_irq_and_flush);
 
 int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable);
 int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm);
@@ -344,7 +346,7 @@ static inline int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
 int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 				const struct iio_trigger_ops *trigger_ops);
 void st_lsm6ds3h_deallocate_triggers(struct lsm6ds3h_data *cdata);
-void st_lsm6ds3h_flush_works(void);
+void st_lsm6ds3h_flush_workqueue(struct lsm6ds3h_data *cdata);
 #else /* CONFIG_IIO_TRIGGER */
 static inline int st_lsm6ds3h_allocate_triggers(struct lsm6ds3h_data *cdata,
 			const struct iio_trigger_ops *trigger_ops, int irq)
@@ -356,7 +358,7 @@ static inline void st_lsm6ds3h_deallocate_triggers(struct lsm6ds3h_data *cdata,
 {
 	return;
 }
-static inline void st_lsm6ds3h_flush_works(void)
+static inline void st_lsm6ds3h_flush_workqueue(struct lsm6ds3h_data *cdata)
 {
 	return;
 }

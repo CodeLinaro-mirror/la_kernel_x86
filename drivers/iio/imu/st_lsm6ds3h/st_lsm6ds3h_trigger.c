@@ -47,6 +47,12 @@
 static struct mutex lsm6ds3h_irq_mutex;
 static struct workqueue_struct *st_lsm6ds3h_wq;
 
+void st_lsm6ds3h_flush_workqueue(struct lsm6ds3h_data *cdata)
+{
+	dev_dbg(cdata->dev, "st_lsm6ds3h_flush_workq!\n");
+	flush_workqueue(st_lsm6ds3h_wq);
+}
+
 irqreturn_t lsm6ds3h_save_timestamp(int irq, void *private)
 {
 	struct lsm6ds3h_data *cdata = private;
