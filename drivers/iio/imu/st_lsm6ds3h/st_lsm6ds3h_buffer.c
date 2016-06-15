@@ -399,6 +399,12 @@ static int st_lsm6ds3h_buffer_predisable(struct iio_dev *indio_dev)
 	if (err < 0)
 		goto reenable_sensor;
 
+	err = st_lsm6ds3h_flush_work_fifo(sdata->cdata, true);
+	if (err < 0) {
+		dev_err(sdata->cdata->dev, "st_lsm6ds3h_flush_work_fifo return %d!\n", err);
+		goto reenable_sensor;
+	}
+
 	kfree(sdata->buffer_data);
 
 	return 0;
