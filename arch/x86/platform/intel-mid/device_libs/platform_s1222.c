@@ -67,6 +67,11 @@ static struct synaptics_dsx_board_data dsx_board_data = {
 
 void *s1222_platform_data(void *info)
 {
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, MRS, PRO) ||
+		   INTEL_MID_BOARD(2, PHONE, MRFL, MRS, ENG)) {
+		dsx_board_data.x_flip = 0;
+		dsx_board_data.y_flip = 1;
+	}
 	dsx_board_data.irq_gpio = get_gpio_by_name("touch_int");
 	if (dsx_board_data.irq_gpio < 0) {
 		pr_err("%s: failed to get from sfi table, use default GP183\n",
