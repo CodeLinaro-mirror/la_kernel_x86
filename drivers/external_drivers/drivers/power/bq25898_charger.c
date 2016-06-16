@@ -286,11 +286,14 @@
 #define VBUS_STATUS2				(1 << 7)	/* b000: No input, b001: USB Host SDP */
 #define VBUS_STATUS1				(1 << 6)	/* b010: Adapter (3.25A), b111: NA */
 #define VBUS_STATUS0				(1 << 5)
+#define VBUS_STATUS_MASK			(7 << 5)
 /* CHRG_STAT */
 #define CHARGER_STATUS1				(1 << 4)	/* b00: Not charging, b01: Precharge */
 #define CHARGER_STATUS0				(1 << 3)	/* b10: Fast charge, b11: Charge termination done */
+#define CHARGER_STATUS_MASK			(3 << 5)
 /* PG_STAT -- 0: Not power good, 1: Power good */
 #define PG_STAT					(1 << 2)
+#define PG_STAT_MASK			(1 << 2)
 /* VSYS_STAT -- 0: Not in VSYSmin, 1: in Vsys min regulation (BAT < VSYSMIN) */
 #define VSYS_STAT				(1 << 0)
 
@@ -300,6 +303,8 @@
 #define BQ25898_FAULT_REG			0x0C
 /* WATCHDOG_FAULT */
 #define WATCHDOG_FAULT				(1 << 7)	/* 0: normal, 1: WDT timer expiration */
+/* BOOST FAULT */
+#define BOOST_FAULT					(1 << 6)
 /* CHRG_FAULT */
 #define CHARGER_FAULT1				(1 << 5)	/* b00: normal, b01: input fault */
 #define CHARGER_FAULT0				(1 << 4)	/* b10: thermal shutdown, b11: charge safety timer expiration */
@@ -507,6 +512,7 @@ struct bq25898_charger {
 	unsigned long postcharge_start_time_sec;
 	unsigned int curr_check_interval;
 	unsigned int curr_eoc_limit;
+	int status_reg_oldvalue;
 };
 
 static int bq25898_charger_configure(struct i2c_client *client);
@@ -2010,9 +2016,137 @@ static int bq25898_wdt_kick(struct bq25898_charger *chip)
 	return ret;
 }
 
+static int bq25898_restore_configuration(struct bq25898_charger *chip)
+{
+	int ret = 0;
+
+	if (!chip->client)
+		return -EINVAL;
+
+	/* Restore correct value for reg 0x00*/
+	ret = bq25898_write_reg(chip->client, BQ25898_INPUT_SRC_CTRL_REG, chip->pdata->reg_config.reg00);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error restoring reg00 value\n");
+		return ret;
+	}
+	/* Restore correct value for reg 0x04*/
+	ret = bq25898_write_reg(chip->client, BQ25898_FAST_CHARGE_CTRL_REG, chip->pdata->reg_config.reg04);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error restoring reg04 value\n");
+		return ret;
+	}
+	/* Restore correct value for reg 0x05*/
+	ret = bq25898_write_reg(chip->client, BQ25898_CUR_LIMIT_CTRL_REG, chip->pdata->reg_config.reg05);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error restoring reg05 value\n");
+		return ret;
+	}
+	/* Restore correct value for reg 0x06*/
+	ret = bq25898_write_reg(chip->client, BQ25898_VLIM_CHRG_CTRL_REG, chip->pdata->reg_config.reg06);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error restoring reg06 value\n");
+		return ret;
+	}
+
+	ret = bq25898_ship_mode_configure(chip->client);
+	if (ret < 0)
+		return ret;
+
+	/* Enable Watchdog Timer */
+	ret = bq25898_wdt_configure(chip->client, BQ25898_WDT_TIMER_160S);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error enabling watchdog\n");
+		return ret;
+	} else {
+		chip->watchdog_state = WDT_ENABLED;
+	}
+
+	return ret;
+}
+
+static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
+{
+	int ret = 0, val;
+
+	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+	if (val < 0) {
+		dev_err(&chip->client->dev, "Error reading charger reg %d:%d\n",
+			BQ25898_STATUS_REG, val);
+		return val;
+	}
+
+	dev_dbg(&chip->client->dev, "Charger_status (0x%02x):0x%02x\n", BQ25898_STATUS_REG, val);
+
+	chip->irq_counter++;
+
+	/*
+	 * if charge termination, then force charging for a maximum of 30 mn.
+	 */
+	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)
+		&& ((chip->status_reg_oldvalue & CHARGER_STATUS_MASK) != CHARGER_STATUS_MASK)) {
+		mutex_lock(&chip->charge_config_lock);
+		ret = bq25898_force_charging(chip);
+		mutex_unlock(&chip->charge_config_lock);
+		if (ret < 0)
+			return ret;
+	} else if ((val & PG_STAT) && ((chip->status_reg_oldvalue & PG_STAT_MASK) != PG_STAT_MASK)) {
+		dev_dbg(&chip->client->dev, "Received interrupt for PG_STAT\n");
+	} else if ((val & VBUS_STATUS_MASK) != (chip->status_reg_oldvalue & VBUS_STATUS_MASK)) {
+		dev_dbg(&chip->client->dev, "Received interrupt for VBUS_STATUS\n");
+	} else {
+		dev_dbg(&chip->client->dev,
+			"Discarding received charger interrupt\n");
+	}
+
+	chip->status_reg_oldvalue = val;
+	return ret;
+}
+
+static int bq25898_charger_fault_reg_handler(struct bq25898_charger *chip)
+{
+	int ret = 0, val;
+
+	/* Read this register two times to get the current value
+	 * as specified by the vendor */
+	val = bq25898_read_reg(chip->client, BQ25898_FAULT_REG);
+	if (val < 0)
+		return val;
+	val = bq25898_read_reg(chip->client, BQ25898_FAULT_REG);
+	if (val < 0)
+		return val;
+
+	dev_dbg(&chip->client->dev,
+		"Charger_Fault_reg (0x%02x):0x%02x\n", BQ25898_FAULT_REG, val);
+
+	if (val & WATCHDOG_FAULT) {
+		dev_warn(&chip->client->dev,
+			"Watchdog Timer has expired... Starting recovery\n");
+		mutex_lock(&chip->charge_config_lock);
+		ret = bq25898_restore_configuration(chip);
+		mutex_unlock(&chip->charge_config_lock);
+		if (ret < 0)
+			dev_err(&chip->client->dev,
+				"Unable to restore charger's register configuration");
+	}
+	if (val & BOOST_FAULT)
+		dev_dbg(&chip->client->dev, "INT triggered for Boost fault\n");
+	if (!(val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
+		dev_dbg(&chip->client->dev, "INT triggered for Input fault\n");
+	if ((val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
+		dev_dbg(&chip->client->dev, "INT triggered for Thermal shutdown\n");
+	if ((val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
+		dev_dbg(&chip->client->dev, "INT triggered for Safety timer expiration\n");
+	if (val & BAT_FAULT)
+		dev_dbg(&chip->client->dev, "INT triggered for Battery fault\n");
+	if ((val & NTC_FAULT0) || (val & NTC_FAULT1) || (val & NTC_FAULT2))
+		dev_dbg(&chip->client->dev, "INT triggered for NTC fault\n");
+
+	return ret;
+}
+
 static void bq25898_handle_charging_worker(struct work_struct *work)
 {
-	int ret, val;
+	int ret;
 	struct bq25898_charger *chip = container_of(work, struct bq25898_charger,
 						charge_status_work);
 
@@ -2021,31 +2155,12 @@ static void bq25898_handle_charging_worker(struct work_struct *work)
 
 	dev_dbg(&chip->client->dev, "Received charger interrupt\n");
 
-	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
-	if (val < 0) {
-		dev_dbg(&chip->client->dev, "Error reading charger reg %d:%d\n",
-			BQ25898_STATUS_REG, val);
-		return;
-	}
-
-	dev_dbg(&chip->client->dev, "Charger_status (0x%02x):0x%02x\n", BQ25898_STATUS_REG, val);
-
-	chip->irq_counter++;
-
-	/*
-	 * kick hack for the POC
-	 * if charge termination, then schedule a charging for 30 more mn.
-	 */
-
-	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) {
-		mutex_lock(&chip->charge_config_lock);
-		ret = bq25898_force_charging(chip);
-		mutex_unlock(&chip->charge_config_lock);
-		if (ret < 0)
-			return;
-	} else
-		dev_dbg(&chip->client->dev,
-			"Discarding received charger interrupt through pmic_notifier\n");
+	ret = bq25898_charger_status_reg_handler(chip);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "Error while checking status_reg\n");
+	ret = bq25898_charger_fault_reg_handler(chip);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "Error while checking fault_reg\n");
 
 	return;
 }
@@ -2099,6 +2214,7 @@ static void bq25898_sw_config_worker(struct work_struct *work)
 
 	if (!chip)
 		return;
+
 	mutex_lock(&chip->charge_config_lock);
 	ret = bq25898_enable_charging(chip->client);
 	mutex_unlock(&chip->charge_config_lock);
@@ -2611,7 +2727,7 @@ static irqreturn_t bq25898_thread_handler(int id, void *data)
 {
 	struct bq25898_charger *chip = (struct bq25898_charger *)data;
 	struct i2c_client *client = chip->client;
-	int ret, val;
+	int ret;
 
 	if ((!chip) || (!client))
 		return IRQ_NONE;
@@ -2619,28 +2735,16 @@ static irqreturn_t bq25898_thread_handler(int id, void *data)
 	dev_dbg(&client->dev, "%s", __func__);
 	dev_dbg(&client->dev, "Received charger interrupt\n");
 
-	val = bq25898_read_reg(client, BQ25898_STATUS_REG);
-	if (val < 0) {
-		dev_err(&client->dev, "Error reading charger reg %d:%d\n",
-			BQ25898_STATUS_REG, val);
+	ret = bq25898_charger_status_reg_handler(chip);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "Error while checking status_reg\n");
 		goto thread_handler_end;
 	}
-	dev_dbg(&chip->client->dev, "Charger_status (0x%02x):0x%02x\n", BQ25898_STATUS_REG, val);
-	chip->irq_counter++;
 
-	/*
-	 * if charge termination, then force charging for a maximum of 30 mn.
-	 */
-
-	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) {
-		/* Charge termination done */
-		mutex_lock(&chip->charge_config_lock);
-		ret = bq25898_force_charging(chip);
-		mutex_unlock(&chip->charge_config_lock);
-		if (ret < 0)
-			goto thread_handler_end;
-	} else {
-		dev_dbg(&chip->client->dev, "Discarding received charger interrupt\n");
+	ret = bq25898_charger_fault_reg_handler(chip);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "Error while checking fault_reg\n");
+		goto thread_handler_end;
 	}
 	power_supply_changed(&chip->psy_usb);
 
@@ -2706,6 +2810,12 @@ static int bq25898_probe(struct i2c_client *client,
 
 	pm_runtime_enable(&client->dev);
 
+	ret = chip->status_reg_oldvalue = bq25898_read_reg(client, BQ25898_STATUS_REG);
+	if (ret < 0) {
+		dev_err(&client->dev,
+			"error in reading status reg %02x:%d\n", BQ25898_STATUS_REG, ret);
+		goto error0;
+	}
 	ret = chip->revision = bq25898_read_reg(client, BQ25898_DEVREG_CTRL_REG);
 	if (ret < 0) {
 		dev_err(&client->dev,
@@ -2713,7 +2823,7 @@ static int bq25898_probe(struct i2c_client *client,
 		goto error0;
 	}
 
-	/* Disable watchdog for the POC, TBD add a watchdog kicker */
+	/* Disable watchdog */
 	ret = bq25898_wdt_configure(client, BQ25898_WDT_TIMER_DISABLE);
 	dev_dbg(&client->dev, "disabling watchdog: 0x%02x\n", ret);
 	if (ret < 0) {
