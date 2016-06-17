@@ -22,6 +22,10 @@
 #include "platform_bq25898.h"
 
 #define BOOST_CUR_LIM	500
+#define BQ25898_REG00_RESTORE_VALUE	0x08		/* INLIM = 400mA, Disable ILIM pin*/
+#define BQ25898_REG04_RESTORE_VALUE	0x05		/* ICHG = 320mA*/
+#define BQ25898_REG05_RESTORE_VALUE	0x00		/* PRECHARGE_CUR = 64mA, TERM_CUR = 64mA */
+#define BQ25898_REG06_RESTORE_VALUE	0x83		/* VREG = 4.352V, BATLOWV = 3.0V, VRECHG = 200mV*/
 
 /*
  * Extract of the documentation:
@@ -77,6 +81,10 @@ void __initdata *bq25898_platform_data(void *info)
 	} else {
 		bq25898_pdata.is_pmic_notifier = 1;
 	}
+	bq25898_pdata.reg_config.reg00 = BQ25898_REG00_RESTORE_VALUE;
+	bq25898_pdata.reg_config.reg04 = BQ25898_REG04_RESTORE_VALUE;
+	bq25898_pdata.reg_config.reg05 = BQ25898_REG05_RESTORE_VALUE;
+	bq25898_pdata.reg_config.reg06 = BQ25898_REG06_RESTORE_VALUE;
 
 	return &bq25898_pdata;
 }

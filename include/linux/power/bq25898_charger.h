@@ -12,6 +12,14 @@
 #ifndef __BQ25898_CHARGER_H__
 #define __BQ25898_CHARGER_H__
 
+/* this structure holds the restore register configuration for bq25898 */
+struct restore_reg_config {
+	u8 reg00;
+	u8 reg04;
+	u8 reg05;
+	u8 reg06;
+};
+
 struct bq25898_plat_data {
 	u32 irq_map;
 	u8 irq_mask;
@@ -27,6 +35,7 @@ struct bq25898_plat_data {
 	bool is_wdt_kick_needed;
 	int gpio_charger_int_n;
 	int is_pmic_notifier;
+	struct restore_reg_config reg_config;
 
 	int (*enable_charging) (bool val);
 	int (*enable_charger) (bool val);

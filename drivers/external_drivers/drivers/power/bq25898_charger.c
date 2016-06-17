@@ -1927,6 +1927,54 @@ static int bq25898_ship_mode_configure(struct i2c_client *client)
 	return ret;
 }
 
+static int bq25898_check_expected_register(struct i2c_client *client, u8 address, u8 expected_val)
+{
+	int ret = 0, val;
+	struct bq25898_charger *chip = i2c_get_clientdata(client);
+
+	val = bq25898_read_reg(client, address);
+	if (val < 0)
+		return val;
+	if (val != expected_val) {
+		dev_warn(&client->dev,
+			"wrong value for register (0x%02x):0x%02x  fixing it ...\n",
+			address, val);
+		ret = bq25898_write_reg(client, address, expected_val);
+		if (ret < 0)
+			return ret;
+	}
+
+	return ret;
+}
+
+static int bq25898_check_configuration(struct i2c_client *client)
+{
+	int ret = 0;
+	struct bq25898_charger *chip = i2c_get_clientdata(client);
+
+	dev_dbg(&client->dev, "checking registers configuration\n");
+	/* check register 0x00 */
+	ret = bq25898_check_expected_register(client, BQ25898_INPUT_SRC_CTRL_REG,
+			chip->pdata->reg_config.reg00);
+	if (ret < 0)
+		return ret;
+	/* check register 0x04 */
+	ret = bq25898_check_expected_register(client, BQ25898_FAST_CHARGE_CTRL_REG,
+			chip->pdata->reg_config.reg04);
+	if (ret < 0)
+		return ret;
+	/* check register 0x05 */
+	ret = bq25898_check_expected_register(client, BQ25898_CUR_LIMIT_CTRL_REG,
+			chip->pdata->reg_config.reg05);
+	if (ret < 0)
+		return ret;
+	/* check register 0x06 */
+	ret = bq25898_check_expected_register(client, BQ25898_VLIM_CHRG_CTRL_REG,
+			chip->pdata->reg_config.reg06);
+
+	return ret;
+}
+
 /* Don't call this function directly from interrupt context! */
 static int bq25898_charger_configure(struct i2c_client *client)
 {
@@ -1935,6 +1983,9 @@ static int bq25898_charger_configure(struct i2c_client *client)
 	if (!client)
 		return -EINVAL;
 
+	ret = bq25898_check_configuration(client);
+	if (ret < 0)
+		return ret;
 	ret = bq25898_ship_mode_configure(client);
 	if (ret < 0)
 		return ret;
