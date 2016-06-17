@@ -1700,13 +1700,17 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 			}
 		}
 	}
-			if (chip->pdata->is_volt_shutdown_enabled)
-				chip->pdata->is_volt_shutdown =
-				chip->pdata->is_volt_shutdown_enabled();
+	/* if rsense_value is defined in platform data, overwrite the
+	 * value loaded from config data with the new value*/
+	if (chip->pdata->rsense_value)
+		fg_conf_data->rsense = chip->pdata->rsense_value;
+	if (chip->pdata->is_volt_shutdown_enabled)
+		chip->pdata->is_volt_shutdown =
+			chip->pdata->is_volt_shutdown_enabled();
 
-			if (chip->pdata->is_lowbatt_shutdown_enabled)
-				chip->pdata->is_lowbatt_shutdown =
-				chip->pdata->is_lowbatt_shutdown_enabled();
+	if (chip->pdata->is_lowbatt_shutdown_enabled)
+		chip->pdata->is_lowbatt_shutdown =
+			chip->pdata->is_lowbatt_shutdown_enabled();
 
 	mutex_unlock(&chip->init_lock);
 }

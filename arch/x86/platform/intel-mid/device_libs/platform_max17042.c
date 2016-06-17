@@ -53,7 +53,8 @@
 #define BYT_CRV2_BATT_MIN_VOLT	3400	/* 3400mV */
 #define BYT_CRV2_BATT_MAX_VOLT	4350	/* 4350mV */
 
-#define TEMP_MADE_UP_20C	20
+#define TEMP_MADE_UP_20C		20
+#define RSENSE_002_OHM			0x2	/* 0.02 Ohm */
 
 void max17042_i2c_reset_workaround(void)
 {
@@ -525,7 +526,7 @@ static bool max17042_is_valid_batid(void)
 static void init_platform_params(struct max17042_platform_data *pdata)
 {
 	pdata->fg_algo_model = 100;
-
+	pdata->rsense_value = 0;
 	if (INTEL_MID_BOARD(1, PHONE, MFLD)) {
 		/* MFLD phones */
 		if (!(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG)) ||
@@ -575,8 +576,13 @@ static void init_platform_params(struct max17042_platform_data *pdata)
 				INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
-				INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG) ||
-				INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
+				INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG)) {
+		pdata->enable_current_sense = true;
+		pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		pdata->file_sys_storage_enabled = 1;
+		pdata->soc_intr_mode_enabled = true;
+		pdata->valid_battery = true;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
 				INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
@@ -585,6 +591,7 @@ static void init_platform_params(struct max17042_platform_data *pdata)
 		pdata->file_sys_storage_enabled = 1;
 		pdata->soc_intr_mode_enabled = true;
 		pdata->valid_battery = true;
+		pdata->rsense_value = RSENSE_002_OHM;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
 				INTEL_MID_BOARD(1, TABLET, MRFL) ||
 				INTEL_MID_BOARD(1, PHONE, MOFD) ||
