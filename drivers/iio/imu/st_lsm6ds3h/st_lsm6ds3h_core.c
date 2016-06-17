@@ -1021,6 +1021,9 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 	int64_t new_deltatime[ST_INDIO_DEV_NUM + 1] = { 0 };
 	short new_fifo_decimator[ST_INDIO_DEV_NUM + 1] = { 0 };
 
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_set_odr: index=%d, odr=%d, force=%d\n",
+		sdata->sindex, odr, force);
+
 	if (odr == 0) {
 		if (force)
 			scan_odr = false;
@@ -1566,6 +1569,9 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 {
 	int err;
 	u8 reg_value;
+
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_set_enable: index=%d, enable=%d\n",
+		sdata->sindex, enable);
 
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
@@ -3345,6 +3351,9 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 
 	tmp_sensors_enabled = cdata->sensors_enabled;
 
+	dev_dbg(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d\n",
+		cdata->sensors_enabled);
+
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
 		if ((i == ST_MASK_ID_SIGN_MOTION) ||
 						(i == ST_MASK_ID_TILT))
@@ -3373,6 +3382,9 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 #ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 	int err, i;
 	struct lsm6ds3h_sensor_data *sdata;
+
+	dev_dbg(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d\n",
+		cdata->sensors_enabled);
 
 	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
 		if ((i == ST_MASK_ID_SIGN_MOTION) ||

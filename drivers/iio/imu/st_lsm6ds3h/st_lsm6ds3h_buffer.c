@@ -65,6 +65,9 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 	u8 ext0_sip;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
+	dev_dbg(cdata->dev, "st_lsm6ds3h_parse_fifo_data: sensors_enabled=0x%2x\n",
+				cdata->sensors_enabled);
+
 	while (fifo_offset < read_len) {
 		gyro_sip = cdata->fifo_output[ST_MASK_ID_GYRO].sip;
 		accel_sip = cdata->fifo_output[ST_MASK_ID_ACCEL].sip;
@@ -165,6 +168,8 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
 #endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
 	u16 read_len = 0, byte_in_pattern;
 
+	dev_dbg(cdata->dev, "st_lsm6ds3_read_fifo! \n");
+
 	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
 						2, fifo_status, true);
 	if (err < 0)
@@ -177,8 +182,10 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
 		return -EINVAL;
 	}
 
-	if (fifo_status[1] & ST_LSM6DS3H_FIFO_DATA_EMPTY)
+	if (fifo_status[1] & ST_LSM6DS3H_FIFO_DATA_EMPTY){
+		dev_dbg(cdata->dev, "read_fifo data empty!\n");
 		return 0;
+	}
 
 	read_len = ((fifo_status[1] & ST_LSM6DS3H_FIFO_DIFF_MASK) << 8) | fifo_status[0];
 	read_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
@@ -267,6 +274,7 @@ static irqreturn_t st_lsm6ds3h_step_counter_trigger_handler(int irq, void *p)
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_step_counter_trigger_handler\n");
 	if (!sdata->cdata->reset_steps) {
 		err = sdata->cdata->tf->read(sdata->cdata,
 					(u8)indio_dev->channels[0].address,
@@ -330,6 +338,8 @@ static int st_lsm6ds3h_buffer_postenable(struct iio_dev *indio_dev)
 	int err, err2 = 0;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_buffer_postenable: index=%d\n", sdata->sindex);
+
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
 	case ST_MASK_ID_GYRO:
@@ -384,6 +394,8 @@ static int st_lsm6ds3h_buffer_predisable(struct iio_dev *indio_dev)
 {
 	int err;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
+
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_buffer_predisable: index=%d\n", sdata->sindex);
 
 	mutex_lock(&sdata->cdata->odr_lock);
 

@@ -98,6 +98,8 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 
 	mutex_unlock(&lsm6ds3h_irq_mutex);
 
+	dev_dbg(cdata->dev, "st_lsm6ds3h_irq_management src_dig_func=%x\n", src_dig_func);
+
 	if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) &
 			(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_GYRO) |
 						BIT(ST_MASK_ID_EXT0))) {
