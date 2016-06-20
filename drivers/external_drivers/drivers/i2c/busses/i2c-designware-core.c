@@ -55,6 +55,10 @@ void i2c_dw_clear_int(struct dw_i2c_dev *dev);
 static void dw_i2c_acpi_setup(struct device *pdev, struct dw_i2c_dev *dev);
 u32 i2c_dw_read_comp_param(struct dw_i2c_dev *dev);
 
+static u32 hold_time = DEFAULT_I2C_HOLD_TIME;
+module_param(hold_time, uint, 0400);
+MODULE_PARM_DESC(hold_time, "SDA hold time in units of ic_clk period");
+
 static char *abort_sources[] = {
 	[ABRT_7B_ADDR_NOACK] =
 		"slave address not acknowledged (7bit mode)",
@@ -1085,6 +1089,9 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 
 	/* configure the i2c master */
 	dw_writel(dev, dev->master_cfg , DW_IC_CON);
+
+	/* set IC_SDA_HOLD to hold_time */
+	dw_writel(dev, hold_time, DW_IC_SDA_HOLD);
 
 	return 0;
 }
