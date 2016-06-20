@@ -2588,6 +2588,7 @@ static irqreturn_t bq25898_thread_handler(int id, void *data)
 	} else {
 		dev_dbg(&chip->client->dev, "Discarding received charger interrupt\n");
 	}
+	power_supply_changed(&chip->psy_usb);
 
 thread_handler_end:
 	return IRQ_HANDLED;
