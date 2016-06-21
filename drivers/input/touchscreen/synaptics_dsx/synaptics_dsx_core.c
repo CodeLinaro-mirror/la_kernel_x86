@@ -860,10 +860,12 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			touch_detected = true;
 			wx = data.wx;
 			wy = data.wy;
-			if (max(wx, wy) > rmi4_data->palm_detect_threshold) {
-				palm_detected = true;
-				dev_dbg(rmi4_data->pdev->dev.parent,
+			if (rmi4_data->hw_if->board_data->palm_gesture_en) {
+				if (max(wx, wy) > rmi4_data->palm_detect_threshold) {
+					palm_detected = true;
+					dev_dbg(rmi4_data->pdev->dev.parent,
 					"%s: Detect palm\n", __func__);
+				}
 			}
 		}
 

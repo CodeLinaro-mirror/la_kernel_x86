@@ -40,6 +40,7 @@ struct synaptics_dsx_button_map {
  * struct synaptics_dsx_board_data - DSX board data
  * @x_flip: x flip flag
  * @y_flip: y flip flag
+ * @palm_gesture_en: palm gesture function flag
  * @swap_axes: swap axes flag
  * @irq_gpio: attention interrupt GPIO
  * @irq_on_state: attention interrupt active state
@@ -64,6 +65,7 @@ struct synaptics_dsx_button_map {
 struct synaptics_dsx_board_data {
 	bool x_flip;
 	bool y_flip;
+	bool palm_gesture_en;
 	bool swap_axes;
 	int irq_gpio;
 	int irq_on_state;
