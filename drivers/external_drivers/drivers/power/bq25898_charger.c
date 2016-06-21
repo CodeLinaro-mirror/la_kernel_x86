@@ -2411,7 +2411,7 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = bq25898_get_prop_status(chip);
 		if (ret < 0)
-			return ret;
+			goto error;
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s prop status:%d", __func__, val->intval);
@@ -2419,7 +2419,7 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		ret = bq25898_get_prop_health(chip);
 		if (ret < 0)
-			return ret;
+			goto error;
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s health:%d", __func__, val->intval);
@@ -2427,7 +2427,7 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ONLINE:
 		ret = bq25898_get_prop_online(chip);
 		if (ret < 0)
-			return ret;
+			goto error;
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s online:%d", __func__, val->intval);
@@ -2438,7 +2438,7 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TEMP:
 		ret = bq25898_get_prop_temp(chip, &val->intval);
 		if (ret < 0)
-			return ret;
+			goto error;
 
 		dev_dbg(&chip->client->dev, "%s temperature:%d", __func__, val->intval);
 		break;
@@ -2451,7 +2451,7 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		ret = bq25898_get_prop_voltage_now(chip);
 		if (ret < 0)
-			return ret;
+			goto error;
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s voltage_now:%d", __func__, val->intval);
@@ -2459,9 +2459,12 @@ static int bq25898_get_property(struct power_supply *psy,
 	default:
 		break;
 	}
+
+
+error:
 	mutex_unlock(&chip->sysfs_lock);
 
-	return 0;
+	return ( ret < 0 ? ret : 0 );
 }
 
 static int bq25898_set_property(struct power_supply *psy,
