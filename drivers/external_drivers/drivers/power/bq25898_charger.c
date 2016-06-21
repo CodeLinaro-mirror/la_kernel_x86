@@ -1890,7 +1890,6 @@ static int bq25898_enable_charging(struct i2c_client *client)
 
 	if (ret < 0)
 		dev_err(&client->dev, "error enabling charge termination %d\n", ret);
-	chip->is_charge_complete = false;
 
 	dev_dbg(&client->dev, "enabling charging\n");
 
@@ -2243,18 +2242,19 @@ static void bq25898_sw_charge_term_worker(struct work_struct *work)
 		chip->postcharge_start_time_sec, CURRENT_TIME.tv_sec, chip->current_now);
 	if ((chip->current_now < chip->curr_eoc_limit) ||
 		(((CURRENT_TIME.tv_sec - chip->postcharge_start_time_sec) / 60) >= chip->postcharge_duration_mn)) {
-		dev_dbg(&chip->client->dev, "Disabling charging\n");
-		/* disable charging, we will need to reenable termination when usb
-		* will be unpluggeg/plugged */
-		mutex_lock(&chip->charge_config_lock);
-		ret = bq25898_read_modify_reg(chip->client, BQ25898_CHARGE_CTRL_REG,
-				CHG_CONFIG, 0);
-		if (ret < 0)
-			dev_err(&chip->client->dev, "error disabling charging\n");
-		mutex_unlock(&chip->charge_config_lock);
-
 		/* Mark battery as full */
 		chip->is_charge_complete = true;
+
+		dev_dbg(&chip->client->dev, "Enabling maintenance mode\n");
+		/* Disable charging then enable charging and charging termination in order to activate
+		 * maintenance mode. Charging will stop immediately */
+		mutex_lock(&chip->charge_config_lock);
+		ret = bq25898_enable_charging(chip->client);
+		mutex_unlock(&chip->charge_config_lock);
+		if (ret < 0) {
+			dev_err(&chip->client->dev, "error enabling maintenance mode\n");
+			return;
+		}
 	} else {
 		schedule_delayed_work(&chip->sw_term_work, chip->curr_check_interval);
 	}
@@ -2456,9 +2456,6 @@ static int bq25898_get_prop_status(struct bq25898_charger *chip)
 	if (val < 0)
 		return val;
 
-	if (!(val & PG_STAT))
-		return POWER_SUPPLY_STATUS_DISCHARGING;
-
 	/* Pre-charge or fast charge */
 	if ((!(val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) ||
 	    ((val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)))
@@ -2466,10 +2463,10 @@ static int bq25898_get_prop_status(struct bq25898_charger *chip)
 	/* Charge termination done */
 	else if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0))
 		return POWER_SUPPLY_STATUS_FULL;
-	/* Not charging */
+	/* Discharging or Not charging */
 	else if (!(val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)) {
-		if (chip->is_charge_complete)
-			return POWER_SUPPLY_STATUS_FULL;
+		if (!(val & PG_STAT))
+			return POWER_SUPPLY_STATUS_DISCHARGING;
 		else
 			return POWER_SUPPLY_STATUS_NOT_CHARGING;
 	}
