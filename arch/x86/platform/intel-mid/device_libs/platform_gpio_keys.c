@@ -55,6 +55,8 @@ static struct gpio_keys_button gpio_button[] = {
 	{KEY_CAMERA_FOCUS,      -1, 1, "camera0_sb2",   EV_KEY, 0, 20},
 	{BTN_8,			1, 1, "top_bttn",	EV_KEY, 1, 20},
 	{BTN_9,			1, 1, "btm_bttn",	EV_KEY, 1, 20},
+	{KEY_ENTER,		1, 1, "enter",		EV_KEY, 1, 20},
+	{KEY_BACK,		1, 1, "back",		EV_KEY, 1, 20},
 };
 
 static struct gpio_keys_platform_data gpio_keys = {
