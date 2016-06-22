@@ -108,22 +108,6 @@ void __init *mrfl_pmic_ccsm_platform_data(void *info)
 	pmic_pdata.cv_to_reg = bq24261_cv_to_reg;
 	pmic_pdata.inlmt_to_reg = bq24261_inlmt_to_reg;
 #endif
-	if  (INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 0) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 0) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 1) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 1) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, PRO, 20) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, RBY, ENG, 20) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
-			INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG)) {
-#ifdef CONFIG_BQ24232_CHARGER
-		pmic_pdata.notify_charging_stat = bq24232_set_charging_status;
-#else
-		pmic_pdata.notify_charging_stat = NULL;
-#endif
-	}
 
 	register_rpmsg_service("rpmsg_pmic_ccsm", RPROC_SCU,
 				RP_PMIC_CCSM);

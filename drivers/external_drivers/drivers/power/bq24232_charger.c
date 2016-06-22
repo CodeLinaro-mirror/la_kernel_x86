@@ -35,6 +35,8 @@
 #include <linux/power/bq24232_charger.h>
 #include <linux/usb/otg.h>
 
+#include <asm/pmic_pdata.h>
+
 struct bq24232_charger {
 	const struct bq24232_plat_data *pdata;
 	struct device *dev;
@@ -45,9 +47,11 @@ struct bq24232_charger {
 	struct power_supply *wirless_psy;
 
 	struct work_struct evt_work;
+	struct work_struct charge_status_work;
 	struct delayed_work bat_temp_mon_work;
 	struct notifier_block otg_nb;
 	struct notifier_block psly_nb;
+	struct notifier_block pmic_notifier;
 	struct list_head queue;
 	spinlock_t queue_lock;
 	spinlock_t pgood_lock;
@@ -61,6 +65,7 @@ struct bq24232_charger {
 	bool suspended;
 	bool chging_started;
 	struct chging_profile *curr_chging_profile;
+	int chg_stat; /*from PMIC notifier*/
 
 	/*
 	 * @charging_status_n:	it must reflects the CE_N signal on BQ24232 to
@@ -519,21 +524,44 @@ int bq24232_get_charger_status(void)
 	return status;
 }
 
-void bq24232_set_charging_status(bool chg_stat)
+static void bq24232_handle_charging_worker(struct work_struct *work)
 {
+	struct bq24232_charger *chip = container_of(work,
+					struct bq24232_charger,
+					charge_status_work);
 	struct bq24232_event *evt;
 
-	if (!bq24232_charger)
-		return;
-
-	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
+	evt = kzalloc(sizeof(*evt), GFP_KERNEL);
 	if (!evt) {
-		dev_err(bq24232_charger->dev,"failed to allocate memory for charger_set_charging_status_event\n");
+		dev_err(chip->dev, "failed to allocate memory for set_charging_status_worker event\n");
 		return;
 	}
 	evt->type = PMIC_EVENT;
-	evt->chg_stat = chg_stat;
-	bq24232_add_event(bq24232_charger, evt);
+	evt->chg_stat = chip->chg_stat;
+	bq24232_add_event(chip, evt);
+}
+
+static int bq24232_notify_charge_status_change(struct notifier_block *nb,
+					unsigned long event, void *param)
+{
+	struct bq24232_charger *chip = container_of(nb, struct bq24232_charger, pmic_notifier);
+	dev_dbg(chip->dev, "Received PMIC notification action:%lu\n", event);
+
+	if (!param)
+		return NOTIFY_DONE;
+
+	switch (event)	{
+	case PMIC_ACTION_CHARGING_STATUS:
+		chip->chg_stat = (unsigned long) (param);
+		queue_work(system_nrt_wq, &chip->charge_status_work);
+		return NOTIFY_OK;
+
+	case PMIC_ACTION_BATTERY_ZONE_CHANGED:
+	case PMIC_ACTION_OVERHEAT:
+	case PMIC_ACTION_MAX:
+	default:
+		return NOTIFY_DONE;
+	}
 }
 
 static void bq24232_exception_mon_wrk(struct work_struct *work)
@@ -773,6 +801,20 @@ static inline int register_otg_notification(struct bq24232_charger *chip)
 	return 0;
 }
 
+static int register_pmic_notification(struct bq24232_charger *chip)
+{
+	int retval;
+	chip->pmic_notifier.notifier_call = bq24232_notify_charge_status_change;
+
+	retval = register_pmic_notifier(&chip->pmic_notifier);
+	if (retval) {
+		dev_err(chip->dev, "failed to register pmic notifier:%d\n", retval);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int bq24232_charger_probe(struct platform_device *pdev)
 {
 	const struct bq24232_plat_data *pdata = pdev->dev.platform_data;
@@ -860,6 +902,7 @@ static int bq24232_charger_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&bq24232_charger->queue);
 	INIT_WORK(&bq24232_charger->evt_work, bq24232_evt_worker);
+	INIT_WORK(&bq24232_charger->charge_status_work, bq24232_handle_charging_worker);
 	spin_lock_init(&bq24232_charger->queue_lock);
 
 	/*
@@ -871,11 +914,20 @@ static int bq24232_charger_probe(struct platform_device *pdev)
 		goto io_error4;
 	}
 
+	/*
+	 * Register for pmic notifications
+	 */
+	ret = register_pmic_notification(bq24232_charger);
+	if (ret < 0) {
+		dev_err(bq24232_charger->dev, "Error registering to PMIC notification: %d\n", ret);
+		goto io_error5;
+	}
+
 	ret = power_supply_register(bq24232_charger->dev, pow_sply);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register power supply: %d\n",
 			ret);
-		goto io_error5;
+		goto io_error6;
 	}
 	if (pdata->wc_direct_support) {
 		bq24232_charger->psly_nb.notifier_call = psly_handle_notification;
@@ -892,6 +944,8 @@ static int bq24232_charger_probe(struct platform_device *pdev)
 
 	return 0;
 
+io_error6:
+	unregister_pmic_notifier(&bq24232_charger->pmic_notifier);
 io_error5:
 	usb_unregister_notifier(bq24232_charger->transceiver, &bq24232_charger->otg_nb);
 io_error4:
@@ -914,9 +968,12 @@ static int bq24232_charger_remove(struct platform_device *pdev)
 
 	power_supply_unregister(&bq24232_charger->pow_sply);
 
+	unregister_pmic_notifier(&bq24232_charger->pmic_notifier);
+
 	usb_unregister_notifier(bq24232_charger->transceiver, &bq24232_charger->otg_nb);
 
 	flush_work(&bq24232_charger->evt_work);
+	flush_work(&bq24232_charger->charge_status_work);
 	cancel_delayed_work_sync(&bq24232_charger->bat_temp_mon_work);
 
 	if (gpio_is_valid(bq24232_charger->pdata->chg_rate_temp_gpio))
@@ -988,4 +1045,5 @@ MODULE_AUTHOR("A.Casolaro <antoniox.casolaro@intel.com>");
 MODULE_AUTHOR("G.Valles <guillaumex.valles@intel.com>");
 MODULE_DESCRIPTION("Driver for BQ24232 battery charger");
 MODULE_LICENSE("GPL");
+
 

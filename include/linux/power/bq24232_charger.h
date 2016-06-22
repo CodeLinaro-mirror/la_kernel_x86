@@ -31,7 +31,6 @@
 
 #ifdef CONFIG_BQ24232_CHARGER
 extern int bq24232_get_charger_status(void);
-extern void bq24232_set_charging_status(bool chg_stat);
 #endif
 int bq24232_assert_ce_n(bool val);
 
