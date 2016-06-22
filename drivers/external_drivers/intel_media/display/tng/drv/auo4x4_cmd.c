@@ -602,6 +602,10 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 	u32 power_island = 0;
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dbgfs_dsi_config);
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 
 	/* setting display and MIPI bus in correct state for reading */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
@@ -696,6 +700,10 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 	char *start, *str;
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dbgfs_dsi_config);
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 
 	str = kzalloc(count, GFP_KERNEL);
 	if (!str)
@@ -782,7 +790,7 @@ static ssize_t dbgfs_addr_write(struct file *file, const char __user *buff,
 
 	err = dbgfs_write(buff, count, ADDR);
 	if (err < 0)
-		ret = 0;
+		return err;
 
 	*ppos += ret;
 
@@ -802,7 +810,7 @@ static ssize_t dbgfs_send_hs_write(struct file *file, const char __user *buff,
 
 	err = dbgfs_write(buff, count, HIGH_SPEED);
 	if (err < 0)
-		ret = 0;
+		return err;
 
 	*ppos += ret;
 
@@ -822,7 +830,7 @@ static ssize_t dbgfs_send_lp_write(struct file *file, const char __user *buff,
 
 	err = dbgfs_write(buff, count, LOW_POWER);
 	if (err < 0)
-		ret = 0;
+		return err;
 
 	*ppos += ret;
 
