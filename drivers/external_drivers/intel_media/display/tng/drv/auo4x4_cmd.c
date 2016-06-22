@@ -176,6 +176,14 @@ void auo4x4_cmd_controller_init(
 
 	/* re-enable reset function*/
 	reset_enable = true;
+
+	/*
+	 * local copy of dsi_config needed by debugfs to use:
+	 * - mdfld_dsi_send_*
+	 * - mdfld_dsi_read_*
+	 */
+	if (dbgfs_dsi_config == NULL)
+		dbgfs_dsi_config = dsi_config;
 }
 
 static
@@ -344,9 +352,6 @@ int auo4x4_cmd_panel_reset(
 
 	if (reset_enable == false)
 		return 0;
-
-	if (dbgfs_dsi_config == NULL)
-		dbgfs_dsi_config = dsi_config;
 
 	gpio_direction_output(bias_en_gpio, 1);
 	gpio_direction_output(mipi_reset_gpio, 0);
