@@ -3353,6 +3353,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	err = cdata->tf->read(cdata, ST_LSM6DS3H_WAI_ADDRESS, 1, &wai, true);
 	if (err < 0) {
 		dev_err(cdata->dev, "failed to read Who-Am-I register.\n");
+		err = -EPROBE_DEFER;
 		goto free_fifo_data;
 	}
 	if (wai != ST_LSM6DS3H_WAI_EXP) {
