@@ -20,7 +20,6 @@
 #include <asm/setup.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_hsu.h>
-#include <linux/sfi.h>
 
 #include "platform_hsu.h"
 
@@ -31,8 +30,6 @@
 #define VLV_HSU_RESET	0x0804
 #define VLV_HSU_OVF_IRQ	0x0820	/* Overflow interrupt related */
 
-static int intel_mid_gps_hsu_init(struct device *dev, int port, irq_handler_t wake_isr);
-static int gps_mcu_req_pin;
 static unsigned int clock;
 static int hsu_device_cfg = config_base;
 static struct hsu_port_pin_cfg *hsu_port_gpio_mux;
@@ -490,7 +487,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.index = 1,
 			.name = HSU_GPS_PORT,
 			.idle = 40,
-			.hw_init = intel_mid_gps_hsu_init,
+			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
 			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
@@ -959,70 +956,6 @@ int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr)
 	}
 
 	return ret;
-}
-
-static intel_mid_gps_runtime_suspend(struct device *dev)
-{
-	int ret = pm_generic_runtime_suspend(dev);
-
-	gpio_set_value(gps_mcu_req_pin, 0);
-
-	return ret;
-}
-
-static intel_mid_gps_runtime_resume(struct device *dev)
-{
-	int ret = pm_generic_runtime_resume(dev);
-
-	gpio_set_value(gps_mcu_req_pin, 1);
-
-	return ret;
-}
-
-static struct dev_pm_domain intel_mid_gps_pm_domain = {
-	.ops = {
-#ifdef CONFIG_PM_RUNTIME
-		.runtime_suspend = intel_mid_gps_runtime_suspend,
-		.runtime_resume = intel_mid_gps_runtime_resume,
-		.runtime_idle = pm_generic_runtime_idle,
-#endif
-	},
-};
-
-static int gps_mcu_req_gpio(char *name)
-{
-	int ret, pin;
-
-	pin = get_gpio_by_name(name);
-	if (pin == -1) {
-		pr_err("%s: failed to get gpio(name: %s)\n",
-					__func__, name);
-		return -EINVAL;
-	}
-	pr_info("gps mcu_req: gpio: %s: %d\n", name, pin);
-
-	ret = gpio_direction_output(pin, 0);
-	if (ret) {
-		pr_err("%s: failed to set gpio(pin %d) direction\n",
-							__func__, pin);
-		gpio_free(pin);
-	}
-
-	return ret ? ret : pin;
-}
-
-static int intel_mid_gps_hsu_init(struct device *dev, int port, irq_handler_t wake_isr)
-{
-
-	gps_mcu_req_pin  = gps_mcu_req_gpio("GPS-Mcureq");
-	if (gps_mcu_req_pin < 0) {
-		pr_err("mcu_req pin is not available.");
-		return gps_mcu_req_pin;
-		}
-
-	dev->pm_domain = &intel_mid_gps_pm_domain;
-
-	return intel_mid_hsu_init(dev, port, wake_isr);
 }
 
 static void hsu_platform_clk(enum intel_mid_cpu_type cpu_type, ulong plat)
