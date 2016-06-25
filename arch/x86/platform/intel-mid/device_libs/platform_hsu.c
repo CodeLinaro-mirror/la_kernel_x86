@@ -30,6 +30,13 @@
 #define VLV_HSU_RESET	0x0804
 #define VLV_HSU_OVF_IRQ	0x0820	/* Overflow interrupt related */
 
+static int intel_mid_gps_hsu_init(struct device *dev, int port,
+				  irq_handler_t wake_isr);
+static void intel_mid_gps_hsu_suspend(int port, struct device *dev,
+				      irq_handler_t wake_isr);
+static void intel_mid_gps_hsu_resume(int port, struct device *dev);
+static int gps_mcu_req_pin;
+
 static unsigned int clock;
 static int hsu_device_cfg = config_base;
 static struct hsu_port_pin_cfg *hsu_port_gpio_mux;
@@ -487,12 +494,12 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.index = 1,
 			.name = HSU_GPS_PORT,
 			.idle = 40,
-			.hw_init = intel_mid_hsu_init,
+			.hw_init = intel_mid_gps_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
 			.hw_set_rts = intel_mid_hsu_rts,
-			.hw_suspend = intel_mid_hsu_suspend,
+			.hw_suspend = intel_mid_gps_hsu_suspend,
 			.hw_suspend_post = intel_mid_hsu_suspend_post,
-			.hw_resume = intel_mid_hsu_resume,
+			.hw_resume = intel_mid_gps_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
 			.hw_context_save = 1,
 		},
@@ -792,6 +799,19 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 	}
 }
 
+static void intel_mid_gps_hsu_suspend(int port, struct device *dev,
+				      irq_handler_t wake_isr)
+{
+	intel_mid_hsu_suspend(port, dev, wake_isr);
+	gpio_set_value(gps_mcu_req_pin, 0);
+}
+
+static void intel_mid_gps_hsu_resume(int port, struct device *dev)
+{
+	intel_mid_hsu_resume(port, dev);
+	gpio_set_value(gps_mcu_req_pin, 1);
+}
+
 void intel_mid_hsu_switch(int port)
 {
 	int i;
@@ -956,6 +976,41 @@ int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr)
 	}
 
 	return ret;
+}
+
+static int gps_mcu_req_gpio(char *name)
+{
+	int ret, pin;
+
+	pin = get_gpio_by_name(name);
+	if (pin == -1) {
+		pr_err("%s: failed to get gpio(name: %s)\n",
+					__func__, name);
+		return -EINVAL;
+	}
+	pr_info("gps mcu_req: gpio: %s: %d\n", name, pin);
+
+	ret = gpio_direction_output(pin, 0);
+	if (ret) {
+		pr_err("%s: failed to set gpio(pin %d) direction\n",
+							__func__, pin);
+		gpio_free(pin);
+	}
+
+	return ret ? ret : pin;
+}
+
+static int intel_mid_gps_hsu_init(struct device *dev, int port,
+				  irq_handler_t wake_isr)
+{
+
+	gps_mcu_req_pin  = gps_mcu_req_gpio("GPS-Mcureq");
+	if (gps_mcu_req_pin < 0) {
+		pr_err("mcu_req pin is not available.");
+		return gps_mcu_req_pin;
+	}
+
+	return intel_mid_hsu_init(dev, port, wake_isr);
 }
 
 static void hsu_platform_clk(enum intel_mid_cpu_type cpu_type, ulong plat)
