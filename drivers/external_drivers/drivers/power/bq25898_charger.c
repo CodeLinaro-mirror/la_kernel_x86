@@ -2083,11 +2083,15 @@ static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 	 */
 	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)
 		&& ((chip->status_reg_oldvalue & CHARGER_STATUS_MASK) != CHARGER_STATUS_MASK)) {
-		mutex_lock(&chip->charge_config_lock);
-		ret = bq25898_force_charging(chip);
-		mutex_unlock(&chip->charge_config_lock);
-		if (ret < 0)
-			return ret;
+		if (!(chip->is_charge_complete)) {
+			mutex_lock(&chip->charge_config_lock);
+			ret = bq25898_force_charging(chip);
+			mutex_unlock(&chip->charge_config_lock);
+			if (ret < 0)
+				return ret;
+		} else {
+			chip->is_charge_complete = false;
+		}
 	} else if ((val & PG_STAT) && ((chip->status_reg_oldvalue & PG_STAT_MASK) != PG_STAT_MASK)) {
 		dev_dbg(&chip->client->dev, "Received interrupt for PG_STAT\n");
 	} else if ((val & VBUS_STATUS_MASK) != (chip->status_reg_oldvalue & VBUS_STATUS_MASK)) {
