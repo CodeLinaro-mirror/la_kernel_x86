@@ -1447,7 +1447,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 				mutex_unlock(&sender->lock);
 				if (!IS_ANN(dev)) {
 					debug_dbi_hang(sender);
-					panic("DBI FIFO timeout, drop frame\n");
+					WARN_ON(1);
 				}
 				return 0;
 			}
