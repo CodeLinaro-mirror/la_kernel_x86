@@ -548,8 +548,8 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 	if (ch0 == 0) {
 		/* have no data, so return LAST VALUE */
 		dev_info(&chip->client->dev, "ch0 have no data\n");
-		chip->lux = 0;
 		lux = chip->lux;
+		chip->lux = 0;
 		return lux;
 	}
 
@@ -585,8 +585,8 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 		/* note: lux is 31 bit max at this point */
 		if (ch1lux > ch0lux) {
 			dev_info(&chip->client->dev, "No Data - Return last value\n");
-			chip->lux = 0;
 			lux = chip->lux;
+			chip->lux = 0;
 			return lux;
 		}
 
