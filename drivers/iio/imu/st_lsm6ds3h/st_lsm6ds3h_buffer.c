@@ -37,6 +37,10 @@ void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 	uint16_t bfch, bfchs_out = 0, bfchs_in = 0;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(cdata->indio_dev[index]);
 
+	if (!sdata || !sdata->buffer_data) {
+		return;
+	}
+
 	for (i = 0; i < sdata->num_data_channels; i++) {
 		bfch = chs[i].scan_type.storagebits >> 3;
 
@@ -384,8 +388,10 @@ disable_sensor:
 	err2 = st_lsm6ds3h_set_enable(sdata, false);
 	mutex_unlock(&sdata->cdata->odr_lock);
 free_buffer_data:
-	if (err2 >= 0)
+	if (err2 >= 0) {
 		kfree(sdata->buffer_data);
+		sdata->buffer_data = NULL;
+	}
 
 	return err;
 }
@@ -418,6 +424,7 @@ static int st_lsm6ds3h_buffer_predisable(struct iio_dev *indio_dev)
 	}
 
 	kfree(sdata->buffer_data);
+	sdata->buffer_data = NULL;
 
 	return 0;
 
