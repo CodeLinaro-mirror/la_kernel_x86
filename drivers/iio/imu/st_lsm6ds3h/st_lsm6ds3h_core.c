@@ -3581,6 +3581,8 @@ EXPORT_SYMBOL(st_lsm6ds3h_common_remove);
 #ifdef CONFIG_PM
 int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 {
+	disable_irq(cdata->irq);
+
 #ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 	int err, i;
 	u8 tmp_sensors_enabled;
@@ -3617,7 +3619,7 @@ EXPORT_SYMBOL(st_lsm6ds3h_common_suspend);
 int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 {
 #ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
-	int err, i;
+	int err = 0, i;
 	struct lsm6ds3h_sensor_data *sdata;
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d\n",
@@ -3633,7 +3635,7 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 		if (BIT(sdata->sindex) & cdata->sensors_enabled) {
 			err = st_lsm6ds3h_set_enable(sdata, true);
 			if (err < 0)
-				return err;
+				goto out;
 		}
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
@@ -3643,7 +3645,9 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 			disable_irq_wake(cdata->irq);
 	}
 
-	return 0;
+out:
+	enable_irq(cdata->irq);
+	return err;
 }
 EXPORT_SYMBOL(st_lsm6ds3h_common_resume);
 #endif /* CONFIG_PM */
