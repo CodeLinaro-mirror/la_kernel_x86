@@ -37,6 +37,10 @@ static void st_lsm6ds3_push_data_with_timestamp(struct lsm6ds3_data *cdata,
 	uint16_t bfch, bfchs_out = 0, bfchs_in = 0;
 	struct lsm6ds3_sensor_data *sdata = iio_priv(cdata->indio_dev[index]);
 
+	if (!sdata || !sdata->buffer_data) {
+		return;
+	}
+
 	for (i = 0; i < sdata->num_data_channels; i++) {
 		bfch = chs[i].scan_type.storagebits >> 3;
 
@@ -472,8 +476,10 @@ static int st_lsm6ds3_buffer_postenable(struct iio_dev *indio_dev)
 	return 0;
 
 free_buffer_data:
-	if ((1 << sdata->sindex) & ST_LSM6DS3_USE_BUFFER)
+	if ((1 << sdata->sindex) & ST_LSM6DS3_USE_BUFFER) {
 		kfree(sdata->buffer_data);
+		sdata->buffer_data = NULL;
+	}
 
 	return err;
 }
@@ -504,8 +510,10 @@ static int st_lsm6ds3_buffer_predisable(struct iio_dev *indio_dev)
 	if (err < 0)
 		return err;
 
-	if ((1 << sdata->sindex) & ST_LSM6DS3_USE_BUFFER)
+	if ((1 << sdata->sindex) & ST_LSM6DS3_USE_BUFFER) {
 		kfree(sdata->buffer_data);
+		sdata->buffer_data = NULL;
+	}
 
 	return 0;
 }
