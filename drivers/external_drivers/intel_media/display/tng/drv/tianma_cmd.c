@@ -762,8 +762,6 @@ void tianma_cmd_init(struct drm_device *dev,
 	p_funcs->set_brightness = tianma_cmd_set_brightness;
 	p_funcs->exit_deep_standby = tianma_cmd_exit_deep_standby;
 	p_funcs->enter_deep_standby = tianma_cmd_enter_deep_standby;
-	p_funcs->exit_low_power = tianma_cmd_exit_low_power;
-	p_funcs->enter_low_power = tianma_cmd_enter_low_power;
 	p_funcs->sleep_in = tianma_cmd_sleep_in;
 
 	/* debugfs */
