@@ -28,6 +28,7 @@
 #include <asm/unaligned.h>
 
 #include <linux/iio/common/st_sensors.h>
+#include <linux/pm_runtime.h>
 #include "st_lsm6ds3h.h"
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
@@ -3567,6 +3568,8 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 
 	device_init_wakeup(cdata->dev, true);
 
+	pm_runtime_enable(cdata->dev);
+
 	return 0;
 
 iio_device_unregister_and_trigger_deallocate:
@@ -3590,6 +3593,8 @@ EXPORT_SYMBOL(st_lsm6ds3h_common_probe);
 void st_lsm6ds3h_common_remove(struct lsm6ds3h_data *cdata, int irq)
 {
 	int i;
+
+	pm_runtime_disable(cdata->dev);
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 	iio_device_unregister(cdata->indio_dev[ST_MASK_ID_TAP_TAP]);

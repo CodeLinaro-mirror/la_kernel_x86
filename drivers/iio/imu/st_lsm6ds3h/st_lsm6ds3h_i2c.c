@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/iio/iio.h>
 #include <linux/gpio.h>
+#include <linux/pm_runtime.h>
 #include <linux/platform_data/st_lsm6ds3h_pdata.h>
 
 #include "st_lsm6ds3h.h"
@@ -36,12 +37,17 @@ static int st_lsm6ds3h_i2c_read(struct lsm6ds3h_data *cdata,
 	msg[1].len = len;
 	msg[1].buf = data;
 
+	pm_runtime_get_sync(cdata->dev);
+
 	if (b_lock) {
 		mutex_lock(&cdata->bank_registers_lock);
 		err = i2c_transfer(client->adapter, msg, 2);
 		mutex_unlock(&cdata->bank_registers_lock);
-	} else
+        } else {
 		err = i2c_transfer(client->adapter, msg, 2);
+        }
+
+	pm_runtime_put(cdata->dev);
 
 	return err;
 }
@@ -63,12 +69,16 @@ static int st_lsm6ds3h_i2c_write(struct lsm6ds3h_data *cdata,
 	msg.len = len;
 	msg.buf = send;
 
+	pm_runtime_get_sync(cdata->dev);
+
 	if (b_lock) {
 		mutex_lock(&cdata->bank_registers_lock);
 		err = i2c_transfer(client->adapter, &msg, 1);
 		mutex_unlock(&cdata->bank_registers_lock);
 	} else
 		err = i2c_transfer(client->adapter, &msg, 1);
+
+	pm_runtime_put(cdata->dev);
 
 	return err;
 }
