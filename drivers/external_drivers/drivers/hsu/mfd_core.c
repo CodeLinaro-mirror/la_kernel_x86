@@ -39,9 +39,6 @@
 #include <linux/intel_mid_pm.h>
 #include <linux/pm_qos.h>
 
-#include <linux/gpio.h>
-#include <linux/sfi.h>
-
 #define CREATE_TRACE_POINTS
 #include "mfd.h"
 
@@ -1913,9 +1910,6 @@ int serial_hsu_do_suspend(struct uart_hsu_port *up)
 		}
 	}
 
-	if (up->index == 1)
-		gpio_set_value(get_gpio_by_name("GPS-Mcureq"),0);
-
 	if (cfg->hw_set_rts)
 		cfg->hw_set_rts(up->index, 1);
 
@@ -2021,8 +2015,6 @@ int serial_hsu_do_resume(struct uart_hsu_port *up)
 	if (cfg->hw_set_rts)
 		cfg->hw_set_rts(up->index, 0);
 	enable_irq(up->port.irq);
-	if (up->index == 1)
-		gpio_set_value(get_gpio_by_name("GPS-Mcureq"),1);
 
 	serial_sched_start(up);
 	spin_lock_irqsave(&up->port.lock, flags);
