@@ -1241,6 +1241,8 @@ int psb_power_mode_set_ioctl(struct drm_device *dev, void *data,
 	case POWER_MODE_DOZE:
 	case POWER_MODE_DOZE_SUSPEND:
 		synaptics_rmi4_palm_disable();
+		funcs->dpms(connector, DRM_MODE_DPMS_SUSPEND);
+		break;
 	default:
 		DRM_INFO("Not support display standby mode yet!\n");
 		break;

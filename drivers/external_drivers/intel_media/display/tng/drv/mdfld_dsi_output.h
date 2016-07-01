@@ -327,6 +327,7 @@ struct mdfld_dsi_hw_context {
 
 	/*panel status*/
 	int panel_on;
+	int panel_low_power;
 	int backlight_level;
 
 	u32 pll_bypass_mode;

@@ -318,7 +318,7 @@ int auo4x4_cmd_set_brightness(
 		return -EINVAL;
 	}
 
-	duty_val = (0xFF * level) / 255;
+	duty_val = (u8)(level & 0xFF);
 	mdfld_dsi_send_mcs_short_hs(sender,
 		write_display_brightness, duty_val, 1,
 		MDFLD_DSI_SEND_PACKAGE);
@@ -369,6 +369,44 @@ int auo4x4_cmd_exit_deep_standby(
 	usleep_range(10000, 12000);
 
 	return 0;
+}
+
+static int auo4x4_cmd_enter_low_power(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			idle_mode_on, 0x00, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: idle_mode_on\n",
+				__func__, __LINE__);
+	}
+
+	return err;
+}
+
+static int auo4x4_cmd_exit_low_power(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			idle_mode_off, 0x00, 1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: idle_mode_on\n",
+				__func__, __LINE__);
+	}
+
+	return err;
 }
 
 static
@@ -495,6 +533,8 @@ void auo4x4_cmd_init(struct drm_device *dev,
 	p_funcs->detect = auo4x4_cmd_panel_connection_detect;
 	p_funcs->set_brightness = auo4x4_cmd_set_brightness;
 	p_funcs->exit_deep_standby = auo4x4_cmd_exit_deep_standby;
+	p_funcs->exit_low_power = auo4x4_cmd_exit_low_power;
+	p_funcs->enter_low_power= auo4x4_cmd_enter_low_power;
 
 	/* debugfs */
 	dbgfs_dsi_config = NULL;

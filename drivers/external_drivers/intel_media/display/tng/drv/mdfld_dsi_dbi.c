@@ -891,7 +891,7 @@ power_off_err:
 
 /* generic dbi function */
 static
-int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
+int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, int mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder;
 	struct mdfld_dsi_dbi_output *dbi_output;
@@ -907,7 +907,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		return -EINVAL;
 	}
 
-	PSB_DEBUG_ENTRY("%s\n", (on ? "on" : "off"));
+	PSB_DEBUG_ENTRY("set power mode %d\n", mode);
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
@@ -928,7 +928,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	if (dsi_connector->status != connector_status_connected)
 		goto set_power_err;
 
-	if (dbi_output->first_boot && on) {
+	if (dbi_output->first_boot && (mode == DRM_MODE_DPMS_ON)) {
 		if (dsi_config->dsi_hw_context.panel_on) {
 			if (IS_ANN(dev))
 				ann_dc_setup(dsi_config);
@@ -953,8 +953,19 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 				 OSPM_DISPLAY_C | OSPM_DISPLAY_MIO);
 	}
 
-	switch (on) {
-	case true:
+	switch (mode) {
+	case DRM_MODE_DPMS_ON:
+		/* panel is in low power mode */
+		if (dsi_config->dsi_hw_context.panel_low_power) {
+			if (p_funcs && p_funcs->exit_low_power) {
+				mdfld_dsi_dsr_forbid_locked(dsi_config);
+				p_funcs->exit_low_power(dsi_config);
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+			}
+
+			dsi_config->dsi_hw_context.panel_low_power = 0;
+			goto fun_exit;
+		}
 		/* panel is already on */
 		if (dsi_config->dsi_hw_context.panel_on)
 			goto fun_exit;
@@ -969,7 +980,18 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		mdfld_dsi_error_detector_wakeup(dsi_connector);
 
 		break;
-	case false:
+	case DRM_MODE_DPMS_STANDBY:
+		break;
+	case DRM_MODE_DPMS_SUSPEND:
+		if (p_funcs && p_funcs->enter_low_power) {
+			mdfld_dsi_dsr_forbid_locked(dsi_config);
+			p_funcs->enter_low_power(dsi_config);
+			mdfld_dsi_dsr_allow_locked(dsi_config);
+		}
+
+		dsi_config->dsi_hw_context.panel_low_power = 1;
+		break;
+	case DRM_MODE_DPMS_OFF:
 		if (!dsi_config->dsi_hw_context.panel_on &&
 		    !dbi_output->first_boot)
 			goto fun_exit;
@@ -982,6 +1004,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		dbi_output->dbi_panel_on = 0;
 		break;
 	default:
+          	DRM_ERROR("Unsupported power mode %d\n", mode);
 		break;
 	}
 
@@ -1030,7 +1053,7 @@ void mdfld_generic_dsi_dbi_commit(struct drm_encoder *encoder)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	mdfld_generic_dsi_dbi_set_power(encoder, true);
+	mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_ON);
 
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_ENCODER;
 	if (dbi_output->channel_num == 1)
@@ -1080,7 +1103,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 
 	p_funcs = dbi_output->p_funcs;
 	if (mode == DRM_MODE_DPMS_ON) {
-		mdfld_generic_dsi_dbi_set_power(encoder, true);
+		mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_ON);
 
 		drm_vblank_on(dev, dsi_config->pipe);
 
@@ -1103,6 +1126,8 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		/* Make the pending flip request as completed. */
 		DCUnAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOff(dsi_config->pipe);
+	} else if (mode == DRM_MODE_DPMS_SUSPEND) {
+		mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_SUSPEND);
 	} else {
 		drm_handle_vblank(dev, dsi_config->pipe);
 
@@ -1112,7 +1137,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		/* Make the pending flip request as completed. */
 		DCUnAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOff(dsi_config->pipe);
-		mdfld_generic_dsi_dbi_set_power(encoder, false);
+		mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_OFF);
 	}
 
 	DCUnLockMutex();
@@ -1154,7 +1179,7 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	/* Make the pending flip request as completed. */
 	DCUnAttachPipe(pipe);
 	DC_MRFLD_onPowerOff(pipe);
-	mdfld_generic_dsi_dbi_set_power(encoder, false);
+	mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_OFF);
 
 	DCUnLockMutex();
 	power_island_put(power_island);
@@ -1179,7 +1204,7 @@ void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 
 	DCLockMutex();
-	mdfld_generic_dsi_dbi_set_power(encoder, true);
+	mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_ON);
 
 	drm_vblank_on(dev, pipe);
 

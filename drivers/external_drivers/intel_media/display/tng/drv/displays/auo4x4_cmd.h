@@ -37,5 +37,11 @@
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_pkg_sender.h"
 
+/* In normal mode, panel scanning frequency is 60Hz */
+#define idle_mode_off 0x38
+
+/* In idle mode, panel scanning frequency is 15Hz */
+#define idle_mode_on 0x39
+
 void auo4x4_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs);
 #endif
