@@ -81,6 +81,7 @@ void __initdata *bq25898_platform_data(void *info)
 	} else {
 		bq25898_pdata.is_pmic_notifier = 1;
 	}
+	bq25898_pdata.enable_postcharge = true;
 	bq25898_pdata.reg_config.reg00 = BQ25898_REG00_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg04 = BQ25898_REG04_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg05 = BQ25898_REG05_RESTORE_VALUE;

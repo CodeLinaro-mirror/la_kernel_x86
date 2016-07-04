@@ -35,6 +35,7 @@ struct bq25898_plat_data {
 	bool is_wdt_kick_needed;
 	int gpio_charger_int_n;
 	int is_pmic_notifier;
+	bool enable_postcharge;
 	struct restore_reg_config reg_config;
 
 	int (*enable_charging) (bool val);

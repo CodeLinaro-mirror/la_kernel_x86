@@ -2079,18 +2079,23 @@ static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 	chip->irq_counter++;
 
 	/*
-	 * if charge termination, then force charging for a maximum of 30 mn.
+	 * if charge termination, and if postcharging feature is enabled
+	 * then force charging for a maximum of 30 mn.
 	 */
 	if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)
 		&& ((chip->status_reg_oldvalue & CHARGER_STATUS_MASK) != CHARGER_STATUS_MASK)) {
-		if (!(chip->is_charge_complete)) {
-			mutex_lock(&chip->charge_config_lock);
-			ret = bq25898_force_charging(chip);
-			mutex_unlock(&chip->charge_config_lock);
-			if (ret < 0)
-				return ret;
+		if (chip->pdata->enable_postcharge) {
+			if (!(chip->is_charge_complete)) {
+				mutex_lock(&chip->charge_config_lock);
+				ret = bq25898_force_charging(chip);
+				mutex_unlock(&chip->charge_config_lock);
+				if (ret < 0)
+					return ret;
+			} else {
+				chip->is_charge_complete = false;
+			}
 		} else {
-			chip->is_charge_complete = false;
+			dev_dbg(&chip->client->dev, "Received interrupt for End of charge\n");
 		}
 	} else if ((val & PG_STAT) && ((chip->status_reg_oldvalue & PG_STAT_MASK) != PG_STAT_MASK)) {
 		dev_dbg(&chip->client->dev, "Received interrupt for PG_STAT\n");
