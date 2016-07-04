@@ -155,25 +155,39 @@ read_fifo_status:
 	if (cdata->sensors_use_fifo)
 		st_lsm6ds3h_read_fifo(cdata);
 
-	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL)
-		st_lsm6ds3h_push_data_with_timestamp(cdata,
-			ST_MASK_ID_STEP_DETECTOR, NULL, cdata->timestamp);
+	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL\n");
+		iio_push_event(cdata->indio_dev[ST_MASK_ID_STEP_DETECTOR],
+				IIO_UNMOD_EVENT_CODE(IIO_STEP_DETECTOR,
+				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
+				cdata->timestamp);
 
-	if (src_dig_func & ST_LSM6DS3H_SRC_SIGN_MOTION_DATA_AVL)
+	}
+
+	if (src_dig_func & ST_LSM6DS3H_SRC_SIGN_MOTION_DATA_AVL) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_SIGN_MOTION_DATA_AVL\n");
 		iio_push_event(cdata->indio_dev[ST_MASK_ID_SIGN_MOTION],
 				IIO_UNMOD_EVENT_CODE(IIO_SIGN_MOTION,
 				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
 				cdata->timestamp);
+	}
 
-	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL)
+	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL\n");
 		iio_trigger_poll_chained(cdata->trig[ST_MASK_ID_STEP_COUNTER], 0);
+	}
 
-	if (src_dig_func & ST_LSM6DS3H_SRC_TILT_DATA_AVL)
-		st_lsm6ds3h_push_data_with_timestamp(cdata,
-				ST_MASK_ID_TILT, NULL, cdata->timestamp);
+	if (src_dig_func & ST_LSM6DS3H_SRC_TILT_DATA_AVL) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_TILT_DATA_AVL\n");
+		iio_push_event(cdata->indio_dev[ST_MASK_ID_TILT],
+				IIO_UNMOD_EVENT_CODE(IIO_TILT,
+				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
+				cdata->timestamp);
+	}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 	if (src_dig_func & ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL) {
+		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_WRIST_TILT_DATA_AVL\n");
 		iio_push_event(cdata->indio_dev[ST_MASK_ID_WRIST_TILT],
 				IIO_UNMOD_EVENT_CODE(IIO_WRIST_TILT_GESTURE,
 				0, IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),

@@ -127,6 +127,18 @@
 	.event_mask = 0, \
 }
 
+#define ST_LSM6DS3_EVENT_CHANNEL_WITH_MASK(device_type, mask) \
+{ \
+	.type = device_type, \
+	.scan_index = -1, \
+	.indexed = -1, \
+	.channel = 0, \
+	.modified = 0, \
+	.event_spec = st_lsm6ds3_event_spec, \
+	.num_event_specs = 1, \
+	.event_mask = mask, \
+}
+
 #define ST_LSM6DS3_FIFO_LENGHT() \
 	IIO_DEVICE_ATTR(hw_fifo_lenght, S_IRUGO, \
 				st_lsm6ds3_sysfs_get_hw_fifo_lenght, NULL, 0);

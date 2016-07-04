@@ -404,6 +404,7 @@ static const struct iio_chan_spec st_lsm6ds3h_gyro_ch[] = {
 
 static const struct iio_chan_spec st_lsm6ds3h_sign_motion_ch[] = {
 	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_SIGN_MOTION, 0),
+	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
@@ -423,22 +424,26 @@ static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_d_ch[] = {
-	IIO_CHAN_SOFT_TIMESTAMP(0)
+	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_STEP_DETECTOR, 0),
+	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_tilt_ch[] = {
-	IIO_CHAN_SOFT_TIMESTAMP(0)
+	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_TILT, 0),
+	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 static const struct iio_chan_spec st_lsm6ds3h_wrist_tilt_ch[] = {
 	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_WRIST_TILT_GESTURE, 0),
+	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 static const struct iio_chan_spec st_lsm6ds3h_tap_tap_ch[] = {
 	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_TAP_TAP, 0),
+	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
