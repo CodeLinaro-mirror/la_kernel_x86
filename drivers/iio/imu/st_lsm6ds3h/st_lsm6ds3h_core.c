@@ -1518,6 +1518,10 @@ static int lsm6ds3h_enable_pedometer(struct lsm6ds3h_data *cdata,
 			if (err < 0)
 				return err;
 		}
+		/* timestamp for step detector should be updated on
+		 * system resume. Otherwise, event will be considered invalid.
+		 */
+		cdata->timestamp = ktime_to_ns(ktime_get_boottime());
 		cdata->enable_pedometer_mask |= BIT(id);
 	} else {
 		if ((cdata->enable_pedometer_mask & ~BIT(id)) == 0) {
