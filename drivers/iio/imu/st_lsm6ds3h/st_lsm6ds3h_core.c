@@ -227,6 +227,14 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_WRIST_TILT_AXES_ZPOS_EN		0x08
 #define ST_LSM6DS3H_WRIST_TILT_AXES_ZNEG_EN		0x04
 
+#define	ST_LSM6DS3H_STEP_COUNTER_THS_MIN_MASK		0x1f
+#define	ST_LSM6DS3H_STEP_COUNTER_THS_MIN_DEF_VAL		0x19
+#define	ST_LSM6DS3H_STEP_COUNTER_PEDO_THS_ADDR		0x0f
+#define	ST_LSM6DS3H_STEP_COUNTER_DEB_STEP_MASK		0x07
+#define	ST_LSM6DS3H_STEP_COUNTER_DEB_STEP_DEF_VAL	0x07
+#define	ST_LSM6DS3H_STEP_COUNTER_PEDO_DEB_ADDR		0x14
+
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 /* CUSTOM VALUES FOR TAP_TAP SENSOR */
 #define ST_LSM6DS3H_TAP_CFG_ADDR			0x58
@@ -1922,7 +1930,43 @@ static int st_lsm6ds3h_init_sensor(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		return err;
 
+	mutex_lock(&cdata->bank_registers_lock);
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+					ST_LSM6DS3H_FUNC_CFG_REG2_MASK,
+					ST_LSM6DS3H_EN_BIT, false);
+	if (err < 0)
+		goto st_lsm6ds3h_init_sensor_mutex_unlock;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_STEP_COUNTER_PEDO_THS_ADDR,
+					ST_LSM6DS3H_STEP_COUNTER_THS_MIN_MASK,
+					ST_LSM6DS3H_STEP_COUNTER_THS_MIN_DEF_VAL, false);
+	if (err < 0)
+		goto st_lsm6ds3h_init_sensor_mutex_unlock;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_STEP_COUNTER_PEDO_DEB_ADDR,
+					ST_LSM6DS3H_STEP_COUNTER_DEB_STEP_MASK,
+					ST_LSM6DS3H_STEP_COUNTER_DEB_STEP_DEF_VAL, false);
+	if (err < 0)
+		goto st_lsm6ds3h_init_sensor_mutex_unlock;
+
+	err = st_lsm6ds3h_write_data_with_mask(cdata,
+					ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
+					ST_LSM6DS3H_FUNC_CFG_REG2_MASK,
+					ST_LSM6DS3H_DIS_BIT, false);
+	if (err < 0)
+		goto st_lsm6ds3h_init_sensor_mutex_unlock;
+
+	mutex_unlock(&cdata->bank_registers_lock);
+
 	return 0;
+
+st_lsm6ds3h_init_sensor_mutex_unlock:
+	mutex_unlock(&cdata->bank_registers_lock);
+	return err;
 }
 
 static int st_lsm6ds3h_set_selftest(struct lsm6ds3h_sensor_data *sdata, int index)
