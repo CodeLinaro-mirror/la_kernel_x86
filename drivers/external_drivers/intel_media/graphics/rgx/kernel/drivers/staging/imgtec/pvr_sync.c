@@ -771,21 +771,25 @@ static void pvr_sync_release_timeline(struct sync_timeline *obj)
  * functions and change what pvr_sync_timeline_value_str() returns dynamically.
  */
 static struct sync_timeline *last_pt_timeline;
+static inline bool is_pvr_timeline(struct sync_timeline *);
 
 static void pvr_sync_timeline_value_str(struct sync_timeline *sync_timeline,
 					char *str, int size)
 {
-	struct pvr_sync_timeline *timeline = get_timeline(sync_timeline);
+	if (is_pvr_timeline(sync_timeline))
+	{
+		struct pvr_sync_timeline *timeline = get_timeline(sync_timeline);
 
-	if (sync_timeline != last_pt_timeline) {
-		snprintf(str, size, "%u 0x%x %u/%u",
-			 timeline->kernel->fence_sync->id,
-			 timeline->kernel->fence_sync->vaddr,
-			 get_sync_value(timeline->kernel->fence_sync),
-			 timeline->kernel->fence_sync->next_value);
-	} else {
-		snprintf(str, size, "%u",
-			 get_sync_value(timeline->kernel->fence_sync));
+		if (sync_timeline != last_pt_timeline) {
+			snprintf(str, size, "%u 0x%x %u/%u",
+				timeline->kernel->fence_sync->id,
+				timeline->kernel->fence_sync->vaddr,
+				get_sync_value(timeline->kernel->fence_sync),
+				timeline->kernel->fence_sync->next_value);
+		} else {
+			snprintf(str, size, "%u",
+				get_sync_value(timeline->kernel->fence_sync));
+		}
 	}
 }
 
