@@ -172,7 +172,7 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
 #endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
 	u16 read_len = 0, byte_in_pattern;
 
-	dev_dbg(cdata->dev, "st_lsm6ds3_read_fifo! \n");
+	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo! \n");
 
 	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
 						2, fifo_status, true);
