@@ -93,7 +93,6 @@ struct max17042_platform_data {
 	char battid[BATTID_LEN + 1];
 	char model_name[MODEL_NAME_LEN + 1];
 	char serial_num[2*SERIAL_NUM_LEN + 1];
-	u16 rsense_value;
 
 	/* battery safety thresholds */
 	int temp_min_lim;	/* in degrees centigrade */
