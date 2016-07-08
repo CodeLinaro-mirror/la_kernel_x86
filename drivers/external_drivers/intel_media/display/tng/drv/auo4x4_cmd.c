@@ -37,7 +37,7 @@
 #include "displays/auo4x4_cmd.h"
 
 static int mipi_reset_gpio;
-static int bias_en_gpio;
+static int disp0_enable = -1;
 
 static bool reset_enable = false;
 
@@ -210,7 +210,6 @@ static
 int auo4x4_cmd_power_on(
 	struct mdfld_dsi_config *dsi_config)
 {
-
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;
@@ -314,6 +313,16 @@ static int auo4x4_cmd_power_off(
 
 	msleep(120);
 
+	if (mipi_reset_gpio != 0) {
+		gpio_set_value(mipi_reset_gpio, 0);
+		msleep(1);
+	}
+	/* ensure VCI is low 10ms earlier than VDDIO */
+	if (disp0_enable != -1) {
+		gpio_set_value(disp0_enable, 0);
+		usleep_range(10000, 11000);
+	}
+
 	return 0;
 
 power_off_err:
@@ -353,11 +362,7 @@ int auo4x4_cmd_panel_reset(
 	if (reset_enable == false)
 		return 0;
 
-	gpio_direction_output(bias_en_gpio, 1);
 	gpio_direction_output(mipi_reset_gpio, 0);
-
-	gpio_set_value(bias_en_gpio, 1);
-	gpio_set_value(mipi_reset_gpio, 0);
 
 	usleep_range(20, 30);
 
@@ -374,12 +379,15 @@ int auo4x4_cmd_exit_deep_standby(
 {
 	PSB_DEBUG_ENTRY("\n");
 
-	if (bias_en_gpio)
-		gpio_set_value(bias_en_gpio, 1);
-
 	gpio_direction_output(mipi_reset_gpio, 0);
 
-	gpio_set_value(mipi_reset_gpio, 0);
+	/* ensure VCI high eariler 10ms than XRES is pulled
+	 * to high to meet panel power on sequence.
+	 */
+	if (disp0_enable != -1) {
+		gpio_set_value(disp0_enable, 1);
+	}
+
 	usleep_range(3000, 3100);
 
 	gpio_set_value(mipi_reset_gpio, 1);
@@ -513,7 +521,6 @@ static const struct file_operations dbgfs_read_hs_ops = {
 void auo4x4_cmd_init(struct drm_device *dev,
 		struct panel_funcs *p_funcs)
 {
-	int disp0_enable;
 
 	if (!dev || !p_funcs) {
 		DRM_ERROR("Invalid parameters\n");
@@ -525,11 +532,6 @@ void auo4x4_cmd_init(struct drm_device *dev,
 		gpio_request(disp0_enable, "DISP_VCI_EN");
 		gpio_direction_output(disp0_enable, 1);
 	}
-
-	bias_en_gpio = get_gpio_by_name("disp0_bias_en");
-	if (bias_en_gpio <= 0)
-		bias_en_gpio = 189;
-	gpio_request(bias_en_gpio, "auo4x4_display");
 
 	mipi_reset_gpio = get_gpio_by_name("disp0_rst");
 	if (mipi_reset_gpio <= 0)
