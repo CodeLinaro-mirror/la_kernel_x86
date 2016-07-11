@@ -2866,34 +2866,54 @@ static int bq25898_probe(struct i2c_client *client,
 
 	bq25898_debugfs_init(chip);
 
+	/* register for usb change */
+	ret = register_otg_notification(chip);
+	if (ret < 0) {
+		dev_err(&client->dev, "error registering to OTG notification: %d\n", ret);
+		goto error1;
+	}
+
+	/* register for reboot notification */
+	ret = register_reboot_notification(chip);
+	if (ret < 0) {
+		dev_err(&client->dev, "error registering to REBOOT notification: %d\n", ret);
+		goto error2;
+	}
+
+	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
+	if (ret < 0) {
+		dev_err(&client->dev, "error registering power supply: %d\n", ret);
+		goto error3;
+	}
+
 	if (!chip->pdata->is_pmic_notifier) {
 		if (!gpio_is_valid(chip->pdata->gpio_charger_int_n)) {
 			dev_err(&client->dev, "Invalid gpio gpio_charger_int_n pin\n");
 			ret = -EINVAL;
-			goto error1;
+			goto error4;
 		}
 		ret = gpio_request(chip->pdata->gpio_charger_int_n, DEV_NAME);
 		if (ret) {
 			dev_err(&client->dev, "Failed to request gpio pin gpio_charger_int_n: %d\n", ret);
-			goto error1;
+			goto error4;
 		}
 		ret = gpio_direction_input(chip->pdata->gpio_charger_int_n);
 		if (ret) {
 			dev_err(&client->dev, "Failed to set gpio gpio_charger_int_n to input: %d\n", ret);
-			goto error2;
+			goto error5;
 		}
 
 		irq = gpio_to_irq(chip->pdata->gpio_charger_int_n);
 		if (irq < 0) {
 			dev_err(&client->dev, "gpio_to_irq fails: %d\n", ret);
-			goto error2;
+			goto error5;
 		}
 		ret = request_threaded_irq(irq, bq25898_handler,
 			bq25898_thread_handler, IRQF_SHARED | IRQF_TRIGGER_FALLING,
 			DEV_NAME, chip);
 		if (ret < 0) {
 			dev_err(&client->dev, "Failed to request irq: %d\n", ret);
-			goto error2;
+			goto error5;
 		}
 		chip->irq = irq;
 	} else {
@@ -2901,28 +2921,8 @@ static int bq25898_probe(struct i2c_client *client,
 		ret = register_pmic_notification(chip);
 		if (ret < 0) {
 			dev_err(&client->dev, "error registering to PMIC notification: %d\n", ret);
-			goto error1;
+			goto error4;
 		}
-	}
-
-	/* register for usb change */
-	ret = register_otg_notification(chip);
-	if (ret < 0) {
-		dev_err(&client->dev, "error registering to OTG notification: %d\n", ret);
-		goto error3;
-	}
-
-	/* register for reboot notification */
-	ret = register_reboot_notification(chip);
-	if (ret < 0) {
-		dev_err(&client->dev, "error registering to REBOOT notification: %d\n", ret);
-		goto error4;
-	}
-
-	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
-	if (ret < 0) {
-		dev_err(&client->dev, "error registering power supply: %d\n", ret);
-		goto error5;
 	}
 
 	dev_dbg(&client->dev, "<probe");
@@ -2930,17 +2930,14 @@ static int bq25898_probe(struct i2c_client *client,
 	return ret;
 
 error5:
-	unregister_reboot_notifier(&chip->reboot_notifier);
-error4:
-	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
-error3:
-	if (chip->pdata->is_pmic_notifier)
-		unregister_pmic_notifier(&chip->pmic_notifier);
-	else if (chip->irq)
-		free_irq(chip->irq, chip);
-error2:
 	if (!chip->pdata->is_pmic_notifier)
 		gpio_free(chip->pdata->gpio_charger_int_n);
+error4:
+	power_supply_unregister(&chip->psy_usb);
+error3:
+	unregister_reboot_notifier(&chip->reboot_notifier);
+error2:
+	usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 error1:
 	bq25898_debugfs_exit(chip);
 #ifdef CONFIG_SYSFS
