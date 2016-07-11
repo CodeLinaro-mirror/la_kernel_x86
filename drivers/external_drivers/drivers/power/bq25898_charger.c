@@ -290,7 +290,7 @@
 /* CHRG_STAT */
 #define CHARGER_STATUS1				(1 << 4)	/* b00: Not charging, b01: Precharge */
 #define CHARGER_STATUS0				(1 << 3)	/* b10: Fast charge, b11: Charge termination done */
-#define CHARGER_STATUS_MASK			(3 << 5)
+#define CHARGER_STATUS_MASK			(3 << 3)
 /* PG_STAT -- 0: Not power good, 1: Power good */
 #define PG_STAT					(1 << 2)
 #define PG_STAT_MASK			(1 << 2)
