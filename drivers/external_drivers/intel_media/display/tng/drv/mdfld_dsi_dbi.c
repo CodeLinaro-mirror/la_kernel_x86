@@ -959,6 +959,18 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, int mode)
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
+		if (!dsi_config->dsi_hw_context.panel_on) {
+			if (__dbi_panel_power_on(dsi_config, p_funcs)) {
+				DRM_ERROR("Faild to turn on panel\n");
+				goto set_power_err;
+			}
+			dsi_config->dsi_hw_context.panel_on = 1;
+			dbi_output->dbi_panel_on = 1;
+			/* After power on sequence, panel exits IDLE mode automatically */
+			dsi_config->dsi_hw_context.panel_low_power = 0;
+			mdfld_dsi_error_detector_wakeup(dsi_connector);
+		}
+
 		/* panel is in low power mode */
 		if (dsi_config->dsi_hw_context.panel_low_power) {
 			if (p_funcs && p_funcs->exit_low_power) {
@@ -968,32 +980,20 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, int mode)
 			}
 
 			dsi_config->dsi_hw_context.panel_low_power = 0;
-			goto fun_exit;
 		}
-		/* panel is already on */
-		if (dsi_config->dsi_hw_context.panel_on)
-			goto fun_exit;
-
-		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
-			DRM_ERROR("Faild to turn on panel\n");
-			goto set_power_err;
-		}
-
-		dsi_config->dsi_hw_context.panel_on = 1;
-		dbi_output->dbi_panel_on = 1;
-		mdfld_dsi_error_detector_wakeup(dsi_connector);
-
 		break;
 	case DRM_MODE_DPMS_STANDBY:
 		break;
 	case DRM_MODE_DPMS_SUSPEND:
-		if (p_funcs && p_funcs->enter_low_power) {
-			mdfld_dsi_dsr_forbid_locked(dsi_config);
-			p_funcs->enter_low_power(dsi_config);
-			mdfld_dsi_dsr_allow_locked(dsi_config);
-		}
+		if (dsi_config->dsi_hw_context.panel_on == 1) {
+			if (p_funcs && p_funcs->enter_low_power) {
+				mdfld_dsi_dsr_forbid_locked(dsi_config);
+				p_funcs->enter_low_power(dsi_config);
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+			}
 
-		dsi_config->dsi_hw_context.panel_low_power = 1;
+			dsi_config->dsi_hw_context.panel_low_power = 1;
+		}
 		break;
 	case DRM_MODE_DPMS_OFF:
 		if (!dsi_config->dsi_hw_context.panel_on &&
