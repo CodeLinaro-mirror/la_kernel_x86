@@ -400,6 +400,17 @@ static int lp5562_run_predef_led_pattern(struct lp55xx_chip *chip, int mode)
 	return 0;
 }
 
+static ssize_t lp5562_show_pattern(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct lp55xx_led *led = i2c_get_clientdata(to_i2c_client(dev));
+	struct lp55xx_chip *chip = led->chip;
+	u8 cur_mode = chip->pdata->current_mode;
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", cur_mode);
+}
+
 static ssize_t lp5562_store_pattern(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t len)
@@ -419,7 +430,12 @@ static ssize_t lp5562_store_pattern(struct device *dev,
 		return -EINVAL;
 
 	mutex_lock(&chip->lock);
-	ret = lp5562_run_predef_led_pattern(chip, mode);
+	if (chip->pdata->current_mode != mode) {
+		ret = lp5562_run_predef_led_pattern(chip, mode);
+
+		if (ret == 0)
+			chip->pdata->current_mode = mode;
+	}
 	mutex_unlock(&chip->lock);
 
 	if (ret)
@@ -477,7 +493,7 @@ static ssize_t lp5562_store_engine_mux(struct device *dev,
 	return len;
 }
 
-static DEVICE_ATTR(led_pattern, S_IWUSR, NULL, lp5562_store_pattern);
+static DEVICE_ATTR(led_pattern, S_IRUGO | S_IWUSR, lp5562_show_pattern, lp5562_store_pattern);
 static DEVICE_ATTR(engine_mux, S_IWUSR, NULL, lp5562_store_engine_mux);
 
 static struct attribute *lp5562_attributes[] = {
