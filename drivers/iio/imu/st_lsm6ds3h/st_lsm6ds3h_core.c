@@ -938,7 +938,7 @@ int st_lsm6ds3h_flush_work_fifo(struct lsm6ds3h_data *cdata,
 	}
 
 	mutex_lock(&cdata->fifo_lock);
-	err = st_lsm6ds3h_read_fifo(cdata);
+	err = st_lsm6ds3h_read_fifo(cdata, READ_FIFO_IN_COF_FIFO);
 	if (err < 0)
 		dev_warn(cdata->dev,"Read_fifo error in st_lsm6ds3h_flush_work_fifo!\n");
 	mutex_unlock(&cdata->fifo_lock);
@@ -1146,7 +1146,7 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			disable_irq(sdata->cdata->irq);
 
 			if (sdata->cdata->fifo_status != BYPASS) {
-				st_lsm6ds3h_read_fifo(sdata->cdata);
+				st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
 
 				err = st_lsm6ds3h_set_fifo_mode(sdata->cdata, BYPASS);
 				if (err < 0)
@@ -1241,7 +1241,7 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			disable_irq(sdata->cdata->irq);
 
 			if (sdata->cdata->fifo_status != BYPASS) {
-				st_lsm6ds3h_read_fifo(sdata->cdata);
+				st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
 
 				err = st_lsm6ds3h_set_fifo_mode(sdata->cdata, BYPASS);
 				if (err < 0)
@@ -2456,6 +2456,7 @@ ssize_t st_lsm6ds3h_sysfs_flush_fifo(struct device *dev,
 {
 	u64 sensor_last_timestamp, event_type = 0;
 	int stype = 0;
+	int flags = READ_FIFO_IN_FLUSH;
 	u64 timestamp_flush = 0;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
@@ -2482,7 +2483,12 @@ ssize_t st_lsm6ds3h_sysfs_flush_fifo(struct device *dev,
 	sensor_last_timestamp =
 			sdata->cdata->fifo_output[sdata->sindex].timestamp_p;
 
-	st_lsm6ds3h_read_fifo(sdata->cdata);
+	mutex_lock(&sdata->cdata->fifo_lock);
+	if (sdata->cdata->system_state & SF_RESUME)
+		flags |= READ_FIFO_DISCARD_DATA;
+	sdata->cdata->system_state = SF_NORMAL;
+	st_lsm6ds3h_read_fifo(sdata->cdata, flags);
+	mutex_unlock(&sdata->cdata->fifo_lock);
 
 	if (sensor_last_timestamp ==
 			sdata->cdata->fifo_output[sdata->sindex].timestamp_p)
@@ -2599,7 +2605,7 @@ ssize_t st_lsm6ds3h_sysfs_set_hwfifo_watermark(struct device *dev,
 		disable_irq(sdata->cdata->irq);
 
 		if (sdata->cdata->fifo_status != BYPASS)
-			st_lsm6ds3h_read_fifo(sdata->cdata);
+			st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
 
 		old_watermark = sdata->cdata->hwfifo_watermark[sdata->sindex];
 		sdata->cdata->hwfifo_watermark[sdata->sindex] = watermark;
@@ -2823,9 +2829,8 @@ static ssize_t st_lsm6ds3h_sysfs_get_injection_sensors(struct device *dev,
 int st_lsm6ds3h_average_sample(struct lsm6ds3h_sensor_data *sdata,
 				s32 *out_data, int sample_count)
 {
-	int i, err, counter = 0;
+	int i, err = 0;
 	u8 hw_data[ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE];
-	u8 stat_reg;
 	struct lsm6ds3h_data *cdata = sdata->cdata;
 	if (sample_count <= 0) {
 		return -ERANGE;
@@ -3349,6 +3354,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 
 	cdata->sensors_use_fifo = 0;
 	cdata->sensors_enabled = 0;
+	cdata->system_state = SF_NORMAL;
 
 	cdata->gyro_selftest_status = 0;
 	cdata->accel_selftest_status = 0;
@@ -3694,6 +3700,7 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 		if (device_may_wakeup(cdata->dev))
 			enable_irq_wake(cdata->irq);
 	}
+	cdata->system_state = SF_SUSPEND;
 
 	return 0;
 }
@@ -3722,6 +3729,8 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 		}
 	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
+
+	cdata->system_state = SF_RESUME;
 
 	if (cdata->sensors_enabled & ST_LSM6DS3H_WAKE_UP_SENSORS) {
 		if (device_may_wakeup(cdata->dev))
