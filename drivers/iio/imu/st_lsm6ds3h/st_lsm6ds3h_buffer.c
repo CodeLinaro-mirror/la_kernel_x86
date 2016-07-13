@@ -24,10 +24,11 @@
 
 #define ST_LSM6DS3H_ENABLE_AXIS			0x07
 #define ST_LSM6DS3H_FIFO_DIFF_L			0x3a
-#define ST_LSM6DS3H_FIFO_DIFF_MASK		0x0f
+#define ST_LSM6DS3H_FIFO_DIFF_MASK		0x07ff /* 4kbyte fifo for lsm6ds3h */
 #define ST_LSM6DS3H_FIFO_DATA_OUT_L		0x3e
-#define ST_LSM6DS3H_FIFO_DATA_OVR		0x40
-#define ST_LSM6DS3H_FIFO_DATA_EMPTY		0x10
+#define ST_LSM6DS3H_FIFO_DATA_OVR		0x4000
+#define ST_LSM6DS3H_FIFO_DATA_EMPTY		0x1000
+#define ST_LSM6DS3H_FIFO_DATA_PATTERN_L		0x3c
 
 void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 					u8 index, u8 *data, int64_t timestamp)
@@ -163,77 +164,141 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 	}
 }
 
-int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
+int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 {
+	bool overrun_flag = false;
+	bool want_to_discard = flags & READ_FIFO_DISCARD_DATA;
+	bool discard_data = false;
 	int err;
-	u8 fifo_status[2];
+	u16 pattern, offset, discard_len;
 #if (CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO > 0)
-	u16 data_remaining, data_to_read;
+	u16 data_remaining, data_to_read, byte_in_pattern;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
-	u16 read_len = 0, byte_in_pattern;
+	u16 read_len = cdata->fifo_watermark * ST_LSM6DS3H_BYTE_FOR_CHANNEL;
 
-	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo! \n");
-
-	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
-						2, fifo_status, true);
-	if (err < 0)
-		return err;
-
-	if (fifo_status[1] & ST_LSM6DS3H_FIFO_DATA_OVR) {
-		st_lsm6ds3h_set_fifo_mode(cdata, BYPASS);
-		st_lsm6ds3h_set_fifo_mode(cdata, CONTINUOS);
-		dev_err(cdata->dev, "data fifo overrun, failed to read it.\n");
-		return -EINVAL;
-	}
-
-	if (fifo_status[1] & ST_LSM6DS3H_FIFO_DATA_EMPTY){
-		dev_dbg(cdata->dev, "read_fifo data empty!\n");
-		return 0;
-	}
-
-	read_len = ((fifo_status[1] & ST_LSM6DS3H_FIFO_DIFF_MASK) << 8) | fifo_status[0];
-	read_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo, flags=0x%2x\n", flags);
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	byte_in_pattern = (cdata->fifo_output[ST_MASK_ID_ACCEL].sip +
-				cdata->fifo_output[ST_MASK_ID_GYRO].sip +
-				cdata->fifo_output[ST_MASK_ID_EXT0].sip) *
-				ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+			cdata->fifo_output[ST_MASK_ID_GYRO].sip +
+			cdata->fifo_output[ST_MASK_ID_EXT0].sip) *
+			ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 #else /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	byte_in_pattern = (cdata->fifo_output[ST_MASK_ID_ACCEL].sip +
-				cdata->fifo_output[ST_MASK_ID_GYRO].sip) *
-				ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+			cdata->fifo_output[ST_MASK_ID_GYRO].sip) *
+			ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	if (byte_in_pattern == 0)
 		return 0;
 
-	read_len = (read_len / byte_in_pattern) * byte_in_pattern;
-	if (read_len == 0)
-		return 0;
+	dev_dbg(cdata->dev, "sip %d:%d byte_in_pattern:%d\n",
+		   cdata->fifo_output[ST_MASK_ID_ACCEL].sip,
+		   cdata->fifo_output[ST_MASK_ID_GYRO].sip, byte_in_pattern);
 
-#if (CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO == 0)
-	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DATA_OUT_L,
-					read_len, cdata->fifo_data, true);
-	if (err < 0)
-		return err;
-#else /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
-	data_remaining = read_len;
+	if (flags != READ_FIFO_IN_INTERRUPT) {
 
-	do {
-		if (data_remaining > CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO)
-			data_to_read = CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO;
-		else
-			data_to_read = data_remaining;
-
-		err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DATA_OUT_L,
-				data_to_read,
-				&cdata->fifo_data[read_len - data_remaining], true);
+		if (!(flags & READ_FIFO_IN_INTERRUPT)) {
+			cdata->last_timestamp = cdata->timestamp;
+			cdata->timestamp = ktime_to_ns(ktime_get_boottime());
+		}
+		err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
+					2, (u8 *)&read_len, true);
 		if (err < 0)
 			return err;
 
-		data_remaining -= data_to_read;
-	} while (data_remaining > 0);
-#endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
+		dev_dbg(cdata->dev, "data fifo read_len=0x%x.\n", read_len);
+
+		if (read_len & ST_LSM6DS3H_FIFO_DATA_OVR) {
+			want_to_discard = true;
+			overrun_flag = true;
+			dev_err(cdata->dev,
+				"data fifo overrun, read_len=%d.\n", read_len);
+
+			if ((read_len & ST_LSM6DS3H_FIFO_DIFF_MASK) == 0)
+				read_len = ST_LSM6DS3H_FIFO_DIFF_MASK;
+		}
+
+		if (read_len & ST_LSM6DS3H_FIFO_DATA_EMPTY) {
+			dev_dbg(cdata->dev, "read_fifo data empty!\n");
+			return 0;
+		}
+
+		if (want_to_discard) {
+			dev_dbg(cdata->dev,
+				"want_to_discard %d, %d.\n", read_len, cdata->fifo_watermark);
+			read_len &= ST_LSM6DS3H_FIFO_DIFF_MASK;
+			if (read_len > (cdata->fifo_watermark + byte_in_pattern) / ST_LSM6DS3H_BYTE_FOR_CHANNEL) {
+				discard_len = read_len - cdata->fifo_watermark / ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+				discard_data = true;
+			} else
+				goto read_fifo_report;
+
+			discard_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+			discard_len = (discard_len / byte_in_pattern) * byte_in_pattern;
+
+			dev_dbg(cdata->dev,
+				"prepare to discard %d data.\n", discard_len);
+			err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DATA_OUT_L,
+						discard_len, cdata->fifo_data, true);
+			if (err < 0)
+				return err;
+
+			cdata->last_timestamp = cdata->timestamp;
+			cdata->timestamp = ktime_to_ns(ktime_get_boottime());
+			err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
+						2, (u8 *)&read_len, true);
+			if (err < 0) {
+				if (overrun_flag) {
+					st_lsm6ds3h_set_fifo_mode(cdata, BYPASS);
+					st_lsm6ds3h_set_fifo_mode(cdata, CONTINUOS);
+				}
+				return err;
+			}
+			dev_dbg(cdata->dev,
+				"after discard data, read_len=%d.\n", read_len);
+		}
+
+read_fifo_report:
+
+		read_len &= ST_LSM6DS3H_FIFO_DIFF_MASK;
+		read_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+
+		read_len = (read_len / byte_in_pattern) * byte_in_pattern;
+		if (read_len == 0)
+			return 0;
+	}
+
+	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo read:%d fifo_watermark:%d\n",
+		read_len, cdata->fifo_watermark);
+
+	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DATA_OUT_L,
+				read_len,
+				cdata->fifo_data, true);
+	if (err < 0)
+		return err;
+
+
+	if (overrun_flag) {
+		err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DATA_PATTERN_L,
+					2, (u8 *)&pattern, true);
+		if (err < 0)
+			return err;
+		pattern &= 0x03FF;
+		/* byte_in_pattern/ST_LSM6DS3H_BYTE_FOR_CHANNEL is the number
+		 * of axis in a "pattern".
+		 * offset is the number of bytes to be discarded when an
+		 * overrun condition happens.
+		 */
+		offset = ((byte_in_pattern/ST_LSM6DS3H_BYTE_FOR_CHANNEL) - pattern)
+			* ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+		if (offset != byte_in_pattern) {
+			read_len -= byte_in_pattern;
+			cdata->fifo_data += offset;
+		}
+		dev_info(cdata->dev, "FIFO overrun, offset=%d", offset);
+		st_lsm6ds3h_set_fifo_mode(cdata, BYPASS);
+		st_lsm6ds3h_set_fifo_mode(cdata, CONTINUOS);
+	}
 
 	st_lsm6ds3h_parse_fifo_data(cdata, read_len);
 

@@ -141,6 +141,12 @@ enum st_mask_id {
 	IIO_DEVICE_ATTR(hwfifo_flush, S_IWUSR, NULL, \
 			st_lsm6ds3h_sysfs_flush_fifo, 0);
 
+#define READ_FIFO_DISCARD_DATA  (1 << 0)
+#define READ_FIFO_IN_INTERRUPT  (1 << 1)
+#define READ_FIFO_IN_RESUME     (1 << 2)
+#define READ_FIFO_IN_FLUSH      (1 << 3)
+#define READ_FIFO_IN_COF_FIFO   (1 << 4)
+
 enum fifo_mode {
 	BYPASS = 0,
 	CONTINUOS,
@@ -242,8 +248,15 @@ struct lsm6ds3h_data {
 	int8_t gyro_selftest_status;
 	int8_t accel_selftest_status;
 
-	int irq;
+	u16 byte_in_pattern;
 
+	int irq;
+#define SF_SUSPEND                      (1 << 1)
+#define SF_RESUME                       (1 << 2)
+#define SF_NORMAL                       (1 << 3)
+	int system_state;
+
+	s64 last_timestamp;
 	s64 timestamp;
 	int64_t fifo_enable_timestamp;
 
@@ -329,7 +342,7 @@ ssize_t st_lsm6ds3h_sysfs_flush_fifo(struct device *dev,
 int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata);
 void st_lsm6ds3h_deallocate_rings(struct lsm6ds3h_data *cdata);
 int st_lsm6ds3h_trig_set_state(struct iio_trigger *trig, bool state);
-int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata);
+int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags);
 #define ST_LSM6DS3H_TRIGGER_SET_STATE (&st_lsm6ds3h_trig_set_state)
 #else /* CONFIG_IIO_BUFFER */
 static inline int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata)
@@ -339,7 +352,7 @@ static inline int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata)
 static inline void st_lsm6ds3h_deallocate_rings(struct lsm6ds3h_data *cdata)
 {
 }
-static inline int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata)
+static inline int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 {
 	return 0;
 }

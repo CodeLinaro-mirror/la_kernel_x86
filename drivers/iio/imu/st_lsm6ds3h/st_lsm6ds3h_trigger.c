@@ -75,6 +75,7 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 	struct lsm6ds3h_data *cdata;
 	u8 src_accel_gyro = 0, src_dig_func = 0;
 	u8 src_tap_tap = 0;
+	int flags = READ_FIFO_IN_INTERRUPT;
 
 	cdata = container_of((struct work_struct *)data_work,
 						struct lsm6ds3h_data, data_work);
@@ -152,8 +153,15 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 	}
 
 read_fifo_status:
-	if (cdata->sensors_use_fifo)
-		st_lsm6ds3h_read_fifo(cdata);
+	if (cdata->sensors_use_fifo) {
+		mutex_lock(&cdata->fifo_lock);
+		if (cdata->system_state & SF_RESUME) {
+			flags |= READ_FIFO_IN_RESUME | READ_FIFO_DISCARD_DATA;
+			cdata->system_state = SF_NORMAL;
+		}
+		st_lsm6ds3h_read_fifo(cdata, flags);
+		mutex_unlock(&cdata->fifo_lock);
+	}
 
 	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL) {
 		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_STEP_DETECTOR_DATA_AVL\n");
