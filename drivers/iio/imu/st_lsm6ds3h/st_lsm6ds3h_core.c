@@ -33,6 +33,8 @@
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 #define ST_LSM6DS3H_DATA_FW		"st_lsm6ds3h_wrist_tilt_data.fw"
+#define ST_LSM6DS3H_WRIST_TILT_THRESHOLD 0x10
+
 static const u8 st_lsm6ds3h_fw[] = {
 	#include "st_lsm6ds3h_wrist_tilt_data.fw"
 };
@@ -1564,6 +1566,21 @@ static int lsm6ds3h_enable_pedometer(struct lsm6ds3h_data *cdata,
 	return 0;
 }
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+static int st_lsm6ds3h_set_wrist_tilt_threshold(struct lsm6ds3h_data *cdata)
+{
+	int err;
+	u8 default_tilt_angle = ST_LSM6DS3H_WRIST_TILT_THRESHOLD;
+
+	err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_THS1_ADDR,
+					&default_tilt_angle, 1);
+	if (err < 0)
+		return err;
+
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 					bool enable, enum st_mask_id id)
@@ -1728,6 +1745,13 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 		if (err < 0)
 			return err;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
+		if (enable) {
+			err = st_lsm6ds3h_set_wrist_tilt_threshold(sdata->cdata);
+			if (err < 0)
+				return err;
+		}
+#endif
 		break;
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 	case ST_MASK_ID_TAP_TAP:
