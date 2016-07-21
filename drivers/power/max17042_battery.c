@@ -965,19 +965,34 @@ static int max17042_get_property(struct power_supply *psy,
 		ret = max17042_read_reg(chip->client, MAX17042_RepCap);
 		if (ret < 0)
 			goto ps_prop_read_err;
-		val->intval = ret * MAX17042_CHRG_CONV_FCTR;
+
+		if (fg_conf_data->rsense)
+			val->intval = (ret * MAX17042_CHRG_CONV_FCTR)
+							/ fg_conf_data->rsense;
+		else
+			val->intval = ret * MAX17042_CHRG_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		ret = max17042_read_reg(chip->client, MAX17042_FullCAP);
 		if (ret < 0)
 			goto ps_prop_read_err;
-		val->intval = ret * MAX17042_CHRG_CONV_FCTR;
+
+		if (fg_conf_data->rsense)
+			val->intval = (ret * MAX17042_CHRG_CONV_FCTR)
+							/ fg_conf_data->rsense;
+		else
+			val->intval = ret * MAX17042_CHRG_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 		ret = max17042_read_reg(chip->client, MAX17042_QH);
 		if (ret < 0)
 			goto ps_prop_read_err;
-		val->intval = ret * MAX17042_CHRG_CONV_FCTR;
+
+		if (fg_conf_data->rsense)
+			val->intval = (ret * MAX17042_CHRG_CONV_FCTR)
+							/ fg_conf_data->rsense;
+		else
+			val->intval = ret * MAX17042_CHRG_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		ret = max17042_read_reg(chip->client, MAX17042_Current);
@@ -1441,13 +1456,13 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 				(fg_conf_data->full_cap,
 					chip->model_algo_factor))) / 100;
 
-		max17042_write_verify_reg(chip->client,
-					MAX17042_RemCap, rem_cap);
+		max17042_write_verify_reg(chip->client, MAX17042_RemCap,
+						rem_cap * fg_conf_data->rsense);
 
 		rep_cap = rem_cap;
 
-		max17042_write_verify_reg(chip->client,
-					MAX17042_RepCap, rep_cap);
+		max17042_write_verify_reg(chip->client, MAX17042_RepCap,
+						rep_cap * fg_conf_data->rsense);
 	}
 
 	if (chip->chip_type == MAX17050)
@@ -1649,20 +1664,17 @@ static void reset_max17042(struct max17042_chip *chip)
 					MAX17042_CGAIN_DEFAULT);
 	/* Reset Offset of Coulomb counter */
 	max17042_write_reg(chip->client, MAX17042_COFF,
-					MAX17042_COFF_DEFAULT);
-	/* Reset Offset of Coulomb counter */
-	max17042_write_reg(chip->client, MAX17042_AtRate,
-					MAX17042_AtRate_DEFAULT);
+			MAX17042_COFF_DEFAULT * fg_conf_data->rsense);
 	/* Reset AtRate register */
 	max17042_write_reg(chip->client, MAX17042_AtRate,
-					MAX17042_AtRate_DEFAULT);
+			MAX17042_AtRate_DEFAULT * fg_conf_data->rsense);
 	/* Reset MinMaxTemp register */
 	max17042_write_reg(chip->client, MAX17042_MinMaxTemp,
 			MAX17042_MinMaxTemp_DEFAULT);
 	/* Reset MinMaxVolt register */
 	max17042_write_reg(chip->client, MAX17042_MinMaxVolt,
 			MAX17042_MinMaxVolt_DEFAULT);
-	/* Reset MinMaxTemp register */
+	/* Reset MinMaxCurr register */
 	max17042_write_reg(chip->client, MAX17042_MinMaxCurr,
 			MAX17042_MinMaxCurr_DEFAULT);
 }
