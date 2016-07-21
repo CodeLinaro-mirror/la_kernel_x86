@@ -60,6 +60,9 @@
 
 #define BUFSIZ_COPY_FROM_USER		20
 
+#define ADC_CONVERSION_TIMEOUT_MS	300
+#define TIME_SLEEP_MS			30
+
 #define DEV_NAME			"bq25898_charger"
 #define DEV_MANUFACTURER		"TI"
 #define MODEL_NAME			"BQ25898"
@@ -2501,7 +2504,7 @@ static int bq25898_get_prop_online(struct bq25898_charger *chip)
 static int bq25898_adc_convert(struct i2c_client *client)
 {
 	int ret;
-	int i;
+	int t;
 
 	/* Start one-shot adc conversion */
 	ret = bq25898_read_modify_reg(client, BQ25898_ADC_CTRL_REG,
@@ -2513,19 +2516,15 @@ static int bq25898_adc_convert(struct i2c_client *client)
 	}
 
 	/* Conversion takes usually 80ms */
-	for (i = 0; i < NR_RETRY_CNT; i++) {
+	for (t = 0; t < ADC_CONVERSION_TIMEOUT_MS; t += TIME_SLEEP_MS) {
 		if (bq25898_read_reg(client, BQ25898_ADC_CTRL_REG) & ADC_CONV_START)
-			msleep(100);
+			msleep(TIME_SLEEP_MS);
 		else
-			break;
+			return 0;
 	}
 
-	if (i >= NR_RETRY_CNT) {
-		dev_err(&client->dev, "ADC conversion timed out");
-		return -EIO;
-	}
-
-	return 0;
+	dev_err(&client->dev, "ADC conversion timed out");
+	return -EIO;
 }
 
 static int bq25898_get_prop_voltage_now(struct bq25898_charger *chip)
