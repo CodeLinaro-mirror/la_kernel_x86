@@ -30,6 +30,75 @@
 #define ST_LSM6DS3H_FIFO_DATA_EMPTY		0x1000
 #define ST_LSM6DS3H_FIFO_DATA_PATTERN_L		0x3c
 
+static int st_lsm6ds3h_do_div(struct lsm6ds3h_data *cdata,
+					u16 read_len,
+					bool discard_data,
+					int64_t *accel_deltatime, int64_t *gyro_deltatime
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+					, int64_t *ext0_deltatime
+#endif
+					)
+
+{
+	u8 gyro_sip, accel_sip;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+	u8 ext0_sip;
+#endif
+	u16 byte_in_pattern = cdata->byte_in_pattern;
+	u16 pattern_num;
+	int64_t pattern_timestamp;
+
+	accel_sip = cdata->fifo_output[ST_MASK_ID_ACCEL].sip;
+	gyro_sip = cdata->fifo_output[ST_MASK_ID_GYRO].sip;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+	ext0_sip = cdata->fifo_output[ST_MASK_ID_EXT0].sip;
+#endif
+
+
+	if (byte_in_pattern)
+		pattern_num = read_len / byte_in_pattern;
+	else {
+		dev_err(cdata->dev, "st_lsm6ds3h_do_div byte_in_pattern equal 0\n");
+		return -EINVAL;
+	}
+	if (pattern_num) {
+		if (discard_data) {
+			pattern_timestamp = accel_sip ? (*accel_deltatime * accel_sip) :
+						(gyro_sip ? (*gyro_deltatime * gyro_sip) :
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+						(ext0_sip ? (*ext0_deltatime * ext0_sip) : 0));
+#else
+						0);
+#endif
+			cdata->last_timestamp = cdata->timestamp - pattern_timestamp * pattern_num;
+		} else {
+			pattern_timestamp = (cdata->timestamp - cdata->last_timestamp) / pattern_num;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+			if (ext0_sip)
+				*ext0_deltatime = pattern_timestamp / ext0_sip;
+#endif
+			if (gyro_sip)
+				*gyro_deltatime = pattern_timestamp / gyro_sip;
+			if (accel_sip)
+				*accel_deltatime = pattern_timestamp / accel_sip;
+		}
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+		cdata->fifo_output[ST_MASK_ID_EXT0].timestamp =
+#endif
+		cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = cdata->last_timestamp;
+
+		dev_dbg(cdata->dev, "st_lsm6ds3h_do_div"
+					"[%d] [%d] [%d] [%d] [%d] [%lld] [%lld] [%lld] [%lld]\n",
+					discard_data, gyro_sip, accel_sip, byte_in_pattern, read_len,
+					*gyro_deltatime, *accel_deltatime,
+					cdata->last_timestamp, cdata->timestamp);
+	}
+
+	return 0;
+}
+
+
 void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 					u8 index, u8 *data, int64_t timestamp)
 {
@@ -62,16 +131,27 @@ void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 	iio_push_to_buffers(cdata->indio_dev[index], sdata->buffer_data);
 }
 
-static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_len)
+static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_len, bool discard_data)
 {
 	u16 fifo_offset = 0;
 	u8 gyro_sip, accel_sip;
+	int64_t accel_deltatime;
+	int64_t gyro_deltatime;
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	u8 ext0_sip;
+	int64_t ext0_deltatime;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_parse_fifo_data: sensors_enabled=0x%2x\n",
-				cdata->sensors_enabled);
+					cdata->sensors_enabled);
+
+	if (st_lsm6ds3h_do_div(cdata, read_len, discard_data, &accel_deltatime, &gyro_deltatime
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+						, &ext0_deltatime
+#endif
+						) < 0)
+			 return;
+
 
 	while (fifo_offset < read_len) {
 		gyro_sip = cdata->fifo_output[ST_MASK_ID_GYRO].sip;
@@ -82,11 +162,6 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 
 		do {
 			if (gyro_sip > 0) {
-				if (cdata->fifo_output[ST_MASK_ID_GYRO].timestamp == 0)
-					cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_GYRO].deltatime / 2);
-				else
-					cdata->fifo_output[ST_MASK_ID_GYRO].timestamp += cdata->fifo_output[ST_MASK_ID_GYRO].deltatime;
-
 				if (cdata->samples_to_discard[ST_MASK_ID_GYRO] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_GYRO]--;
 				else {
@@ -102,16 +177,12 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 					}
 				}
 
+				cdata->fifo_output[ST_MASK_ID_GYRO].timestamp += gyro_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				gyro_sip--;
 			}
 
 			if (accel_sip > 0) {
-				if (cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp == 0)
-					cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime / 2);
-				else
-					cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp += cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime;
-
 				if (cdata->samples_to_discard[ST_MASK_ID_ACCEL] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_ACCEL]--;
 				else {
@@ -127,17 +198,13 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 					}
 				}
 
+				cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp += accel_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				accel_sip--;
 			}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 			if (ext0_sip > 0) {
-				if (cdata->fifo_output[ST_MASK_ID_EXT0].timestamp == 0)
-					cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = cdata->fifo_enable_timestamp + (cdata->fifo_output[ST_MASK_ID_EXT0].deltatime / 2);
-				else
-					cdata->fifo_output[ST_MASK_ID_EXT0].timestamp += cdata->fifo_output[ST_MASK_ID_EXT0].deltatime;
-
 				if (cdata->samples_to_discard[ST_MASK_ID_EXT0] > 0)
 					cdata->samples_to_discard[ST_MASK_ID_EXT0]--;
 				else {
@@ -153,6 +220,7 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 					}
 				}
 
+				cdata->fifo_output[ST_MASK_ID_EXT0].timestamp += ext0_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				ext0_sip--;
 			}
@@ -178,16 +246,8 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo, flags=0x%2x\n", flags);
 
-#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
-	byte_in_pattern = (cdata->fifo_output[ST_MASK_ID_ACCEL].sip +
-			cdata->fifo_output[ST_MASK_ID_GYRO].sip +
-			cdata->fifo_output[ST_MASK_ID_EXT0].sip) *
-			ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
-#else /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
-	byte_in_pattern = (cdata->fifo_output[ST_MASK_ID_ACCEL].sip +
-			cdata->fifo_output[ST_MASK_ID_GYRO].sip) *
-			ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
-#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+	byte_in_pattern = cdata->byte_in_pattern;
+
 	if (byte_in_pattern == 0)
 		return 0;
 
@@ -300,7 +360,7 @@ read_fifo_report:
 		st_lsm6ds3h_set_fifo_mode(cdata, CONTINUOS);
 	}
 
-	st_lsm6ds3h_parse_fifo_data(cdata, read_len);
+	st_lsm6ds3h_parse_fifo_data(cdata, read_len, discard_data);
 
 	return 0;
 }
