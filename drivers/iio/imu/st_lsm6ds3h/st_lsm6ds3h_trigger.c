@@ -58,6 +58,7 @@ irqreturn_t lsm6ds3h_save_timestamp(int irq, void *private)
 	struct lsm6ds3h_data *cdata = private;
 	struct timespec ts;
 
+	cdata->last_timestamp = cdata->timestamp;
 	get_monotonic_boottime(&ts);
 	cdata->timestamp = timespec_to_ns(&ts);
 	queue_work(st_lsm6ds3h_wq, &cdata->data_work);

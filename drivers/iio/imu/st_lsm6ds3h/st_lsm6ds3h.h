@@ -261,7 +261,6 @@ struct lsm6ds3h_data {
 
 	s64 last_timestamp;
 	s64 timestamp;
-	int64_t fifo_enable_timestamp;
 
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 	bool injection_mode;

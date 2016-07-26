@@ -663,47 +663,6 @@ static int lsm6ds3h_config_tap_tap(struct lsm6ds3h_data *cdata)
 	return 0;
 }
 
-/*
- * Enable tap_tap event in all directions (X,Y,Z) for testing.
- * In production code only one direction will be enabled.
- */
-static int lsm6ds3h_enable_tap_tap(struct lsm6ds3h_data *cdata, bool enable)
-{
-	int err;
-
-	if (enable) {
-		err = st_lsm6ds3h_write_data_with_mask(cdata,
-				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
-				ST_LSM6DS3H_TAP_CFG_TAP_X_EN_MASK,
-				ST_LSM6DS3H_EN_BIT, true);
-		if (err < 0)
-			return err;
-
-		err = st_lsm6ds3h_write_data_with_mask(cdata,
-				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
-				ST_LSM6DS3H_TAP_CFG_TAP_Y_EN_MASK,
-				ST_LSM6DS3H_EN_BIT, true);
-		if (err < 0)
-			return err;
-
-		err = st_lsm6ds3h_write_data_with_mask(cdata,
-				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
-				ST_LSM6DS3H_TAP_CFG_TAP_Z_EN_MASK,
-				ST_LSM6DS3H_EN_BIT, true);
-		if (err < 0)
-			return err;
-	} else {
-		err = st_lsm6ds3h_write_data_with_mask(cdata,
-				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
-				ST_LSM6DS3H_TAP_TAP_EN_MASK,
-				ST_LSM6DS3H_DIS_BIT, true);
-		if (err < 0)
-			return err;
-	}
-
-	return 0;
-}
-
 int lsm6ds3h_get_fifo_odr_value(struct lsm6ds3h_data *cdata)
 {
 	int i, fifo_odr = 0, odr_value = 0;
@@ -757,7 +716,7 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 
 	if (enable_fifo) {
 		get_monotonic_boottime(&ts);
-		cdata->fifo_enable_timestamp = timespec_to_ns(&ts);
+		cdata->timestamp = cdata->last_timestamp = timespec_to_ns(&ts);
 		cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = 0;
 		cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = 0;
 		cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = 0;
@@ -1111,8 +1070,11 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 	}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
-	if ((sdata->sindex == ST_MASK_ID_ACCEL) && (reg_value != 0xff))
-		reg_value = ST_LSM6DS3H_ODR_416HZ_VAL;
+	if ((sdata->sindex == ST_MASK_ID_ACCEL) && (reg_value != 0xff)) {
+		if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_TAP_TAP)) {
+				reg_value = ST_LSM6DS3H_ODR_416HZ_VAL;
+		}
+	}
 #endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 	if (sdata->cdata->sensors_use_fifo > 0) {
@@ -1223,6 +1185,12 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			sdata->cdata->fifo_output[ST_MASK_ID_EXT0].sip = samples_in_pattern[2];
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+			sdata->cdata->byte_in_pattern = (sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip+sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip+sdata->cdata->fifo_output[ST_MASK_ID_EXT0].sip)*ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+#else
+			sdata->cdata->byte_in_pattern = (sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip+sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip)*ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+#endif
+
 			err = lsm6ds3h_set_watermark(sdata->cdata);
 			if (err < 0)
 				goto reenable_fifo_irq;
@@ -1294,6 +1262,12 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 			sdata->cdata->fifo_output[ST_MASK_ID_EXT0].deltatime = new_deltatime[ST_MASK_ID_EXT0];
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+			sdata->cdata->byte_in_pattern = (sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip+sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip+sdata->cdata->fifo_output[ST_MASK_ID_EXT0].sip)*ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+#else
+			sdata->cdata->byte_in_pattern = (sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip+sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip)*ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
+#endif
 
 			if ((sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip > 0) ||
 					(sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip > 0) ||
@@ -1639,6 +1613,61 @@ int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 	return err < 0 ? err : 0;
 }
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
+/*
+ * Enable tap_tap event in all directions (X,Y,Z) for testing.
+ * In production code only one direction will be enabled.
+ */
+static int lsm6ds3h_enable_tap_tap(struct lsm6ds3h_data *cdata, bool enable)
+{
+	int err;
+
+	if (enable) {
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_X_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_Y_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_CFG_TAP_Z_EN_MASK,
+				ST_LSM6DS3H_EN_BIT, true);
+		if (err < 0)
+			return err;
+
+		cdata->sensors_enabled |= BIT(ST_MASK_ID_TAP_TAP);
+		err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_ACCEL,
+				cdata->hw_odr[ST_MASK_ID_ACCEL]);
+		if (err < 0)
+			return err;
+	} else {
+		err = st_lsm6ds3h_write_data_with_mask(cdata,
+				ST_LSM6DS3H_TAP_TAP_EN_ADDR,
+				ST_LSM6DS3H_TAP_TAP_EN_MASK,
+				ST_LSM6DS3H_DIS_BIT, true);
+		if (err < 0)
+			return err;
+
+		cdata->sensors_enabled &= ~BIT(ST_MASK_ID_TAP_TAP);
+		err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_ACCEL,
+				cdata->hw_odr[ST_MASK_ID_ACCEL]);
+		if (err < 0)
+			return err;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
 
 int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 {
