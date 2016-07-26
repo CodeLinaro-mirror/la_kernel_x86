@@ -299,6 +299,7 @@
 #define PG_STAT_MASK			(1 << 2)
 /* VSYS_STAT -- 0: Not in VSYSmin, 1: in Vsys min regulation (BAT < VSYSMIN) */
 #define VSYS_STAT				(1 << 0)
+#define BQ25898_STATUS_REG_DEFAULT		0x02
 
 /*
  *  Fault Register (REG0C)
@@ -2804,6 +2805,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->postcharge_start_time_sec = 0;
 	chip->curr_check_interval = BQ25898_CURR_CHECK_INTERVAL_DEFAULT;
 	chip->curr_eoc_limit = BQ25898_CURR_EOC_LIMIT_DEFAULT;
+	chip->status_reg_oldvalue = BQ25898_STATUS_REG_DEFAULT;
 
 	strncpy(chip->model_name,
 		MODEL_NAME,
@@ -2815,12 +2817,6 @@ static int bq25898_probe(struct i2c_client *client,
 
 	pm_runtime_enable(&client->dev);
 
-	ret = chip->status_reg_oldvalue = bq25898_read_reg(client, BQ25898_STATUS_REG);
-	if (ret < 0) {
-		dev_err(&client->dev,
-			"error in reading status reg %02x:%d\n", BQ25898_STATUS_REG, ret);
-		goto error0;
-	}
 	ret = chip->revision = bq25898_read_reg(client, BQ25898_DEVREG_CTRL_REG);
 	if (ret < 0) {
 		dev_err(&client->dev,
