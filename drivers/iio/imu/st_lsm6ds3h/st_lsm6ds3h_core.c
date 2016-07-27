@@ -1761,6 +1761,8 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 
 		break;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+	case ST_MASK_ID_EXT0:
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -3696,7 +3698,6 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 {
 	disable_irq(cdata->irq);
 
-#ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 	int err, i;
 	u8 tmp_sensors_enabled;
 	struct lsm6ds3h_sensor_data *sdata;
@@ -3706,9 +3707,8 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 	dev_dbg(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d\n",
 		cdata->sensors_enabled);
 
-	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
-		if ((i == ST_MASK_ID_SIGN_MOTION) ||
-						(i == ST_MASK_ID_TILT))
+	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
+		if ((1 << i) & ST_LSM6DS3H_WAKE_UP_SENSORS)
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);
@@ -3718,7 +3718,6 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 			return err;
 	}
 	cdata->sensors_enabled = tmp_sensors_enabled;
-#endif /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
 
 	if (cdata->sensors_enabled & ST_LSM6DS3H_WAKE_UP_SENSORS) {
 		if (device_may_wakeup(cdata->dev))
@@ -3732,16 +3731,14 @@ EXPORT_SYMBOL(st_lsm6ds3h_common_suspend);
 
 int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 {
-#ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 	int err = 0, i;
 	struct lsm6ds3h_sensor_data *sdata;
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d\n",
 		cdata->sensors_enabled);
 
-	for (i = 0; i < ST_INDIO_DEV_NUM; i++) {
-		if ((i == ST_MASK_ID_SIGN_MOTION) ||
-						(i == ST_MASK_ID_TILT))
+	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
+		if ((1 << i) & ST_LSM6DS3H_WAKE_UP_SENSORS)
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);
@@ -3752,7 +3749,6 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 				goto out;
 		}
 	}
-#endif /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
 
 	cdata->system_state = SF_RESUME;
 
