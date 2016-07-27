@@ -39,7 +39,10 @@ enum st_mask_id {
 	ST_MASK_ID_SENSOR_HUB_ASYNC_OP,
 };
 
-#define ST_INDIO_DEV_NUM			6
+/* Basic sensor number of lsm6ds3h */
+#define ST_INDIO_DEV_NUM			(ST_MASK_ID_TILT+1)
+/* Full sensor number of lsm6ds3h used */
+#define ST_INDIO_FULL_DEV_NUM			(ST_MASK_ID_TAP_TAP+1)
 
 #define ST_LSM6DS3H_TX_MAX_LENGTH		12
 #define ST_LSM6DS3H_RX_MAX_LENGTH		4097
@@ -54,7 +57,7 @@ enum st_mask_id {
 
 
 
-#ifdef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
+#ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 #define ST_LSM6DS3H_WAKE_UP_SENSORS	(BIT(ST_MASK_ID_SIGN_MOTION) | \
 					BIT(ST_MASK_ID_TILT) | \
 					BIT(ST_MASK_ID_WRIST_TILT))
