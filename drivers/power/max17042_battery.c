@@ -119,6 +119,7 @@
 #define MAX17042_CHRG_CONV_FCTR		500
 
 #define MAX17042_TEMP_SIGN_MASK		0x8000
+#define MAX17042_TEMP_CONV_FACTOR(a) ((a * 39) / 1000)
 
 #define MAX17042_MAX_MEM	(0xFF + 1)
 
@@ -399,7 +400,7 @@ static struct i2c_client *max17042_client;
 atomic_t fopen_count;
 
 static void update_runtime_params(struct max17042_chip *chip);
-static int read_batt_pack_temp(struct max17042_chip *chip, int *temp);
+static int read_batt_pack_temp(struct max17042_chip *chip, int *temp, int is_byte);
 
 /* Voltage-Capacity lookup function to get
  * capacity value against a given voltage */
@@ -737,7 +738,7 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 		}
 
 		if ((stat & STATUS_TMN_BIT) || (stat & STATUS_TMX_BIT)) {
-			val = read_batt_pack_temp(chip, &temp);
+			val = read_batt_pack_temp(chip, &temp, BYTE_VALUE);
 			if (val) {
 				dev_warn(device, "Can't read temp: %d\n", val);
 			} else {
@@ -819,7 +820,7 @@ static short adjust_sign_value(int value, int is_byte)
 	return result;
 }
 
-static int read_batt_pack_temp(struct max17042_chip *chip, int *temp)
+static int read_batt_pack_temp(struct max17042_chip *chip, int *temp, int is_byte)
 {
 	int ret;
 	u16 val;
@@ -852,11 +853,7 @@ static int read_batt_pack_temp(struct max17042_chip *chip, int *temp)
 		if (ret < 0)
 			goto temp_read_err;
 
-		/* MAX17042_TEMP register gives the signed
-		 * value and we are ignoring the lower byte
-		 * which represents the decimal point */
-
-		*temp = adjust_sign_value(ret, BYTE_VALUE);
+		*temp = adjust_sign_value(ret, is_byte);
 	}
 	return 0;
 
@@ -1026,15 +1023,13 @@ static int max17042_get_property(struct power_supply *psy,
 			val->intval = CONSTANT_TEMP_IN_POWER_SUPPLY;
 			break;
 		}
-		ret = read_batt_pack_temp(chip, &batt_temp);
+		ret = read_batt_pack_temp(chip, &batt_temp, WORD_VALUE);
 		if (ret < 0)
 			goto ps_prop_read_err;
 		/*
-		 * Temperature is measured in units of degrees celcius, the
-		 * power_supply class measures temperature in tenths of degrees
-		 * celsius.
+		 * Temperature is measured in tenths of degrees celsius.
 		 */
-		val->intval = batt_temp * 10;
+		val->intval = MAX17042_TEMP_CONV_FACTOR(batt_temp);
 		break;
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MIN:
 		ret = max17042_read_reg(chip->client, MAX17042_TALRT_Th);
@@ -1768,7 +1763,7 @@ static void max17042_temp_worker(struct work_struct *w)
 	struct max17042_chip *chip = container_of(work,
 				struct max17042_chip, temp_worker);
 	int temp;
-	read_batt_pack_temp(chip, &temp);
+	read_batt_pack_temp(chip, &temp, BYTE_VALUE);
 	schedule_delayed_work(&chip->temp_worker, TEMP_WRITE_INTERVAL);
 }
 
@@ -1859,7 +1854,7 @@ static int max17042_get_batt_health(void)
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	ret = read_batt_pack_temp(chip, &temp);
+	ret = read_batt_pack_temp(chip, &temp, BYTE_VALUE);
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
 			"battery pack temp read fail:%d", ret);
