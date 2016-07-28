@@ -281,6 +281,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_TILT_SUFFIX_NAME			"tilt"
 #define ST_LSM6DS3H_WRIST_TILT_SUFFIX_NAME		"wrist"
 #define ST_LSM6DS3H_TAP_TAP_SUFFIX_NAME			"tap_tap"
+#define ST_LSM6DS3H_WAKEUP_SUFFIX_NAME			"wk"
 
 #define DELAY_FOR_OUT_STABLE				200/* 200ms */
 #define MAX_WHILE_COUNTER				150
@@ -341,14 +342,18 @@ struct st_lsm6ds3h_odr_reg {
 };
 
 static struct st_lsm6ds3h_odr_table {
-	u8 addr[2];
-	u8 mask[2];
+	u8 addr[4];
+	u8 mask[4];
 	struct st_lsm6ds3h_odr_reg odr_avl[ST_LSM6DS3H_ODR_LIST_NUM];
 } st_lsm6ds3h_odr_table = {
 	.addr[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_ODR_ADDR,
 	.mask[ST_MASK_ID_ACCEL] = ST_LSM6DS3H_ACCEL_ODR_MASK,
+	.addr[ST_MASK_ID_ACCEL_WK] = ST_LSM6DS3H_ACCEL_ODR_ADDR,
+	.mask[ST_MASK_ID_ACCEL_WK] = ST_LSM6DS3H_ACCEL_ODR_MASK,
 	.addr[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_ODR_ADDR,
 	.mask[ST_MASK_ID_GYRO] = ST_LSM6DS3H_GYRO_ODR_MASK,
+	.addr[ST_MASK_ID_GYRO_WK] = ST_LSM6DS3H_GYRO_ODR_ADDR,
+	.mask[ST_MASK_ID_GYRO_WK] = ST_LSM6DS3H_GYRO_ODR_MASK,
 	.odr_avl[0] = { .hz = 13, .value = ST_LSM6DS3H_ODR_13HZ_VAL },
 	.odr_avl[1] = { .hz = 26, .value = ST_LSM6DS3H_ODR_26HZ_VAL },
 	.odr_avl[2] = { .hz = 52, .value = ST_LSM6DS3H_ODR_52HZ_VAL },
@@ -379,7 +384,31 @@ static struct st_lsm6ds3h_fs_table {
 		.fs_avl[3] = { .gain = ST_LSM6DS3H_ACCEL_FS_16G_GAIN,
 					.value = ST_LSM6DS3H_ACCEL_FS_16G_VAL },
 	},
+	[ST_MASK_ID_ACCEL_WK] = {
+		.addr = ST_LSM6DS3H_ACCEL_FS_ADDR,
+		.mask = ST_LSM6DS3H_ACCEL_FS_MASK,
+		.fs_avl[0] = { .gain = ST_LSM6DS3H_ACCEL_FS_2G_GAIN,
+					.value = ST_LSM6DS3H_ACCEL_FS_2G_VAL },
+		.fs_avl[1] = { .gain = ST_LSM6DS3H_ACCEL_FS_4G_GAIN,
+					.value = ST_LSM6DS3H_ACCEL_FS_4G_VAL },
+		.fs_avl[2] = { .gain = ST_LSM6DS3H_ACCEL_FS_8G_GAIN,
+					.value = ST_LSM6DS3H_ACCEL_FS_8G_VAL },
+		.fs_avl[3] = { .gain = ST_LSM6DS3H_ACCEL_FS_16G_GAIN,
+					.value = ST_LSM6DS3H_ACCEL_FS_16G_VAL },
+	},
 	[ST_MASK_ID_GYRO] = {
+		.addr = ST_LSM6DS3H_GYRO_FS_ADDR,
+		.mask = ST_LSM6DS3H_GYRO_FS_MASK,
+		.fs_avl[0] = { .gain = ST_LSM6DS3H_GYRO_FS_245_GAIN,
+					.value = ST_LSM6DS3H_GYRO_FS_245_VAL },
+		.fs_avl[1] = { .gain = ST_LSM6DS3H_GYRO_FS_500_GAIN,
+					.value = ST_LSM6DS3H_GYRO_FS_500_VAL },
+		.fs_avl[2] = { .gain = ST_LSM6DS3H_GYRO_FS_1000_GAIN,
+					.value = ST_LSM6DS3H_GYRO_FS_1000_VAL },
+		.fs_avl[3] = { .gain = ST_LSM6DS3H_GYRO_FS_2000_GAIN,
+					.value = ST_LSM6DS3H_GYRO_FS_2000_VAL },
+	},
+	[ST_MASK_ID_GYRO_WK] = {
 		.addr = ST_LSM6DS3H_GYRO_FS_ADDR,
 		.mask = ST_LSM6DS3H_GYRO_FS_MASK,
 		.fs_avl[0] = { .gain = ST_LSM6DS3H_GYRO_FS_245_GAIN,
@@ -878,7 +907,7 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 			(gyro_decimator == cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
 #else /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	if ((accel_decimator == cdata->hwfifo_decimator[ST_MASK_ID_ACCEL]) &&
-			(gyro_decimator != cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
+			(gyro_decimator == cdata->hwfifo_decimator[ST_MASK_ID_GYRO])) {
 #endif /* CONFIG_ST_LSM6DS3_IIO_MASTER_SUPPORT */
 		return false;
 	}
@@ -929,6 +958,7 @@ int st_lsm6ds3h_set_drdy_irq(struct lsm6ds3h_sensor_data *sdata, bool state)
 
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
+	case ST_MASK_ID_ACCEL_WK:
 		reg_addr = ST_LSM6DS3H_INT1_ADDR;
 
 		if (sdata->cdata->hwfifo_enabled[ST_MASK_ID_ACCEL]) {
@@ -945,6 +975,7 @@ int st_lsm6ds3h_set_drdy_irq(struct lsm6ds3h_sensor_data *sdata, bool state)
 
 		break;
 	case ST_MASK_ID_GYRO:
+	case ST_MASK_ID_GYRO_WK:
 		reg_addr = ST_LSM6DS3H_INT1_ADDR;
 
 		if (sdata->cdata->hwfifo_enabled[ST_MASK_ID_GYRO]) {
@@ -1054,13 +1085,6 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 		if (i == ST_LSM6DS3H_ODR_LIST_NUM)
 			return -EINVAL;
 
-		if (!force) {
-			if ((sdata->cdata->sensors_enabled & BIT(sdata->sindex)) == 0) {
-				sdata->cdata->v_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
-				return 0;
-			}
-		}
-
 		if (sdata->cdata->hw_odr[sdata->sindex] == st_lsm6ds3h_odr_table.odr_avl[i].hz)
 			reg_value = 0xff;
 		else
@@ -1079,21 +1103,14 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 
 	if (sdata->cdata->sensors_use_fifo > 0) {
 		/* someone is using fifo */
-		if (sdata->sindex == ST_MASK_ID_ACCEL) {
-			if (force)
-				temp_v_odr[ST_MASK_ID_ACCEL] = sdata->cdata->v_odr[sdata->sindex];
-			else
-				temp_v_odr[ST_MASK_ID_ACCEL] = odr;
-
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) &&
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
+			temp_v_odr[ST_MASK_ID_ACCEL] = odr;
 			temp_v_odr[ST_MASK_ID_GYRO] = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
 			temp_hw_odr[ST_MASK_ID_ACCEL] = odr;
 			temp_hw_odr[ST_MASK_ID_GYRO] = sdata->cdata->hw_odr[ST_MASK_ID_GYRO];
 		} else {
-			if (force)
-				temp_v_odr[ST_MASK_ID_GYRO] = sdata->cdata->v_odr[sdata->sindex];
-			else
-				temp_v_odr[ST_MASK_ID_GYRO] = odr;
-
+			temp_v_odr[ST_MASK_ID_GYRO] = odr;
 			temp_v_odr[ST_MASK_ID_ACCEL] = sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
 			temp_hw_odr[ST_MASK_ID_GYRO] = odr;
 			temp_hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL];
@@ -1129,7 +1146,8 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 				if (err < 0)
 					goto reenable_fifo_irq;
 
-				if (sdata->sindex == ST_MASK_ID_ACCEL) {
+				if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+					(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 					switch (temp_hw_odr[ST_MASK_ID_ACCEL]) {
 					case 13:
 					case 26:
@@ -1225,7 +1243,8 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			if (err < 0)
 				goto reenable_fifo_irq;
 
-			if (sdata->sindex == ST_MASK_ID_ACCEL) {
+			if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+				(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 				switch (temp_hw_odr[ST_MASK_ID_ACCEL]) {
 				case 13:
 				case 26:
@@ -1285,17 +1304,36 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			sdata->cdata->accel_odr_dependency[0] = sdata->cdata->v_odr[sdata->sindex];
 		}
 
-		if (odr == 0)
-			sdata->cdata->hw_odr[sdata->sindex] = 0;
-		else
-			sdata->cdata->hw_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+		switch (sdata->sindex) {
+		case ST_MASK_ID_ACCEL:
+		case ST_MASK_ID_ACCEL_WK:
+			if (odr == 0)
+				sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK] = 0;
+			else
+				sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		case ST_MASK_ID_GYRO:
+		case ST_MASK_ID_GYRO_WK:
+			if (odr == 0)
+				sdata->cdata->hw_odr[ST_MASK_ID_GYRO] = sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK] = 0;
+			else
+				sdata->cdata->hw_odr[ST_MASK_ID_GYRO] = sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		default:
+			if (odr == 0)
+				sdata->cdata->hw_odr[sdata->sindex] = 0;
+			else
+				sdata->cdata->hw_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		}
 	} else {
 		/* no one is using FIFO */
 
 		disable_irq(sdata->cdata->irq);
 
 		if ((odr != 0) && (sdata->cdata->hw_odr[sdata->sindex] == st_lsm6ds3h_odr_table.odr_avl[i].hz)) {
-			if (sdata->sindex == ST_MASK_ID_ACCEL) {
+			if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+				(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 				sdata->cdata->nofifo_decimation[ST_MASK_ID_ACCEL].decimator =
 					sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] / sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
 				sdata->cdata->nofifo_decimation[ST_MASK_ID_ACCEL].num_samples =
@@ -1327,12 +1365,31 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			sdata->cdata->accel_odr_dependency[0] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
 		}
 
-		if (odr == 0)
-			sdata->cdata->hw_odr[sdata->sindex] = 0;
-		else
-			sdata->cdata->hw_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+		switch (sdata->sindex) {
+		case ST_MASK_ID_ACCEL:
+		case ST_MASK_ID_ACCEL_WK:
+			if (odr == 0)
+				sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK] = 0;
+			else
+				sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		case ST_MASK_ID_GYRO:
+		case ST_MASK_ID_GYRO_WK:
+			if (odr == 0)
+				sdata->cdata->hw_odr[ST_MASK_ID_GYRO] = sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK] = 0;
+			else
+				sdata->cdata->hw_odr[ST_MASK_ID_GYRO] = sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		default:
+			if (odr == 0)
+				sdata->cdata->hw_odr[sdata->sindex] = 0;
+			else
+				sdata->cdata->hw_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+			break;
+		}
 
-		if (sdata->sindex == ST_MASK_ID_ACCEL) {
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 			switch (sdata->cdata->hw_odr[sdata->sindex]) {
 			case 13:
 			case 26:
@@ -1364,7 +1421,8 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			break;
 		}
 
-		if (sdata->sindex == ST_MASK_ID_ACCEL) {
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 			if (sdata->cdata->hw_odr[sdata->sindex] > 0) {
 				sdata->cdata->nofifo_decimation[ST_MASK_ID_ACCEL].decimator =
 					sdata->cdata->hw_odr[ST_MASK_ID_ACCEL] / sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
@@ -1404,6 +1462,7 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 {
 	int odr, err;
 	struct lsm6ds3h_sensor_data *sdata_accel = iio_priv(cdata->indio_dev[ST_MASK_ID_ACCEL]);
+	struct lsm6ds3h_sensor_data *sdata_accel_wk = iio_priv(cdata->indio_dev[ST_MASK_ID_ACCEL_WK]);
 
 	switch (id) {
 	case ST_MASK_ID_ACCEL:
@@ -1414,8 +1473,16 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 			cdata->accel_on = false;
 
 		break;
-	case ST_MASK_ID_SENSOR_HUB:
+	case ST_MASK_ID_ACCEL_WK:
 		cdata->accel_odr_dependency[1] = min_odr;
+		if (min_odr > 0)
+			cdata->accel_on = true;
+		else
+			cdata->accel_on = false;
+
+		break;
+	case ST_MASK_ID_SENSOR_HUB:
+		cdata->accel_odr_dependency[2] = min_odr;
 		if (min_odr > 0)
 			cdata->magn_on = true;
 		else
@@ -1423,29 +1490,34 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 
 		break;
 	case ST_MASK_ID_DIGITAL_FUNC:
-		cdata->accel_odr_dependency[2] = min_odr;
+		cdata->accel_odr_dependency[3] = min_odr;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (cdata->accel_odr_dependency[0] > cdata->accel_odr_dependency[1])
-		odr = cdata->accel_odr_dependency[0];
+	if (MAX(cdata->accel_odr_dependency[0], cdata->accel_odr_dependency[1]) > cdata->accel_odr_dependency[2])
+		odr = MAX(cdata->accel_odr_dependency[0], cdata->accel_odr_dependency[1]);
 	else
-		odr = cdata->accel_odr_dependency[1];
-
-	if (cdata->accel_odr_dependency[2] > odr)
 		odr = cdata->accel_odr_dependency[2];
+
+	if (cdata->accel_odr_dependency[3] > odr)
+		odr = cdata->accel_odr_dependency[3];
 
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 	if (cdata->injection_mode)
 		return 0;
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
 
-	err = st_lsm6ds3h_set_odr(sdata_accel, odr, true);
-	if (err < 0)
-		return err;
-
+	if (id == ST_MASK_ID_ACCEL_WK) {
+		err = st_lsm6ds3h_set_odr(sdata_accel_wk, odr, true);
+		if (err < 0)
+			return err;
+	} else {
+		err = st_lsm6ds3h_set_odr(sdata_accel, odr, true);
+		if (err < 0)
+			return err;
+	}
 	return 0;
 }
 
@@ -1673,21 +1745,68 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 {
 	int err;
 	u8 reg_value;
+	int en_odr, dis_odr;
 
 	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_set_enable: index=%d, enable=%d\n",
 		sdata->sindex, enable);
 
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
+		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_ACCEL_WK)) {
+			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_ACCEL],
+							sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK]);
+			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK];
+		} else {
+			en_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
+			dis_odr = 0;
+		}
 		err = lsm6ds3h_enable_accel(sdata->cdata, ST_MASK_ID_ACCEL,
-			enable ? sdata->cdata->v_odr[ST_MASK_ID_ACCEL] : 0);
+			enable ? en_odr : dis_odr);
 		if (err < 0)
-			return 0;
+			return err;
+
+		break;
+	case ST_MASK_ID_ACCEL_WK:
+		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_ACCEL)) {
+			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK],
+							sdata->cdata->hw_odr[ST_MASK_ID_ACCEL]);
+			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
+		} else {
+			en_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK];
+			dis_odr = 0;
+		}
+		err = lsm6ds3h_enable_accel(sdata->cdata, ST_MASK_ID_ACCEL_WK,
+			enable ? en_odr : dis_odr);
+		if (err < 0)
+			return err;
 
 		break;
 	case ST_MASK_ID_GYRO:
+		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO_WK)) {
+			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_GYRO],
+							sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK]);
+			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK];
+		} else {
+			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
+			dis_odr = 0;
+		}
 		err = st_lsm6ds3h_set_odr(sdata, enable ?
-			sdata->cdata->v_odr[ST_MASK_ID_GYRO] : 0, true);
+			en_odr : dis_odr, true);
+		if (err < 0)
+			return err;
+
+		break;
+	case ST_MASK_ID_GYRO_WK:
+		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO)) {
+			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK],
+							sdata->cdata->hw_odr[ST_MASK_ID_GYRO]);
+			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
+		} else {
+			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK];
+			dis_odr = 0;
+		}
+		err = st_lsm6ds3h_set_odr(sdata, enable ?
+			en_odr : dis_odr, true);
 		if (err < 0)
 			return err;
 
@@ -1845,10 +1964,12 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		mutex_lock(&indio_dev->mlock);
 
-		if (sdata->sindex == ST_MASK_ID_ACCEL)
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK))
 			msleep(40);
 
-		if (sdata->sindex == ST_MASK_ID_GYRO)
+		if ((sdata->sindex == ST_MASK_ID_GYRO) ||
+			(sdata->sindex == ST_MASK_ID_GYRO_WK))
 			msleep(120);
 
 		err = sdata->cdata->tf->read(sdata->cdata, ch->address,
@@ -1865,11 +1986,13 @@ static int st_lsm6ds3h_read_raw(struct iio_dev *indio_dev,
 
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_OFFSET:
-		if (sdata->sindex == ST_INDIO_DEV_ACCEL) {
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 			*val = accel_cal_data[ch->scan_index];
 			return IIO_VAL_INT;
 		}
-		if (sdata->sindex == ST_INDIO_DEV_GYRO) {
+		if ((sdata->sindex == ST_MASK_ID_GYRO) ||
+			(sdata->sindex == ST_MASK_ID_GYRO_WK))	{
 			*val = gyro_cal_data[ch->scan_index];
 			return IIO_VAL_INT;
 		}
@@ -1905,9 +2028,11 @@ static int st_lsm6ds3h_write_raw(struct iio_dev *indio_dev,
 		break;
 	case IIO_CHAN_INFO_OFFSET:
 		err = 0;
-		if (sdata->sindex == ST_INDIO_DEV_ACCEL)
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
+			(sdata->sindex == ST_MASK_ID_ACCEL_WK))
 			accel_cal_data[chan->scan_index] = val;
-		else if (sdata->sindex == ST_INDIO_DEV_GYRO)
+		else if ((sdata->sindex == ST_MASK_ID_GYRO) ||
+			(sdata->sindex == ST_MASK_ID_GYRO_WK))
 			gyro_cal_data[chan->scan_index] = val;
 		else
 			err = -EINVAL;
@@ -2132,7 +2257,7 @@ static ssize_t st_lsm6ds3h_sysfs_get_sampling_frequency(struct device *dev,
 static ssize_t st_lsm6ds3h_sysfs_set_sampling_frequency(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	int err;
+	int err, i;
 	unsigned int odr;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
@@ -2151,9 +2276,68 @@ static ssize_t st_lsm6ds3h_sysfs_set_sampling_frequency(struct device *dev,
 			err = st_lsm6ds3h_set_odr(sdata, odr, false);
 	}
 #else /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
-	if (sdata->cdata->v_odr[sdata->sindex] != odr)
-		err = st_lsm6ds3h_set_odr(sdata, odr, false);
+	if (sdata->cdata->v_odr[sdata->sindex] != odr) {
+		for (i = 0; i < ST_LSM6DS3H_ODR_LIST_NUM; i++) {
+			if (st_lsm6ds3h_odr_table.odr_avl[i].hz == odr)
+				break;
+		}
+		if (i == ST_LSM6DS3H_ODR_LIST_NUM) {
+			err = -EINVAL;
+			goto sampling_freq_set_out;
+		}
+
+		sdata->cdata->v_odr[sdata->sindex] = st_lsm6ds3h_odr_table.odr_avl[i].hz;
+		if ((sdata->cdata->sensors_enabled & BIT(sdata->sindex)) == 0) {
+			err = size;
+			goto sampling_freq_set_out;
+		}
+	}
+
+	if (sdata->cdata->hw_odr[sdata->sindex] != odr) {
+		switch (sdata->sindex) {
+		case ST_MASK_ID_ACCEL:
+			if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL)) {
+				if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL_WK)) {
+					if (odr > sdata->cdata->hw_odr[ST_MASK_ID_ACCEL])
+						err = st_lsm6ds3h_set_odr(sdata, odr, false);
+				} else
+					err = st_lsm6ds3h_set_odr(sdata, odr, false);
+			}
+			break;
+		case ST_MASK_ID_ACCEL_WK:
+			if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL_WK)) {
+				if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL)) {
+					if (odr > sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK])
+						err = st_lsm6ds3h_set_odr(sdata, odr, false);
+				} else
+					err = st_lsm6ds3h_set_odr(sdata, odr, false);
+			}
+			break;
+		case ST_MASK_ID_GYRO:
+			if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO)) {
+				if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO_WK)) {
+					if (odr > sdata->cdata->hw_odr[ST_MASK_ID_GYRO])
+						err = st_lsm6ds3h_set_odr(sdata, odr, false);
+				} else
+					err = st_lsm6ds3h_set_odr(sdata, odr, false);
+			}
+			break;
+		case ST_MASK_ID_GYRO_WK:
+			if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO_WK)) {
+				if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO)) {
+					if (odr > sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK])
+						err = st_lsm6ds3h_set_odr(sdata, odr, false);
+				} else
+					err = st_lsm6ds3h_set_odr(sdata, odr, false);
+			}
+			break;
+		default:
+			err = st_lsm6ds3h_set_odr(sdata, odr, false);
+			break;
+		}
+	}
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
+sampling_freq_set_out:
 	mutex_unlock(&sdata->cdata->odr_lock);
 
 	mutex_unlock(&indio_dev->mlock);
@@ -2935,7 +3119,7 @@ ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
 		return err;
 
 	/* The 4th parameter used for data sum check */
-	if (sdata->sindex == ST_INDIO_DEV_ACCEL)
+	if (sdata->sindex == ST_MASK_ID_ACCEL)
 		return sprintf(buf, "%d %d %d %d\n",
 				0 * SIGN_X_A - no_cali[0],
 				0 * SIGN_Y_A - no_cali[1],
@@ -3213,8 +3397,25 @@ static struct attribute *st_lsm6ds3h_accel_attributes[] = {
 	NULL,
 };
 
+static struct attribute *st_lsm6ds3h_accel_wk_attributes[] = {
+	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
+	&iio_dev_attr_in_accel_scale_available.dev_attr.attr,
+	&iio_dev_attr_sampling_frequency.dev_attr.attr,
+	&iio_dev_attr_hwfifo_enabled.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_min.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
+	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
+
+	NULL,
+};
+
 static const struct attribute_group st_lsm6ds3h_accel_attribute_group = {
 	.attrs = st_lsm6ds3h_accel_attributes,
+};
+
+static const struct attribute_group st_lsm6ds3h_accel_wk_attribute_group = {
+	.attrs = st_lsm6ds3h_accel_wk_attributes,
 };
 
 static const struct iio_info st_lsm6ds3h_accel_info = {
@@ -3224,7 +3425,26 @@ static const struct iio_info st_lsm6ds3h_accel_info = {
 	.write_raw = &st_lsm6ds3h_write_raw,
 };
 
+static const struct iio_info st_lsm6ds3h_accel_wk_info = {
+	.driver_module = THIS_MODULE,
+	.attrs = &st_lsm6ds3h_accel_wk_attribute_group,
+	.read_raw = &st_lsm6ds3h_read_raw,
+	.write_raw = &st_lsm6ds3h_write_raw,
+};
+
 static struct attribute *st_lsm6ds3h_gyro_attributes[] = {
+	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
+	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
+	&iio_dev_attr_sampling_frequency.dev_attr.attr,
+	&iio_dev_attr_hwfifo_enabled.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_min.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
+	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
+	NULL,
+};
+
+static struct attribute *st_lsm6ds3h_gyro_wk_attributes[] = {
 	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
 	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
 	&iio_dev_attr_sampling_frequency.dev_attr.attr,
@@ -3243,9 +3463,20 @@ static const struct attribute_group st_lsm6ds3h_gyro_attribute_group = {
 	.attrs = st_lsm6ds3h_gyro_attributes,
 };
 
+static const struct attribute_group st_lsm6ds3h_gyro_wk_attribute_group = {
+	.attrs = st_lsm6ds3h_gyro_wk_attributes,
+};
+
 static const struct iio_info st_lsm6ds3h_gyro_info = {
 	.driver_module = THIS_MODULE,
 	.attrs = &st_lsm6ds3h_gyro_attribute_group,
+	.read_raw = &st_lsm6ds3h_read_raw,
+	.write_raw = &st_lsm6ds3h_write_raw,
+};
+
+static const struct iio_info st_lsm6ds3h_gyro_wk_info = {
+	.driver_module = THIS_MODULE,
+	.attrs = &st_lsm6ds3h_gyro_wk_attribute_group,
 	.read_raw = &st_lsm6ds3h_read_raw,
 	.write_raw = &st_lsm6ds3h_write_raw,
 };
@@ -3422,6 +3653,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->accel_odr_dependency[0] = 0;
 	cdata->accel_odr_dependency[1] = 0;
 	cdata->accel_odr_dependency[2] = 0;
+	cdata->accel_odr_dependency[3] = 0;
 
 	cdata->trigger_odr = 0;
 
@@ -3477,12 +3709,14 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 
 		switch (i) {
 		case ST_MASK_ID_ACCEL:
+		case ST_MASK_ID_ACCEL_WK:
 			sdata->data_out_reg = st_lsm6ds3h_accel_ch[0].address;
 			cdata->v_odr[i] = st_lsm6ds3h_odr_table.odr_avl[0].hz;
 			sdata->c_gain[0] = st_lsm6ds3h_fs_table[i].fs_avl[0].gain;
 			sdata->num_data_channels = 3;
 			break;
 		case ST_MASK_ID_GYRO:
+		case ST_MASK_ID_GYRO_WK:
 			sdata->data_out_reg = st_lsm6ds3h_gyro_ch[0].address;
 			cdata->v_odr[i] = st_lsm6ds3h_odr_table.odr_avl[0].hz;
 			sdata->c_gain[0] = st_lsm6ds3h_fs_table[i].fs_avl[0].gain;
@@ -3509,12 +3743,28 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->indio_dev[ST_MASK_ID_ACCEL]->num_channels =
 						ARRAY_SIZE(st_lsm6ds3h_accel_ch);
 
+	cdata->indio_dev[ST_MASK_ID_ACCEL_WK]->name =
+			kasprintf(GFP_KERNEL, "%s_%s_%s", cdata->name,
+					ST_LSM6DS3H_ACCEL_SUFFIX_NAME, ST_LSM6DS3H_WAKEUP_SUFFIX_NAME);
+	cdata->indio_dev[ST_MASK_ID_ACCEL_WK]->info = &st_lsm6ds3h_accel_wk_info;
+	cdata->indio_dev[ST_MASK_ID_ACCEL_WK]->channels = st_lsm6ds3h_accel_ch;
+	cdata->indio_dev[ST_MASK_ID_ACCEL_WK]->num_channels =
+						ARRAY_SIZE(st_lsm6ds3h_accel_ch);
+
 	cdata->indio_dev[ST_MASK_ID_GYRO]->name =
 			kasprintf(GFP_KERNEL, "%s_%s", cdata->name,
 					ST_LSM6DS3H_GYRO_SUFFIX_NAME);
 	cdata->indio_dev[ST_MASK_ID_GYRO]->info = &st_lsm6ds3h_gyro_info;
 	cdata->indio_dev[ST_MASK_ID_GYRO]->channels = st_lsm6ds3h_gyro_ch;
 	cdata->indio_dev[ST_MASK_ID_GYRO]->num_channels =
+						ARRAY_SIZE(st_lsm6ds3h_gyro_ch);
+
+	cdata->indio_dev[ST_MASK_ID_GYRO_WK]->name =
+			kasprintf(GFP_KERNEL, "%s_%s_%s", cdata->name,
+					ST_LSM6DS3H_GYRO_SUFFIX_NAME, ST_LSM6DS3H_WAKEUP_SUFFIX_NAME);
+	cdata->indio_dev[ST_MASK_ID_GYRO_WK]->info = &st_lsm6ds3h_gyro_wk_info;
+	cdata->indio_dev[ST_MASK_ID_GYRO_WK]->channels = st_lsm6ds3h_gyro_ch;
+	cdata->indio_dev[ST_MASK_ID_GYRO_WK]->num_channels =
 						ARRAY_SIZE(st_lsm6ds3h_gyro_ch);
 
 	cdata->indio_dev[ST_MASK_ID_SIGN_MOTION]->name =

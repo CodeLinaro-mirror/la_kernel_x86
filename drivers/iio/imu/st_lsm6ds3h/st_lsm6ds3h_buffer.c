@@ -170,10 +170,18 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 					if (cdata->fifo_output[ST_MASK_ID_GYRO].num_samples >= cdata->fifo_output[ST_MASK_ID_GYRO].decimator) {
 						cdata->fifo_output[ST_MASK_ID_GYRO].timestamp_p = cdata->fifo_output[ST_MASK_ID_GYRO].timestamp;
 						cdata->fifo_output[ST_MASK_ID_GYRO].num_samples = 0;
-						st_lsm6ds3h_push_data_with_timestamp(
-							cdata, ST_MASK_ID_GYRO,
-							&cdata->fifo_data[fifo_offset],
-							cdata->fifo_output[ST_MASK_ID_GYRO].timestamp);
+						if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO)) {
+							st_lsm6ds3h_push_data_with_timestamp(
+								cdata, ST_MASK_ID_GYRO,
+								&cdata->fifo_data[fifo_offset],
+								cdata->fifo_output[ST_MASK_ID_GYRO].timestamp);
+						}
+						if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO_WK)) {
+							st_lsm6ds3h_push_data_with_timestamp(
+								cdata, ST_MASK_ID_GYRO_WK,
+								&cdata->fifo_data[fifo_offset],
+								cdata->fifo_output[ST_MASK_ID_GYRO].timestamp);
+						}
 					}
 				}
 
@@ -191,10 +199,18 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 					if (cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples >= cdata->fifo_output[ST_MASK_ID_ACCEL].decimator) {
 						cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp_p = cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp;
 						cdata->fifo_output[ST_MASK_ID_ACCEL].num_samples = 0;
-						st_lsm6ds3h_push_data_with_timestamp(
-							cdata, ST_MASK_ID_ACCEL,
-							&cdata->fifo_data[fifo_offset],
-							cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp);
+						if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL)) {
+							st_lsm6ds3h_push_data_with_timestamp(
+								cdata, ST_MASK_ID_ACCEL,
+								&cdata->fifo_data[fifo_offset],
+								cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp);
+						}
+						if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL_WK)) {
+							st_lsm6ds3h_push_data_with_timestamp(
+								cdata, ST_MASK_ID_ACCEL_WK,
+								&cdata->fifo_data[fifo_offset],
+								cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp);
+						}
 					}
 				}
 
@@ -471,7 +487,9 @@ static int st_lsm6ds3h_buffer_postenable(struct iio_dev *indio_dev)
 
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
+	case ST_MASK_ID_ACCEL_WK:
 	case ST_MASK_ID_GYRO:
+	case ST_MASK_ID_GYRO_WK:
 		if ((sdata->cdata->hwfifo_enabled[sdata->sindex]) &&
 				(indio_dev->buffer->length <
 					2 * ST_LSM6DS3H_MAX_FIFO_LENGHT))
@@ -586,20 +604,36 @@ int st_lsm6ds3h_allocate_rings(struct lsm6ds3h_data *cdata)
 	if (err < 0)
 		return err;
 
+	sdata = iio_priv(cdata->indio_dev[ST_MASK_ID_ACCEL_WK]);
+
+	err = iio_triggered_buffer_setup(cdata->indio_dev[ST_MASK_ID_ACCEL_WK],
+				NULL, &st_lsm6ds3h_outdata_trigger_handler,
+				&st_lsm6ds3h_buffer_setup_ops);
+	if (err < 0)
+		goto buffer_cleanup_accel;
+
 	sdata = iio_priv(cdata->indio_dev[ST_MASK_ID_GYRO]);
 
 	err = iio_triggered_buffer_setup(cdata->indio_dev[ST_MASK_ID_GYRO],
 				NULL, &st_lsm6ds3h_outdata_trigger_handler,
 				&st_lsm6ds3h_buffer_setup_ops);
 	if (err < 0)
-		goto buffer_cleanup_accel;
+		goto buffer_cleanup_accel_wk;
+
+	sdata = iio_priv(cdata->indio_dev[ST_MASK_ID_GYRO_WK]);
+
+	err = iio_triggered_buffer_setup(cdata->indio_dev[ST_MASK_ID_GYRO_WK],
+				NULL, &st_lsm6ds3h_outdata_trigger_handler,
+				&st_lsm6ds3h_buffer_setup_ops);
+	if (err < 0)
+		goto buffer_cleanup_gyro;
 
 	err = iio_triggered_buffer_setup(
 				cdata->indio_dev[ST_MASK_ID_SIGN_MOTION],
 				&st_lsm6ds3h_handler_empty, NULL,
 				&st_lsm6ds3h_buffer_setup_ops);
 	if (err < 0)
-		goto buffer_cleanup_gyro;
+		goto buffer_cleanup_gyro_wk;
 
 	err = iio_triggered_buffer_setup(
 				cdata->indio_dev[ST_MASK_ID_STEP_COUNTER],
@@ -665,8 +699,12 @@ buffer_cleanup_step_counter:
 buffer_cleanup_sign_motion:
 	iio_triggered_buffer_cleanup(
 				cdata->indio_dev[ST_MASK_ID_SIGN_MOTION]);
+buffer_cleanup_gyro_wk:
+	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_GYRO_WK]);
 buffer_cleanup_gyro:
 	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_GYRO]);
+buffer_cleanup_accel_wk:
+	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_ACCEL_WK]);
 buffer_cleanup_accel:
 	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_ACCEL]);
 	return err;
@@ -691,7 +729,9 @@ void st_lsm6ds3h_deallocate_rings(struct lsm6ds3h_data *cdata)
 	iio_triggered_buffer_cleanup(
 				cdata->indio_dev[ST_MASK_ID_SIGN_MOTION]);
 	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_ACCEL]);
+	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_ACCEL_WK]);
 	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_GYRO]);
+	iio_triggered_buffer_cleanup(cdata->indio_dev[ST_MASK_ID_GYRO_WK]);
 }
 
 MODULE_AUTHOR("Denis Ciocca <denis.ciocca@st.com>");

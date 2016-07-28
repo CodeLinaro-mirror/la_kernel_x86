@@ -103,8 +103,9 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 	dev_dbg(cdata->dev, "lsm6ds3h_irq_management src_dig_func=%x\n", src_dig_func);
 
 	if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) &
-			(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_GYRO) |
-						BIT(ST_MASK_ID_EXT0))) {
+			(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_ACCEL_WK) |
+				BIT(ST_MASK_ID_GYRO) | BIT(ST_MASK_ID_GYRO_WK) |
+				BIT(ST_MASK_ID_EXT0))) {
 		err = cdata->tf->read(cdata, ST_LSM6DS3H_ACCEL_DATA_AVL_ADDR,
 						1, &src_accel_gyro, true);
 		if (err < 0)
@@ -129,7 +130,7 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 			if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) &
-							BIT(ST_MASK_ID_ACCEL)) {
+					(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_ACCEL_WK))) {
 				cdata->nofifo_decimation[ST_MASK_ID_ACCEL].num_samples++;
 
 				if ((cdata->nofifo_decimation[ST_MASK_ID_ACCEL].num_samples %
@@ -139,7 +140,10 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 				} else
 					push = false;
 
-				lsm6ds3h_read_output_data(cdata, ST_MASK_ID_ACCEL, push);
+				if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) & BIT(ST_MASK_ID_ACCEL))
+					lsm6ds3h_read_output_data(cdata, ST_MASK_ID_ACCEL, push);
+				if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) & BIT(ST_MASK_ID_ACCEL_WK))
+					lsm6ds3h_read_output_data(cdata, ST_MASK_ID_ACCEL_WK, push);
 			} else {
 				if (force_read_accel)
 					lsm6ds3h_read_output_data(cdata, ST_MASK_ID_ACCEL, false);
@@ -150,6 +154,8 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 		if (src_accel_gyro & ST_LSM6DS3H_GYRO_DATA_AVL) {
 			if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) & BIT(ST_MASK_ID_GYRO))
 				lsm6ds3h_read_output_data(cdata, ST_MASK_ID_GYRO, true);
+			if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) & BIT(ST_MASK_ID_GYRO_WK))
+				lsm6ds3h_read_output_data(cdata, ST_MASK_ID_GYRO_WK, true);
 		}
 	}
 
