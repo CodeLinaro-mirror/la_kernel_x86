@@ -20,12 +20,12 @@
 
 #define LSM6DS3H_DEV_NAME			"lsm6ds3h"
 #define ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE		6
-#define ST_INDIO_DEV_ACCEL				0
-#define ST_INDIO_DEV_GYRO				1
 
 enum st_mask_id {
 	ST_MASK_ID_ACCEL = 0,
+	ST_MASK_ID_ACCEL_WK,
 	ST_MASK_ID_GYRO,
+	ST_MASK_ID_GYRO_WK,
 	ST_MASK_ID_SIGN_MOTION,
 	ST_MASK_ID_STEP_COUNTER,
 	ST_MASK_ID_STEP_DETECTOR,
@@ -60,12 +60,16 @@ enum st_mask_id {
 #ifndef CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP
 #define ST_LSM6DS3H_WAKE_UP_SENSORS	(BIT(ST_MASK_ID_SIGN_MOTION) | \
 					BIT(ST_MASK_ID_TILT) | \
-					BIT(ST_MASK_ID_WRIST_TILT))
+					BIT(ST_MASK_ID_WRIST_TILT) | \
+					BIT(ST_MASK_ID_ACCEL_WK) | \
+					BIT(ST_MASK_ID_GYRO_WK))
 #else /* CONFIG_ST_LSM6DS3H_IIO_SENSORS_WAKEUP */
 #define ST_LSM6DS3H_WAKE_UP_SENSORS	(BIT(ST_MASK_ID_SIGN_MOTION) | \
 					BIT(ST_MASK_ID_TILT) | \
 					BIT(ST_MASK_ID_ACCEL) | \
+					BIT(ST_MASK_ID_ACCEL_WK) | \
 					BIT(ST_MASK_ID_GYRO) | \
+					BIT(ST_MASK_ID_GYRO_WK) | \
 					BIT(ST_MASK_ID_STEP_COUNTER) | \
 					BIT(ST_MASK_ID_STEP_DETECTOR) | \
 					BIT(ST_MASK_ID_EXT0) | \
@@ -231,7 +235,7 @@ struct lsm6ds3h_data {
 	u16 sensors_enabled;
 	u16 sensors_use_fifo;
 
-	int accel_odr_dependency[3];
+	int accel_odr_dependency[4];
 
 	bool accel_on;
 	bool magn_on;
