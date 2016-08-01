@@ -387,8 +387,8 @@ void ion_page_pool_free_immediate(struct ion_page_pool *, struct page *);
 
 #ifdef CONFIG_ION_POOL_CACHE_POLICY
 static inline void ion_page_pool_alloc_set_cache_policy
-                               (struct ion_page_pool *pool,
-                               struct page *page){
+				(struct ion_page_pool *pool,
+				struct page *page){
 	void *va = page_address(page);
 
 	if (va)
@@ -396,22 +396,22 @@ static inline void ion_page_pool_alloc_set_cache_policy
 }
 
 static inline void ion_page_pool_free_set_cache_policy
-	                               (struct ion_page_pool *pool,
-	                               struct page *page){
+				(struct ion_page_pool *pool,
+				struct page *page){
 	void *va = page_address(page);
 
 	if (va)
-	set_memory_wb((unsigned long)va, 1 << pool->order);
+		set_memory_wb((unsigned long)va, 1 << pool->order);
 
 }
 #else
 static inline void ion_page_pool_alloc_set_cache_policy
-                               (struct ion_page_pool *pool,
-                               struct page *page){ }
+				(struct ion_page_pool *pool,
+				struct page *page){ }
 
 static inline void ion_page_pool_free_set_cache_policy
-                               (struct ion_page_pool *pool,
-                               struct page *page){ }
+				(struct ion_page_pool *pool,
+				struct page *page){ }
 #endif
 
 

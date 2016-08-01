@@ -2960,7 +2960,7 @@ static int __extent_writepage(struct page *page, struct writeback_control *wbc,
 	pg_offset = i_size & (PAGE_CACHE_SIZE - 1);
 	if (page->index > end_index ||
 	   (page->index == end_index && !pg_offset)) {
-		page->mapping->a_ops->invalidatepage(page, 0);
+		page->mapping->a_ops->invalidatepage(page, 0, PAGE_CACHE_SIZE);
 		unlock_page(page);
 		return 0;
 	}
@@ -4080,8 +4080,11 @@ int extent_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 		}
 		ret = fiemap_fill_next_extent(fieinfo, em_start, disko,
 					      em_len, flags);
-		if (ret)
+		if (ret) {
+			if (ret == 1)
+				ret = 0;
 			goto out_free;
+		}
 	}
 out_free:
 	free_extent_map(em);

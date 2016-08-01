@@ -60,4 +60,3 @@ obj-$(CONFIG_LATTICE_ECP3_CONFIG)	+= lattice-ecp3-config.o
 obj-$(CONFIG_SRAM)		+= sram.o
 obj-$(CONFIG_BRIGHTNESS_ISL97698)	+= isl97698.o
 obj-$(CONFIG_UID_CPUTIME) += uid_cputime.o
-
