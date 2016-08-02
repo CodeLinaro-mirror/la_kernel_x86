@@ -1486,7 +1486,7 @@ static int lsm6ds3h_enable_digital_func(struct lsm6ds3h_data *cdata,
 	if (enable) {
 		if (cdata->enable_digfunc_mask == 0) {
 			err = lsm6ds3h_enable_accel(cdata,
-						ST_MASK_ID_DIGITAL_FUNC, 26);
+						ST_MASK_ID_DIGITAL_FUNC, 104);
 			if (err < 0)
 				return err;
 
