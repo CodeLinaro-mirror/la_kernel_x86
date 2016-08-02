@@ -2609,6 +2609,16 @@ static int bq25898_get_property(struct power_supply *psy,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
+		ret = bq25898_get_prop_online(chip);
+		if (ret < 0)
+			goto error;
+
+		/* USB must be connected for the temperature to be measured */
+		if (ret == 0) {
+			dev_dbg(&chip->client->dev, "%s temperature:(not available)", __func__);
+			ret = -ENODATA;
+			goto error;
+		}
 		ret = bq25898_get_prop_temp(chip, &val->intval);
 		if (ret < 0)
 			goto error;
