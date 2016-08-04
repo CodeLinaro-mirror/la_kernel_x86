@@ -38,8 +38,8 @@
 #define TMD26723_INT		IRQ_EINT20
 
 #define TMD_STARTUP_DELAY		5 /* ms */
-#define TMD26723_PS_DETECTION_THRESHOLD		670
-#define TMD26723_PS_HSYTERESIS_THRESHOLD	650
+#define TMD26723_PS_DETECTION_THRESHOLD		0x100
+#define TMD26723_PS_HSYTERESIS_THRESHOLD	0x100
 
 /*
  * Defines
@@ -71,13 +71,13 @@
 #define TMD_CMD_CLEAR		0x00
 #define SET_MAX_THRESHOLD	1023
 #define PTIME_REG_VALUE		0xff
-#define WTIME_REG_VALUE		0xB6
-#define PPCOUNT_REG_VALUE	0x01
+#define WTIME_REG_VALUE		0xDB
+#define PPCOUNT_REG_VALUE	0x04
 #define CONFIG_REG_VALUE	0x00
-#define CONTROL_REG_VALUE	0x30
+#define CONTROL_REG_VALUE	0x5c
 #define PERS_REG_VALUE		0x30
 #define DISABLE_REG_VALUE	0x00
-#define ENABLE_REG_VALUE	0x25
+#define ENABLE_REG_VALUE	0x2d
 #define PROXIMITY_INTERRUPT	0X20
 /*
  * Structs
@@ -261,6 +261,7 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 		return data->ps_data;
 	}
 
+	pr_info("%s:data->pilt = 0x%x.data->piht = 0x%x\n", __func__, data->pilt, data->piht);
 	if ((data->ps_data > data->pilt) && (data->ps_data >= data->piht)) {
 		/* far-to-near detected */
 		data->ps_detection = 1;
@@ -475,14 +476,10 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 				dev_err(&client->dev,"%s: TMD26723 set TMD26723_CONTROL_REG is faild\n", __func__);
 				return ret;
 			}
-			tmd26723_set_register(client, TMD26723_PILTL_REG, data->ps_hysteresis_threshold);
-			if(ret < 0) {
-				dev_err(&client->dev,"%s: TMD26723 set TMD26723_PILTL_REG is faild\n", __func__);
-				return ret;
-			}
-			tmd26723_set_register(client, TMD26723_PIHTL_REG,  SET_MAX_THRESHOLD);
-			if(ret < 0) {
-				dev_err(&client->dev,"%s: TMD26723 set TMD26723_PIHTL_REG is faild\n", __func__);
+
+			ret = tmd26723_set_register(client, TMD26723_WTIME_REG,   WTIME_REG_VALUE);
+			if (ret < 0) {
+				dev_err(&client->dev, "%s TMD26723 set TMD26723_WTIME_REG is faild\n", __func__);
 				return ret;
 			}
 			data->ps_threshold = TMD26723_PS_DETECTION_THRESHOLD;
