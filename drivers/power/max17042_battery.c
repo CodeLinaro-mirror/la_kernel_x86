@@ -105,7 +105,7 @@
 #define FG_MODEL_LOCK2		0X0000
 
 #define dQ_ACC_DIV_MAX17042	0x4
-#define dQ_ACC_DIV_MAX17050	0x16
+#define dQ_ACC_DIV_MAX17050	0x10
 #define dP_ACC_100	0x1900
 #define dP_ACC_200	0x3200
 #define dP_ACC_MAX17050		0x0c80
@@ -1473,7 +1473,7 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 		dp_acc = dP_ACC_200;
 	}
 
-	dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+	dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap * fg_conf_data->rsense,
 			chip->model_algo_factor) / dq_acc_div;
 	max17042_write_verify_reg(chip->client, MAX17042_dQacc, dq_acc);
 	max17042_write_verify_reg(chip->client, MAX17042_dPacc, dp_acc);
@@ -1482,11 +1482,11 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 			fg_conf_data->full_cap
 			* fg_conf_data->rsense);
 	max17042_write_reg(chip->client, MAX17042_DesignCap,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->design_cap,
 			chip->model_algo_factor)
 			* fg_conf_data->rsense);
 	max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_capnom,
 			chip->model_algo_factor)
 			* fg_conf_data->rsense);
 	/* Update SOC register with new SOC */
