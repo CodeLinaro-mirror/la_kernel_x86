@@ -390,6 +390,12 @@ static void init_tgain_toff(struct max17042_platform_data *pdata)
 		INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG)) {
 		pdata->tgain = NTC_10K_MVN_TGAIN;
 		pdata->toff = NTC_10K_MVN_TOFF;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG)) {
+		pdata->tgain = NTC_10K_NCP03XH_TGAIN;
+		pdata->toff = NTC_10K_NCP03XH_TOFF;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
 		INTEL_MID_BOARD(1, TABLET, MRFL) ||
 		INTEL_MID_BOARD(1, PHONE, MOFD) ||
