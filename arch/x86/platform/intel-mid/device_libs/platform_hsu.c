@@ -804,13 +804,15 @@ static void intel_mid_gps_hsu_suspend(int port, struct device *dev,
 				      irq_handler_t wake_isr)
 {
 	intel_mid_hsu_suspend(port, dev, wake_isr);
-	gpio_set_value(gps_mcu_req_pin, 0);
+	if (gpio_is_valid(gps_mcu_req_pin))
+		gpio_set_value(gps_mcu_req_pin, 0);
 }
 
 static void intel_mid_gps_hsu_resume(int port, struct device *dev)
 {
 	intel_mid_hsu_resume(port, dev);
-	gpio_set_value(gps_mcu_req_pin, 1);
+	if (gpio_is_valid(gps_mcu_req_pin))
+		gpio_set_value(gps_mcu_req_pin, 1);
 }
 
 void intel_mid_hsu_switch(int port)
