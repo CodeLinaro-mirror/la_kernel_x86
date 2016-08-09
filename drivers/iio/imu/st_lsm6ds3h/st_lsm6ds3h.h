@@ -44,6 +44,11 @@ enum st_mask_id {
 /* Full sensor number of lsm6ds3h used */
 #define ST_INDIO_FULL_DEV_NUM			(ST_MASK_ID_TAP_TAP+1)
 
+#define ST_INDIO_DEV_AG_MASK		((1 << ST_MASK_ID_ACCEL) | \
+					(1 << ST_MASK_ID_ACCEL_WK) | \
+					(1 << ST_MASK_ID_GYRO) | \
+					(1 << ST_MASK_ID_GYRO_WK))
+
 #define ST_LSM6DS3H_TX_MAX_LENGTH		12
 #define ST_LSM6DS3H_RX_MAX_LENGTH		4097
 
