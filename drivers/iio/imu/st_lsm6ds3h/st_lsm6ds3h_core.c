@@ -312,6 +312,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 
 #define RETRY_COUNTER_LIMITATION 10
 
+static bool stay_wake;
 static int accel_cal_data[3], gyro_cal_data[3];
 static struct st_lsm6ds3h_selftest_table {
 	char *string_mode;
@@ -1816,6 +1817,12 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 		if (err < 0)
 			return err;
 
+		if (enable)
+			stay_wake = true;
+		/* both A_WK and G_WK disabled, the sensor can be suspended */
+		else if (!(sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO_WK)))
+			stay_wake = false;
+
 		break;
 	case ST_MASK_ID_GYRO:
 		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO_WK)) {
@@ -1845,6 +1852,12 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			en_odr : dis_odr, true);
 		if (err < 0)
 			return err;
+
+		if (enable)
+			stay_wake = true;
+		/* both A_WK and G_WK disabled, the sensor can be suspended */
+		else if (!(sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_ACCEL_WK)))
+			stay_wake = false;
 
 		break;
 	case ST_MASK_ID_SIGN_MOTION:
@@ -4040,12 +4053,15 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 		cdata->sensors_enabled);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
+		if (((1 << i) & ST_INDIO_DEV_AG_MASK) && stay_wake)
+			continue;
+
 		if ((1 << i) & ST_LSM6DS3H_WAKE_UP_SENSORS)
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);
 
-		err = st_lsm6ds3h_set_enable(sdata, false);
+		err = st_lsm6ds3h_set_drdy_irq(sdata, false);
 		if (err < 0)
 			return err;
 	}
@@ -4070,13 +4086,16 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 		cdata->sensors_enabled);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
+		if (((1 << i) & ST_INDIO_DEV_AG_MASK) && stay_wake)
+			continue;
+
 		if ((1 << i) & ST_LSM6DS3H_WAKE_UP_SENSORS)
 			continue;
 
 		sdata = iio_priv(cdata->indio_dev[i]);
 
 		if (BIT(sdata->sindex) & cdata->sensors_enabled) {
-			err = st_lsm6ds3h_set_enable(sdata, true);
+			err = st_lsm6ds3h_set_drdy_irq(sdata, true);
 			if (err < 0)
 				goto out;
 		}
