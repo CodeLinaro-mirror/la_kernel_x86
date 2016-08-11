@@ -82,6 +82,9 @@
 /*
  * Structs
  */
+struct tmd26723_settings {
+	int proximity_odr;
+};
 
 struct tmd26723_data {
 	struct i2c_client *client;
@@ -90,7 +93,7 @@ struct tmd26723_data {
 	struct delayed_work	dwork;	/* for PS interrupt */
 	struct input_dev *input_dev_ps;
 	struct proximity_sensor_platform_data  *pdata;
-
+	struct tmd26723_settings tmd26723_settings;
 	unsigned int enable;
 	unsigned int ptime;
 	unsigned int wtime;
@@ -658,10 +661,40 @@ static ssize_t tmd26723_reg_set(struct device *dev,
 
 static DEVICE_ATTR(reg, S_IRUGO, tmd26723_reg_show, tmd26723_reg_set);
 
+static ssize_t tmd26723_delay_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct tmd26723_data *data = i2c_get_clientdata(to_i2c_client(dev));
+
+	return sprintf(buf, "%d\n", data->tmd26723_settings.proximity_odr);
+}
+
+static ssize_t tmd26723_delay_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct tmd26723_data *data = i2c_get_clientdata(client);
+	unsigned int value;
+
+	if (kstrtouint(buf, 0, &value))
+		return -EINVAL;
+	if (!value)
+		return -EINVAL;
+
+	mutex_lock(&data->update_lock);
+	data->tmd26723_settings.proximity_odr = value;
+	mutex_unlock(&data->update_lock);
+
+	return len;
+}
+static DEVICE_ATTR(proximity_delay, S_IRUGO | S_IWUSR,
+		tmd26723_delay_show, tmd26723_delay_store);
+
 static struct attribute *tmd26723_attributes[] = {
 	&dev_attr_enable_proximity_sensor.attr,
 	&dev_attr_chip_id.attr,
 	&dev_attr_reg.attr,
+	&dev_attr_proximity_delay.attr,
 	NULL
 };
 
