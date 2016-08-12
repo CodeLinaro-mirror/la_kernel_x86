@@ -75,7 +75,9 @@ void __initdata *bq25898_platform_data(void *info)
 	if (INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
-		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG)) {
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SPL, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SPL, ENG)) {
 		bq25898_pdata.gpio_charger_int_n = get_gpio_by_name("charger_stat_n");
 		bq25898_pdata.is_pmic_notifier = 0;
 	} else {
