@@ -1094,7 +1094,10 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 	}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
-	if ((sdata->sindex == ST_MASK_ID_ACCEL) && (reg_value != 0xff)) {
+	if (((sdata->sindex == ST_MASK_ID_ACCEL)
+		|| (sdata->sindex == ST_MASK_ID_ACCEL_WK))
+		&& (reg_value != 0xff))
+	{
 		if (sdata->cdata->sensors_enabled & BIT(ST_MASK_ID_TAP_TAP)) {
 				reg_value = ST_LSM6DS3H_ODR_416HZ_VAL;
 		}
