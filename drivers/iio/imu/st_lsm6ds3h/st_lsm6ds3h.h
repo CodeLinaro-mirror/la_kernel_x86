@@ -222,6 +222,7 @@ struct lsm6ds3h_data {
 	unsigned int hw_odr[ST_INDIO_DEV_NUM + 1];
 	unsigned int v_odr[ST_INDIO_DEV_NUM + 1];
 	unsigned int trigger_odr;
+	unsigned int fifo_odr;
 
 	bool hwfifo_enabled[ST_INDIO_DEV_NUM + 1];
 	u8 hwfifo_decimator[ST_INDIO_DEV_NUM + 1];
