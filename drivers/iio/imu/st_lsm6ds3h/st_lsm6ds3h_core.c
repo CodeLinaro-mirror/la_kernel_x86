@@ -696,7 +696,10 @@ int lsm6ds3h_get_fifo_odr_value(struct lsm6ds3h_data *cdata)
 {
 	int i, fifo_odr = 0, odr_value = 0;
 
-	fifo_odr = MAX(cdata->v_odr[ST_MASK_ID_ACCEL], cdata->v_odr[ST_MASK_ID_GYRO]);
+	fifo_odr = cdata->fifo_odr;
+
+	if (fifo_odr <= 0)
+		return ST_LSM6DS3H_ODR_POWER_OFF_VAL;
 
 	for (i = 0; i < ST_LSM6DS3H_ODR_LIST_NUM; i++) {
 		if (st_lsm6ds3h_odr_table.odr_avl[i].hz == fifo_odr)
@@ -725,14 +728,14 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 		enable_fifo = false;
 		break;
 	case CONTINUOS:
-#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
-		fifo_odr = lsm6ds3h_get_fifo_odr_value(cdata);
-		if (fifo_odr < 0)
-			return -EINVAL;
-		reg_value = (ST_LSM6DS3H_FIFO_MODE_CONTINUOS | (fifo_odr << 3));
-#else
-		reg_value = ST_LSM6DS3H_FIFO_MODE_CONTINUOS | ST_LSM6DS3H_FIFO_ODR_MAX;
-#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+		if (cdata->sensors_enabled & BIT(ST_MASK_ID_TAP_TAP)) {
+			fifo_odr = lsm6ds3h_get_fifo_odr_value(cdata);
+			if (fifo_odr < 0)
+				return -EINVAL;
+			reg_value = (ST_LSM6DS3H_FIFO_MODE_CONTINUOS | (fifo_odr << 3));
+		} else {
+			reg_value = ST_LSM6DS3H_FIFO_MODE_CONTINUOS | ST_LSM6DS3H_FIFO_ODR_MAX;
+		}
 		enable_fifo = true;
 		break;
 	default:
@@ -1106,7 +1109,7 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 
 	if (sdata->cdata->sensors_use_fifo > 0) {
 		/* someone is using fifo */
-		if ((sdata->sindex == ST_MASK_ID_ACCEL) &&
+		if ((sdata->sindex == ST_MASK_ID_ACCEL) ||
 			(sdata->sindex == ST_MASK_ID_ACCEL_WK)) {
 			temp_v_odr[ST_MASK_ID_ACCEL] = odr;
 			temp_v_odr[ST_MASK_ID_GYRO] = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
@@ -1118,6 +1121,9 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			temp_hw_odr[ST_MASK_ID_GYRO] = odr;
 			temp_hw_odr[ST_MASK_ID_ACCEL] = sdata->cdata->hw_odr[ST_MASK_ID_ACCEL];
 		}
+
+		sdata->cdata->fifo_odr = MAX(temp_hw_odr[ST_MASK_ID_ACCEL], temp_hw_odr[ST_MASK_ID_GYRO]);
+
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 		temp_v_odr[ST_MASK_ID_EXT0] = sdata->cdata->v_odr[ST_MASK_ID_EXT0];
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
@@ -3659,6 +3665,7 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->accel_odr_dependency[3] = 0;
 
 	cdata->trigger_odr = 0;
+	cdata->fifo_odr = 0;
 
 	cdata->fifo_data = kmalloc(ST_LSM6DS3H_MAX_FIFO_SIZE *
 						sizeof(u8), GFP_KERNEL);
