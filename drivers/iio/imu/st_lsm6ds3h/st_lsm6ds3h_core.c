@@ -2543,7 +2543,6 @@ static ssize_t st_lsm6ds3h_sysfs_start_selftest_status(struct device *dev,
 		break;
 	default:
 		mutex_unlock(&sdata->cdata->odr_lock);
-		mutex_unlock(&indio_dev->mlock);
 		return -EINVAL;
 	}
 
@@ -3445,18 +3444,6 @@ static struct attribute *st_lsm6ds3h_gyro_attributes[] = {
 	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
 	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
 	&iio_dev_attr_sampling_frequency.dev_attr.attr,
-	&iio_dev_attr_hwfifo_enabled.dev_attr.attr,
-	&iio_dev_attr_hwfifo_watermark.dev_attr.attr,
-	&iio_dev_attr_hwfifo_watermark_min.dev_attr.attr,
-	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
-	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
-	NULL,
-};
-
-static struct attribute *st_lsm6ds3h_gyro_wk_attributes[] = {
-	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
-	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
-	&iio_dev_attr_sampling_frequency.dev_attr.attr,
 	&iio_dev_attr_selftest_available.dev_attr.attr,
 	&iio_dev_attr_selftest.dev_attr.attr,
 	&iio_dev_attr_hwfifo_enabled.dev_attr.attr,
@@ -3465,6 +3452,18 @@ static struct attribute *st_lsm6ds3h_gyro_wk_attributes[] = {
 	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
 	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
 	&iio_dev_attr_do_calibrate.dev_attr.attr,
+	NULL,
+};
+
+static struct attribute *st_lsm6ds3h_gyro_wk_attributes[] = {
+	&iio_dev_attr_sampling_frequency_available.dev_attr.attr,
+	&iio_dev_attr_in_anglvel_scale_available.dev_attr.attr,
+	&iio_dev_attr_sampling_frequency.dev_attr.attr,
+	&iio_dev_attr_hwfifo_enabled.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_min.dev_attr.attr,
+	&iio_dev_attr_hwfifo_watermark_max.dev_attr.attr,
+	&iio_dev_attr_hwfifo_flush.dev_attr.attr,
 	NULL,
 };
 
