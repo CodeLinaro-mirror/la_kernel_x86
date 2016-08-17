@@ -985,13 +985,18 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, int mode)
 	case DRM_MODE_DPMS_STANDBY:
 		break;
 	case DRM_MODE_DPMS_SUSPEND:
-		if (dsi_config->dsi_hw_context.panel_on == 1) {
-			if (p_funcs && p_funcs->enter_low_power) {
-				mdfld_dsi_dsr_forbid_locked(dsi_config);
-				p_funcs->enter_low_power(dsi_config);
-				mdfld_dsi_dsr_allow_locked(dsi_config);
+		if (dsi_config->dsi_hw_context.panel_on == 0) {
+			if (__dbi_panel_power_on(dsi_config, p_funcs)) {
+				DRM_ERROR("Faild to turn on panel\n");
+				goto set_power_err;
 			}
+			dsi_config->dsi_hw_context.panel_on = 1;
+		}
 
+		if (p_funcs && p_funcs->enter_low_power) {
+			mdfld_dsi_dsr_forbid_locked(dsi_config);
+			p_funcs->enter_low_power(dsi_config);
+			mdfld_dsi_dsr_allow_locked(dsi_config);
 			dsi_config->dsi_hw_context.panel_low_power = 1;
 		}
 		break;
