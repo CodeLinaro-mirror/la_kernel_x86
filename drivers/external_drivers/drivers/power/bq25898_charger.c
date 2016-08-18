@@ -88,7 +88,7 @@
 /*
  * Bits 0 to 5 to set the IINLIM (Input Current Limit)
  * IINLIM
- * Default: b011100 (1500mA), offset of 100mA
+ * Default: b001000 (500mA), offset of 100mA
  */
 #define INPUT_SRC_CUR_IINLIM5		(1 << 5)	/* 1600mA */
 #define INPUT_SRC_CUR_IINLIM4		(1 << 4)	/* 800mA */
@@ -116,15 +116,15 @@
 #define ADC_CONV_RATE				(1 << 6)
 /* BOOST_FREQ -- 0: 1.5Mhz 1: 500kHz*/
 #define BOOST_FREQ				(1 << 5)
-/* ICD_EN -- 0: ICD Disabled, 1: ICD Enabled */
-#define ICD_EN					(1 << 4)
+/* ICO_EN -- 0: ICO Disabled, 1: ICO Enabled */
+#define ICO_EN					(1 << 4)
 /* HVDCP_EN -- 0: HVDCP_EN Disabled, 1: HVDCP_EN Enabled */
 #define HVDCP_EN				(1 << 3)
 /* MAXC_EN -- 0: MAXC_EN Disabled, 1: MAXC_EN Enabled */
 #define MAXC_EN					(1 << 2)
-/* FORCE_DPM -- 0: Not in PSEL detection, 1: Force PSEL detection */
+/* FORCE_DPDM -- 0: Not in PSEL detection, 1: Force PSEL detection */
 #define ADC_FORCE_DPDM				(1 << 1)
-/* AUTO_DPM_EN -- 0: Disable PSEL detection, 1: Enable PSEL detection */
+/* AUTO_DPDM_EN -- 0: Disable PSEL detection, 1: Enable PSEL detection */
 #define ADC_AUTO_DPDM_ENABLE			(1 << 0)
 
 /*
@@ -134,7 +134,7 @@
 /* VOK_OTG_EN -- 0: VOK_OTG_EN disabled, 1: VOK_OTG_EN enabled) */
 #define VOK_OTG_EN				(1 << 7)
 /* WD_RST -- 0: Normal, 1: reset (back to 0 after timer reset) */
-#define WDT_TIMER_RESET				(1 << 6)
+#define WD_TIMER_RESET				(1 << 6)
 /* OTG_CONFIG -- 0: OTG_CONFIG disabled,1: OTG_CONFIG enabled */
 #define OTG_CONFIG				(1 << 5)
 /* CHG_CONFIG -- 0: Charge disable,1: Charge enable */
@@ -169,7 +169,7 @@
 #define BQ25898_CUR_LIMIT_CTRL_REG		0x05
 /*
  * IPRECHG Pre charge current limit
- * Default: b0001, 64mA offset
+ * Default: b0001 (128mA), 64mA offset
  */
 #define PRECHARGE_CUR_LIMIT3			(1 << 7)	/* 512mA */
 #define PRECHARGE_CUR_LIMIT2			(1 << 6)	/* 256mA */
@@ -177,7 +177,7 @@
 #define PRECHARGE_CUR_LIMIT0			(1 << 4)	/* 64mA  */
 /*
  * ITERM  Termination current limit
- * Default: b0011, offset 64mA
+ * Default: b0011 (256mA), 64mA offset
  */
 #define TERM_CUR_LIMIT3				(1 << 3)	/* 512mA */
 #define TERM_CUR_LIMIT2				(1 << 2)	/* 256mA */
@@ -191,7 +191,7 @@
 #define BQ25898_VLIM_CHRG_CTRL_REG		0x06
 /*
  * VREG Charge Voltage Limit
- * Default: b10000, 3.840V offset
+ * Default: b010111, 3.840V offset, default: 4.208V
  */
 #define CHARGE_VOLT_LIMIT5			(1 << 7)	/* 512mV */
 #define CHARGE_VOLT_LIMIT4			(1 << 6)	/* 256mV */
@@ -214,15 +214,15 @@
 #define BQ25898_TERM_WDT_SFTY_CTRL_REG		0x07
 /* */
 #define CHARGE_TERM_ENABLE			(1 << 7)	/* 0: disable, 1: enable */
-#define TERM_INDICATOR_THRESHOLD		(1 << 6)	/* 0: enable STAT pin, 1: disable STAT pin */
+#define STAT_PIN_ENABLE				(1 << 6)	/* 0: enable STAT pin, 1: disable STAT pin */
 /* WATCHDOG */
 #define I2C_WDT_TIMER_SETTINGS1			(1 << 5)	/* b00 Disable Timer, b01:40s, b10:80s*/
 #define I2C_WDT_TIMER_SETTINGS0			(1 << 4)	/* b11: 160s, default b01 */
 /* EN_TIMER Enable safety timer*/
 #define CHARGING_SAFETY_TIMER_ENABLE		(1 << 3)	/* 0: disable, 1: enable */
 /* CHG_TIMER Fast charge safety timer*/
-#define CHARGING_SAFETY_TIMER_ENABLE1		(1 << 2)	/* b00: 5hrs, b01:8Hrs, b10: 12Hrs */
-#define CHARGING_SAFETY_TIMER_ENABLE0		(1 << 1)	/* b11: 20Hrs, default b10 */
+#define CHARGING_SAFETY_TIMER_SETTING1		(1 << 2)	/* b00: 5hrs, b01:8Hrs, b10: 12Hrs */
+#define CHARGING_SAFETY_TIMER_SETTING0		(1 << 1)	/* b11: 20Hrs, default b10 */
 /* JEITA_ISET low temp setting */
 #define JEITA_ISET				(1 << 0)	/* 0: 50%, 1: 20% */
 
@@ -246,8 +246,8 @@
  *  safety timer control register (REG09)
  */
 #define BQ25898_SAFETY_TIMER_CTRL_REG		0x09
-/* FORCE_ICD -- 0: do not force input detection , 1: force input detection algo*/
-#define FORCE_ICD				(1 << 7)
+/* FORCE_ICO -- 0: do not force input current optimizer , 1: force input current optimizer*/
+#define FORCE_ICO				(1 << 7)
 /* TMR2X_EN -- 0: Safety timer not slowed by 2X, 1: slowed by 2X*/
 #define SAFETY_TIMER_SLOW_ENABLE		(1 << 6)
 /* BATFET_Disable -- 0: Allow Q4 turn on, 1: turn off Q4*/
@@ -274,8 +274,8 @@
 #define BOOSTV2					(1 << 6)	/* 256mV */
 #define BOOSTV1					(1 << 5)	/* 128mV */
 #define BOOSTV0					(1 << 4)	/* 64mV	 */
-/* PMF_OTG_DIS */
-#define PMF_OTG_DIS				(1 << 3)	/* 0: enable , 1: disable */
+/* PFM_OTG_DIS */
+#define PFM_OTG_DIS				(1 << 3)	/* 0: enable , 1: disable */
 /* BOOST_LIM */
 #define BOOST_LIM2				(1 << 2)	/* b000: 0.5A b001: 0.8A b010: 1.0A   */
 #define BOOST_LIM1				(1 << 1)	/* b011: 1.2A b100: 1.5A b101 1.8A  */
@@ -306,7 +306,7 @@
  */
 #define BQ25898_FAULT_REG			0x0C
 /* WATCHDOG_FAULT */
-#define WATCHDOG_FAULT				(1 << 7)	/* 0: normal, 1: WDT timer expiration */
+#define WATCHDOG_FAULT				(1 << 7)	/* 0: normal, 1: WD timer expiration */
 /* BOOST FAULT */
 #define BOOST_FAULT					(1 << 6)
 /* CHRG_FAULT */
@@ -315,9 +315,9 @@
 /* BAT_FAULT */
 #define BAT_FAULT				(1 << 3)	/* 0: normal, 1: BATOVP */
 /* NTC_FAULT */
-#define NTC_FAULT2				(1 << 2)	/* Cold/Hot : b000: normal b001: TS Cold b010:TS Hot */
-#define NTC_FAULT1				(1 << 1)	/* JEITA: b000:normal  b010:warm b011:cool b101: cold*/
-#define NTC_FAULT0				(1 << 0)	/* b110: Hot */
+#define NTC_FAULT2				(1 << 2)	/* Boost Mode: b000: normal,  b101: TS Cold,  b110:TS Hot */
+#define NTC_FAULT1				(1 << 1)	/* Buck Mode: b000: normal, b010: TS Warm, b011: TS Cool, b101: TS Cold*/
+#define NTC_FAULT0				(1 << 0)	/* b110: TS Hot */
 
 /*
  * Voltage IN control register (REG0D),
@@ -359,32 +359,32 @@
  */
 #define BQ25898_SYS_VOLTAGE_REG			0x0F
 /* SYSV
- * ADDC Conversion of system Voltage
+ * ADC Conversion of system Voltage
  * Default: b0000000, offsert 2.304V
  */
-#define ADDC_CONV_SYSV6				(1 << 6)	/* 1280mV */
-#define ADDC_CONV_SYSV5				(1 << 5)	/* 640mV */
-#define ADDC_CONV_SYSV4				(1 << 4)	/* 320mV */
-#define ADDC_CONV_SYSV3				(1 << 3)	/* 160mV */
-#define ADDC_CONV_SYSV2				(1 << 2)	/* 80mV */
-#define ADDC_CONV_SYSV1				(1 << 1)	/* 40mV */
-#define ADDC_CONV_SYSV0				(1 << 0)	/* 20mV */
+#define ADC_CONV_SYSV6				(1 << 6)	/* 1280mV */
+#define ADC_CONV_SYSV5				(1 << 5)	/* 640mV */
+#define ADC_CONV_SYSV4				(1 << 4)	/* 320mV */
+#define ADC_CONV_SYSV3				(1 << 3)	/* 160mV */
+#define ADC_CONV_SYSV2				(1 << 2)	/* 80mV */
+#define ADC_CONV_SYSV1				(1 << 1)	/* 40mV */
+#define ADC_CONV_SYSV0				(1 << 0)	/* 20mV */
 
 /*
  * ADC Conversion of TS Voltage (REG10), readonly
  * TSPCPT
  */
-#define BQ25898_ADC_TSPCPT_REG			0x10
-/* TSPCPT  Adc Conversion of TS voltage
+#define BQ25898_ADC_TSPCT_REG			0x10
+/* TSPCT  Adc Conversion of TS voltage
  * offset 21%, default b0000000
  */
-#define TSPCPT6					(1 << 6)	/* 29.76% */
-#define TSPCPT5					(1 << 5)	/* 14.88% */
-#define TSPCPT4					(1 << 4)	/* 7.44% */
-#define TSPCPT3					(1 << 3)	/* 3.72% */
-#define TSPCPT2					(1 << 2)	/* 1.86% */
-#define TSPCPT1					(1 << 1)	/* 0.93% */
-#define TSPCPT0					(1 << 0)	/* 0.465% */
+#define TSPCT6					(1 << 6)	/* 29.76% */
+#define TSPCT5					(1 << 5)	/* 14.88% */
+#define TSPCT4					(1 << 4)	/* 7.44% */
+#define TSPCT3					(1 << 3)	/* 3.72% */
+#define TSPCT2					(1 << 2)	/* 1.86% */
+#define TSPCT1					(1 << 1)	/* 0.93% */
+#define TSPCT0					(1 << 0)	/* 0.465% */
 
 /*
  * VBUS ADC conversion register (REG11), readonly
@@ -442,13 +442,13 @@
 #define BQ25898_DEVREG_CTRL_REG			0x14
 /* REG_RST Register reset -- 0: keep current register setting, 1: reset to default */
 #define REG_RST					(1 << 7)
-/* ICD_OPTIMIZED -- 0: detection in progress or disabled, 1: Maximum input current detected */
-#define ICD_OPTIMIZED				(1 << 6)
-/* PN Device configuration, default:b001 */
+/* ICO_OPTIMIZED -- 0: optimization is in progress, 1: Maximum input current detected */
+#define ICO_OPTIMIZED				(1 << 6)
+/* PN Device configuration */
 #define PN2					(1 << 5)
 #define PN1					(1 << 4)
 #define PN0					(1 << 3)
-/* DEV_REV default:b00 */
+/* DEV_REV default:b01 */
 #define DEV_REV1				(1 << 1)
 #define DEV_REV0				(1 << 0)
 
@@ -698,7 +698,7 @@ static void bq25898_reg1_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 
 	if (val & INPUT_SRC_VOLTAGE_EN_12V)
-		seq_puts(seq, "12V enabled for maxcharge");
+		seq_puts(seq, "12V enabled for maxcharge\n");
 	else
 		seq_puts(seq, "12V disabled for maxcharge\n");
 
@@ -720,17 +720,17 @@ static void bq25898_reg2_to_human(struct seq_file *seq, u8 reg, u8 val)
 	if (val & ADC_CONV_RATE)
 		seq_puts(seq, "Start 1s Continuous conversion\n");
 	else
-		seq_puts(seq, "One short ADC conversion\n");
+		seq_puts(seq, "One shot ADC conversion\n");
 
 	if (val & BOOST_FREQ)
 		seq_puts(seq, "BOOST_FREQ 500kHz\n");
 	else
 		seq_puts(seq, "BOOST_FREQ 1.5Mhz\n");
 
-	if (val & ICD_EN)
-		seq_puts(seq, "ICD_EN enabled\n");
+	if (val & ICO_EN)
+		seq_puts(seq, "ICO_EN enabled\n");
 	else
-		seq_puts(seq, "ICD_EN disabled\n");
+		seq_puts(seq, "ICO_EN disabled\n");
 
 	if (val & HVDCP_EN)
 		seq_puts(seq, "HVDCP_EN enabled\n");
@@ -743,14 +743,14 @@ static void bq25898_reg2_to_human(struct seq_file *seq, u8 reg, u8 val)
 		seq_puts(seq, "MAXC_EN disabled\n");
 
 	if (val & ADC_FORCE_DPDM)
-		seq_puts(seq, "Force PSEL detection\n");
+		seq_puts(seq, "Force D+/D- detection\n");
 	else
-		seq_puts(seq, "Not in PSEL detection\n");
+		seq_puts(seq, "Not in D+/D- or PSEL detection\n");
 
 	if (val & ADC_AUTO_DPDM_ENABLE)
-		seq_puts(seq, "Enable PSEL detection\n");
+		seq_puts(seq, "Enable auto D+/D- or PSEL detection\n");
 	else
-		seq_puts(seq, "Disable PSEL detection\n");
+		seq_puts(seq, "Disable auto D+/D- or PSEL detection\n");
 }
 
 static void bq25898_reg3_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -762,10 +762,10 @@ static void bq25898_reg3_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else
 		seq_puts(seq, "VOK_OTG_EN disabled\n");
 
-	if (val & WDT_TIMER_RESET)
-		seq_puts(seq, "WDT_RST Reset\n");
+	if (val & WD_TIMER_RESET)
+		seq_puts(seq, "WD_RST Reset\n");
 	else
-		seq_puts(seq, "WDT_RST Normal\n");
+		seq_puts(seq, "WD_RST Normal\n");
 
 	if (val & OTG_CONFIG)
 		seq_puts(seq, "OTG_CONFIG enabled\n");
@@ -868,9 +868,9 @@ static void bq25898_reg6_to_human(struct seq_file *seq, u8 reg, u8 val)
 		seq_puts(seq, "Precharge2Fast threshold 2.8V\n");
 
 	if (val & BAT_RECHARGE_THRESHOLD)
-		seq_puts(seq, "Recharge threshold 200mV\n");
+		seq_printf(seq, "Recharge threshold VREG-200mV (%dmV)\n", res-200);
 	else
-		seq_puts(seq, "Recharge threshold 100mV\n");
+		seq_printf(seq, "Recharge threshold VREG-100mV (%dmV)\n", res-100);
 }
 
 static void bq25898_reg7_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -882,27 +882,32 @@ static void bq25898_reg7_to_human(struct seq_file *seq, u8 reg, u8 val)
 		seq_puts(seq, "Charge Term disabled\n");
 
 	if (!(val & I2C_WDT_TIMER_SETTINGS1) && !(val & I2C_WDT_TIMER_SETTINGS0))
-		seq_puts(seq, "WDT disabled\n");
+		seq_puts(seq, "WD timer disabled\n");
 	else if (!(val & I2C_WDT_TIMER_SETTINGS1) && (val & I2C_WDT_TIMER_SETTINGS0))
-		seq_puts(seq, "WDT timer 40s\n");
+		seq_puts(seq, "WD timer 40s\n");
 	else if ((val & I2C_WDT_TIMER_SETTINGS1) && !(val & I2C_WDT_TIMER_SETTINGS0))
-		seq_puts(seq, "WDT timer 80s\n");
+		seq_puts(seq, "WD timer 80s\n");
 	else if ((val & I2C_WDT_TIMER_SETTINGS1) && (val & I2C_WDT_TIMER_SETTINGS0))
-		seq_puts(seq, "WDT timer 160s\n");
+		seq_puts(seq, "WD timer 160s\n");
 
-	if (!(val & CHARGING_SAFETY_TIMER_ENABLE1) && !(val & CHARGING_SAFETY_TIMER_ENABLE0))
-		seq_puts(seq, "Charging safety timer 5hrs");
-	else if (!(val & CHARGING_SAFETY_TIMER_ENABLE1) && (val & CHARGING_SAFETY_TIMER_ENABLE0))
-		seq_puts(seq, "Charging safety timer 8hrs");
-	else if ((val & CHARGING_SAFETY_TIMER_ENABLE1) && !(val & CHARGING_SAFETY_TIMER_ENABLE0))
-		seq_puts(seq, "Charging safety timer 12hrs");
-	else if ((val & CHARGING_SAFETY_TIMER_ENABLE1) && (val & CHARGING_SAFETY_TIMER_ENABLE0))
-		seq_puts(seq, "Charging safety timer 20hrs");
+	if (val & CHARGING_SAFETY_TIMER_ENABLE)
+		seq_puts(seq, "Charging safety timer enabled\n");
+	else
+		seq_puts(seq, "Charging safety timer disabled\n");
+
+	if (!(val & CHARGING_SAFETY_TIMER_SETTING1) && !(val & CHARGING_SAFETY_TIMER_SETTING0))
+		seq_puts(seq, "Charging safety timer 5hrs\n");
+	else if (!(val & CHARGING_SAFETY_TIMER_SETTING1) && (val & CHARGING_SAFETY_TIMER_SETTING0))
+		seq_puts(seq, "Charging safety timer 8hrs\n");
+	else if ((val & CHARGING_SAFETY_TIMER_SETTING1) && !(val & CHARGING_SAFETY_TIMER_SETTING0))
+		seq_puts(seq, "Charging safety timer 12hrs\n");
+	else if ((val & CHARGING_SAFETY_TIMER_SETTING1) && (val & CHARGING_SAFETY_TIMER_SETTING0))
+		seq_puts(seq, "Charging safety timer 20hrs\n");
 
 	if (val & JEITA_ISET)
-		seq_printf(seq, "JEITA_ISET low temperature set to 20%%\n");
+		seq_printf(seq, "JEITA_ISET low temperature set to 20%% of ICHG\n");
 	else
-		seq_printf(seq, "JEITA_ISET low temperature set to 50%%\n");
+		seq_printf(seq, "JEITA_ISET low temperature set to 50%% of ICHG\n");
 
 }
 
@@ -944,10 +949,10 @@ static void bq25898_reg8_to_human(struct seq_file *seq, u8 reg, u8 val)
 static void bq25898_reg9_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 
-	if (val & FORCE_ICD)
-		seq_puts(seq, "FORCE_ICD input detection algo forced\n");
+	if (val & FORCE_ICO)
+		seq_puts(seq, "FORCE_ICO input current optimizer forced\n");
 	else
-		seq_puts(seq, "FORCE_ICD input detection alogo NOT forced\n");
+		seq_puts(seq, "FORCE_ICO input current optimizer NOT forced\n");
 
 	if (val & SAFETY_TIMER_SLOW_ENABLE)
 		seq_puts(seq, "Safety timer slowed x2\n");
@@ -962,7 +967,7 @@ static void bq25898_reg9_to_human(struct seq_file *seq, u8 reg, u8 val)
 	if (val & JEITA_VSET)
 		seq_puts(seq, "JEITA_VSET charge voltage set to VREG\n");
 	else
-		seq_puts(seq, "JEITA_VSET charge voltage set to VREG minus 200mV\n");
+		seq_puts(seq, "JEITA_VSET charge voltage set to VREG-200mV\n");
 
 	if (val & BATFET_DLY)
 		seq_puts(seq, "BATFET_DLY Turn off BATFET after 10s if BATFET_DISABLE set\n");
@@ -972,7 +977,7 @@ static void bq25898_reg9_to_human(struct seq_file *seq, u8 reg, u8 val)
 	if (val & BATFET_RST_EN)
 		seq_puts(seq, "BATFET_RST_EN is enabled\n");
 	else
-		seq_puts(seq, "BATFET_RST_EN_DLY is disabled\n");
+		seq_puts(seq, "BATFET_RST_EN is disabled\n");
 
 	if (val & PUMPX_UP)
 		seq_puts(seq, "PUMPX_UP pump express voltage up is enabled\n");
@@ -1000,10 +1005,10 @@ static void bq25898_rega_to_human(struct seq_file *seq, u8 reg, u8 val)
 
 	seq_printf(seq, "Boost Voltage %dmV\n", res);
 
-	if (val & PMF_OTG_DIS)
-		seq_puts(seq, "PMF_OTG_DIS disabled\n");
+	if (val & PFM_OTG_DIS)
+		seq_puts(seq, "PFM_OTG_DIS disabled\n");
 	else
-		seq_puts(seq, "PMF_OTG_DIS enabled\n");
+		seq_puts(seq, "PFM_OTG_DIS enabled\n");
 
 	seq_puts(seq, "BOOST_LIM ");
 	if (!(val & BOOST_LIM2) && !(val & BOOST_LIM1) && !(val & BOOST_LIM0))
@@ -1029,11 +1034,11 @@ static void bq25898_regb_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 	seq_puts(seq, "VBUS_STATUS ");
 	if (!(val & VBUS_STATUS2) && !(val & VBUS_STATUS1) && !(val & VBUS_STATUS0))
-		seq_puts(seq, "VBUS not input\n");
+		seq_puts(seq, "no input\n");
 	else if (!(val & VBUS_STATUS2) && !(val & VBUS_STATUS1) && (val & VBUS_STATUS0))
-		seq_puts(seq, "VBUS USB host SDP\n");
+		seq_puts(seq, "USB host SDP\n");
 	else if (!(val & VBUS_STATUS2) && (val & VBUS_STATUS1) && !(val & VBUS_STATUS0))
-		seq_puts(seq, "VBUS adapter 3.25A\n");
+		seq_puts(seq, "adapter 3.25A\n");
 
 
 	seq_puts(seq, "CHARGER_STATUS ");
@@ -1046,11 +1051,16 @@ static void bq25898_regb_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0))
 		seq_puts(seq, "Charge termination done\n");
 
+	if (val & PG_STAT)
+		seq_puts(seq, "PG_STAT Power good\n");
+	else
+		seq_puts(seq, "PG_STAT Not power good\n");
+
 	seq_puts(seq, "VSYS_STAT ");
 	if (val & VSYS_STAT)
-		seq_puts(seq, "In VSYS min regulation (BAT < VSYSMIN)\n");
+		seq_puts(seq, "In VSYSMIN regulation (BAT < VSYSMIN)\n");
 	else
-		seq_puts(seq, "Not in VSYSMIN\n");
+		seq_puts(seq, "Not in VSYSMIN regulation\n");
 
 }
 
@@ -1059,19 +1069,25 @@ static void bq25898_regc_to_human(struct seq_file *seq, u8 reg, u8 val)
 
 	seq_puts(seq, "WATCHDOG_FAULT ");
 	if (val & WATCHDOG_FAULT)
-		seq_puts(seq, "WDT Timer expiration\n");
+		seq_puts(seq, "WD Timer expiration\n");
 	else
-		seq_puts(seq, "WDT Normal\n");
+		seq_puts(seq, "WD Normal\n");
+
+	seq_puts(seq, "BOOST_FAULT ");
+	if (val & BOOST_FAULT)
+		seq_puts(seq, "VBUS overloaded in OTG, or VBUS OVP or battery too low\n");
+	else
+		seq_puts(seq, "Normal\n");
 
 	seq_puts(seq, "CHARGER_FAULT ");
 	if (!(val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		seq_puts(seq, "Charger Normal\n");
+		seq_puts(seq, "Normal\n");
 	else if (!(val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		seq_puts(seq, "Charger input fault\n");
+		seq_puts(seq, "Input fault\n");
 	else if ((val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		seq_puts(seq, "Charger thermal shutdown\n");
+		seq_puts(seq, "Thermal shutdown\n");
 	else if ((val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		seq_puts(seq, "Charger safety timer expiration\n");
+		seq_puts(seq, "Charge safety timer expiration\n");
 
 	seq_puts(seq, "BAT_FAULT ");
 	if (val & BAT_FAULT)
@@ -1082,31 +1098,24 @@ static void bq25898_regc_to_human(struct seq_file *seq, u8 reg, u8 val)
 	seq_puts(seq, "NTC_FAULT ");
 	if (!(val & NTC_FAULT2) && !(val & NTC_FAULT1) && !(val & NTC_FAULT0))
 		seq_puts(seq, "Normal\n");
-	else if (!(val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "TS Cold\n");
 	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "TS Hot or Warm (buck mode)\n");
+		seq_puts(seq, "TS Warm (Buck mode)\n");
 	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "cool\n");
+		seq_puts(seq, "TS Cool (Buck mode)\n");
 	else if ((val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "Cold\n");
+		seq_puts(seq, "TS Cold\n");
 	else if ((val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Hot (buck mode)\n");
-	else if ((val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "Cold (boost mode)\n");
-	else if ((val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Hot (boost mode)\n");
+		seq_puts(seq, "TS Hot\n");
 }
 
 static void bq25898_regd_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 	int res = 0;
 
-	seq_puts(seq, "FORCE_VINDPM ");
 	if (val & FORCE_VINDPM)
-		seq_puts(seq, "Force VINDPM, bypass algo\n");
+		seq_puts(seq, "Run Absolute VINDPM Threshold\n");
 	else
-		seq_puts(seq, "Run VINDPM threshold algo\n");
+		seq_puts(seq, "Run Relative VINDPM Threshold\n");
 
 	res = 2600;
 	if (val & VINDPM6)
@@ -1158,8 +1167,8 @@ static void bq25898_rege_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else
 		seq_puts(seq, "normal thermal\n");
 
-	seq_printf(seq, "ADC_CONV ADC Conversion BAT voltage %duV\n",
-		   bq25898_rege_convert_uv(val));
+	seq_printf(seq, "ADC Conversion BAT voltage %dmV\n",
+		   bq25898_rege_convert_uv(val)/1000);
 
 }
 
@@ -1167,22 +1176,22 @@ static void bq25898_regf_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 	int res = 2304;
 
-	if (val & ADDC_CONV_SYSV6)
+	if (val & ADC_CONV_SYSV6)
 		res += 1280;
-	if (val & ADDC_CONV_SYSV5)
+	if (val & ADC_CONV_SYSV5)
 		res += 640;
-	if (val & ADDC_CONV_SYSV4)
+	if (val & ADC_CONV_SYSV4)
 		res += 320;
-	if (val & ADDC_CONV_SYSV3)
+	if (val & ADC_CONV_SYSV3)
 		res += 160;
-	if (val & ADDC_CONV_SYSV2)
+	if (val & ADC_CONV_SYSV2)
 		res += 80;
-	if (val & ADDC_CONV_SYSV1)
+	if (val & ADC_CONV_SYSV1)
 		res += 40;
-	if (val & ADDC_CONV_SYSV6)
+	if (val & ADC_CONV_SYSV0)
 		res += 20;
 
-	seq_printf(seq, "ADDC_CONV ADDC Conversion SYS voltage %dmV\n", res);
+	seq_printf(seq, "ADC Conversion SYS voltage %dmV\n", res);
 }
 
 /* Return value in 10th of degree Celsius */
@@ -1230,22 +1239,22 @@ static void bq25898_reg10_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 	int res = 2100;
 
-	if (val & TSPCPT6)
+	if (val & TSPCT6)
 		res += 2976;
-	if (val & TSPCPT5)
+	if (val & TSPCT5)
 		res += 1488;
-	if (val & TSPCPT4)
+	if (val & TSPCT4)
 		res += 744;
-	if (val & TSPCPT3)
+	if (val & TSPCT3)
 		res += 372;
-	if (val & TSPCPT2)
+	if (val & TSPCT2)
 		res += 186;
-	if (val & TSPCPT1)
+	if (val & TSPCT1)
 		res += 93;
-	if (val & TSPCPT0)
+	if (val & TSPCT0)
 		res += 46;
 
-	seq_printf(seq, "TSPCPT ADC Conversion of TS Voltage ~%d/100 %% of REGN\n", res);
+	seq_printf(seq, "TSPCT ADC Conversion of TS Voltage ~%d/100 %% of REGN\n", res);
 }
 
 static void bq25898_reg11_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -1295,7 +1304,7 @@ static void bq25898_reg12_to_human(struct seq_file *seq, u8 reg, u8 val)
 	if (val & ADC_CHARGE_CURRENT0)
 		res += 50;
 
-	seq_printf(seq, "ADC_CHARGE_CURRENT ADC conversion of charge current %dmV\n", res);
+	seq_printf(seq, "ADC_CHARGE_CURRENT ADC conversion of charge current %dmA\n", res);
 }
 
 static void bq25898_reg13_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -1328,7 +1337,7 @@ static void bq25898_reg13_to_human(struct seq_file *seq, u8 reg, u8 val)
 	if (val & IDPM_CURRENT_LIM0)
 		res += 50;
 
-	seq_printf(seq, "IDPMC_CURRENT_LIM %dmA\n", res);
+	seq_printf(seq, "IDPM Current Limit %dmA\n", res);
 }
 
 static void bq25898_reg14_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -1340,11 +1349,11 @@ static void bq25898_reg14_to_human(struct seq_file *seq, u8 reg, u8 val)
 	else
 		seq_puts(seq, "keep current register setting\n");
 
-	seq_puts(seq, "IDC_OPTIMIZED ");
-	if (val & ICD_OPTIMIZED)
+	seq_puts(seq, "ICO_OPTIMIZED ");
+	if (val & ICO_OPTIMIZED)
 		seq_puts(seq, "maximum input current detected\n");
 	else
-		seq_puts(seq, "detection in progress or disabled\n");
+		seq_puts(seq, "optimization is in progress\n");
 
 	seq_printf(seq, "Revision: %d\n", (val & (DEV_REV1 | DEV_REV0)));
 }
@@ -1359,107 +1368,107 @@ static void bq25898_regall_to_human(struct i2c_client *client, struct seq_file *
 	if (!client || !seq)
 		return;
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg0_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg1_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg2_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg3_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg4_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg5_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg6_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg7_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg8_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg9_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_rega_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_regb_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_regc_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_regd_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_rege_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_regf_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg10_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg11_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg12_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg13_to_human(seq, reg, val);
 
-	seq_printf(seq, "REG %02x\n", reg);
+	seq_printf(seq, "REG %02X:\n", reg);
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg14_to_human(seq, reg, val);
@@ -2012,7 +2021,7 @@ static int bq25898_wdt_kick(struct bq25898_charger *chip)
 
 	ret = bq25898_read_modify_reg(chip->client,
 				BQ25898_CHARGE_CTRL_REG,
-				WDT_TIMER_RESET, WDT_TIMER_RESET);
+				WD_TIMER_RESET, WD_TIMER_RESET);
 	if (ret < 0)
 		dev_err(&chip->client->dev, "fail to kick watchdog:%d\n", ret);
 
@@ -2306,11 +2315,12 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 	/*
 	 * This is the current battery profile handling
 	 * done by the bq25898 (HW handling)
-	 * Temperature below 0 deg : stop charging
-	 *  0 to 10 deg : charging at ICHG/2 (96mA) and VREG (4.352V)
-	 * 10 to 45 deg : charging at ICHG and VREG
-	 * 45 to 60 deg : charging at ICHG and 200mV
-	 * greater than	 60 deg: Stop charging
+	 * Temperature:
+	 * below  0 deg : stop charging
+	 *  0 to 10 deg : charging at 20% ICHG  (64mA) and VREG       (4.352V)
+	 * 10 to 45 deg : charging at     ICHG (320mA) and VREG       (4.352V)
+	 * 45 to 60 deg : charging at     ICHG (320mA) and VREG-200mV (4.152V)
+	 * above 60 deg : stop charging
 	 */
 
 	/* reschedule ourself */
@@ -2512,7 +2522,7 @@ static int bq25898_adc_convert(struct i2c_client *client)
 				      ADC_CONV_START, ADC_CONV_START);
 	if (ret < 0) {
 		dev_err(&client->dev,
-			"ADC start failed: %d", ret);
+			"ADC start failed: %d\n", ret);
 		return ret;
 	}
 
@@ -2524,7 +2534,7 @@ static int bq25898_adc_convert(struct i2c_client *client)
 			return 0;
 	}
 
-	dev_err(&client->dev, "ADC conversion timed out");
+	dev_err(&client->dev, "ADC conversion timed out\n");
 	return -EIO;
 }
 
@@ -2551,7 +2561,7 @@ static int bq25898_get_prop_temp(struct bq25898_charger *chip, int *temp)
 	if (val < 0)
 		return val;
 
-	val = bq25898_read_reg(chip->client, BQ25898_ADC_TSPCPT_REG);
+	val = bq25898_read_reg(chip->client, BQ25898_ADC_TSPCT_REG);
 	if (val < 0)
 		return val;
 
@@ -2574,7 +2584,7 @@ static int bq25898_get_property(struct power_supply *psy,
 						psy_usb);
 
 	if (!val || !chip) {
-		dev_err(&chip->client->dev, "%s power_supply_propval:%p, chip: %p", __func__, val, chip);
+		dev_err(&chip->client->dev, "%s power_supply_propval:%p, chip: %p\n", __func__, val, chip);
 		return -EINVAL;
 	}
 
@@ -2587,7 +2597,7 @@ static int bq25898_get_property(struct power_supply *psy,
 			goto error;
 
 		val->intval = ret;
-		dev_dbg(&chip->client->dev, "%s prop status:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s prop status:%d\n", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		ret = bq25898_get_prop_health(chip);
@@ -2595,7 +2605,7 @@ static int bq25898_get_property(struct power_supply *psy,
 			goto error;
 
 		val->intval = ret;
-		dev_dbg(&chip->client->dev, "%s health:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s health:%d\n", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		ret = bq25898_get_prop_online(chip);
@@ -2603,7 +2613,7 @@ static int bq25898_get_property(struct power_supply *psy,
 			goto error;
 
 		val->intval = ret;
-		dev_dbg(&chip->client->dev, "%s online:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s online:%d\n", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = 1;
@@ -2615,7 +2625,7 @@ static int bq25898_get_property(struct power_supply *psy,
 
 		/* USB must be connected for the temperature to be measured */
 		if (ret == 0) {
-			dev_dbg(&chip->client->dev, "%s temperature:(not available)", __func__);
+			dev_dbg(&chip->client->dev, "%s temperature:(not available)\n", __func__);
 			ret = -ENODATA;
 			goto error;
 		}
@@ -2623,7 +2633,7 @@ static int bq25898_get_property(struct power_supply *psy,
 		if (ret < 0)
 			goto error;
 
-		dev_dbg(&chip->client->dev, "%s temperature:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s temperature:%d\n", __func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
@@ -2637,7 +2647,7 @@ static int bq25898_get_property(struct power_supply *psy,
 			goto error;
 
 		val->intval = ret;
-		dev_dbg(&chip->client->dev, "%s voltage_now:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s voltage_now:%d\n", __func__, val->intval);
 		break;
 	default:
 		break;
@@ -2665,7 +2675,7 @@ static int bq25898_set_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		dev_dbg(&chip->client->dev, "%s prop current:%d", __func__, val->intval);
+		dev_dbg(&chip->client->dev, "%s prop current:%d\n", __func__, val->intval);
 		chip->current_now = val->intval;
 		break;
 	default:
@@ -2780,7 +2790,7 @@ static int bq25898_probe(struct i2c_client *client,
 	adapter = to_i2c_adapter(client->dev.parent);
 
 	if (!client->dev.platform_data) {
-		dev_err(&client->dev, "platform data is null");
+		dev_err(&client->dev, "platform data is null\n");
 		return -EFAULT;
 	}
 
