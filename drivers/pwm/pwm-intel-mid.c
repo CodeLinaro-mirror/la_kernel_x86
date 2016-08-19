@@ -15,6 +15,9 @@
 #include <linux/pwm.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
+#include <linux/lnw_gpio.h>
+#include <linux/gpio.h>
+#include <asm/intel-mid.h>
 
 #define PWM_INTEL_MID_DRIVER_NAME     "pwm-intel-mid"
 #define PCI_DEVICE_ID_INTEL_MID_MRFLD 0x11a5
@@ -32,8 +35,21 @@
 #define PWM_DEFAULT_PERIOD            4950495 /* about 200 Hz */
 #define PWM_CONTROL_REGISTER_SIZE     0x400
 
+#define pwm_gpio_free(gpio)           pwm_gpio_request_or_free(gpio, false)
+#define pwm_gpio_request(gpio)        pwm_gpio_request_or_free(gpio, true)
+
 #define get_control_register(pwm, pwm_id) \
 	((u8 *)pwm->regs + (pwm_id * PWM_CONTROL_REGISTER_SIZE));
+
+#define GPIO_OVERRIDE_INPUT_ENABLE_ENABLE_OFFSET 13
+#define GPIO_OVERRIDE_INPUT_ENABLE_OFFSET        12
+#define GPIO_PULLDOWN_ENABLE_OFFSET              9
+#define GPIO_PULLDOWN_VALUE_20KOHMS_OFFSET       4
+
+#define GPIO_PWM_CONFIG (1<<GPIO_OVERRIDE_INPUT_ENABLE_ENABLE_OFFSET | \
+					    1<<GPIO_OVERRIDE_INPUT_ENABLE_OFFSET | \
+					    1<<GPIO_PULLDOWN_ENABLE_OFFSET | \
+					    1<<GPIO_PULLDOWN_VALUE_20KOHMS_OFFSET)
 
 union pwmctrl_reg {
 	struct {
@@ -46,12 +62,59 @@ union pwmctrl_reg {
 	u32 full;
 };
 
+/* Gpio number according to pwm version */
+enum pwm_gpio_id {
+	PWM0_ID = 0,
+	PWM1_ID = 1,
+	PWM2_ID = 2,
+	PWM3_ID = 3,
+	INVALID_PWM_GPIO_ID = -1,
+};
+
 struct intel_mid_pwm_chip {
 	struct pwm_chip chip;
 	void __iomem *regs;
 	union pwmctrl_reg *pwmctrls;
 	int num_of_pwms;
 };
+
+
+static char *get_gpio_label(const enum pwm_gpio_id pwm_id)
+{
+	switch (pwm_id) {
+	case PWM0_ID:
+		return "pwm0";
+
+	case PWM1_ID:
+		return "pwm1";
+
+	case PWM2_ID:
+		return "pwm2";
+
+	case PWM3_ID:
+		return "pwm3";
+
+	default:
+		return "";
+	}
+}
+
+/* do the gpio request or free for the pwm according to the pwm id */
+static int pwm_gpio_request_or_free(const enum pwm_gpio_id pwm_id, bool request)
+{
+	char *label = get_gpio_label(pwm_id);
+	int gpio = get_gpio_by_name(label);
+	if (!gpio_is_valid(gpio)) {
+		pr_err("gpio is not valid %d %s\n", gpio, label);
+		return -EINVAL;
+	}
+	if (request)
+		return gpio_request(gpio, label);
+	else {
+		gpio_free(gpio);
+		return 0;
+	}
+}
 
 static inline struct intel_mid_pwm_chip *
 to_pwm(struct pwm_chip *chip)
@@ -95,7 +158,7 @@ intel_mid_pwm_base_unit(void __iomem *reg, union pwmctrl_reg *pwmctrl,
 	u64 base_unit_integer;
 	u64 frequency = NSECS_PER_SEC;
 	u32 base_unit_fraction = 0;
-	int i;
+	unsigned int i;
 
 	/* The dynamic range multiplier is used to get more accurate
 	calculations when the frequency is small (less than 75 KHz) in the
@@ -234,6 +297,12 @@ intel_mid_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 
 	pwm_set_enable_bit(reg, pwmctrl, 1U);
 
+	/*
+	 * enable pwm line
+	 * - change pinmux to mode1 (PWM)
+	 */
+	lnw_gpio_set_alt(get_gpio_by_name(get_gpio_label(pwm_dev->hwpwm)), GPIO_PWM_CONFIG|0x1);
+
 	dev_dbg(chip->dev, "%s: pwmctrl %#x\n", __func__, pwmctrl->full);
 
 	return 0;
@@ -247,6 +316,17 @@ intel_mid_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 	void __iomem *reg = get_control_register(pwm, pwm_dev->hwpwm);
 
 	pwm_set_enable_bit(reg, pwmctrl, 0);
+
+	/*
+	 * force back pwm line to zero
+	 * - change pinmux to mode0 (GPIO) temporary
+	 * - set pin to low
+	 */
+	lnw_gpio_set_alt(get_gpio_by_name(get_gpio_label(pwm_dev->hwpwm)), GPIO_PWM_CONFIG);
+
+	if (gpio_direction_output(pwm_dev->hwpwm, 0) < 0)
+		dev_err(chip->dev, "%s: unable to set %d to low\n",
+			__func__, pwm_dev->hwpwm);
 	pm_runtime_put(chip->dev);
 	dev_dbg(chip->dev, "%s: pwmctrl %#x\n", __func__, pwmctrl->full);
 }
@@ -318,13 +398,27 @@ intel_mid_pwm_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 		goto do_unmap_regs;
 	}
 
-	/* Set default frequency/period (about 200Hz) on all pwm modules. */
-	for (i = 0; i < pwm->num_of_pwms; i++)
-		pwm->chip.pwms[i].period = PWM_DEFAULT_PERIOD;
-
 	pci_set_drvdata(pci, pwm);
 	pm_runtime_allow(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
+
+	/* gpio mode is used to force pwm to zero */
+	ret = -EINVAL;
+	for (i = 0; i < pwm->num_of_pwms; i++) {
+
+		if (!pwm_gpio_request(i)) {
+
+			/* Set default frequency/period (about 200Hz) on valid pwm modules. */
+			pwm->chip.pwms[i].period = PWM_DEFAULT_PERIOD;
+
+			ret = 0;
+		}
+	}
+
+	if (ret < 0) {
+		dev_err(&pci->dev, "%s: unable to request gpio for any pwm\n", __func__);
+		goto do_unmap_regs;
+	}
 
 	return ret;
 
@@ -340,6 +434,7 @@ do_disable_device:
 static void
 intel_mid_pwm_remove(struct pci_dev *pci)
 {
+	unsigned int i = 0;
 	struct intel_mid_pwm_chip *pwm = pci_get_drvdata(pci);
 
 	pm_runtime_get_noresume(&pci->dev);
@@ -349,6 +444,9 @@ intel_mid_pwm_remove(struct pci_dev *pci)
 	pci_release_regions(pci);
 	pci_disable_device(pci);
 	pci_set_drvdata(pci, NULL);
+
+	for (i = 0; i < pwm->num_of_pwms; i++)
+		pwm_gpio_free(i);
 }
 
 #if CONFIG_PM
