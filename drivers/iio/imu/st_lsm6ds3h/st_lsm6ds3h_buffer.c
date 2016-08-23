@@ -271,34 +271,34 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 		   cdata->fifo_output[ST_MASK_ID_ACCEL].sip,
 		   cdata->fifo_output[ST_MASK_ID_GYRO].sip, byte_in_pattern);
 
+	err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
+				2, (u8 *)&read_len, true);
+	if (err < 0)
+		return err;
+
+	dev_dbg(cdata->dev, "data fifo read_len=0x%x.\n", read_len);
+
+	if (read_len & ST_LSM6DS3H_FIFO_DATA_OVR) {
+		want_to_discard = true;
+		overrun_flag = true;
+		dev_err(cdata->dev,
+			"data fifo overrun, read_len=%d.\n", read_len);
+
+		if ((read_len & ST_LSM6DS3H_FIFO_DIFF_MASK) == 0)
+			read_len = ST_LSM6DS3H_FIFO_DIFF_MASK;
+	}
+
+	if (read_len & ST_LSM6DS3H_FIFO_DATA_EMPTY) {
+		dev_dbg(cdata->dev, "read_fifo data empty!\n");
+		return 0;
+	}
+
 	if (flags != READ_FIFO_IN_INTERRUPT) {
 
 		if (!(flags & READ_FIFO_IN_INTERRUPT)) {
 			cdata->last_timestamp = cdata->timestamp;
 			cdata->timestamp = ktime_to_ns(ktime_get_boottime());
 		}
-		err = cdata->tf->read(cdata, ST_LSM6DS3H_FIFO_DIFF_L,
-					2, (u8 *)&read_len, true);
-		if (err < 0)
-			return err;
-
-		dev_dbg(cdata->dev, "data fifo read_len=0x%x.\n", read_len);
-
-		if (read_len & ST_LSM6DS3H_FIFO_DATA_OVR) {
-			want_to_discard = true;
-			overrun_flag = true;
-			dev_err(cdata->dev,
-				"data fifo overrun, read_len=%d.\n", read_len);
-
-			if ((read_len & ST_LSM6DS3H_FIFO_DIFF_MASK) == 0)
-				read_len = ST_LSM6DS3H_FIFO_DIFF_MASK;
-		}
-
-		if (read_len & ST_LSM6DS3H_FIFO_DATA_EMPTY) {
-			dev_dbg(cdata->dev, "read_fifo data empty!\n");
-			return 0;
-		}
-
 		if (want_to_discard) {
 			dev_dbg(cdata->dev,
 				"want_to_discard %d, %d.\n", read_len, cdata->fifo_watermark);
@@ -333,16 +333,16 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 			dev_dbg(cdata->dev,
 				"after discard data, read_len=%d.\n", read_len);
 		}
+	}
 
 read_fifo_report:
 
-		read_len &= ST_LSM6DS3H_FIFO_DIFF_MASK;
-		read_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+	read_len &= ST_LSM6DS3H_FIFO_DIFF_MASK;
+	read_len *= ST_LSM6DS3H_BYTE_FOR_CHANNEL;
 
-		read_len = (read_len / byte_in_pattern) * byte_in_pattern;
-		if (read_len == 0)
-			return 0;
-	}
+	read_len = (read_len / byte_in_pattern) * byte_in_pattern;
+	if (read_len == 0)
+		return 0;
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_read_fifo read:%d fifo_watermark:%d\n",
 		read_len, cdata->fifo_watermark);
