@@ -948,8 +948,10 @@ disable_sensor:
 	err2 = st_lsm6ds3h_i2c_master_set_enable(sdata, false);
 	mutex_unlock(&sdata->cdata->odr_lock);
 free_buffer_data:
-	if (err2 >= 0)
+	if (err2 >= 0) {
 		kfree(sdata->buffer_data);
+		sdata->buffer_data = NULL;
+	}
 
 	return err;
 }
@@ -974,6 +976,7 @@ static int st_lsm6ds3h_i2c_master_buffer_predisable(struct iio_dev *indio_dev)
 		goto reenable_sensor;
 
 	kfree(sdata->buffer_data);
+	sdata->buffer_data = NULL;
 
 	return 0;
 
