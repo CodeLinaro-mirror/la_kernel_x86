@@ -821,6 +821,7 @@ static int st_lsm6ds3_i2c_master_buffer_postenable(struct iio_dev *indio_dev)
 
 free_buffer_data:
 	kfree(sdata->buffer_data);
+	sdata->buffer_data = NULL;
 
 	return err;
 }
@@ -863,6 +864,7 @@ static int st_lsm6ds3_i2c_master_buffer_predisable(struct iio_dev *indio_dev)
 		return err;
 
 	kfree(sdata->buffer_data);
+	sdata->buffer_data = NULL;
 
 	return 0;
 
