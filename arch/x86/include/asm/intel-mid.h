@@ -271,6 +271,18 @@ extern void intel_psh_devices_destroy(void);
 extern void intel_mid_rtc_init(void);
 
 /* the offset for the mapping of global gpio pin to irq */
+enum intel_mid_sim_type {
+	INTEL_MID_CPU_SIMULATION_NONE = 0,
+	INTEL_MID_CPU_SIMULATION_VP,
+	INTEL_MID_CPU_SIMULATION_SLE,
+	INTEL_MID_CPU_SIMULATION_HVP,
+};
+extern enum intel_mid_sim_type __intel_mid_sim_platform;
+static inline enum intel_mid_sim_type intel_mid_identify_sim(void)
+{
+	return __intel_mid_sim_platform;
+}
+
 #define INTEL_MID_IRQ_OFFSET 0x100
 
 #endif /* _ASM_X86_INTEL_MID_H */
