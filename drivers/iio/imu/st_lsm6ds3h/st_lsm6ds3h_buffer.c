@@ -131,9 +131,9 @@ void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 	iio_push_to_buffers(cdata->indio_dev[index], sdata->buffer_data);
 }
 
-static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_len, bool discard_data)
+static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_len, bool discard_data,
+		u16 fifo_offset)
 {
-	u16 fifo_offset = 0;
 	u8 gyro_sip, accel_sip;
 	int64_t accel_deltatime;
 	int64_t gyro_deltatime;
@@ -254,7 +254,7 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 	bool want_to_discard = flags & READ_FIFO_DISCARD_DATA;
 	bool discard_data = false;
 	int err;
-	u16 pattern, offset, discard_len;
+	u16 pattern, offset = 0, discard_len;
 #if (CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO > 0)
 	u16 data_remaining, data_to_read, byte_in_pattern;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_LIMIT_FIFO */
@@ -367,16 +367,18 @@ read_fifo_report:
 		 */
 		offset = ((byte_in_pattern/ST_LSM6DS3H_BYTE_FOR_CHANNEL) - pattern)
 			* ST_LSM6DS3H_BYTE_FOR_CHANNEL;
+		dev_info(cdata->dev, "FIFO overrun, offset=%d", offset);
 		if (offset != byte_in_pattern) {
 			read_len -= byte_in_pattern;
-			cdata->fifo_data += offset;
+		} else {
+			offset = 0;
 		}
-		dev_info(cdata->dev, "FIFO overrun, offset=%d", offset);
+
 		st_lsm6ds3h_set_fifo_mode(cdata, BYPASS);
 		st_lsm6ds3h_set_fifo_mode(cdata, CONTINUOS);
 	}
 
-	st_lsm6ds3h_parse_fifo_data(cdata, read_len, discard_data);
+	st_lsm6ds3h_parse_fifo_data(cdata, read_len, discard_data, offset);
 
 	return 0;
 }
