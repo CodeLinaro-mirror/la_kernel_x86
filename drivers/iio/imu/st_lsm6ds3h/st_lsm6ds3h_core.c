@@ -603,18 +603,41 @@ static int lsm6ds3h_set_watermark(struct lsm6ds3h_data *cdata)
 	u8 reg_value = 0;
 	u16 fifo_watermark;
 	unsigned int fifo_len, sip = 0, min_pattern = UINT_MAX;
+	u16 hwfifo_watermark_accel = 0, hwfifo_watermark_gyro = 0;
+
+	if (cdata->sensors_enabled & (BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_ACCEL_WK))) {
+		if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL)) {
+			if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL_WK)) {
+				hwfifo_watermark_accel = MIN(cdata->hwfifo_watermark[ST_MASK_ID_ACCEL],
+						cdata->hwfifo_watermark[ST_MASK_ID_ACCEL_WK]);
+			} else
+				hwfifo_watermark_accel = cdata->hwfifo_watermark[ST_MASK_ID_ACCEL];
+		} else
+			hwfifo_watermark_accel = cdata->hwfifo_watermark[ST_MASK_ID_ACCEL_WK];
+	}
+
+	if (cdata->sensors_enabled & (BIT(ST_MASK_ID_GYRO) | BIT(ST_MASK_ID_GYRO_WK))) {
+		if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO)) {
+			if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO_WK)) {
+				hwfifo_watermark_gyro = MIN(cdata->hwfifo_watermark[ST_MASK_ID_GYRO],
+						cdata->hwfifo_watermark[ST_MASK_ID_GYRO_WK]);
+			} else
+				hwfifo_watermark_gyro = cdata->hwfifo_watermark[ST_MASK_ID_GYRO];
+		} else
+			hwfifo_watermark_gyro = cdata->hwfifo_watermark[ST_MASK_ID_GYRO_WK];
+	}
 
 	if (cdata->fifo_output[ST_MASK_ID_ACCEL].sip > 0) {
 		sip += cdata->fifo_output[ST_MASK_ID_ACCEL].sip;
 		min_pattern = MIN(min_pattern,
-			cdata->hwfifo_watermark[ST_MASK_ID_ACCEL] /
+			hwfifo_watermark_accel /
 			cdata->fifo_output[ST_MASK_ID_ACCEL].sip);
 	}
 
 	if (cdata->fifo_output[ST_MASK_ID_GYRO].sip > 0) {
 		sip += cdata->fifo_output[ST_MASK_ID_GYRO].sip;
 		min_pattern = MIN(min_pattern,
-			cdata->hwfifo_watermark[ST_MASK_ID_GYRO] /
+			hwfifo_watermark_gyro /
 			cdata->fifo_output[ST_MASK_ID_GYRO].sip);
 	}
 
@@ -1767,7 +1790,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 	case ST_MASK_ID_ACCEL:
 		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_ACCEL_WK)) {
 			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_ACCEL],
-							sdata->cdata->hw_odr[ST_MASK_ID_ACCEL_WK]);
+							sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK]);
 			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK];
 		} else {
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
@@ -1782,7 +1805,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 	case ST_MASK_ID_ACCEL_WK:
 		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_ACCEL)) {
 			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK],
-							sdata->cdata->hw_odr[ST_MASK_ID_ACCEL]);
+							sdata->cdata->v_odr[ST_MASK_ID_ACCEL]);
 			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL];
 		} else {
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_ACCEL_WK];
@@ -1797,7 +1820,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 	case ST_MASK_ID_GYRO:
 		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO_WK)) {
 			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_GYRO],
-							sdata->cdata->hw_odr[ST_MASK_ID_GYRO_WK]);
+							sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK]);
 			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK];
 		} else {
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
@@ -1812,7 +1835,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 	case ST_MASK_ID_GYRO_WK:
 		if (sdata->cdata->sensors_enabled & (1 << ST_MASK_ID_GYRO)) {
 			en_odr = MAX(sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK],
-							sdata->cdata->hw_odr[ST_MASK_ID_GYRO]);
+							sdata->cdata->v_odr[ST_MASK_ID_GYRO]);
 			dis_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
 		} else {
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK];
@@ -2731,7 +2754,14 @@ ssize_t st_lsm6ds3h_sysfs_flush_fifo(struct device *dev,
 		return -EINVAL;
 	}
 
-	sensor_last_timestamp =
+	if (sdata->sindex == ST_MASK_ID_ACCEL_WK)
+		sensor_last_timestamp =
+			sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp_p;
+	else if (sdata->sindex == ST_MASK_ID_GYRO_WK)
+		sensor_last_timestamp =
+			sdata->cdata->fifo_output[ST_MASK_ID_GYRO].timestamp_p;
+	else
+		sensor_last_timestamp =
 			sdata->cdata->fifo_output[sdata->sindex].timestamp_p;
 
 	mutex_lock(&sdata->cdata->fifo_lock);
@@ -2753,10 +2783,12 @@ ssize_t st_lsm6ds3h_sysfs_flush_fifo(struct device *dev,
 
 	switch (sdata->sindex) {
 	case ST_MASK_ID_ACCEL:
+	case ST_MASK_ID_ACCEL_WK:
 		stype = IIO_ACCEL;
 		break;
 
 	case ST_MASK_ID_GYRO:
+	case ST_MASK_ID_GYRO_WK:
 		stype = IIO_ANGL_VEL;
 		break;
 
