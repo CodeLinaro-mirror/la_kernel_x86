@@ -310,6 +310,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 		IIO_DEVICE_ATTR(name, S_IRUGO, \
 			st_lsm6ds3h_sysfs_scale_avail, NULL , 0);
 
+u8 threshold_value = ST_LSM6DS3H_STEP_COUNTER_THS_MIN_DEF_VAL;
 #define RETRY_COUNTER_LIMITATION 10
 
 static bool stay_wake;
@@ -2972,6 +2973,36 @@ ssize_t st_lsm6ds3h_sysfs_get_hwfifo_watermark_min(struct device *dev,
 	return sprintf(buf, "%d\n", 1);
 }
 
+static ssize_t st_lsm6ds3h_sysfs_set_pedo_threshold(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err;
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
+
+	err = kstrtou8(buf, 16, &threshold_value);
+	if (err < 0)
+		return -EINVAL;
+
+	pr_info("pedo_threshold: threshold_value=0x%x", threshold_value);
+
+	err = st_lsm6ds3h_write_data_with_mask(sdata->cdata,
+					ST_LSM6DS3H_STEP_COUNTER_PEDO_THS_ADDR,
+					ST_LSM6DS3H_STEP_COUNTER_THS_MIN_MASK,
+					threshold_value, false);
+	if (err < 0)
+		pr_info("pedo_threshold: err=%d", err);
+
+	return size;
+}
+
+static ssize_t st_lsm6ds3h_sysfs_get_pedo_threshold(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%x\n", threshold_value);
+}
+
+
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 static ssize_t st_lsm6ds3h_sysfs_set_injection_mode(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
@@ -3443,6 +3474,10 @@ static ST_LSM6DS3H_HWFIFO_FLUSH();
 static IIO_DEVICE_ATTR(reset_counter, S_IWUSR,
 				NULL, st_lsm6ds3h_sysfs_reset_counter, 0);
 
+static IIO_DEVICE_ATTR(pedo_threshold, S_IWUSR | S_IRUGO,
+				st_lsm6ds3h_sysfs_get_pedo_threshold,
+				st_lsm6ds3h_sysfs_set_pedo_threshold, 0);
+
 static IIO_DEVICE_ATTR(max_delivery_rate, S_IWUSR | S_IRUGO,
 				st_lsm6ds3h_sysfs_get_max_delivery_rate,
 				st_lsm6ds3h_sysfs_set_max_delivery_rate, 0);
@@ -3606,6 +3641,7 @@ static struct attribute *st_lsm6ds3h_step_c_attributes[] = {
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 	&iio_dev_attr_injection_sensors.dev_attr.attr,
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
+	&iio_dev_attr_pedo_threshold.dev_attr.attr,
 	NULL,
 };
 
