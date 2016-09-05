@@ -202,7 +202,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_SELFTEST_GYRO_REG_VALUE		0x4c
 #define ST_LSM6DS3H_SELFTEST_GYRO_MIN			2142
 #define ST_LSM6DS3H_SELFTEST_GYRO_MAX			10000
-
+#define CALIBRATE_ODR_SET_VALUE					0X1C
 /* CUSTOM VALUES FOR SIGNIFICANT MOTION SENSOR */
 #define ST_LSM6DS3H_SIGN_MOTION_EN_ADDR			0x19
 #define ST_LSM6DS3H_SIGN_MOTION_EN_MASK			0x01
@@ -3119,9 +3119,14 @@ ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
 {
 	int err;
 	s32 no_cali[3] = {0};
+	u8 calibrate_odr_reg = CALIBRATE_ODR_SET_VALUE;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
+	err = sdata->cdata->tf->write(sdata->cdata, ST_LSM6DS3H_GYRO_ODR_ADDR, 1, &calibrate_odr_reg, true);
+	if (err < 0) {
+		dev_err(sdata->cdata,"failed to write ST_LSM6DS3H_GYRO_ODR_ADDR\n");
+	}
 	err = st_lsm6ds3h_average_sample(sdata, no_cali, CALIBRATE_SAMPLE_COUNT);
 	if (err < 0)
 		return err;
