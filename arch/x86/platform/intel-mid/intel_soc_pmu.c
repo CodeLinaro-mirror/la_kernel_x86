@@ -20,6 +20,7 @@
 #include "intel_soc_pmu.h"
 #include <linux/cpuidle.h>
 #include <linux/proc_fs.h>
+#include <asm/stacktrace.h>
 #include <asm/intel_mid_rpmsg.h>
 
 #ifdef CONFIG_DRM_INTEL_MID
@@ -1077,31 +1078,36 @@ int verify_stack_ok(unsigned int *good_ebp, unsigned int *_ebp)
 		((unsigned int)good_ebp & 0xffffe000);
 }
 
+#ifdef CONFIG_FRAME_POINTER
 size_t backtrace_safe(void **array, size_t max_size)
 {
-	unsigned int *_ebp, *base_ebp;
-	unsigned int *caller;
+	unsigned long *bp;
+	unsigned long *caller;
 	unsigned int i;
 
-	asm ("movl %%ebp, %0"
-		: "=r" (_ebp)
-	    );
+	get_bp(bp);
 
-	base_ebp = _ebp;
-	caller = (unsigned int *) *(_ebp+1);
+	caller = (unsigned long *) *(bp+1);
 
 	for (i = 0; i < max_size; i++)
 		array[i] = 0;
 	for (i = 0; i < max_size; i++) {
 		array[i] = caller;
-		_ebp = (unsigned int *) *_ebp;
-		if (!verify_stack_ok(base_ebp, _ebp))
+		bp = (unsigned long *) *bp;
+		if (!object_is_on_stack(bp))
 			break;
-		caller = (unsigned int *) *(_ebp+1);
+		caller = (unsigned long *) *(bp+1);
 	}
 
 	return i + 1;
 }
+#else
+size_t backtrace_safe(void **array, size_t max_size)
+{
+	memset(array, 0, max_size);
+	return 0;
+}
+#endif
 
 void dump_nc_power_history(void)
 {
