@@ -307,9 +307,6 @@ void mrfld_early_console_init(void)
 	pssp = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
 			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
 
-	if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)
-		ssp_timing_wr = 1;
-
 	/* mask interrupts, clear enable and set DSS config */
 	/* SSPSCLK on active transfers only */
 	if (ssp_timing_wr) {
@@ -394,127 +391,7 @@ void mrfld_early_printk(const char *fmt, ...)
 	early_mrfld_console.write(&early_mrfld_console, buf, n);
 }
 
-/*
- * Following is the early console based on High Speed UART device.
- */
-#define MERR_HSU_PORT_BASE	0xff010180
-#define MERR_HSU_CLK_CTL	0xff00b830
-#define MFLD_HSU_PORT_BASE	0xffa28080
-
-static void __iomem *phsu;
-
-void hsu_early_console_init(const char *s)
-{
-	unsigned long paddr, port = 0;
-	u8 lcr;
-	int *clkctl;
-
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		paddr = MERR_HSU_PORT_BASE;
-		clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
-							  MERR_HSU_CLK_CTL);
-	} else {
-		paddr = MFLD_HSU_PORT_BASE;
-		clkctl = NULL;
-	}
-
-	/*
-	 * Select the early HSU console port if specified by user in the
-	 * kernel command line.
-	 */
-	if (*s && !kstrtoul(s, 10, &port))
-		port = clamp_val(port, 0, 2);
-
-	paddr += port * 0x80;
-	phsu = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE, paddr);
-
-	/* Disable FIFO */
-	writeb(0x0, phsu + UART_FCR);
-
-	/* Set to default 115200 bps, 8n1 */
-	lcr = readb(phsu + UART_LCR);
-	writeb((0x80 | lcr), phsu + UART_LCR);
-	writeb(0x01, phsu + UART_DLL);
-	writeb(0x00, phsu + UART_DLM);
-	writeb(lcr,  phsu + UART_LCR);
-	writel(0x0010, phsu + UART_ABR * 4);
-	writel(0x0010, phsu + UART_PS * 4);
-
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		/* detect HSU clock is 50M or 19.2M */
-		if (clkctl && *clkctl & (1 << 16))
-			writel(0x0120, phsu + UART_MUL * 4); /* for 50M */
-		else
-			writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
-	} else
-		writel(0x0240, phsu + UART_MUL * 4);
-
-	writel(0x3D09, phsu + UART_DIV * 4);
-
-	writeb(0x8, phsu + UART_MCR);
-	writeb(0x7, phsu + UART_FCR);
-	writeb(0x3, phsu + UART_LCR);
-
-	/* Clear IRQ status */
-	readb(phsu + UART_LSR);
-	readb(phsu + UART_RX);
-	readb(phsu + UART_IIR);
-	readb(phsu + UART_MSR);
-
-	/* Enable FIFO */
-	writeb(0x7, phsu + UART_FCR);
-}
-
 #define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)
-
-static void early_hsu_putc(char ch)
-{
-	unsigned int timeout = 10000; /* 10ms */
-	u8 status;
-
-	while (--timeout) {
-		status = readb(phsu + UART_LSR);
-		if (status & BOTH_EMPTY)
-			break;
-		udelay(1);
-	}
-
-	/* Only write the char when there was no timeout */
-	if (timeout)
-		writeb(ch, phsu + UART_TX);
-}
-
-static void early_hsu_write(struct console *con, const char *str, unsigned n)
-{
-	int i;
-
-	for (i = 0; i < n && *str; i++) {
-		if (*str == '\n')
-			early_hsu_putc('\r');
-		early_hsu_putc(*str);
-		str++;
-	}
-}
-
-struct console early_hsu_console = {
-	.name =		"earlyhsu",
-	.write =	early_hsu_write,
-	.flags =	CON_PRINTBUFFER,
-	.index =	-1,
-};
-
-void hsu_early_printk(const char *fmt, ...)
-{
-	char buf[512];
-	int n;
-	va_list ap;
-
-	va_start(ap, fmt);
-	n = vscnprintf(buf, 512, fmt, ap);
-	va_end(ap);
-
-	early_hsu_console.write(&early_hsu_console, buf, n);
-}
 
 #define PTI_ADDRESS		0xfd800000
 #define CONTROL_FRAME_LEN 32    /* PTI control frame maximum size */
@@ -565,13 +442,6 @@ static void early_pti_write_to_aperture(struct pti_masterchannel *mc,
 	return;
 }
 
-static int pti_early_console_init(void)
-{
-	early_pti_console_channel = 0;
-	early_pti_control_channel = 0;
-	return 0;
-}
-
 static void early_pti_write(struct console *con,
 			const char *str, unsigned n)
 {
@@ -617,7 +487,6 @@ static void early_pti_write(struct console *con,
 
 struct console early_pti_console = {
 	.name =		"earlypti",
-	.early_setup =  pti_early_console_init,
 	.write =	early_pti_write,
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
