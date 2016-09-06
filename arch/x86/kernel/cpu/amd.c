@@ -624,11 +624,13 @@ static void init_amd_k8(struct cpuinfo_x86 *c)
 static void init_amd_gh(struct cpuinfo_x86 *c)
 {
 #ifdef CONFIG_X86_64
+#if 0
 	/* do this for boot cpu */
 	if (c == &boot_cpu_data)
 		check_enable_amd_mmconf_dmi();
 
 	fam10h_check_enable_mmcfg();
+#endif
 #endif
 
 	/*

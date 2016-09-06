@@ -85,7 +85,7 @@ else
 
         biarch := -m64
         KBUILD_AFLAGS += -m64
-        KBUILD_CFLAGS += -m64
+        KBUILD_CFLAGS += -m64 -fno-pic
 
         # Align jump targets to 1 byte, not the default 16 bytes:
         KBUILD_CFLAGS += -falign-jumps=1
