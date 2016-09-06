@@ -500,7 +500,7 @@ config X86_INTEL_CE
 
 config X86_INTEL_MID
 	bool "Intel MID platform support"
-	depends on X86_32
+	depends on X86_32 || X86_64
 	depends on X86_EXTENDED_PLATFORM
 	depends on X86_PLATFORM_DEVICES
 	depends on PCI
@@ -2376,7 +2376,7 @@ config PCI
 
 choice
 	prompt "PCI access mode"
-	depends on X86_32 && PCI
+	depends on (X86_32 || X86_64) && PCI
 	default PCI_GOANY
 	---help---
 	  On PCI systems, the BIOS can be used to detect the PCI devices and
