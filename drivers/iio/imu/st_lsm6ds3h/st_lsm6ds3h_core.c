@@ -1136,7 +1136,9 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			disable_irq(sdata->cdata->irq);
 
 			if (sdata->cdata->fifo_status != BYPASS) {
+				mutex_lock(&sdata->cdata->fifo_lock);
 				st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
+				mutex_unlock(&sdata->cdata->fifo_lock);
 
 				err = st_lsm6ds3h_set_fifo_mode(sdata->cdata, BYPASS);
 				if (err < 0)
@@ -1238,7 +1240,9 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 			disable_irq(sdata->cdata->irq);
 
 			if (sdata->cdata->fifo_status != BYPASS) {
+				mutex_lock(&sdata->cdata->fifo_lock);
 				st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
+				mutex_unlock(&sdata->cdata->fifo_lock);
 
 				err = st_lsm6ds3h_set_fifo_mode(sdata->cdata, BYPASS);
 				if (err < 0)
@@ -2851,8 +2855,11 @@ ssize_t st_lsm6ds3h_sysfs_set_hwfifo_watermark(struct device *dev,
 				(sdata->cdata->sensors_use_fifo & BIT(sdata->sindex))) {
 		disable_irq(sdata->cdata->irq);
 
-		if (sdata->cdata->fifo_status != BYPASS)
+		if (sdata->cdata->fifo_status != BYPASS) {
+			mutex_lock(&sdata->cdata->fifo_lock);
 			st_lsm6ds3h_read_fifo(sdata->cdata, READ_FIFO_IN_COF_FIFO);
+			mutex_unlock(&sdata->cdata->fifo_lock);
+		}
 
 		old_watermark = sdata->cdata->hwfifo_watermark[sdata->sindex];
 		sdata->cdata->hwfifo_watermark[sdata->sindex] = watermark;

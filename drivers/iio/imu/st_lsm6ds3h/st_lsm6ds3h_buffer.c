@@ -29,6 +29,7 @@
 #define ST_LSM6DS3H_FIFO_DATA_OVR		0x4000
 #define ST_LSM6DS3H_FIFO_DATA_EMPTY		0x1000
 #define ST_LSM6DS3H_FIFO_DATA_PATTERN_L		0x3c
+#define ST_LSM6DS3H_FIFO_DATA_DEADLOCK_TRIGGER	10
 
 static int st_lsm6ds3h_do_div(struct lsm6ds3h_data *cdata,
 					u16 read_len,
@@ -134,6 +135,7 @@ void st_lsm6ds3h_push_data_with_timestamp(struct lsm6ds3h_data *cdata,
 static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_len, bool discard_data,
 		u16 fifo_offset)
 {
+	int deadlock_detector = 0;
 	u8 gyro_sip, accel_sip;
 	int64_t accel_deltatime;
 	int64_t gyro_deltatime;
@@ -153,7 +155,8 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 			 return;
 
 
-	while (fifo_offset < read_len) {
+	while ((fifo_offset < read_len) && (deadlock_detector++ < ST_LSM6DS3H_FIFO_DATA_DEADLOCK_TRIGGER)) {
+	        dev_dbg(cdata->dev, "st_lsm6ds3h_parse_fifo_data: deadlock=%d read_len=%d fifo_offset=%d\n", deadlock_detector, read_len, fifo_offset);
 		gyro_sip = cdata->fifo_output[ST_MASK_ID_GYRO].sip;
 		accel_sip = cdata->fifo_output[ST_MASK_ID_ACCEL].sip;
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
@@ -188,6 +191,7 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 				cdata->fifo_output[ST_MASK_ID_GYRO].timestamp += gyro_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				gyro_sip--;
+				deadlock_detector = 0;
 			}
 
 			if (accel_sip > 0) {
@@ -217,6 +221,7 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 				cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp += accel_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				accel_sip--;
+				deadlock_detector = 0;
 			}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
@@ -239,6 +244,7 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 				cdata->fifo_output[ST_MASK_ID_EXT0].timestamp += ext0_deltatime;
 				fifo_offset += ST_LSM6DS3H_FIFO_ELEMENT_LEN_BYTE;
 				ext0_sip--;
+				deadlock_detector = 0;
 			}
 
 		} while ((accel_sip > 0) || (gyro_sip > 0) || (ext0_sip > 0));
