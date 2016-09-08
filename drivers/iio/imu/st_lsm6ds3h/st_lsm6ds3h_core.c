@@ -775,7 +775,9 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 		cdata->timestamp = cdata->last_timestamp = timespec_to_ns(&ts);
 		cdata->fifo_output[ST_MASK_ID_GYRO].timestamp = 0;
 		cdata->fifo_output[ST_MASK_ID_ACCEL].timestamp = 0;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 		cdata->fifo_output[ST_MASK_ID_EXT0].timestamp = 0;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	}
 
 	cdata->fifo_status = fm;
@@ -834,7 +836,10 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 {
 	unsigned int trigger_odr;
 	u8 min_decimator, max_decimator = 0;
-	u8 accel_decimator = 0, gyro_decimator = 0, ext_decimator = 0;
+	u8 accel_decimator = 0, gyro_decimator = 0;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+	u8 ext_decimator = 0;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 	trigger_odr = new_hw_odr[ST_MASK_ID_ACCEL];
 	if (trigger_odr < new_hw_odr[ST_MASK_ID_GYRO])
@@ -860,9 +865,15 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 	new_fifo_decimator[ST_MASK_ID_ACCEL] = 1;
 	new_fifo_decimator[ST_MASK_ID_GYRO] = 1;
 
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	if ((accel_decimator != 0) || (gyro_decimator != 0) || (ext_decimator != 0)) {
 		min_decimator = MIN_BNZ(MIN_BNZ(accel_decimator, gyro_decimator), ext_decimator);
 		max_decimator = MAX(MAX(accel_decimator, gyro_decimator), ext_decimator);
+#else
+	if ((accel_decimator != 0) || (gyro_decimator != 0)) {
+		min_decimator = MIN_BNZ(accel_decimator, gyro_decimator);
+		max_decimator = MAX(accel_decimator, gyro_decimator);
+#endif
 		if (min_decimator != 1) {
 			if ((accel_decimator / min_decimator) == 1) {
 				accel_decimator = 1;
@@ -870,9 +881,11 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 			} else if ((gyro_decimator / min_decimator) == 1) {
 				gyro_decimator = 1;
 				new_fifo_decimator[ST_MASK_ID_GYRO] = min_decimator;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 			} else if ((ext_decimator / min_decimator) == 1) {
 				ext_decimator = 1;
 				new_fifo_decimator[ST_MASK_ID_EXT0] = min_decimator;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 			}
 			min_decimator = 1;
 		}
@@ -898,8 +911,10 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 			new_fifo_decimator[ST_MASK_ID_EXT0] = ext_decimator - 7;
 			ext_decimator = 8;
 		}
-#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 		max_decimator = MAX(MAX(accel_decimator, gyro_decimator), ext_decimator);
+#else
+		max_decimator = MAX(accel_decimator, gyro_decimator);
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	}
 
 	decimators[0] = accel_decimator;
@@ -1326,8 +1341,11 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 #endif
 
 			if ((sdata->cdata->fifo_output[ST_MASK_ID_ACCEL].sip > 0) ||
-					(sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip > 0) ||
-						(sdata->cdata->fifo_output[ST_MASK_ID_EXT0].sip > 0)) {
+					(sdata->cdata->fifo_output[ST_MASK_ID_GYRO].sip > 0)
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+						|| (sdata->cdata->fifo_output[ST_MASK_ID_EXT0].sip > 0)
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+			) {
 				err = st_lsm6ds3h_set_fifo_mode(sdata->cdata, CONTINUOS);
 				if (err < 0)
 					goto reenable_fifo_irq;
@@ -1469,7 +1487,9 @@ static int st_lsm6ds3h_set_odr(struct lsm6ds3h_sensor_data *sdata,
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 			} else {
 				sdata->cdata->nofifo_decimation[ST_MASK_ID_ACCEL].decimator = 1;
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 				sdata->cdata->nofifo_decimation[ST_MASK_ID_EXT0].decimator = 1;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 			}
 
 			sdata->cdata->nofifo_decimation[ST_MASK_ID_ACCEL].num_samples =
@@ -1958,8 +1978,10 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 
 		break;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	case ST_MASK_ID_EXT0:
 		break;
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 	default:
 		return -EINVAL;
 	}
