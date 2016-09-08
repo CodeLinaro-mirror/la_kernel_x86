@@ -104,8 +104,11 @@ static void lsm6ds3h_irq_management(struct work_struct *data_work)
 
 	if ((cdata->sensors_enabled & ~cdata->sensors_use_fifo) &
 			(BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_ACCEL_WK) |
-				BIT(ST_MASK_ID_GYRO) | BIT(ST_MASK_ID_GYRO_WK) |
-				BIT(ST_MASK_ID_EXT0))) {
+				BIT(ST_MASK_ID_GYRO) | BIT(ST_MASK_ID_GYRO_WK)
+#ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
+				| BIT(ST_MASK_ID_EXT0)
+#endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
+	)) {
 		err = cdata->tf->read(cdata, ST_LSM6DS3H_ACCEL_DATA_AVL_ADDR,
 						1, &src_accel_gyro, true);
 		if (err < 0)
