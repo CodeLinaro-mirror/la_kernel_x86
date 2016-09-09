@@ -253,6 +253,9 @@ struct lsm6ds3h_data {
 	int accel_odr_dependency[4];
 
 	bool accel_on;
+	bool accel_wk_on;
+	bool gyro_on;
+	bool gyro_wk_on;
 	bool magn_on;
 	enum fifo_mode fifo_status;
 
