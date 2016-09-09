@@ -606,26 +606,30 @@ static int lsm6ds3h_set_watermark(struct lsm6ds3h_data *cdata)
 	unsigned int fifo_len, sip = 0, min_pattern = UINT_MAX;
 	u16 hwfifo_watermark_accel = 0, hwfifo_watermark_gyro = 0;
 
-	if (cdata->sensors_enabled & (BIT(ST_MASK_ID_ACCEL) | BIT(ST_MASK_ID_ACCEL_WK))) {
-		if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL)) {
-			if (cdata->sensors_enabled & BIT(ST_MASK_ID_ACCEL_WK)) {
+	if (cdata->accel_on || cdata->accel_wk_on) {
+		if (cdata->accel_on) {
+			if (cdata->accel_wk_on) {
 				hwfifo_watermark_accel = MIN(cdata->hwfifo_watermark[ST_MASK_ID_ACCEL],
-						cdata->hwfifo_watermark[ST_MASK_ID_ACCEL_WK]);
-			} else
+					cdata->hwfifo_watermark[ST_MASK_ID_ACCEL_WK]);
+			} else {
 				hwfifo_watermark_accel = cdata->hwfifo_watermark[ST_MASK_ID_ACCEL];
-		} else
+			}
+		} else {
 			hwfifo_watermark_accel = cdata->hwfifo_watermark[ST_MASK_ID_ACCEL_WK];
+		}
 	}
 
-	if (cdata->sensors_enabled & (BIT(ST_MASK_ID_GYRO) | BIT(ST_MASK_ID_GYRO_WK))) {
-		if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO)) {
-			if (cdata->sensors_enabled & BIT(ST_MASK_ID_GYRO_WK)) {
+	if (cdata->gyro_on || cdata->gyro_wk_on) {
+		if (cdata->gyro_on) {
+			if (cdata->gyro_wk_on) {
 				hwfifo_watermark_gyro = MIN(cdata->hwfifo_watermark[ST_MASK_ID_GYRO],
-						cdata->hwfifo_watermark[ST_MASK_ID_GYRO_WK]);
-			} else
+					cdata->hwfifo_watermark[ST_MASK_ID_GYRO_WK]);
+			} else {
 				hwfifo_watermark_gyro = cdata->hwfifo_watermark[ST_MASK_ID_GYRO];
-		} else
+			}
+		} else {
 			hwfifo_watermark_gyro = cdata->hwfifo_watermark[ST_MASK_ID_GYRO_WK];
+		}
 	}
 
 	if (cdata->fifo_output[ST_MASK_ID_ACCEL].sip > 0) {
@@ -846,7 +850,7 @@ static bool lsm6ds3h_calculate_fifo_decimators(struct lsm6ds3h_data *cdata,
 		trigger_odr = new_hw_odr[ST_MASK_ID_GYRO];
 
 	if ((cdata->sensors_use_fifo & BIT(ST_MASK_ID_ACCEL)) &&
-			(new_v_odr[ST_MASK_ID_ACCEL] != 0) && cdata->accel_on)
+			(new_v_odr[ST_MASK_ID_ACCEL] != 0) && (cdata->accel_on || cdata->accel_wk_on))
 		accel_decimator = trigger_odr / new_v_odr[ST_MASK_ID_ACCEL];
 
 	if ((cdata->sensors_use_fifo & BIT(ST_MASK_ID_GYRO)) &&
@@ -1533,9 +1537,9 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 	case ST_MASK_ID_ACCEL_WK:
 		cdata->accel_odr_dependency[1] = min_odr;
 		if (min_odr > 0)
-			cdata->accel_on = true;
+			cdata->accel_wk_on = true;
 		else
-			cdata->accel_on = false;
+			cdata->accel_wk_on = false;
 
 		break;
 	case ST_MASK_ID_SENSOR_HUB:
@@ -1853,6 +1857,12 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO];
 			dis_odr = 0;
 		}
+
+		if (enable)
+			sdata->cdata->gyro_on = true;
+		else
+			sdata->cdata->gyro_on = false;
+
 		err = st_lsm6ds3h_set_odr(sdata, enable ?
 			en_odr : dis_odr, true);
 		if (err < 0)
@@ -1868,6 +1878,12 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			en_odr = sdata->cdata->v_odr[ST_MASK_ID_GYRO_WK];
 			dis_odr = 0;
 		}
+
+		if (enable)
+			sdata->cdata->gyro_wk_on= true;
+		else
+			sdata->cdata->gyro_wk_on = false;
+
 		err = st_lsm6ds3h_set_odr(sdata, enable ?
 			en_odr : dis_odr, true);
 		if (err < 0)
@@ -3733,6 +3749,9 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->accel_selftest_status = 0;
 
 	cdata->accel_on = false;
+	cdata->accel_wk_on = false;
+	cdata->gyro_on = false;
+	cdata->gyro_wk_on = false;
 	cdata->magn_on = false;
 
 	cdata->reset_steps = false;
