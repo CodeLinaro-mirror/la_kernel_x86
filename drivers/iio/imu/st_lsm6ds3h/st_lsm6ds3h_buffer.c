@@ -137,11 +137,11 @@ static void st_lsm6ds3h_parse_fifo_data(struct lsm6ds3h_data *cdata, u16 read_le
 {
 	int deadlock_detector = 0;
 	u8 gyro_sip, accel_sip;
-	int64_t accel_deltatime;
-	int64_t gyro_deltatime;
+	int64_t accel_deltatime = cdata->fifo_output[ST_MASK_ID_ACCEL].deltatime;
+	int64_t gyro_deltatime = cdata->fifo_output[ST_MASK_ID_GYRO].deltatime;
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
 	u8 ext0_sip;
-	int64_t ext0_deltatime;
+	int64_t ext0_deltatime = cdata->fifo_output[ST_MASK_ID_EXT0].deltatime;
 #endif /* CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT */
 
 	dev_dbg(cdata->dev, "st_lsm6ds3h_parse_fifo_data: sensors_enabled=0x%2x\n",
