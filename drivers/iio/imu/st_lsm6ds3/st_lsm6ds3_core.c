@@ -166,7 +166,7 @@
 #define ST_LSM6DS3_GYRO_OUT_Z_L_ADDR		0x26
 #define ST_LSM6DS3_GYRO_AXIS_EN_ADDR		0x19
 #define ST_LSM6DS3_GYRO_STD			6
-
+#define CALIBRATE_ODR_SET_VALUE				0X1C
 /* CUSTOM VALUES FOR SIGNIFICANT MOTION SENSOR */
 #define ST_LSM6DS3_SIGN_MOTION_EN_ADDR		0x19
 #define ST_LSM6DS3_SIGN_MOTION_EN_MASK		0x01
@@ -2427,9 +2427,14 @@ ssize_t st_lsm6ds3_sysfs_do_calibrate(struct device *dev,
 {
 	int err;
 	s32 no_cali[3] = {0};
+	u8 calibrate_odr_reg = CALIBRATE_ODR_SET_VALUE;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct lsm6ds3_sensor_data *sdata = iio_priv(indio_dev);
 
+	err = sdata->cdata->tf->write(sdata->cdata, ST_LSM6DS3_GYRO_ODR_ADDR, 1, &calibrate_odr_reg, true);
+	if (err < 0) {
+		dev_err(sdata->cdata,"failed to write ST_LSM6DS3_GYRO_ODR_ADDR\n");
+	}
 	err = st_lsm6ds3_average_sample(sdata, no_cali, CALIBRATE_SAMPLE_COUNT);
 	if (err < 0)
 		return err;
