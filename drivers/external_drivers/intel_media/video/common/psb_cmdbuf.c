@@ -676,7 +676,7 @@ out:
 		spin_lock(&dev_priv->reloc_lock);
 		dev_priv->rel_mapped_pages -= reloc_num_pages;
 		spin_unlock(&dev_priv->reloc_lock);
-		DRM_WAKEUP(&dev_priv->rel_mapped_queue);
+		wakeup(&dev_priv->rel_mapped_queue);
 	}
 
 	psb_clear_dstbuf_cache(&dst_cache);

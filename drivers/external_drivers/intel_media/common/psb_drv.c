@@ -1639,7 +1639,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
-	DRM_INIT_WAITQUEUE(&dev_priv->rel_mapped_queue);
+	init_waitqueue_head(&dev_priv->rel_mapped_queue);
 
 	dev->dev_private = (void *) dev_priv;
 	dev_priv->chipset = chipset;
@@ -1837,7 +1837,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	 */
 	drm_vblank_offdelay = 0;
 
-	DRM_INIT_WAITQUEUE(&dev_priv->vsync_queue);
+	init_waitqueue_head(&dev_priv->vsync_queue);
 
 	dev_priv->vblank_count =
 		kmalloc(sizeof(atomic_t) * dev_priv->num_pipe, GFP_KERNEL);
