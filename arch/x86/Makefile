@@ -85,7 +85,7 @@ else
 
         biarch := -m64
         KBUILD_AFLAGS += -m64
-        KBUILD_CFLAGS += -m64
+        KBUILD_CFLAGS += -m64 -fno-pic
 
         # Align jump targets to 1 byte, not the default 16 bytes:
         KBUILD_CFLAGS += -falign-jumps=1
@@ -111,6 +111,8 @@ else
                 $(call cc-option,-march=core2,$(call cc-option,-mtune=generic))
 	cflags-$(CONFIG_MATOM) += $(call cc-option,-march=atom) \
 		$(call cc-option,-mtune=atom,$(call cc-option,-mtune=generic))
+        cflags-$(CONFIG_MSLM) += $(call cc-option,-march=slm) \
+                $(call cc-option,-mtune=slm,$(call cc-option,-mtune=generic))
         cflags-$(CONFIG_GENERIC_CPU) += $(call cc-option,-mtune=generic)
         KBUILD_CFLAGS += $(cflags-y)
 

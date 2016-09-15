@@ -1512,8 +1512,11 @@ int mmc_regulator_get_supply(struct mmc_host *mmc)
 	mmc->supply.vqmmc = devm_regulator_get_optional(dev, "vqmmc");
 
 	if (IS_ERR(mmc->supply.vmmc)) {
-		if (PTR_ERR(mmc->supply.vmmc) == -EPROBE_DEFER)
+		if (PTR_ERR(mmc->supply.vmmc) == -EPROBE_DEFER) {
+			pr_debug("%s: mmc->supply.vmmc, return=%d\n",
+				__func__, -EPROBE_DEFER);
 			return -EPROBE_DEFER;
+		}
 		dev_info(dev, "No vmmc regulator found\n");
 	} else {
 		ret = mmc_regulator_get_ocrmask(mmc->supply.vmmc);
@@ -1524,8 +1527,11 @@ int mmc_regulator_get_supply(struct mmc_host *mmc)
 	}
 
 	if (IS_ERR(mmc->supply.vqmmc)) {
-		if (PTR_ERR(mmc->supply.vqmmc) == -EPROBE_DEFER)
+		if (PTR_ERR(mmc->supply.vqmmc) == -EPROBE_DEFER) {
+			pr_debug("%s: mmc->supply.vqmmc, return=%d\n",
+				__func__, -EPROBE_DEFER);
 			return -EPROBE_DEFER;
+		}
 		dev_info(dev, "No vqmmc regulator found\n");
 	}
 
@@ -1655,7 +1661,10 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, u32 ocr)
 	mmc_set_ios(host);
 
 	/* Wait for at least 1 ms according to spec */
-	mmc_delay(1);
+	if (host->ops->busy_wait)
+		host->ops->busy_wait(host, 1000);
+	else
+		mmc_delay(1);
 
 	/*
 	 * Failure to switch is indicated by the card holding
@@ -1760,7 +1769,7 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
-	mmc_delay(10);
+	usleep_range(10000, 11000);
 
 	mmc_pwrseq_post_power_on(host);
 
@@ -1773,7 +1782,7 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
-	mmc_delay(10);
+	usleep_range(5000, 6000);
 }
 
 void mmc_power_off(struct mmc_host *host)
@@ -2683,6 +2692,8 @@ void mmc_start_host(struct mmc_host *host)
 
 	mmc_gpiod_request_cd_irq(host);
 	_mmc_detect_change(host, 0, false);
+	if (host->caps2 & MMC_CAP2_INIT_CARD_SYNC)
+		flush_work(&host->detect.work);
 }
 
 void mmc_stop_host(struct mmc_host *host)
@@ -2795,6 +2806,56 @@ int mmc_flush_cache(struct mmc_card *card)
 EXPORT_SYMBOL(mmc_flush_cache);
 
 #ifdef CONFIG_PM
+
+/**
+ *      mmc_suspend_host - suspend a host
+ *      @host: mmc host
+ */
+int mmc_suspend_host(struct mmc_host *host)
+{
+        int err = 0;
+
+        cancel_delayed_work(&host->detect);
+        mmc_flush_scheduled_work();
+
+        mmc_bus_get(host);
+        if (host->bus_ops && !host->bus_dead) {
+                if (host->bus_ops->suspend) {
+                        if (mmc_card_doing_bkops(host->card)) {
+                                err = mmc_stop_bkops(host->card);
+                                if (err)
+                                        goto out;
+                        }
+                        err = host->bus_ops->suspend(host);
+                }
+
+                if (err == -ENOSYS || !host->bus_ops->resume) {
+                        /*
+                         * We simply "remove" the card in this case.
+                         * It will be redetected on resume.  (Calling
+                         * bus_ops->remove() with a claimed host can
+                         * deadlock.)
+                         */
+                        if (host->bus_ops->remove)
+                                host->bus_ops->remove(host);
+                        mmc_claim_host(host);
+                        mmc_detach_bus(host);
+                        mmc_power_off(host);
+                        mmc_release_host(host);
+                        host->pm_flags = 0;
+                        err = 0;
+                }
+        }
+        mmc_bus_put(host);
+
+        if (!err && !mmc_card_keep_power(host))
+                mmc_power_off(host);
+
+out:
+        return err;
+}
+
+EXPORT_SYMBOL(mmc_suspend_host);
 
 /* Do the card removal on suspend if card is assumed removeable
  * Do that in pm notifier while userspace isn't yet frozen, so we will be able

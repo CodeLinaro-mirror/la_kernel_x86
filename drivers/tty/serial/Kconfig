@@ -29,6 +29,16 @@ config SERIAL_AMBA_PL010
 
 	  If unsure, say N.
 
+config SERIAL_MRST_MAX3110
+	tristate "SPI UART driver for Max3110"
+	depends on SPI_DW_PCI
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
+	help
+	  This is the UART protocol driver for the MAX3110 device on
+	  the Intel Moorestown platform. On other systems use the max3100
+	  driver.
+
 config SERIAL_AMBA_PL010_CONSOLE
 	bool "Support for console on AMBA serial port"
 	depends on SERIAL_AMBA_PL010=y

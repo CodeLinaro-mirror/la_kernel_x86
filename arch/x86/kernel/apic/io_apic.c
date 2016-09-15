@@ -64,6 +64,8 @@
 
 #include <asm/apic.h>
 
+#include <asm/intel-mid.h>
+
 #define	for_each_ioapic(idx)		\
 	for ((idx) = 0; (idx) < nr_ioapics; (idx)++)
 #define	for_each_ioapic_reverse(idx)	\
@@ -296,6 +298,24 @@ static void io_apic_write(unsigned int apic, unsigned int reg,
 	writel(reg, &io_apic->index);
 	writel(value, &io_apic->data);
 }
+
+/*
+ * This index matches with 1024 - 4 address in SCU RTE table area.
+ * That is not used for anything. Works in CLVP only
+ */
+#define LAST_INDEX_IN_IO_APIC_SPACE 255
+#define KERNEL_TO_SCU_PANIC_REQUEST (0x0515dead)
+void apic_scu_panic_dump(void)
+{
+	unsigned long flags;
+
+	printk(KERN_ERR "Request SCU panic dump");
+	raw_spin_lock_irqsave(&ioapic_lock, flags);
+	io_apic_write(0, LAST_INDEX_IN_IO_APIC_SPACE,
+		      KERNEL_TO_SCU_PANIC_REQUEST);
+	raw_spin_unlock_irqrestore(&ioapic_lock, flags);
+}
+EXPORT_SYMBOL_GPL(apic_scu_panic_dump);
 
 union entry_union {
 	struct { u32 w1, w2; };
@@ -1106,6 +1126,7 @@ int mp_map_gsi_to_irq(u32 gsi, unsigned int flags, struct irq_alloc_info *info)
 	int ioapic, pin, idx;
 
 	ioapic = mp_find_ioapic(gsi);
+	pr_debug("%s: gsi=%u, ioapic=%d\n", __func__, gsi, ioapic);
 	if (ioapic < 0)
 		return -1;
 
@@ -1682,6 +1703,11 @@ static unsigned int startup_ioapic_irq(struct irq_data *data)
 	return was_pending;
 }
 
+static int ioapic_set_wake(struct irq_data *data, unsigned int on)
+{
+	return 0;
+}
+
 atomic_t irq_mis_count;
 
 #ifdef CONFIG_GENERIC_PENDING_IRQ
@@ -1876,6 +1902,7 @@ static struct irq_chip ioapic_chip __read_mostly = {
 	.irq_eoi		= ioapic_ack_level,
 	.irq_set_affinity	= ioapic_set_affinity,
 	.flags			= IRQCHIP_SKIP_SET_WAKE,
+	.irq_set_wake		= ioapic_set_wake,
 };
 
 static struct irq_chip ioapic_ir_chip __read_mostly = {

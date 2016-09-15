@@ -809,6 +809,89 @@ static int verity_parse_opt_args(struct dm_arg_set *as, struct dm_verity *v)
 	return r;
 }
 
+static int verity_alloc_zero_digest(struct dm_verity *v)
+{
+	int r = -ENOMEM;
+	struct shash_desc *desc;
+	u8 *zero_data;
+
+	v->zero_digest = kmalloc(v->digest_size, GFP_KERNEL);
+
+	if (!v->zero_digest)
+		return r;
+
+	desc = kmalloc(v->shash_descsize, GFP_KERNEL);
+
+	if (!desc)
+		return r; /* verity_dtr will free zero_digest */
+
+	zero_data = kzalloc(1 << v->data_dev_block_bits, GFP_KERNEL);
+
+	if (!zero_data)
+		goto out;
+
+	r = verity_hash(v, desc, zero_data, 1 << v->data_dev_block_bits,
+			v->zero_digest);
+
+out:
+	kfree(desc);
+	kfree(zero_data);
+
+	return r;
+}
+
+static int verity_parse_opt_args(struct dm_arg_set *as, struct dm_verity *v)
+{
+	int r;
+	unsigned argc;
+	struct dm_target *ti = v->ti;
+	const char *arg_name;
+
+	static struct dm_arg _args[] = {
+		{0, DM_VERITY_OPTS_MAX, "Invalid number of feature args"},
+	};
+
+	r = dm_read_arg_group(_args, as, &argc, &ti->error);
+	if (r)
+		return -EINVAL;
+
+	if (!argc)
+		return 0;
+
+	do {
+		arg_name = dm_shift_arg(as);
+		argc--;
+
+		if (!strcasecmp(arg_name, DM_VERITY_OPT_LOGGING)) {
+			v->mode = DM_VERITY_MODE_LOGGING;
+			continue;
+
+		} else if (!strcasecmp(arg_name, DM_VERITY_OPT_RESTART)) {
+			v->mode = DM_VERITY_MODE_RESTART;
+			continue;
+
+		} else if (!strcasecmp(arg_name, DM_VERITY_OPT_IGN_ZEROES)) {
+			r = verity_alloc_zero_digest(v);
+			if (r) {
+				ti->error = "Cannot allocate zero digest";
+				return r;
+			}
+			continue;
+
+		} else if (verity_is_fec_opt_arg(arg_name)) {
+			r = verity_fec_parse_opt_args(as, v, &argc, arg_name);
+			if (r)
+				return r;
+			continue;
+		}
+
+		ti->error = "Unrecognized verity feature request";
+		return -EINVAL;
+	} while (argc && !r);
+
+	return r;
+}
+
 /*
  * Target parameters:
  *	<version>	The current format is version 1.

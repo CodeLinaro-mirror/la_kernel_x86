@@ -377,6 +377,14 @@ static int __init setup_early_printk(char *buf)
 		if (!strncmp(buf, "xen", 3))
 			early_console_register(&xenboot_console, keep);
 #endif
+#ifdef CONFIG_EARLY_PRINTK_INTEL_MID
+		if (!strncmp(buf, "mrfld", 5)) {
+			mrfld_early_console_init();
+			early_console_register(&early_mrfld_console, keep);
+		}
+		if (!strncmp(buf, "pti", 3))
+			early_console_register(&early_pti_console, keep);
+#endif
 #ifdef CONFIG_EARLY_PRINTK_EFI
 		if (!strncmp(buf, "efi", 3))
 			early_console_register(&early_efi_console, keep);

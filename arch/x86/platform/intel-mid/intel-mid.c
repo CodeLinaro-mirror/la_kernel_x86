@@ -11,6 +11,7 @@
  * of the License.
  */
 
+#define        SFI_SIG_OEM0    "OEM0"
 #define pr_fmt(fmt) "intel_mid: " fmt
 
 #include <linux/init.h>
@@ -21,6 +22,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/spinlock.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -32,10 +34,12 @@
 #include <asm/io.h>
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_rpmsg.h>
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
 
 #include "intel_mid_weak_decls.h"
+#include "intel_soc_pmu.h"
 
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
@@ -61,25 +65,138 @@
 enum intel_mid_timer_options intel_mid_timer_options;
 
 /* intel_mid_ops to store sub arch ops */
-static struct intel_mid_ops *intel_mid_ops;
+struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
 static void *(*get_intel_mid_ops[])(void) = INTEL_MID_OPS_INIT;
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
+static int force_cold_boot;
+module_param(force_cold_boot, int, 0644);
+MODULE_PARM_DESC(force_cold_boot,
+		 "Set to Y to force a COLD BOOT instead of a COLD RESET "
+		 "on the next reboot system call.");
+u32 nbr_hsi_clients = 2;
+
 static void intel_mid_power_off(void)
 {
+	pmu_power_off();
 };
 
 static void intel_mid_reboot(void)
 {
-	intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_TANGIER)
+		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
+	else {
+		if (intel_scu_ipc_fw_update()) {
+			pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
+		}
+		if (force_cold_boot)
+			rpmsg_send_generic_simple_command(IPCMSG_COLD_BOOT, 0);
+		else
+			rpmsg_send_generic_simple_command(IPCMSG_COLD_RESET, 0);
+	}
 }
 
 static unsigned long __init intel_mid_calibrate_tsc(void)
 {
 	return 0;
 }
+
+/* Unified message bus read/write operation */
+static DEFINE_SPINLOCK(msgbus_lock);
+
+static struct pci_dev *pci_root;
+
+static int intel_mid_msgbus_init(void)
+{
+	pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
+	if (!pci_root) {
+		printk(KERN_ALERT "%s: Error: msgbus PCI handle NULL",
+			__func__);
+		return -ENODEV;
+	}
+	return 0;
+}
+
+fs_initcall(intel_mid_msgbus_init);
+
+
+u32 intel_mid_msgbus_read32_raw(u32 cmd)
+{
+	unsigned long irq_flags;
+	u32 data;
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	pci_read_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, &data);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+
+	return data;
+}
+EXPORT_SYMBOL(intel_mid_msgbus_read32_raw);
+
+void intel_mid_msgbus_write32_raw(u32 cmd, u32 data)
+{
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, data);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+}
+EXPORT_SYMBOL(intel_mid_msgbus_write32_raw);
+
+u32 intel_mid_msgbus_read32(u8 port, u32 addr)
+{
+	unsigned long irq_flags;
+	u32 data;
+	u32 cmd;
+	u32 cmdext;
+
+	cmd = (PCI_ROOT_MSGBUS_READ << 24) | (port << 16) |
+		((addr & 0xff) << 8) | PCI_ROOT_MSGBUS_DWORD_ENABLE;
+	cmdext = addr & 0xffffff00;
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+
+	if (cmdext) {
+		/* This resets to 0 automatically, no need to write 0 */
+		pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_EXT_REG,
+			cmdext);
+	}
+
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	pci_read_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, &data);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+
+	return data;
+}
+EXPORT_SYMBOL(intel_mid_msgbus_read32);
+
+void intel_mid_msgbus_write32(u8 port, u32 addr, u32 data)
+{
+	unsigned long irq_flags;
+	u32 cmd;
+	u32 cmdext;
+
+	cmd = (PCI_ROOT_MSGBUS_WRITE << 24) | (port << 16) |
+		((addr & 0xFF) << 8) | PCI_ROOT_MSGBUS_DWORD_ENABLE;
+	cmdext = addr & 0xffffff00;
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, data);
+
+	if (cmdext) {
+		/* This resets to 0 automatically, no need to write 0 */
+		pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_EXT_REG,
+			cmdext);
+	}
+
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+}
+EXPORT_SYMBOL(intel_mid_msgbus_write32);
 
 static void __init intel_mid_setup_bp_timer(void)
 {

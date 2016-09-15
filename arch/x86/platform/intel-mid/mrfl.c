@@ -16,6 +16,9 @@
 
 #include "intel_mid_weak_decls.h"
 
+enum intel_mid_sim_type __intel_mid_sim_platform;
+EXPORT_SYMBOL_GPL(__intel_mid_sim_platform);
+
 static unsigned long __init tangier_calibrate_tsc(void)
 {
 	unsigned long fast_calibrate;

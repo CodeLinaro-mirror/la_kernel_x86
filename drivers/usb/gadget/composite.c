@@ -1713,7 +1713,7 @@ unknown:
 			switch (ctrl->bRequestType & USB_RECIP_MASK) {
 			case USB_RECIP_DEVICE:
 				if (w_index != 0x4 || (w_value >> 8))
-					break;
+					goto done;
 				buf[6] = w_index;
 				if (w_length == 0x10) {
 					/* Number of ext compat interfaces */
@@ -1737,7 +1737,7 @@ unknown:
 				break;
 			case USB_RECIP_INTERFACE:
 				if (w_index != 0x5 || (w_value >> 8))
-					break;
+					goto done;
 				interface = w_value & 0xFF;
 				buf[6] = w_index;
 				if (w_length == 0x0A) {
@@ -2019,24 +2019,23 @@ fail:
 int composite_os_desc_req_prepare(struct usb_composite_dev *cdev,
 				  struct usb_ep *ep0)
 {
-	int ret = 0;
+	struct usb_gadget *gadget = cdev->gadget;
+	int ret = -ENOMEM;
 
 	cdev->os_desc_req = usb_ep_alloc_request(ep0, GFP_KERNEL);
-	if (!cdev->os_desc_req) {
-		ret = PTR_ERR(cdev->os_desc_req);
-		goto end;
-	}
+	if (!cdev->os_desc_req)
+		return -ENOMEM;
 
 	/* OS feature descriptor length <= 4kB */
 	cdev->os_desc_req->buf = kmalloc(4096, GFP_KERNEL);
-	if (!cdev->os_desc_req->buf) {
-		ret = PTR_ERR(cdev->os_desc_req->buf);
-		kfree(cdev->os_desc_req);
-		goto end;
-	}
+	if (!cdev->os_desc_req->buf)
+		goto fail;
 	cdev->os_desc_req->context = cdev;
 	cdev->os_desc_req->complete = composite_setup_complete;
-end:
+	return 0;
+fail:
+	usb_ep_free_request(gadget->ep0, cdev->os_desc_req);
+	cdev->os_desc_req = NULL;
 	return ret;
 }
 
@@ -2054,6 +2053,7 @@ void composite_dev_cleanup(struct usb_composite_dev *cdev)
 
 		kfree(cdev->os_desc_req->buf);
 		usb_ep_free_request(cdev->gadget->ep0, cdev->os_desc_req);
+		cdev->os_desc_req = NULL;
 	}
 	if (cdev->req) {
 		if (cdev->setup_pending)
@@ -2061,6 +2061,7 @@ void composite_dev_cleanup(struct usb_composite_dev *cdev)
 
 		kfree(cdev->req->buf);
 		usb_ep_free_request(cdev->gadget->ep0, cdev->req);
+		cdev->req = NULL;
 	}
 	cdev->next_string_id = 0;
 	device_remove_file(&cdev->gadget->dev, &dev_attr_suspended);
