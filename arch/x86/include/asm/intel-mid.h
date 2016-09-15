@@ -17,6 +17,7 @@
 #include <linux/pci.h>
 #include <linux/platform_device.h>
 #include <asm/intel_mid_pcihelpers.h>
+#include <asm/spid.h>
 
 #ifdef CONFIG_SFI
 extern void install_irq_resource(struct platform_device *pdev, int irq);

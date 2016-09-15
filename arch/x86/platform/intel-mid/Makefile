@@ -18,4 +18,8 @@ obj-$(CONFIG_REMOVEME_INTEL_ATOM_MRFLD_POWER) += pmu_tng.o
 
 # Debug features driver
 obj-$(CONFIG_INTEL_DEBUG_FEATURE) += intel_soc_debug.o
+
+# SPID code
+obj-y += spid.o
+
 endif
