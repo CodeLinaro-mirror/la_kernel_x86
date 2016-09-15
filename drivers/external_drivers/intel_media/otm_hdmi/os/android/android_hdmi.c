@@ -465,13 +465,6 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 
 	dev_priv->hdmi_priv = (void *)hdmi_priv;
 
-	/* Register hdmi switch_dev */
-	hdmi_priv->sdev.name = "hdmi";
-	if (switch_dev_register(&hdmi_priv->sdev) < 0) {
-		pr_err("%s: Hdmi switch registration failed\n", __func__);
-		goto free;
-	}
-
 	/* Register callback to be used with Hotplug interrupts */
 	ret = otm_hdmi_hpd_callback_register(hdmi_priv->context,
 					     &android_hdmi_irq_callback,
