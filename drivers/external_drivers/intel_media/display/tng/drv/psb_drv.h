@@ -362,7 +362,7 @@ enum enum_ports {
 #define IS_TNG(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) && (intel_mid_soc_stepping() >= 1))
 #endif
 
-#define IS_ANN(dev) (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)
+#define IS_ANN(dev) (0)
 
 /*
  * Checking for Anniedale and Anniedale revision ID
@@ -387,11 +387,11 @@ enum enum_ports {
  * 2 --> B0
  * 1 --> K0
  */
-#define IS_ANN_A0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) && (intel_mid_soc_stepping() == 0))
+#define IS_ANN_A0(dev) (0)
 
-#define IS_ANN_B0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) && (intel_mid_soc_stepping() == 2))
+#define IS_ANN_B0(dev) (0)
 
-#define IS_MOFD(dev) (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)
+#define IS_MOFD(dev) (0)
 
 #define IS_MID(dev) (IS_MDFLD(dev) || IS_MRFLD(dev))
 #define IS_FLDS(dev) (IS_MDFLD(dev) || IS_MRFLD(dev))
