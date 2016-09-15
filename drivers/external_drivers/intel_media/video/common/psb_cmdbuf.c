@@ -628,7 +628,7 @@ static int psb_fixup_relocs(struct drm_file *file_priv,
 		goto out;
 	}
 
-	DRM_WAIT_ON(ret, dev_priv->rel_mapped_queue, 3 * DRM_HZ,
+	DRM_WAIT_ON(ret, dev_priv->rel_mapped_queue, 3 * HZ,
 		    (registered =
 			     psb_ok_to_map_reloc(dev_priv, reloc_num_pages)));
 

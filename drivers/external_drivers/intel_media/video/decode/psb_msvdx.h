@@ -320,7 +320,7 @@ do {									\
 } while (0)
 
 #if 0
-#define PSB_WATCHDOG_DELAY (DRM_HZ * 2)
+#define PSB_WATCHDOG_DELAY (HZ * 2)
 extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);

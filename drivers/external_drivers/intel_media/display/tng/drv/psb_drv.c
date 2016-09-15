@@ -146,7 +146,7 @@ int drm_psb_topaz_clockgating;
 int gfxrtdelay = 2 * 1000;
 int drm_psb_3D_vblank;
 int drm_psb_smart_vsync = 1;
-int drm_psb_te_timer_delay = (DRM_HZ / 40);
+int drm_psb_te_timer_delay = (HZ / 40);
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;

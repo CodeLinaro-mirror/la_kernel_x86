@@ -264,7 +264,7 @@ enum {
 #define PSB_HIGH_REG_OFFS 0x0600
 
 #define PSB_NUM_VBLANKS 2
-#define PSB_LID_DELAY (DRM_HZ / 10)
+#define PSB_LID_DELAY (HZ / 10)
 
 #define MDFLD_PNW_A0 0x00
 #define MDFLD_PNW_B0 0x04
@@ -284,7 +284,7 @@ enum {
 #define MDFLD_DSR_RR 45
 #define MDFLD_DPU_ENABLE BIT31
 #define MDFLD_DSR_FULLSCREEN BIT30
-#define MDFLD_DSR_DELAY (DRM_HZ / MDFLD_DSR_RR)
+#define MDFLD_DSR_DELAY (HZ / MDFLD_DSR_RR)
 
 #define PSB_PWR_STATE_ON		1
 #define PSB_PWR_STATE_OFF		2

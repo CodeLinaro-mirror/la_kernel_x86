@@ -346,7 +346,7 @@ retry:
 		timeout = (time_after(to_jiffies, cur_jiffies)) ?
 		    to_jiffies - cur_jiffies : 1;
 #else
-		timeout = 3 * DRM_HZ;
+		timeout = 3 * HZ;
 #endif
 
 		if (interruptible)
