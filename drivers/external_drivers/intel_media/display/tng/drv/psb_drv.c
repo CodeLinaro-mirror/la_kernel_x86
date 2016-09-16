@@ -1808,18 +1808,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	PSB_WVDC32(0xFFFFFFFF, PSB_INT_MASK_R);
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 	if (drm_core_check_feature(dev, DRIVER_MODESET))
-		drm_irq_install(dev);
+		drm_irq_install(dev, dev->pdev->irq);
 
 	dev->vblank_disable_allowed = 1;
 	dev->max_vblank_count = 0xffffff;
 	/* only 24 bits of frame count */
-
-	/* For Video mode panels, set the drm_vblank_offdelay so that we turn
-	 * off faster than the default of 5 seconds. This is done to have
-	 * better S0i1-Display residency for idle use cases
-	 */
-	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DPI)
-		drm_vblank_offdelay = VBLANK_OFF_DELAY_DEFAULT_DPI;
 
 	dev->driver->get_vblank_counter = psb_get_vblank_counter;
 
