@@ -21,6 +21,7 @@
 
 #include <linux/compat.h>
 #include <linux/ioctl.h>
+#include <linux/proc_fs.h>
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
