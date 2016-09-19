@@ -1191,7 +1191,7 @@ static void intel_output_poll_execute(struct work_struct *work)
 	}
 
 	if (repoll)
-		queue_delayed_work(system_nrt_wq, delayed_work,
+		schedule_delayed_work(delayed_work,
 				DRM_OUTPUT_POLL_PERIOD);
 }
 
