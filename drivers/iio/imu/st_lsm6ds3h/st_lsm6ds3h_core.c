@@ -292,7 +292,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define GRAVITY_ACCEL_LSB_2G				(1000000 / ST_LSM6DS3H_ACCEL_FS_2G_SENSITIVITY)
 #define SIGN_X_A			1
 #define SIGN_Y_A			1
-#define SIGN_Z_A			(-1)
+#define SIGN_Z_A			1
 #define SIGN_X_G			1
 #define SIGN_Y_G			1
 #define SIGN_Z_G			1
