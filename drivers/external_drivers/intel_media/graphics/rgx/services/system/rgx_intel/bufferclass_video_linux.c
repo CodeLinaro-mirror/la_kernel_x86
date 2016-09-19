@@ -939,7 +939,7 @@ struct drm_ioctl_desc sBCdrmIoctls[] = {
 	IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO, BCVideoBridge, DRM_AUTH)
 };
 
-static int bc_max_ioctl = DRM_ARRAY_SIZE(sBCdrmIoctls);
+static int bc_max_ioctl = ARRAY_SIZE(sBCdrmIoctls);
 
 void BCVideoQueryIoctls(struct drm_ioctl_desc *ioctls)
 {

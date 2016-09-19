@@ -4089,7 +4089,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	 */
 
 	if ((nr >= DRM_COMMAND_BASE) && (nr < DRM_COMMAND_END)
-	    && (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(psb_ioctls))) {
+	    && (nr < DRM_COMMAND_BASE + ARRAY_SIZE(psb_ioctls))) {
 		struct drm_ioctl_desc *ioctl =
 					&psb_ioctls[nr - DRM_COMMAND_BASE];
 
@@ -5058,7 +5058,7 @@ static struct drm_driver driver = {
 	.unload = psb_driver_unload,
 
 	.ioctls = psb_ioctls,
-	.num_ioctls = DRM_ARRAY_SIZE(psb_ioctls),
+	.num_ioctls = ARRAY_SIZE(psb_ioctls),
 	.device_is_agp = psb_driver_device_is_agp,
 	.irq_preinstall = psb_irq_preinstall,
 	.irq_postinstall = psb_irq_postinstall,

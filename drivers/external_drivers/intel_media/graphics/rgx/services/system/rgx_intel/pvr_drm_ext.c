@@ -221,7 +221,7 @@ void PVRSRVQueryIoctls(struct drm_ioctl_desc *ioctls)
 {
 	int i;
 
-	for (i = 0; i < DRM_ARRAY_SIZE(pvr_ioctls); i++)
+	for (i = 0; i < ARRAY_SIZE(pvr_ioctls); i++)
 	{
 		unsigned int slot = DRM_IOCTL_NR(pvr_ioctls[i].cmd) - DRM_COMMAND_BASE;
 		ioctls[slot] = pvr_ioctls[i];
