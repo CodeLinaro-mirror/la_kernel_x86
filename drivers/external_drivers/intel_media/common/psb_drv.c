@@ -4110,7 +4110,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 }
 
-#ifdef DISPLAY_DRIVER_DEBUG_INTERFACE
+#if 0
 static int psb_blc_proc_show(struct seq_file *seq, void *v)
 {
 	struct drm_minor *minor = (struct drm_minor *) seq->private;
