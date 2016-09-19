@@ -33,6 +33,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/pm_runtime.h>
 #include <linux/freezer.h>
+#include <drm/drm_crtc.h>
 #include "psb_drv.h"
 #include "mdfld_dsi_esd.h"
 #include "mdfld_dsi_dbi_dsr.h"
@@ -434,7 +435,7 @@ static void mdfld_dsi_connector_destroy(struct drm_connector * connector)
 		return;
 	}
 	
-	drm_sysfs_connector_remove(connector);
+	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
 	
 	mdfld_dsi_dsr_destroy(dsi_config);
@@ -982,7 +983,7 @@ int mdfld_dsi_output_init(struct drm_device *dev, int pipe)
 			dev_priv->encoder0 = encoder;
 	}
 	
-	drm_sysfs_connector_add(connector);
+	drm_connector_register(connector);
 
 #ifdef CONFIG_CTP_DPST
 	/* DPST: TODO - get appropriate connector */

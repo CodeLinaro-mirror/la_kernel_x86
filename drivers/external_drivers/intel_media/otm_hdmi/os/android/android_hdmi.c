@@ -2412,7 +2412,7 @@ set_prop_error:
 
 void android_hdmi_connector_destroy(struct drm_connector *connector)
 {
-	drm_sysfs_connector_remove(connector);
+	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
 	kfree(connector);
 }
@@ -2712,7 +2712,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	/* initialize hdmi encoder restore delayed work */
 	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
 
-	drm_sysfs_connector_add(connector);
+	drm_connector_register(connector);
 
 	/* Turn on power rails for HDMI */
 	power_on = otm_hdmi_power_rails_on();
