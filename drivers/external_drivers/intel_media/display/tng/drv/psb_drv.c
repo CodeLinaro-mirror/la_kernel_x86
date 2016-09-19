@@ -4181,8 +4181,7 @@ static const struct file_operations driver_psb_fops = {
 };
 
 static struct drm_driver driver = {
-	.driver_features = DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED |
-	    DRIVER_IRQ_VBL | DRIVER_MODESET,
+	.driver_features = DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED | DRIVER_MODESET,
 	.load = psb_driver_load,
 	.unload = psb_driver_unload,
 
