@@ -576,7 +576,7 @@ void register_rgx_irq_handler(int (*pfn_rgxIrqHandler) (void *), void * pData)
 	}
 }
 
-irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
+irqreturn_t psb_irq_handler(int irq, void *arg)
 {
 	struct drm_device *dev = (struct drm_device *)arg;
 	struct drm_psb_private *dev_priv =
@@ -648,7 +648,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 
 	PSB_WVDC32(vdc_stat, PSB_INT_IDENTITY_R);
-	DRM_READMEMORYBARRIER();
+	rmb();
 
 	if (!handled)
 		return IRQ_NONE;
