@@ -1704,6 +1704,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	ret = ttm_bo_device_init(bdev,
 				 dev_priv->bo_global_ref.ref.object,
 				 &psb_ttm_bo_driver,
+				 dev_priv->dev->anon_inode->i_mapping,
 				 DRM_PSB_FILE_PAGE_OFFSET, true);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -4073,7 +4074,7 @@ int psb_open(struct inode *inode, struct file *filp)
 	BCVideoSetPriv(file_priv, psb_fp);
 
 	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
-		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
+		dev_priv->bdev.dev_mapping = dev_priv->dev->anon_inode->i_mapping;
 
 	return 0;
 

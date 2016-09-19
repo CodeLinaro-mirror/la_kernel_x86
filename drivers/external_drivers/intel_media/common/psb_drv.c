@@ -4904,7 +4904,7 @@ int psb_open(struct inode *inode, struct file *filp)
 
 	pvr_file_priv->pPriv = psb_fp;
 	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
-		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
+		dev_priv->bdev.dev_mapping = dev_priv->dev->anon_inode->i_mapping;
 
 	return 0;
 
