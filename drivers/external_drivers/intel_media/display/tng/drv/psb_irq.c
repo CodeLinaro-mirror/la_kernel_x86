@@ -1205,7 +1205,7 @@ int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 
 	/* In vblank? */
 	if (in_vbl)
-		ret |= DRM_SCANOUTPOS_INVBL;
+		ret |= DRM_SCANOUTPOS_IN_VBLANK;
 
 	return ret;
 }
