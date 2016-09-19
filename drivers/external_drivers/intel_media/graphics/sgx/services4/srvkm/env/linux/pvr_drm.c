@@ -383,7 +383,6 @@ static struct drm_driver sPVRDrmDriver =
 		PVR_DRM_FOPS_IOCTL = drm_ioctl,
 		.mmap = PVRMMap,
 		.poll = drm_poll,
-		.fasync = drm_fasync,
 	},
 #if defined(PVR_DRI_DRM_PLATFORM_DEV)
 	.platform_driver =

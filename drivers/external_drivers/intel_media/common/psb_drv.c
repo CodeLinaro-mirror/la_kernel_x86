@@ -5048,7 +5048,6 @@ static const struct file_operations driver_psb_fops = {
 	.unlocked_ioctl = psb_unlocked_ioctl,
 	.mmap = psb_mmap,
 	.poll = psb_poll,
-	.fasync = drm_fasync,
 	.read = drm_read,
 };
 
