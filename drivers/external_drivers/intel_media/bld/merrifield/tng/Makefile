@@ -128,9 +128,7 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/ospm/gfx_rtpm.o \
 	$(DISPLAYDIR)/ospm/dc_ospm.o \
 	$(DISPLAYDIR)/ospm/dc_maxfifo.o \
-	$(DISPLAYDIR)/ospm/video_ospm.o \
-	$(DISPLAYDIR)/ospm/early_suspend.o \
-	$(DISPLAYDIR)/ospm/early_suspend_sysfs.o
+	$(DISPLAYDIR)/ospm/video_ospm.o
 
 $(DRIVER_NAME)-objs += $(DISPLAYDIR)/cmn_dc_callbacks.o
 

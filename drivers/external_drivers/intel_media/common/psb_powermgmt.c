@@ -45,7 +45,7 @@
 #include <linux/atomic.h>
 
 #include <linux/version.h>
-#define SUPPORT_EARLY_SUSPEND 1
+#define SUPPORT_EARLY_SUSPEND 0
 #include <asm/intel_scu_pmic.h>
 
 #if SUPPORT_EARLY_SUSPEND
