@@ -639,7 +639,7 @@ static void mdfld_gl3_interrupt(struct drm_device *dev, uint32_t vdc_stat)
 }
 #endif
 
-irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
+irqreturn_t psb_irq_handler(int irq, void *handler)
 {
 	struct drm_device *dev = (struct drm_device *) arg;
 	struct drm_psb_private *dev_priv =

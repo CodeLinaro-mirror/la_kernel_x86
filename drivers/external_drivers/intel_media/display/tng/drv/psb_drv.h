@@ -1171,7 +1171,7 @@ static inline struct drm_psb_private *psb_priv(struct drm_device *dev)
  *psb_irq.c
  */
 
-extern irqreturn_t psb_irq_handler(DRM_IRQ_ARGS);
+extern irqreturn_t psb_irq_handler(int irq, void *handler);
 extern int psb_irq_enable_dpst(struct drm_device *dev);
 extern int psb_irq_disable_dpst(struct drm_device *dev);
 extern int psb_dpst_diet_save(struct drm_device *dev);
