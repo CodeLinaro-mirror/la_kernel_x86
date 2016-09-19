@@ -438,7 +438,7 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 		psb_enable_vblank(dev, pipe);
 		spin_lock_irqsave(&dev->vbl_lock, irqflags);
-		dev->vblank_enabled[pipe] = 1;
+		dev->vblank[pipe].enabled = 1;
 		spin_unlock_irqrestore(&dev->vbl_lock, irqflags);
 
 		DCAttachPipe(pipe);

@@ -679,12 +679,12 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-			if (dev->vblank_enabled[0])
+			if (dev->vblank[0].enabled)
 				dev_priv->vdc_irq_mask |= _PSB_PIPEA_EVENT_FLAG;
-			if (dev->vblank_enabled[1])
+			if (dev->vblank[1].enabled)
 				dev_priv->vdc_irq_mask |=
 				    _MDFLD_PIPEB_EVENT_FLAG;
-			if (dev->vblank_enabled[2])
+			if (dev->vblank[2].enabled)
 				dev_priv->vdc_irq_mask |=
 				    _MDFLD_PIPEC_EVENT_FLAG;
 		}
