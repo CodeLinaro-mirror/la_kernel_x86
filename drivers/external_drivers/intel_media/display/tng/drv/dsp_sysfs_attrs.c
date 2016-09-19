@@ -310,7 +310,7 @@ int dsp_sysfs_attr_init(struct drm_device *dev)
 	int ret;
 
 	/* Initialize the sysfs entries*/
-	ret = sysfs_create_group(&dev->primary->kdev.kobj,
+	ret = sysfs_create_group(&dev->primary->kdev->kobj,
 		&dsp_sysfs_attr_group);
 	if (ret) {
 		DRM_ERROR("sysfs attribute group creation failed: %s: %d\n",
@@ -323,5 +323,5 @@ int dsp_sysfs_attr_init(struct drm_device *dev)
 
 void dsp_sysfs_attr_uninit(struct drm_device *dev)
 {
-	sysfs_remove_group(&dev->primary->kdev.kobj, &dsp_sysfs_attr_group);
+	sysfs_remove_group(&dev->primary->kdev->kobj, &dsp_sysfs_attr_group);
 }

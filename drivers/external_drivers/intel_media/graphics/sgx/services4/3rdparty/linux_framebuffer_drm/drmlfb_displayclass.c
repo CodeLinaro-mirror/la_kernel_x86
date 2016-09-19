@@ -356,7 +356,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 				DRM_INFO("[DISPLAY][DDS] hpd = 0\n");
 				hpd = 0;
 				DRM_INFO("[DISPLAY][DDS] P01_REMOVE.\n");
-				kobject_uevent_env(&dsi_config->dev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_0);
+				kobject_uevent_env(&dsi_config->dev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_0);
 			}
 			/*	else if((panel_turn_on == DDS_NT35521) /*&& (AX_MicroP_getGPIOOutputPinLevel(OUT_uP_LCD_RST)==0)){
 				schedule_work(&dev_priv->reset_panel_work);

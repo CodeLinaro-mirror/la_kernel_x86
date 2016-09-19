@@ -126,7 +126,7 @@ static void maxfifo_send_hwc_uevent(struct drm_device * dev)
 	char *envp[] = { event_string, NULL };
 
 	PSB_DEBUG_MAXFIFO("maxfifo: sending uevent to HWC\n");
-	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 }
 
 static void maxfifo_send_hwc_event_work(struct work_struct *work)
@@ -443,7 +443,7 @@ static bool maxfifo_create_sysfs_entries(struct drm_device * dev)
 {
 	int ret;
 
-	ret = sysfs_create_group(&dev->primary->kdev.kobj,
+	ret = sysfs_create_group(&dev->primary->kdev->kobj,
 				&tng_maxfifo_attr_group);
 	if (ret)
 		DRM_ERROR("Maxfifo sysfs setup failed\n");

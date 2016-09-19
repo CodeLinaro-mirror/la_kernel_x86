@@ -502,5 +502,5 @@ void psb_sysfs_uevent(struct drm_device *dev, char *event_string)
 {
 	char *envp[] = { event_string, NULL };
 
-	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 }
