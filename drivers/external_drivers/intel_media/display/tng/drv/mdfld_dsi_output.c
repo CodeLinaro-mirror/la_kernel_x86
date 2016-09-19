@@ -425,7 +425,7 @@ static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
 							&psb_crtc->saved_mode,
 							encoder->crtc->x,
 							encoder->crtc->y,
-							encoder->crtc->fb))
+							encoder->crtc->primary->fb))
 					goto set_prop_error;
 			} else {
 				pEncHFuncs = encoder->helper_private;

@@ -68,9 +68,6 @@ struct psb_intel_limit_t {
 	struct psb_intel_p2_t p2;
 };
 
-extern int synaptics_rmi4_palm_enable();
-extern int synaptics_rmi4_palm_disable();
-
 /**
  * Returns whether any output on the specified pipe is of the specified type
  */
@@ -115,7 +112,7 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	/* struct drm_i915_master_private *master_priv; */
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct psb_framebuffer *psbfb = to_psb_fb(crtc->fb);
+	struct psb_framebuffer *psbfb = to_psb_fb(crtc->primary->fb);
 	struct psb_intel_mode_device *mode_dev = psb_intel_crtc->mode_dev;
 	int pipe = psb_intel_crtc->pipe;
 	unsigned long Start, Offset;
@@ -129,7 +126,7 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 	PSB_DEBUG_ENTRY("\n");
 
 	/* no fb bound */
-	if (!crtc->fb) {
+	if (!crtc->primary->fb) {
 		DRM_DEBUG("No FB bound\n");
 		return 0;
 	}
@@ -140,19 +137,19 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
-	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->primary->fb->pitches[0] + x * (crtc->primary->fb->bits_per_pixel / 8);
 
-	REG_WRITE(dspstride, crtc->fb->pitches[0]);
+	REG_WRITE(dspstride, crtc->primary->fb->pitches[0]);
 
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
-	switch (crtc->fb->bits_per_pixel) {
+	switch (crtc->primary->fb->bits_per_pixel) {
 	case 8:
 		dspcntr |= DISPPLANE_8BPP;
 		break;
 	case 16:
-		if (crtc->fb->depth == 15)
+		if (crtc->primary->fb->depth == 15)
 			dspcntr |= DISPPLANE_15_16BPP;
 		else
 			dspcntr |= DISPPLANE_16BPP;
@@ -1232,15 +1229,12 @@ int psb_power_mode_set_ioctl(struct drm_device *dev, void *data,
 	switch (hwc_mode) {
 	case POWER_MODE_OFF:
 		funcs->dpms(connector, DRM_MODE_DPMS_OFF);
-		synaptics_rmi4_palm_disable();
 		break;
 	case POWER_MODE_NORMAL:
 		funcs->dpms(connector, DRM_MODE_DPMS_ON);
-		synaptics_rmi4_palm_enable();
 		break;
 	case POWER_MODE_DOZE:
 	case POWER_MODE_DOZE_SUSPEND:
-		synaptics_rmi4_palm_disable();
 		funcs->dpms(connector, DRM_MODE_DPMS_SUSPEND);
 		break;
 	default:
