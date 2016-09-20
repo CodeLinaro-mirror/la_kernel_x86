@@ -22,7 +22,6 @@
 #include <asm/intel_scu_flis.h>
 #include "platform_tsl258x.h"
 
-
 static int gpio_conf(void) {
 	int ret1, ret2;
 
@@ -45,7 +44,11 @@ void *tsl258x_als_platform_data(void *info)
 	tsl258x_platform_data.als_def_gain = TSL258X_ALS_DEF_GAIN;
 	tsl258x_platform_data.als_def_gain_trim = TSL258X_ALS_DEF_GAIN_TRIM;
 	tsl258x_platform_data.als_def_cal_target = TSL258X_ALS_DEF_CAL_TARGET;
-
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
+			INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG)) {
+		tsl258x_platform_data.als_def_product_formula_num = 1;
+	} else
+		tsl258x_platform_data.als_def_product_formula_num = 0;
 	if (INTEL_MID_BOARD(3, PHONE, MRFL, GLC, ENG, 4) ||
 			INTEL_MID_BOARD(3, PHONE, MRFL, GLC, PRO, 4)||
 			INTEL_MID_BOARD(3, PHONE, MRFL, MVN, ENG, 4)||

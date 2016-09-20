@@ -149,13 +149,14 @@ since atime * again is an integer
 ******************************************************************/
 
 /* set the coefficients the TSL2584TSV equation will use on Marvin */
+#define TSL2584_CH0_COFF0		52300
+#define TSL2584_CH1_COFF0		60200
 #define TSL2584TSV_CH0_COFF0	1000
 #define TSL2584TSV_CH1_COFF0	2160
 #define TSL2584TSV_CH0_COFF1	950
 #define TSL2584TSV_CH1_COFF1	1110
-
+#define FORMULA_NUM				1
 /* end TSL2584TSV lux equation defines on Marvin */
-
 enum {
 	TSL258X_CHIP_UNKNOWN = 0,
 	TSL258X_CHIP_WORKING = 1,
@@ -552,16 +553,21 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 		chip->lux = 0;
 		return lux;
 	}
-
 	if (chip->id == ID_TSL2584TSV) {
 		gain = chip->taos_settings.als_time *
 			tsl2584_als_gain_tbl[chip->taos_settings.als_gain_idex].gain_val;
-		lux1 = (TSL2584TSV_CH0_COFF0 * ch0 - TSL2584TSV_CH1_COFF0 * ch1) / gain;
-		lux2 = (TSL2584TSV_CH0_COFF1 * ch0 - TSL2584TSV_CH1_COFF1 * ch1) / gain;
-		if ((lux1 < 0) && (lux2 < 0))
-			return -ERANGE;
-		lux = (lux1 >= lux2) ? lux1 : lux2;
-		lux /= GAIN_RATIO;
+		if (FORMULA_NUM == chip->pdata->als_def_product_formula_num) {
+			lux1 = (TSL2584TSV_CH0_COFF0 * ch0 - TSL2584TSV_CH1_COFF0 * ch1) / gain;
+			lux2 = (TSL2584TSV_CH0_COFF1 * ch0 - TSL2584TSV_CH1_COFF1 * ch1) / gain;
+			if ((lux1 < 0) && (lux2 < 0))
+				return -ERANGE;
+			lux = (lux1 >= lux2) ? lux1 : lux2;
+			lux /= GAIN_RATIO;
+		} else {
+			lux = (TSL2584_CH0_COFF0 * ch0 - TSL2584_CH1_COFF0 * ch1) / gain;
+			if (lux < 0)
+				return -ERANGE;
+		}
 	} else {
 		/* calculate ratio */
 		ratio = (ch1 << 15) / ch0;
@@ -1128,7 +1134,6 @@ static int taos_probe(struct i2c_client *clientp,
 		ret = -ENOMEM;
 		goto err_input_alloc_failed;
 	}
-
 	/* set up the input device, this name is the dev-node-name under /dev/input/ */
 	chip->input->name = "tsl2584 ambient light sensor";
 	input_set_capability(chip->input, EV_MSC, MSC_RAW);
