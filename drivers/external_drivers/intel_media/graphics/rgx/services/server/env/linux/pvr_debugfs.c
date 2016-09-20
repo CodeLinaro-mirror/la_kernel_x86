@@ -225,14 +225,14 @@ static int _DebugFSStatisticSeqShow(struct seq_file *psSeqFile, void *pvData)
 {
 	PVR_DEBUGFS_DRIVER_STAT *psStatData = (PVR_DEBUGFS_DRIVER_STAT *)pvData;
 
-	if (psStatData != NULL)
+	if (psStatData != NULL && psStatData->pfnStatsPrint)
 	{
 		psStatData->pfnStatsPrint((void*)psSeqFile, psStatData->pvData, _StatsSeqPrintf);
 		return 0;
 	}
 	else
 	{
-		PVR_DPF((PVR_DEBUGFS_PVR_DPF_LEVEL, "%s: Called when psStatData is NULL, returning -ENODATA(%d)", __FUNCTION__, -ENODATA));
+		PVR_DPF((PVR_DEBUGFS_PVR_DPF_LEVEL, "%s: Called when psStatData%s is NULL, returning -ENODATA(%d)", __FUNCTION__, psStatData ? "->pfnStatsPrint" : "", -ENODATA));
 	}
 
 	return -ENODATA;
