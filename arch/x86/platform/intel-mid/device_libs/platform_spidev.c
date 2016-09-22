@@ -18,7 +18,6 @@
 #include "platform_spidev.h"
 
 static void tng_ssp_spi_cs_control(u32 command);
-static void tng_ssp_spi_platform_pinmux(void);
 
 static int tng_ssp_spi2_FS_gpio = 111;
 
@@ -28,31 +27,11 @@ static struct intel_mid_ssp_spi_chip chip = {
 	/* SPI DMA is currently usable on Tangier */
 	.dma_enabled = false,
 	.cs_control = tng_ssp_spi_cs_control,
-	.platform_pinmux = tng_ssp_spi_platform_pinmux,
 };
 
 static void tng_ssp_spi_cs_control(u32 command)
 {
 	gpio_set_value(tng_ssp_spi2_FS_gpio, (command != 0) ? 1 : 0);
-}
-
-static void tng_ssp_spi_platform_pinmux(void)
-{
-	int err;
-	int saved_muxing;
-	/* Request Chip Select gpios */
-	saved_muxing = gpio_get_alt(tng_ssp_spi2_FS_gpio);
-
-	lnw_gpio_set_alt(tng_ssp_spi2_FS_gpio, LNW_GPIO);
-	err = gpio_request_one(tng_ssp_spi2_FS_gpio,
-			GPIOF_DIR_OUT|GPIOF_INIT_HIGH, "Arduino Shield SS");
-	if (err) {
-		pr_err("%s: unable to get Chip Select GPIO,\
-				fallback to legacy CS mode \n", __func__);
-		lnw_gpio_set_alt(tng_ssp_spi2_FS_gpio, saved_muxing);
-		chip.cs_control = NULL;
-		chip.platform_pinmux = NULL;
-	}
 }
 
 void __init *spidev_platform_data(void *info)
