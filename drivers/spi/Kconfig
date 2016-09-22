@@ -264,7 +264,7 @@ config SPI_IMX
 
 config SPI_INTEL_MID_SSP
 	tristate "SSP SPI controller driver for Intel MID platforms (EXPERIMENTAL)"
-	depends on SPI_MASTER && INTEL_MID_DMAC
+	depends on SPI_MASTER
 	help
 	  This is the unified SSP SPI slave controller driver for the Intel
 	  MID platforms (Moorestown, Medfield, Clovertrial and

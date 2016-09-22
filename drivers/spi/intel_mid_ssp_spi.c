@@ -509,129 +509,6 @@ static void intel_mid_ssp_spi_dma_exit(struct ssp_drv_context *sspc)
 }
 
 /**
- * dma_transfer() - Initiate a DMA transfer
- * @sspc:	Pointer to the private driver context
- */
-static void dma_transfer(struct ssp_drv_context *sspc)
-{
-	dma_addr_t ssdr_addr;
-	struct dma_async_tx_descriptor *txdesc = NULL, *rxdesc = NULL;
-	struct dma_chan *txchan, *rxchan;
-	enum dma_ctrl_flags flag;
-	struct device *dev = &sspc->pdev->dev;
-
-	/* get Data Read/Write address */
-	ssdr_addr = (dma_addr_t)(sspc->paddr + 0x10);
-
-	if (sspc->tx_dma)
-		sspc->txdma_done = 0;
-
-	if (sspc->rx_dma)
-		sspc->rxdma_done = 0;
-
-	/* 2. prepare the RX dma transfer */
-	txchan = sspc->txchan;
-	rxchan = sspc->rxchan;
-
-	flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
-
-	if (likely(sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)) {
-		/* Since the DMA is configured to do 32bits access */
-		/* to/from the DDR, the DMA transfer size must be  */
-		/* a multiple of 4 bytes                           */
-		sspc->len_dma_rx = sspc->len & ~(4 - 1);
-		sspc->len_dma_tx = sspc->len_dma_rx;
-
-		/* In Rx direction, TRAIL Bytes are handled by memcpy */
-		if (sspc->rx_dma &&
-			(sspc->len_dma_rx >=
-				sspc->rx_fifo_threshold * sspc->n_bytes))
-		{
-			sspc->len_dma_rx = TRUNCATE(sspc->len_dma_rx,
-				sspc->rx_fifo_threshold * sspc->n_bytes);
-			sspc->len_dma_tx = sspc->len_dma_rx;
-		}
-		else if (!sspc->rx_dma)
-			dev_err(dev, "ERROR : rx_dma is null\r\n");
-	} else {
-		/* TRAIL Bytes are handled by DMA */
-		if (sspc->rx_dma) {
-			sspc->len_dma_rx = sspc->len;
-			sspc->len_dma_tx = sspc->len;
-		} else
-			dev_err(dev, "ERROR : sspc->rx_dma is null!\n");
-	}
-
-	sspc->dmas_rx.dma_slave.src_addr = ssdr_addr;
-	rxchan->device->device_control(rxchan, DMA_SLAVE_CONFIG,
-		(unsigned long)&(sspc->dmas_rx.dma_slave));
-	dma_sync_single_for_device(dev, sspc->rx_dma,
-		sspc->len, DMA_FROM_DEVICE);
-
-	rxdesc = rxchan->device->device_prep_dma_memcpy
-		(rxchan,			/* DMA Channel */
-		sspc->rx_dma,			/* DAR */
-		ssdr_addr,			/* SAR */
-		sspc->len_dma_rx,		/* Data Length */
-		flag);					/* Flag */
-
-	if (rxdesc) {
-		rxdesc->callback = intel_mid_ssp_spi_dma_done;
-		rxdesc->callback_param = &sspc->rx_param;
-	} else {
-		dev_dbg(dev, "rxdesc is null! (len_dma_rx:%d)\n",
-			sspc->len_dma_rx);
-		sspc->rxdma_done = 1;
-	}
-
-	/* 3. prepare the TX dma transfer */
-	sspc->dmas_tx.dma_slave.dst_addr = ssdr_addr;
-	txchan->device->device_control(txchan, DMA_SLAVE_CONFIG,
-		(unsigned long)&(sspc->dmas_tx.dma_slave));
-	dma_sync_single_for_device(dev, sspc->tx_dma,
-		sspc->len, DMA_TO_DEVICE);
-
-	if (sspc->tx_dma) {
-		txdesc = txchan->device->device_prep_dma_memcpy
-			(txchan,			/* DMA Channel */
-			ssdr_addr,			/* DAR */
-			sspc->tx_dma,			/* SAR */
-			sspc->len_dma_tx,		/* Data Length */
-			flag);				/* Flag */
-		if (txdesc) {
-			txdesc->callback = intel_mid_ssp_spi_dma_done;
-			txdesc->callback_param = &sspc->tx_param;
-		} else {
-			dev_dbg(dev, "txdesc is null! (len_dma_tx:%d)\n",
-				sspc->len_dma_tx);
-			sspc->txdma_done = 1;
-		}
-	} else {
-		dev_err(dev, "ERROR : sspc->tx_dma is null!\n");
-		return;
-	}
-
-	dev_dbg(dev, "DMA transfer len:%d len_dma_tx:%d len_dma_rx:%d\n",
-		sspc->len, sspc->len_dma_tx, sspc->len_dma_rx);
-
-	if (rxdesc || txdesc) {
-		if (rxdesc) {
-			dev_dbg(dev, "Firing DMA RX channel\n");
-			rxdesc->tx_submit(rxdesc);
-		}
-		if (txdesc) {
-			dev_dbg(dev, "Firing DMA TX channel\n");
-			txdesc->tx_submit(txdesc);
-		}
-	} else {
-		struct callback_param cb_param;
-		cb_param.drv_context = sspc;
-		dev_dbg(dev, "Bypassing DMA transfer\n");
-		intel_mid_ssp_spi_dma_done(&cb_param);
-	}
-}
-
-/**
  * map_dma_buffers() - Map DMA buffer before a transfer
  * @sspc:	Pointer to the private drivzer context
  */
@@ -1163,18 +1040,11 @@ static int handle_message(struct ssp_drv_context *sspc)
 		if (sspc->cs_control)
 			sspc->cs_control(sspc->cs_assert);
 
-		if (likely(dma_enabled)) {
-			if (unlikely(sspc->quirks & QUIRKS_USE_PM_QOS))
-				pm_qos_update_request(&sspc->pm_qos_req,
-						MIN_EXIT_LATENCY);
-			dma_transfer(sspc);
-		} else {
 			/* Do the transfer syncronously */
 			queue_work(sspc->wq_poll_write, &sspc->poll_write);
 			poll_transfer((unsigned long)sspc);
 			unmap_dma_buffers(sspc);
 			complete(&sspc->msg_done);
-		}
 
 		if (list_is_last(&transfer->transfer_list, &msg->transfers)
 				|| sspc->cs_change) {
