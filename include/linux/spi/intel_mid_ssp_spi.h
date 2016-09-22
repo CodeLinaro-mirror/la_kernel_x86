@@ -351,4 +351,7 @@ struct spi_dib_header {
 	u8         dib[0];
 } __packed;
 
+#define CS_DEASSERT    0
+#define CS_ASSERT              1
+
 #endif /*INTEL_MID_SSP_SPI_H_*/
