@@ -182,6 +182,8 @@ enum intel_mid_cpu_type {
 	INTEL_MID_CPU_CHIP_PENWELL = 2,
 	INTEL_MID_CPU_CHIP_CLOVERVIEW,
 	INTEL_MID_CPU_CHIP_TANGIER,
+	INTEL_MID_CPU_CHIP_VALLEYVIEW2,
+	INTEL_MID_CPU_CHIP_ANNIEDALE,
 };
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
