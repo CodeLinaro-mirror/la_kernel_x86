@@ -203,14 +203,6 @@ int psb_hist_enable(struct drm_device *dev, void *data)
 	if (!dsi_config)
 		return 0;
 
-	/* Use a fake hist status to avoid enhancement is adapted to black
-	 * content during suspend, while make content too bright on resume.
-	*/
-	if(dev_priv->early_suspended) {
-		memcpy(arg, dpst_hist_fake, 32*sizeof(uint32_t));
-		return 0;
-	}
-
 	mutex_lock(&dpst_mutex);
 	/*
 	 * FIXME: We need to force the Display to
@@ -274,9 +266,6 @@ int psb_diet_enable(struct drm_device *dev, void *data)
 	 u32 temp =0;
 
 	if (!dev_priv)
-		return 0;
-
-	if(dev_priv->early_suspended)
 		return 0;
 
 	dsi_config = dev_priv->dsi_configs[0];
@@ -632,9 +621,6 @@ int dpst_disable(struct drm_device *dev)
 
 	bd = psb_get_backlight_device();
 	if(!dev_priv)
-		return 0;
-
-	if(dev_priv->early_suspended)
 		return 0;
 
 	dpst_print("adjust percentage: %d.%d\n", *arg / 100, *arg % 100);

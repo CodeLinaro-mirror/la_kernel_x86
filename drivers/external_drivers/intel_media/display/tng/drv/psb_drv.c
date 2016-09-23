@@ -3994,16 +3994,7 @@ static void psb_shutdown(struct pci_dev *pdev)
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
 
-	if (dev_priv->early_suspended)
-		return;
-
 	mutex_lock(&dev->mode_config.mutex);
-
-	/*
-	 * We borrow the early_suspended to avoid entering flip path after
-	 * shutdown is called
-	 */
-	dev_priv->early_suspended = true;
 
 	/* wait for the previous flip to be finished */
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {

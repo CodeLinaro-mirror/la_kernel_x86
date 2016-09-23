@@ -589,7 +589,6 @@ struct drm_psb_private {
 	 *OSPM info
 	 */
 	uint8_t panel_desc;
-	bool early_suspended;
 	struct wake_lock ospm_wake_lock;
 
 	/*

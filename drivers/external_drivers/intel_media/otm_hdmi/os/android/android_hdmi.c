@@ -1785,8 +1785,6 @@ void android_hdmi_encoder_save(struct drm_encoder *encoder)
 
 	hdmi_priv->need_encoder_restore = true;
 
-	/*Use Disable pipeB plane to turn off HDMI screen
-	 in early_suspend  */
 	dspbcntr_val = REG_READ(dspcntr_reg);
 	if ((dspbcntr_val & DISPLAY_PLANE_ENABLE) != 0) {
 		REG_WRITE(dspcntr_reg,
@@ -2532,19 +2530,6 @@ void android_hdmi_encoder_dpms(struct drm_encoder *encoder, int mode)
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
 	hdmip_enabled = REG_READ(hdmi_priv->hdmib_reg) & HDMIB_PORT_EN;
 	pr_debug("hdmip_enabled is %x\n", hdmip_enabled);
-
-	if (dev_priv->early_suspended) {
-		/* Use Disable pipeB plane to turn off HDMI screen
-		  * in early_suspend
-		  */
-		temp = REG_READ(dspcntr_reg);
-		if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
-			REG_WRITE(dspcntr_reg,
-				temp & ~DISPLAY_PLANE_ENABLE);
-			/* Flush the plane changes */
-			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
-		}
-	}
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (is_monitor_hdmi && (hdmip_enabled != 0))

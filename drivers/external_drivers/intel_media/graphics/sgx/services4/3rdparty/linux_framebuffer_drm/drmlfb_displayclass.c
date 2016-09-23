@@ -1801,9 +1801,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				/* MIPI A off, should not flush PIPEA */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 1 &&
-					hdmi_state &&
-					(dev_priv->early_suspended ||
-					!dev_priv->bhdmi_enable)) {
+					hdmi_state && !dev_priv->bhdmi_enable ) {
 				/* HDMI off, should not flush PIPEB */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 2) {
@@ -1824,9 +1822,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				/* MIPI A off, should not flush PIPEA */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 1 &&
-					hdmi_state &&
-					(dev_priv->early_suspended ||
-					!dev_priv->bhdmi_enable)) {
+					hdmi_state && !dev_priv->bhdmi_enable) {
 				/* HDMI off, should not flush PIPEB */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 2) {
@@ -1845,9 +1841,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 			if (psOverlayContext->pipe == 0x00 &&
 				psDevInfo->bScreenState) {
 				psOverlayContext->index = INVALID_INDEX;
-			} else if (psOverlayContext->pipe == 0x80 &&
-					hdmi_state &&
-					dev_priv->early_suspended) {
+			} else if (psOverlayContext->pipe == 0x80 && hdmi_state) {
 				psOverlayContext->index = INVALID_INDEX;
 			} else
 				bIllegal = IMG_FALSE;

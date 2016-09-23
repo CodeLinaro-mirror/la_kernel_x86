@@ -284,10 +284,6 @@ static int mid_hdmi_audio_set_caps(
 		REG_READ(hdmi_priv->hdmib_reg);
 
 		hdmi_priv->hdmi_audio_enabled = false;
-		if (dev_priv->early_suspended) {
-			/* suspend hdmi display if device has been suspended */
-			schedule_work(&hdmi_priv->suspend_wq);
-		}
 		break;
 	case HAD_SET_ENABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
