@@ -28,7 +28,8 @@ ccflags-y += \
 	-I$(OTM_HDMI_INC)/os/android/include \
 	-I$(OTM_HDMI_INC)/pil/include \
 	-Iinclude/linux \
-	-Iinclude/drm
+	-Iinclude/drm \
+	-Iarch/x86/platform/intel-mid
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 ccflags-y += -DMERRIFIELD -DCONFIG_PCI_MSI
@@ -106,7 +107,6 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/mrfld_clock.o \
 	$(DISPLAYDIR)/psb_irq.o \
 	$(DISPLAYDIR)/tng_wa.o \
-	$(DISPLAYDIR)/pmu_tng.o \
 	$(DISPLAYDIR)/cmn_cabc.o \
 	$(DISPLAYDIR)/jdi_vid.o \
 	$(DISPLAYDIR)/jdi_cmd.o \
