@@ -1575,7 +1575,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->has_global = 1;
 
 	dev_priv->tdev = ttm_object_device_init
-	    (dev_priv->mem_global_ref.object, PSB_OBJECT_HASH_ORDER);
+	    (dev_priv->mem_global_ref.object, PSB_OBJECT_HASH_ORDER, NULL);
 	if (unlikely(dev_priv->tdev == NULL))
 		goto out_err;
 
