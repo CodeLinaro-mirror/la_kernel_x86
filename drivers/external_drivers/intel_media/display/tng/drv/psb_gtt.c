@@ -953,7 +953,8 @@ static int psb_gtt_remove_node(struct psb_gtt_mm *mm,
 	return 0;
 }
 
-static int psb_gtt_mm_alloc_mem(struct psb_gtt_mm *mm,
+static int psb_gtt_mm_alloc_mem(struct drm_device *dev,
+				struct psb_gtt_mm *mm,
 				uint32_t pages,
 				uint32_t align, struct drm_mm_node **node)
 {
@@ -965,28 +966,23 @@ static int psb_gtt_mm_alloc_mem(struct psb_gtt_mm *mm,
 			align = 32;
 	}
 
-	do {
-		ret = drm_mm_pre_get(&mm->base);
-		if (unlikely(ret)) {
-			DRM_DEBUG("drm_mm_pre_get error\n");
-			return ret;
-		}
-
-		spin_lock(&mm->lock);
-		tmp_node = drm_mm_search_free(&mm->base, pages, align, 1);
-		if (unlikely(!tmp_node)) {
-			DRM_DEBUG("No free node found\n");
-			spin_unlock(&mm->lock);
-			break;
-		}
-
-		tmp_node = drm_mm_get_block_atomic(tmp_node, pages, align);
-		spin_unlock(&mm->lock);
-	} while (!tmp_node);
-
+	/* no drm_mm_node pre allocated, adapt the new alloc mechanism
+	 * FIXME, map needed before it can be used ?
+	 */
+	tmp_node = kzalloc(sizeof(*tmp_node), GFP_KERNEL);
 	if (!tmp_node) {
 		DRM_DEBUG("Node allocation failed\n");
 		return -ENOMEM;
+	}
+
+	mutex_lock(&dev->struct_mutex);
+	ret = drm_mm_insert_node(&mm->base, *node, pages*PAGE_SIZE, align,
+				DRM_MM_SEARCH_DEFAULT);
+	mutex_unlock(&dev->struct_mutex);
+
+	if (ret) {
+		kfree(tmp_node);
+		return ret;
 	}
 
 	*node = tmp_node;
@@ -996,7 +992,9 @@ static int psb_gtt_mm_alloc_mem(struct psb_gtt_mm *mm,
 static void psb_gtt_mm_free_mem(struct psb_gtt_mm *mm, struct drm_mm_node *node)
 {
 	spin_lock(&mm->lock);
-	drm_mm_put_block(node);
+	/* This goes with gtt_mm_alloc */
+	drm_mm_remove_node(node);
+	kfree(node);
 	spin_unlock(&mm->lock);
 }
 
@@ -1179,7 +1177,7 @@ int psb_gtt_map_meminfo(struct drm_device *dev,
 	/*
 	 *  Alloc memory in TT apeture and update the GTT mm...
 	 */
-	if ((ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node)) != 0) {
+	if ((ret = psb_gtt_mm_alloc_mem(dev, mm, pages, page_align, &node)) != 0) {
 		DRM_DEBUG("alloc TT memory error\n");
 
 		return ret;
@@ -1411,7 +1409,7 @@ int psb_gtt_map_vaddr(struct drm_device *dev,
 	DRM_DEBUG("get %d pages\n", pages);
 
 	/*alloc memory in TT apeture*/
-	ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node);
+	ret = psb_gtt_mm_alloc_mem(dev, mm, pages, page_align, &node);
 	if (ret) {
 		DRM_DEBUG("alloc TT memory error\n");
 		goto failed_pages_alloc;
@@ -1538,7 +1536,7 @@ int DCCBgttMapMemory(struct drm_device *dev,
 	pages = 0;
 
 	/*alloc memory in TT apeture */
-	ret = psb_gtt_mm_alloc_mem(mm, ui32PagesNum, 0, &node);
+	ret = psb_gtt_mm_alloc_mem(dev, mm, ui32PagesNum, 0, &node);
 	if (ret) {
 		DRM_DEBUG("alloc TT memory error\n");
 		goto failed_pages_alloc;
