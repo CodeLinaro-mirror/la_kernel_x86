@@ -76,7 +76,7 @@
 #include <linux/thermal.h>
 #include <asm/errno.h>
 
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 #include <linux/devfreq.h>
 
 #include <governor.h>
@@ -126,8 +126,7 @@ extern int is_tng_a0;
 static struct platform_device *df_rgx_created_dev;
 
 void df_rgx_init_available_freq_table(struct device *dev);
-int opp_add(struct device *dev, unsigned long freq, unsigned long u_volt);
-
+int dev_pm_opp_add(struct device *dev, unsigned long freq, unsigned long u_volt);
 
 
 /**
@@ -518,8 +517,10 @@ void df_rgx_init_available_freq_table(struct device *dev)
 	int n_states = sku_levels();
 
 	for (i = 0; i < n_states; i++)
-		opp_add(dev, a_available_state_freq[i].freq, voltage_gfx);
+		dev_pm_opp_add(dev, a_available_state_freq[i].freq, voltage_gfx);
 }
+
+#if defined(THERMAL_DEBUG)
 /**
  * tcd_get_available_states() - thermal cooling device
  * callback get_available_states.
@@ -549,7 +550,6 @@ static int tcd_get_available_states(struct thermal_cooling_device *tcd,
 	return ret;
 }
 
-#if defined(THERMAL_DEBUG)
 /**
  * tcd_get_force_state_override() - thermal cooling
  * device callback get_force_state_override.
@@ -761,24 +761,15 @@ static int df_rgx_busfreq_probe(struct platform_device *pdev)
 
 	df_rgx_init_available_freq_table(dev);
 
-
 	{
 		static const char *tcd_type = "gpu_burst";
 		static const struct thermal_cooling_device_ops tcd_ops = {
 			.get_max_state = tcd_get_max_state,
 			.get_cur_state = tcd_get_cur_state,
 			.set_cur_state = tcd_set_cur_state,
-#if defined(THERMAL_DEBUG)
-			.get_force_state_override =
-				tcd_get_force_state_override,
-			.set_force_state_override =
-				tcd_set_force_state_override,
-#else
-			.get_force_state_override = NULL,
-			.set_force_state_override = NULL,
-#endif
-			.get_available_states =
-				tcd_get_available_states,
+			.get_requested_power = NULL,
+			.state2power = NULL,
+			.power2state = NULL,
 		};
 		struct thermal_cooling_device *tcdhdl;
 
