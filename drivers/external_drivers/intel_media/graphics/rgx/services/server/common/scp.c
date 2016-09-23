@@ -67,7 +67,7 @@ static PVRSRV_ERROR AllocReleaseFence(struct sw_sync_timeline *psTimeline, const
 {
 	struct sync_fence *psFence = IMG_NULL;
 	struct sync_pt *psPt;
-	int iFd = get_unused_fd();
+	int iFd = get_unused_fd_flags(O_CLOEXEC);
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	if (iFd < 0)

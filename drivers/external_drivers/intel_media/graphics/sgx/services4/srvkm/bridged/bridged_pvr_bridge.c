@@ -2876,7 +2876,7 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 	IMG_PVOID psSwapSyncInfos[10];
 
 #if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	int iReleaseFd = get_unused_fd();
+	int iReleaseFd = get_unused_fd_flags(O_CLOEXEC);
 	if(iReleaseFd < 0)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to find unused fd (%d)",
