@@ -1630,7 +1630,7 @@ static PVRSRV_ERROR DC_MRFLD_BufferAlloc(IMG_HANDLE hDisplayContext,
 	psBuffer->sCPUVAddr = __vmalloc(psBuffer->ui32BufferSize,
 			GFP_KERNEL | __GFP_DMA32 | __GFP_ZERO,
 			 __pgprot((pgprot_val(PAGE_KERNEL) & ~_PAGE_CACHE_MASK)
-			| _PAGE_CACHE_WC));
+			| _PAGE_CACHE_MODE_WC));
 	/*FIXME: */
 	//DCCBGetStolen(gpsDevice->psDrmDevice, &psBuffer->sCPUVAddr, &psBuffer->ui32BufferSize);
 	if (psBuffer->sCPUVAddr == NULL) {
