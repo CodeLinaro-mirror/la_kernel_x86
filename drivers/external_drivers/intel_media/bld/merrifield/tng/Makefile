@@ -176,6 +176,7 @@ endif
 
 endif
 
+ifeq ($(ENABLE_TNG_VID_VSP), y)
 $(DRIVER_NAME)-objs += \
 	$(VIDEO_COMMON_DIR)/psb_ttm_glue.o \
 	$(VIDEO_COMMON_DIR)/psb_cmdbuf.o \
@@ -194,3 +195,4 @@ $(DRIVER_NAME)-objs += \
 	$(ENCODE_DIR)/tng_topazinit.o \
 	$(VSP_DIR)/vsp.o \
 	$(VSP_DIR)/vsp_init.o
+endif
