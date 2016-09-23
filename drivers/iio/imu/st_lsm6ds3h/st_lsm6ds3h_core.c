@@ -451,13 +451,13 @@ static const struct iio_chan_spec st_lsm6ds3h_gyro_ch[] = {
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_sign_motion_ch[] = {
-	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_SIGN_MOTION, 0),
+	ST_LSM6DS3H_EVENT_CHANNEL(IIO_SIGN_MOTION),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
 	{
-		.type = IIO_STEP_COUNTER,
+		.type = IIO_STEPS,
 		.modified = 0,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.address = ST_LSM6DS3H_STEP_COUNTER_OUT_L_ADDR,
@@ -472,25 +472,25 @@ static const struct iio_chan_spec st_lsm6ds3h_step_c_ch[] = {
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_step_d_ch[] = {
-	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_STEP_DETECTOR, 0),
+	ST_LSM6DS3H_EVENT_CHANNEL(IIO_STEP_DETECTOR),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 static const struct iio_chan_spec st_lsm6ds3h_tilt_ch[] = {
-	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_TILT, 0),
+	ST_LSM6DS3H_EVENT_CHANNEL(IIO_TILT),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 static const struct iio_chan_spec st_lsm6ds3h_wrist_tilt_ch[] = {
-	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_WRIST_TILT_GESTURE, 0),
+	ST_LSM6DS3H_EVENT_CHANNEL(IIO_WRIST_TILT_GESTURE),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT */
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 static const struct iio_chan_spec st_lsm6ds3h_tap_tap_ch[] = {
-	ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(IIO_TAP_TAP, 0),
+	ST_LSM6DS3H_EVENT_CHANNEL(IIO_TAP_TAP),
 	IIO_CHAN_SOFT_TIMESTAMP(1)
 };
 #endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
@@ -757,12 +757,15 @@ int st_lsm6ds3h_set_fifo_mode(struct lsm6ds3h_data *cdata, enum fifo_mode fm)
 		enable_fifo = false;
 		break;
 	case CONTINUOS:
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 		if (cdata->sensors_enabled & BIT(ST_MASK_ID_TAP_TAP)) {
 			fifo_odr = lsm6ds3h_get_fifo_odr_value(cdata);
 			if (fifo_odr < 0)
 				return -EINVAL;
 			reg_value = (ST_LSM6DS3H_FIFO_MODE_CONTINUOS | (fifo_odr << 3));
-		} else {
+		} else
+#endif /* CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED */
+		{
 			reg_value = ST_LSM6DS3H_FIFO_MODE_CONTINUOS | ST_LSM6DS3H_FIFO_ODR_MAX;
 		}
 		enable_fifo = true;
@@ -4169,8 +4172,10 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 
 	tmp_sensors_enabled = cdata->sensors_enabled;
 
-	dev_dbg(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d\n",
-		cdata->sensors_enabled);
+	int64_t my_timestamp = ktime_to_ns(ktime_get_boottime());
+
+	dev_info(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d, timestamp=%lld\n",
+		cdata->sensors_enabled, my_timestamp);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
 		if (((1 << i) & ST_INDIO_DEV_AG_MASK) && stay_wake)
@@ -4202,8 +4207,10 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 	int err = 0, i;
 	struct lsm6ds3h_sensor_data *sdata;
 
-	dev_dbg(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d\n",
-		cdata->sensors_enabled);
+	int64_t my_timestamp = ktime_to_ns(ktime_get_boottime());
+
+	dev_info(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d, timestamp=%lld\n",
+		cdata->sensors_enabled, my_timestamp);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
 		if (((1 << i) & ST_INDIO_DEV_AG_MASK) && stay_wake)

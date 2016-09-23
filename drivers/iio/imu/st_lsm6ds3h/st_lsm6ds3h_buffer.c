@@ -429,7 +429,7 @@ static irqreturn_t st_lsm6ds3h_step_counter_trigger_handler(int irq, void *p)
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
-	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_step_counter_trigger_handler\n");
+	dev_info(sdata->cdata->dev, "st_lsm6ds3h_step_counter_trigger_handler\n");
 	if (!sdata->cdata->reset_steps) {
 		err = sdata->cdata->tf->read(sdata->cdata,
 					(u8)indio_dev->channels[0].address,
@@ -451,6 +451,7 @@ static irqreturn_t st_lsm6ds3h_step_counter_trigger_handler(int irq, void *p)
 				ALIGN(ST_LSM6DS3H_BYTE_FOR_CHANNEL,
 						sizeof(s64))) = timestamp;
 
+	dev_info(sdata->cdata->dev, "st_lsm6ds3h step, timestamp=%lld\n", timestamp);
 	iio_push_to_buffers(indio_dev, sdata->buffer_data);
 
 st_lsm6ds3h_step_counter_done:
@@ -485,7 +486,7 @@ static int st_lsm6ds3h_buffer_preenable(struct iio_dev *indio_dev)
 	}
 #endif /* CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION */
 
-	return iio_sw_buffer_preenable(indio_dev);
+	return 0;
 }
 
 static int st_lsm6ds3h_buffer_postenable(struct iio_dev *indio_dev)
@@ -531,7 +532,7 @@ static int st_lsm6ds3h_buffer_postenable(struct iio_dev *indio_dev)
 
 	if (sdata->sindex == ST_MASK_ID_STEP_COUNTER) {
 		iio_trigger_poll_chained(
-			sdata->cdata->trig[ST_MASK_ID_STEP_COUNTER], 0);
+			sdata->cdata->trig[ST_MASK_ID_STEP_COUNTER]);
 	}
 
 	return 0;

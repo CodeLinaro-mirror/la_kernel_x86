@@ -11,5 +11,5 @@
 #ifndef _PLATFORM_LSM6DS3H_H_
 #define _PLATFORM_LSM6DS3H_H_
 
-extern void *lsm6ds3h_platform_data(void *info) __attribute__((weak));
+extern void __init *lsm6ds3h_platform_data(void *info) __attribute__((weak));
 #endif

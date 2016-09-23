@@ -192,7 +192,7 @@ read_fifo_status:
 
 	if (src_dig_func & ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL) {
 		dev_dbg(cdata->dev, "ST_LSM6DS3H_SRC_STEP_COUNTER_DATA_AVL\n");
-		iio_trigger_poll_chained(cdata->trig[ST_MASK_ID_STEP_COUNTER], 0);
+		iio_trigger_poll_chained(cdata->trig[ST_MASK_ID_STEP_COUNTER]);
 	}
 
 	if (src_dig_func & ST_LSM6DS3H_SRC_TILT_DATA_AVL) {

@@ -125,20 +125,10 @@ enum st_mask_id {
 	.modified = 0, \
 	.event_spec = st_lsm6ds3h_event_spec, \
 	.num_event_specs = 1, \
-	.event_mask = 0, \
 }
 
-#define ST_LSM6DS3H_EVENT_CHANNEL_WITH_MASK(device_type, mask) \
-{ \
-	.type = device_type, \
-	.scan_index = -1, \
-	.indexed = -1, \
-	.channel = 0, \
-	.modified = 0, \
-	.event_spec = st_lsm6ds3h_event_spec, \
-	.num_event_specs = 1, \
-	.event_mask = mask, \
-}
+#define ST_LSM6DS3H_EVENT_CHANNEL(device_type) \
+	ST_LSM6DS3H_FLUSH_CHANNEL(device_type)
 
 #define ST_LSM6DS3H_HWFIFO_ENABLED() \
 	IIO_DEVICE_ATTR(hwfifo_enabled, S_IWUSR | S_IRUGO, \

@@ -15,34 +15,25 @@
 #include <linux/platform_data/st_lsm6ds3h_pdata.h>
 #include <asm/intel_scu_flis.h>
 #include "platform_lsm6ds3h.h"
+#include <linux/sfi.h>
+#include <asm/intel-mid.h>
 
-
-static int gpio_conf(void) {
-	int ret1, ret2;
-
-	ret1 = config_pin_flis(tng_gp_i2c_6_sda, PULL, NONE);
-	ret2 = config_pin_flis(tng_gp_i2c_6_scl, PULL, NONE);
-
-	if (ret1 < 0)
-		return ret1;
-	if (ret2 < 0)
-		return ret2;
-	return 0;
-}
-
-void *lsm6ds3h_platform_data(void *info)
+void __init *lsm6ds3h_platform_data(void *info)
 {
 	static struct st_lsm6ds3h_platform_data lsm6ds3h_pdata;
 
 	lsm6ds3h_pdata.gpio_int1 = get_gpio_by_name("accel_int1");	/* ACCEL_INT_1 <-> GPIO46 */
-
-	if (INTEL_MID_BOARD(3, PHONE, MRFL, GLC, ENG, 4) ||
-			INTEL_MID_BOARD(3, PHONE, MRFL, GLC, PRO, 4)||
-			INTEL_MID_BOARD(3, PHONE, MRFL, MVN, ENG, 4)||
-			INTEL_MID_BOARD(3, PHONE, MRFL, MVN, PRO, 4)) {
-		lsm6ds3h_pdata.gpio_conf = gpio_conf;
-	} else
-		lsm6ds3h_pdata.gpio_conf = NULL;
+	lsm6ds3h_pdata.gpio_conf = NULL;
 
 	return &lsm6ds3h_pdata;
 }
+
+static const struct devs_id lsm6ds3h_dev_id __initconst = {
+	.name = "lsm6ds3h",
+	.type = SFI_DEV_TYPE_I2C,
+	.delay = 1,
+	.get_platform_data = &lsm6ds3h_platform_data,
+	.device_handler = NULL,
+};
+
+sfi_device(lsm6ds3h_dev_id);
