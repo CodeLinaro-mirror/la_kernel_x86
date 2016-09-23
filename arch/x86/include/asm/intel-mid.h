@@ -79,6 +79,7 @@ extern struct sfi_rtc_table_entry sfi_mrtc_array[];
 extern void *get_oem0_table(void);
 extern void register_rpmsg_service(char *name, int id, u32 addr);
 extern int sdhci_pci_request_regulators(void);
+extern unsigned int sfi_get_watchdog_irq(void);
 
 /* Define soft platform ID to comply with the OEMB table format. But SPID is not supported */
 #define INTEL_PLATFORM_SSN_SIZE 32
@@ -97,6 +98,21 @@ struct soft_platform_id {
                           * component set present on the PCB/FAB */
         u8  fru[SPID_FRU_SIZE]; /* Field Replaceabl Unit */
 } __packed;
+
+enum reboot_force_type {
+	REBOOT_FORCE_COLD_RESET = 1,
+	REBOOT_FORCE_COLD_BOOT,
+	REBOOT_FORCE_OFF,
+	REBOOT_FORCE_ON
+};
+
+#ifdef CONFIG_X86_INTEL_MID
+extern void set_reboot_force(enum reboot_force_type type);
+extern enum reboot_force_type get_reboot_force(void);
+#else
+static inline void set_reboot_force(enum reboot_force_type type) {};
+static inline void get_reboot_force(void) {};
+#endif
 
 /* OEMB table */
 struct sfi_table_oemb {

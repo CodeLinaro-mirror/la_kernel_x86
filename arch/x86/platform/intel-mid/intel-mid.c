@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/spinlock.h>
+#include <linux/nmi.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -35,8 +36,10 @@
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_rpmsg.h>
+#include <linux/platform_data/intel_mid_remoteproc.h>
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
+#include <asm/proto.h>
 
 #include "intel_mid_weak_decls.h"
 #include "intel_soc_pmu.h"
@@ -82,6 +85,22 @@ static void intel_mid_power_off(void)
 {
 	pmu_power_off();
 };
+
+void set_reboot_force(enum reboot_force_type type)
+{
+	reboot_force = type;
+}
+EXPORT_SYMBOL(set_reboot_force);
+
+enum reboot_force_type get_reboot_force(void)
+{
+	return reboot_force;
+}
+EXPORT_SYMBOL(get_reboot_force);
+
+#define RSTC_IO_PORT_ADDR 0xcf9
+#define RSTC_COLD_BOOT    0x8
+#define RSTC_COLD_RESET   0x4
 
 static void intel_mid_reboot(void)
 {
