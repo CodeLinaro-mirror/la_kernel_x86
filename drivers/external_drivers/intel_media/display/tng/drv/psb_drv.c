@@ -2929,10 +2929,12 @@ static void overlay_wait_vblank(struct drm_device *dev, uint32_t ovadd)
 
 static void vsync_state_dump(struct drm_device *dev, int pipe)
 {
+	struct drm_vblank_crtc *vblank_if = &dev->vblank[pipe];
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
 		return;
-	DRM_INFO("vblank_refcount = %u\n", atomic_read(&dev->vblank_refcount[pipe]));
-	DRM_INFO("vblank_enabled = %d\n", dev->vblank_enabled[pipe]);
+	DRM_INFO("vblank_refcount = %u\n", atomic_read(&vblank_if->refcount));
+	DRM_INFO("vblank_enabled = %d\n", vblank_if->enabled);
 	DRM_INFO("vblank_count = %u\n", drm_vblank_count(dev, pipe));
 	DRM_INFO("PIPECONF = 0x%08x\n", pipe ? REG_READ(PIPEBCONF) : REG_READ(PIPEACONF));
 	DRM_INFO("PIPESTAT = 0x%08x\n\n", pipe ? REG_READ(PIPEBSTAT) : REG_READ(PIPEASTAT));
