@@ -999,7 +999,7 @@ void mrst_get_fuse_settings(struct drm_device *dev)
 		dev_priv->is_lvds_on = false;
 	}
 
-	if (dev_priv->dev->pci_device == PCI_ID_TOPAZ_DISABLED)
+	if (dev_priv->dev->pdev->device == PCI_ID_TOPAZ_DISABLED)
 		dev_priv->topaz_disabled = 1;
 	else
 		dev_priv->topaz_disabled = 0;

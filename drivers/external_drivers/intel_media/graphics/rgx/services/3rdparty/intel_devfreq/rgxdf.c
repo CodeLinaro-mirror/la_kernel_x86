@@ -131,7 +131,7 @@ EnumerateDevices_exit:
 unsigned int RGXGetDRMDeviceID(void)
 {
 	if (gpsPVRDRMDev != NULL)
-		return gpsPVRDRMDev->pci_device;
+		return gpsPVRDRMDev->pdev->device;
 
 	return 0;
 }

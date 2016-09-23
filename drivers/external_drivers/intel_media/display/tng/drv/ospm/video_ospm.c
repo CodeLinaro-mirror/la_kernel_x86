@@ -160,7 +160,7 @@ static bool ved_power_up(struct drm_device *dev,
 {
 	bool ret = true;
 	int pm_ret = 0;
-	unsigned int pci_device = dev->pci_device & 0xffff;
+	unsigned int pci_device = dev->pdev->device & 0xffff;
 	/* struct drm_psb_private *dev_priv = dev->dev_private; */
 
 	PSB_DEBUG_PM("powering up ved\n");
@@ -196,7 +196,7 @@ static bool ved_power_down(struct drm_device *dev,
 {
 	bool ret = true;
 	int pm_ret = 0;
-	unsigned int pci_device = dev->pci_device & 0xffff;
+	unsigned int pci_device = dev->pdev->device & 0xffff;
 
 	/* Need to implement force_off */
 	PSB_DEBUG_PM("powering down ved\n");
@@ -250,7 +250,7 @@ void ospm_ved_init(struct drm_device *dev,
  ***********************************************************/
 static u32 vec_get_max_freq(struct drm_device *dev)
 {
-	unsigned int pci_device = dev->pci_device & 0xffff;
+	unsigned int pci_device = dev->pdev->device & 0xffff;
 	u32 max_freq = IP_FREQ_320_00;
 
 	if ((pci_device == 0x1180) ||
@@ -454,7 +454,7 @@ static int pm_cmd_freq_set(u32 reg_freq, u32 freq_code, u32 *p_freq_code_rlzd)
 
 static void vsp_set_max_frequency(struct drm_device *dev)
 {
-	unsigned int pci_device = dev->pci_device & 0xffff;
+	unsigned int pci_device = dev->pdev->device & 0xffff;
 	u32 freq_code_rlzd;
 	u32 freq_code, max_freq_code;
 	u32 freq, max_freq;

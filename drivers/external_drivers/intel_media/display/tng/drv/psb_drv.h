@@ -346,11 +346,11 @@ enum enum_ports {
 
 #define IS_POULSBO(dev) 0
 
-#define IS_MDFLD(dev) (((dev)->pci_device & 0xfff8) == 0x0130)
-#define IS_CTP(dev) (((dev->pci_device & 0xffff) == 0x08c0) ||	\
-		((dev->pci_device & 0xffff) == 0x08c7) ||  \
-		((dev->pci_device & 0xffff) == 0x08c8))
-#define IS_MRFLD(dev) (((dev)->pci_device & 0xfff8) == 0x1180 || ((dev)->pci_device & 0xfff8) == 0x1480)
+#define IS_MDFLD(dev) (((dev)->pdev->device & 0xfff8) == 0x0130)
+#define IS_CTP(dev) (((dev->pdev->device & 0xffff) == 0x08c0) ||	\
+		((dev->pdev->device & 0xffff) == 0x08c7) ||  \
+		((dev->pdev->device & 0xffff) == 0x08c8))
+#define IS_MRFLD(dev) (((dev)->pdev->device & 0xfff8) == 0x1180 || ((dev)->pdev->device & 0xfff8) == 0x1480)
 
 #define IS_TNG_A0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) && (intel_mid_soc_stepping() == 0))
 

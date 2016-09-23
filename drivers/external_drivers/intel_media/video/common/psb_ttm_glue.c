@@ -421,10 +421,10 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 
 	case LNC_VIDEO_DEVICE_INFO:
 #ifdef CONFIG_DRM_VXD_BYT
-		device_info = (0xffff & dev->pci_device) << 16;
+		device_info = (0xffff & dev->pdev->device) << 16;
 #else
 		device_info = 0xffff & dev_priv->video_device_fuse;
-		device_info |= (0xffff & dev->pci_device) << 16;
+		device_info |= (0xffff & dev->pdev->device) << 16;
 #endif
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				   &device_info, sizeof(device_info));
