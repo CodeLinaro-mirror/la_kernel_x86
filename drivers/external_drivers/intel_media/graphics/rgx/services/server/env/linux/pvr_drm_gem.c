@@ -943,9 +943,9 @@ PMR *PVRSRVGEMMMapLookupPMR(struct file *psFile, struct vm_area_struct *psVMA)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0)) || defined(CHROMIUMOS_WORKAROUNDS_KERNEL310)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0))
-	psNode = drm_vma_offset_exact_lookup(&psMM->vma_manager, psVMA->vm_pgoff, vma_pages(psVMA));
+	psNode = drm_vma_offset_exact_lookup_locked(&psMM->vma_manager, psVMA->vm_pgoff, vma_pages(psVMA));
 #else
-	psNode = drm_vma_offset_exact_lookup(psDev->vma_offset_manager, psVMA->vm_pgoff, vma_pages(psVMA));
+	psNode = drm_vma_offset_exact_lookup_locked(psDev->vma_offset_manager, psVMA->vm_pgoff, vma_pages(psVMA));
 #endif
 	if (!psNode)
 	{
