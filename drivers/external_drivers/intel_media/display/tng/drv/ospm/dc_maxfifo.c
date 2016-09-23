@@ -214,7 +214,9 @@ bool enter_s0i1_display_mode(struct drm_device *dev, bool from_playback)
 
 	ret = true;
 	psb_disable_pipestat(dev_priv, 0, PIPE_VBLANK_INTERRUPT_ENABLE);
-	//pmu_set_s0i1_disp_vote(true);
+	/* intel-mid pmu driver need integration, after that, open this
+	pmu_set_s0i1_disp_vote(true);
+	*/
 	maxfifo_info->s0i1_disp_state = S0i1_DISP_STATE_ENTERED;
 	PSB_DEBUG_MAXFIFO("maxfifo: enter s0i1-display playback:%d\n",
 			  from_playback);
@@ -236,7 +238,9 @@ static void __exit_s0i1_display_mode(struct drm_device *dev)
 		return;
 	}
 
-	//pmu_set_s0i1_disp_vote(false);
+	/* intel-mid pmu driver need integration, after that, open this
+	pmu_set_s0i1_disp_vote(false);
+	*/
 	maxfifo_info->s0i1_disp_state = S0i1_DISP_STATE_READY;
 
 	if (dev_priv->psb_dpst_state)
