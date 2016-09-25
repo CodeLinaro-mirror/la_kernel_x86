@@ -727,9 +727,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GTT_UNMAP,
 		      psb_gtt_unmap_meminfo_ioctl,
 		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GETPAGEADDRS,
-		      psb_getpageaddrs_ioctl,
-		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_PM_SET,
 		      psb_power_mode_set_ioctl,
 		      DRM_AUTH),
@@ -749,6 +746,10 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_PIPE_FROM_CRTC_ID,
 		      psb_intel_get_pipe_from_crtc_id, 0),
 #endif
+#ifdef ENABLE_TNG_VID_VSP
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GETPAGEADDRS,
+		      psb_getpageaddrs_ioctl,
+		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF,
 		      psb_cmdbuf_ioctl,
 		      DRM_AUTH | DRM_UNLOCKED),
@@ -780,6 +781,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_FLIP, psb_page_flip, DRM_AUTH), */
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VIDEO_GETPARAM,
 		psb_video_getparam, DRM_AUTH | DRM_UNLOCKED),
+#endif
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_QUERY, psb_dpu_query_ioctl,
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_ON, psb_dpu_dsr_on_ioctl,
@@ -896,6 +898,7 @@ static void psb_do_takedown(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
+#ifdef ENABLE_TNG_VID_VSP
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
 
 	if (dev_priv->have_mem_mmu) {
@@ -914,6 +917,7 @@ static void psb_do_takedown(struct drm_device *dev)
 	vsp_deinit(dev);
 #endif
 	tng_topaz_uninit(dev);
+#endif
 }
 
 #if KEEP_UNUSED_CODE
@@ -1285,12 +1289,13 @@ static int psb_do_init(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
+	int ret = -ENOMEM;
+#ifdef ENABLE_TNG_VID_VSP
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
 	struct psb_gtt *pg = dev_priv->pg;
 
 	uint32_t tmp;
 
-	int ret = -ENOMEM;
 
 	/*
 	 * Initialize sequence numbers for the different command
@@ -1356,6 +1361,7 @@ static int psb_do_init(struct drm_device *dev)
 
 	PSB_DEBUG_INIT("Init Topaz\n");
 	tng_topaz_init(dev);
+#endif
 	return 0;
  out_err:
 	psb_do_takedown(dev);
@@ -1385,6 +1391,7 @@ static int psb_driver_unload(struct drm_device *dev)
 		/* psb_watchdog_takedown(dev_priv); */
 		psb_do_takedown(dev);
 
+#ifdef ENABLE_TNG_VID_VSP
 		if (dev_priv->pf_pd) {
 			psb_mmu_free_pagedir(dev_priv->pf_pd);
 			dev_priv->pf_pd = NULL;
@@ -1418,6 +1425,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			dev_priv->vsp_mmu = NULL;
 		}
 #endif
+#endif
 		if (IS_MRFLD(dev))
 			mrfld_gtt_takedown(dev_priv->pg, 1);
 		else
@@ -1427,6 +1435,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			__free_page(dev_priv->scratch_page);
 			dev_priv->scratch_page = NULL;
 		}
+#ifdef ENABLE_TNG_VID_VSP
 		if (dev_priv->has_bo_device) {
 			ttm_bo_device_release(&dev_priv->bdev);
 			dev_priv->has_bo_device = 0;
@@ -1435,6 +1444,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			ttm_fence_device_release(&dev_priv->fdev);
 			dev_priv->has_fence_device = 0;
 		}
+#endif
 		if (dev_priv->vdc_reg) {
 			iounmap(dev_priv->vdc_reg);
 			dev_priv->vdc_reg = NULL;
@@ -1447,6 +1457,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->wrapper_reg);
 			dev_priv->wrapper_reg = NULL;
 		}
+#ifdef ENABLE_TNG_VID_VSP
 		if (dev_priv->ved_wrapper_reg) {
 			iounmap(dev_priv->ved_wrapper_reg);
 			dev_priv->ved_wrapper_reg = NULL;
@@ -1478,6 +1489,7 @@ static int psb_driver_unload(struct drm_device *dev)
 
 		if (dev_priv->has_global)
 			psb_ttm_global_release(dev_priv);
+#endif
 
 		tasklet_kill(&dev_priv->hdmi_audio_bufferdone_tasklet);
 
@@ -1569,6 +1581,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	drm_hdmi_hpd_auto = 0;
 
+#ifdef ENABLE_TNG_VID_VSP
 	ret = psb_ttm_global_init(dev_priv);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -1586,6 +1599,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	INIT_LIST_HEAD(&dev_priv->encode_context.validate_list);
 #ifdef SUPPORT_VSP
 	INIT_LIST_HEAD(&dev_priv->vsp_context.validate_list);
+#endif
 #endif
 
 	mutex_init(&dev_priv->dpms_mutex);
@@ -1609,6 +1623,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	PSB_DEBUG_INIT("Mapping MMIO\n");
 	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
 
+#ifdef ENABLE_TNG_VID_VSP
 	if (IS_MSVDX(dev))	/* Work around for medfield by Li */
 		dev_priv->msvdx_reg =
 		    ioremap(resource_start + MRST_MSVDX_OFFSET, PSB_MSVDX_SIZE);
@@ -1633,7 +1648,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
-
+#endif
 	dev_priv->vdc_reg =
 	    ioremap(resource_start + PSB_VDC_OFFSET, PSB_VDC_SIZE);
 	if (!dev_priv->vdc_reg)
@@ -1654,6 +1669,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->wrapper_reg)
 			goto out_err;
 
+#ifdef ENABLE_TNG_VID_VSP
 		dev_priv->ved_wrapper_reg =
 			ioremap(resource_start + VED_WRAPPER_OFFSET,
 				VED_WRAPPER_SIZE);
@@ -1667,6 +1683,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 		if (!dev_priv->vec_wrapper_reg)
 			goto out_err;
+#endif
 
 	}
 
@@ -1686,6 +1703,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/* Init OSPM support */
 	ospm_power_init(dev);
 
+#ifdef ENABLE_TNG_VID_VSP
 	ret = psb_ttm_fence_device_init(&dev_priv->fdev);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -1710,6 +1728,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 	dev_priv->has_bo_device = 1;
 	ttm_lock_init(&dev_priv->ttm_lock);
+#endif
 
 	ret = -ENOMEM;
 
@@ -1735,6 +1754,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		goto out_err;
 
+#ifdef ENABLE_TNG_VID_VSP
 	dev_priv->mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
 					    dev_priv, IMG_MMU);
@@ -1748,6 +1768,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->vsp_mmu)
 		goto out_err;
 #endif
+#endif
 
 	pg = dev_priv->pg;
 
@@ -1757,6 +1778,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/* CI/RAR use the lower half of TT. */
 	pg->gtt_video_start = (tt_pages / 2) << PAGE_SHIFT;
 
+#ifdef ENABLE_TNG_VID_VSP
 	dev_priv->pf_pd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
 	if (!dev_priv->pf_pd)
 		goto out_err;
@@ -1766,6 +1788,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #ifdef SUPPORT_VSP
 	/* for vsp mmu */
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->vsp_mmu), 0);
+#endif
 #endif
 	spin_lock_init(&dev_priv->sequence_lock);
 
@@ -4081,12 +4104,13 @@ out_err0:
 int psb_release(struct inode *inode, struct file *filp)
 {
 	struct drm_file *file_priv = (struct drm_file *)filp->private_data;
+	int i, ret;
+#ifdef ENABLE_TNG_VID_VSP
 	struct psb_fpriv *psb_fp = BCVideoGetPriv(file_priv);
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	struct drm_psb_private *dev_priv = psb_priv(file_priv->minor->dev);
 	struct msvdx_private *msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
 	struct psb_msvdx_ec_ctx *ec_ctx;
-	int i, ret;
 
 #if 0
 	/*cleanup for msvdx */
@@ -4123,6 +4147,7 @@ int psb_release(struct inode *inode, struct file *filp)
 
 	/* remove video context */
 	/* psb_remove_videoctx(dev_priv, filp); */
+#endif
 
 	ret = drm_release(inode, filp);
 
@@ -4138,6 +4163,7 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct drm_psb_private *dev_priv;
 	int ret;
 
+#ifdef ENABLE_TNG_VID_VSP
 	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
 	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
 		return PVRSRVMMap(filp, vma);
@@ -4156,6 +4182,7 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	}
 
 	vma->vm_ops = &psb_ttm_vm_ops;
+#endif
 
 	return 0;
 }
@@ -4302,7 +4329,9 @@ static int __init psb_init(void)
 
 	PVRSRVQueryIoctls(psb_ioctls);
 
+#ifdef ENABLE_TNG_VID_VSP
 	BCVideoQueryIoctls(psb_ioctls);
+#endif
 
 	if (register_reboot_notifier(&psb_shutdown_notifier))
 		DRM_ERROR("psb: unable to register shutdown notifier\n");

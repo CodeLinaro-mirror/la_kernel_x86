@@ -935,8 +935,11 @@ BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 #else
 #define IOCTL_DEF(ioctl, func, flags) {ioctl, flags, func, ioctl}
 #endif
+
 struct drm_ioctl_desc sBCdrmIoctls[] = {
+#ifdef ENABLE_TNG_VID_VSP
 	IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO, BCVideoBridge, DRM_AUTH)
+#endif
 };
 
 static int bc_max_ioctl = ARRAY_SIZE(sBCdrmIoctls);

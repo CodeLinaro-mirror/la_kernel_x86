@@ -61,9 +61,11 @@ struct ospm_power_island island_list[] = {
 	{OSPM_SIDEKICK_ISLAND, OSPM_POWER_OFF, {0}, ospm_sidekick_init, NULL},
 	{OSPM_SLC_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_init, NULL},
 	{OSPM_SLC_LDO_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_ldo_init, NULL},
+#ifdef ENABLE_TNG_VID_VSP
 	{OSPM_VIDEO_VPP_ISLAND, OSPM_POWER_OFF, {0}, ospm_vsp_init, NULL},
 	{OSPM_VIDEO_DEC_ISLAND, OSPM_POWER_OFF, {0}, ospm_ved_init, NULL},
 	{OSPM_VIDEO_ENC_ISLAND, OSPM_POWER_OFF, {0}, ospm_vec_init, NULL},
+#endif
 };
 #else
 struct ospm_power_island island_list[] = {
@@ -74,9 +76,11 @@ struct ospm_power_island island_list[] = {
 	{OSPM_DISPLAY_HDMI, OSPM_POWER_OFF, {0}, ospm_hdmi_init, NULL},
 	{OSPM_GRAPHICS_ISLAND, OSPM_POWER_OFF, {0}, ospm_gfx_init, NULL},
 	{OSPM_SLC_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_init, NULL},
+#ifdef ENABLE_TNG_VID_VSP
 	{OSPM_VIDEO_VPP_ISLAND, OSPM_POWER_OFF, {0}, ospm_vsp_init, NULL},
 	{OSPM_VIDEO_DEC_ISLAND, OSPM_POWER_OFF, {0}, ospm_ved_init, NULL},
 	{OSPM_VIDEO_ENC_ISLAND, OSPM_POWER_OFF, {0}, ospm_vec_init, NULL},
+#endif
 };
 #endif
 
@@ -670,6 +674,7 @@ void ospm_power_using_hw_end(int hw_island)
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
 
+#ifdef ENABLE_TNG_VID_VSP
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	unsigned long irq_flags;
@@ -853,6 +858,7 @@ out:
 	mutex_unlock(&g_ospm_data->ospm_lock);
 	return;
 }
+#endif
 
 int ospm_runtime_pm_allow(struct drm_device *dev)
 {

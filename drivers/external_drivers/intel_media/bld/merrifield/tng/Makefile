@@ -127,8 +127,11 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/ospm/pwr_mgmt.o \
 	$(DISPLAYDIR)/ospm/gfx_rtpm.o \
 	$(DISPLAYDIR)/ospm/dc_ospm.o \
-	$(DISPLAYDIR)/ospm/dc_maxfifo.o \
-	$(DISPLAYDIR)/ospm/video_ospm.o
+	$(DISPLAYDIR)/ospm/dc_maxfifo.o
+
+
+ifeq ($(ENABLE_TNG_VID_VSP), y)
+endif
 
 $(DRIVER_NAME)-objs += $(DISPLAYDIR)/cmn_dc_callbacks.o
 
@@ -177,7 +180,9 @@ endif
 endif
 
 ifeq ($(ENABLE_TNG_VID_VSP), y)
+ccflags-y += -DENABLE_TNG_VID_VSP
 $(DRIVER_NAME)-objs += \
+	$(DISPLAYDIR)/ospm/video_ospm.o
 	$(VIDEO_COMMON_DIR)/psb_ttm_glue.o \
 	$(VIDEO_COMMON_DIR)/psb_cmdbuf.o \
 	$(VIDEO_COMMON_DIR)/tng_securefw.o \
