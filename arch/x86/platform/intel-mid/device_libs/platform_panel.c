@@ -1,0 +1,102 @@
+/*
+ * platform_panel.c: panel platform data initilization file
+ *
+ * (C) Copyright 2008 Intel Corporation
+ * Author:
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; version 2
+ * of the License.
+ */
+
+
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <asm/intel-mid.h>
+#include <linux/string.h>
+#include <linux/sfi.h>
+#include <linux/panel_psb_drv.h>
+
+static struct support_panel_list_t
+support_panel_list[] = {
+	{CMI_7x12_CMD, "PANEL_CMI_CMD"},
+	{JDI_7x12_VID, "PANEL_JDI_VID"},
+	{JDI_7x12_CMD, "PANEL_JDI_CMD"},
+	/*  above 3 items will be removed
+	 * after firmware changing
+	 */
+	{CMI_7x12_CMD, "PNC_CMI_7x12"},
+	{JDI_7x12_VID, "PNV_JDI_7x12"},
+	{JDI_7x12_CMD, "PNC_JDI_7x12"},
+	{SHARP_10x19_CMD, "PNC_SHARP_10x19"},
+	{SHARP_10x19_VID, "PNV_SHARP_10x19"},
+	{SHARP_10x19_DUAL_CMD, "PNCD_SHARP_10x19"},
+	{SHARP_25x16_VID, "PNV_SHARP_25x16"},
+	{SHARP_25x16_CMD, "PNC_SHARP_25x16"},
+	{JDI_25x16_VID, "PNV_JDI_25x16"},
+	{JDI_25x16_CMD, "PNC_JDI_25x16"},
+	{SDC_16x25_CMD, "PNC_SDC_16x25"},
+	{SDC_25x16_CMD, "PNC_SDC_25x16"},
+	{AUO_CMD, "AUO_CMD"},
+	{TIANMA_CMD, "TIANMA_CMD"},
+	{INNOLUX_CMD, "INNOLUX_CMD"},
+	{AUO_CMD_4x4, "AUO_CMD_4x4"},
+	{HIMAX_CMD, "HIMAX_CMD"}
+};
+
+#define NUM_SUPPORT_PANELS (sizeof(					\
+				    support_panel_list)			\
+			    / sizeof(struct support_panel_list_t))
+
+int PanelID = GCT_DETECT;
+EXPORT_SYMBOL(PanelID);
+
+static char override_panel[SFI_NAME_LEN+1];
+
+static int __init parse_override_panel(char *arg)
+{
+	strncpy(override_panel, arg, SFI_NAME_LEN);
+	return 1;
+}
+early_param("mipi_panel_id", parse_override_panel);
+
+void panel_handler(struct sfi_device_table_entry *pentry,
+		   struct devs_id *dev) {
+	int i;
+
+	if (*override_panel)
+		for (i = 0; i < NUM_SUPPORT_PANELS; i++)
+			if (strncmp(override_panel, support_panel_list[i].name,
+				    SFI_NAME_LEN) == 0) {
+				PanelID = support_panel_list[i].panel_id;
+				pr_info("CMDLINE Override-Panel name = %16.16s "
+					"PanelID = %d\n", override_panel, PanelID);
+				return;
+			}
+
+	for (i = 0; i < NUM_SUPPORT_PANELS; i++)
+		if (strncmp(pentry->name, support_panel_list[i].name,
+			    SFI_NAME_LEN) == 0) {
+			PanelID = support_panel_list[i].panel_id;
+			break;
+		}
+	if (i == NUM_SUPPORT_PANELS)
+		pr_err("Could not detect this panel, set to default panel\n");
+	pr_info("Panel name = %16.16s PanelID = %d\n", pentry->name, PanelID);
+}
+
+#define DECLARE_PANEL(panel_name)					\
+	static const struct devs_id panel_name##_dev_id __initconst = {	\
+		.name = #panel_name,					\
+		.type = SFI_DEV_TYPE_MDM,				\
+		.delay = 0,						\
+		.device_handler = &panel_handler,			\
+	};								\
+	sfi_device(panel_name##_dev_id);
+
+DECLARE_PANEL(AUO_CMD)
+DECLARE_PANEL(TIANMA_CMD)
+DECLARE_PANEL(INNOLUX_CMD)
+DECLARE_PANEL(AUO_CMD_4x4)
+DECLARE_PANEL(HIMAX_CMD)
