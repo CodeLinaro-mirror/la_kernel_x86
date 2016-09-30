@@ -545,14 +545,14 @@ static int bq24232_notify_charge_status_change(struct notifier_block *nb,
 					unsigned long event, void *param)
 {
 	struct bq24232_charger *chip = container_of(nb, struct bq24232_charger, pmic_notifier);
-	dev_dbg(chip->dev, "Received PMIC notification action:%lu\n", event);
 
-	if (!param)
+	if (!chip)
 		return NOTIFY_DONE;
 
+	dev_dbg(chip->dev, "Received PMIC notification action:%lu\n", event);
 	switch (event)	{
 	case PMIC_ACTION_CHARGING_STATUS:
-		chip->chg_stat = (unsigned long) (param);
+		chip->chg_stat = (unsigned long) param;
 		queue_work(system_nrt_wq, &chip->charge_status_work);
 		return NOTIFY_OK;
 
