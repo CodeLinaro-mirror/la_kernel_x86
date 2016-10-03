@@ -36,7 +36,7 @@
 
 #include "displays/auo4x4_cmd.h"
 
-static int mipi_reset_gpio;
+static int mipi_reset_gpio = -1;
 static int disp0_enable = -1;
 
 static bool reset_enable = false;
@@ -313,12 +313,12 @@ static int auo4x4_cmd_power_off(
 
 	msleep(120);
 
-	if (mipi_reset_gpio != 0) {
+	if (mipi_reset_gpio > 0) {
 		gpio_set_value(mipi_reset_gpio, 0);
 		msleep(1);
 	}
 	/* ensure VCI is low 10ms earlier than VDDIO */
-	if (disp0_enable != -1) {
+	if (disp0_enable > 0) {
 		gpio_set_value(disp0_enable, 0);
 		usleep_range(10000, 11000);
 	}
@@ -384,7 +384,7 @@ int auo4x4_cmd_exit_deep_standby(
 	/* ensure VCI high eariler 10ms than XRES is pulled
 	 * to high to meet panel power on sequence.
 	 */
-	if (disp0_enable != -1) {
+	if (disp0_enable > 0) {
 		gpio_set_value(disp0_enable, 1);
 	}
 
@@ -527,16 +527,15 @@ void auo4x4_cmd_init(struct drm_device *dev,
 		return;
 	}
 
-	disp0_enable = get_gpio_by_name("disp0_vci_en");
-	if (disp0_enable != -1) {
-		gpio_request(disp0_enable, "DISP_VCI_EN");
+	disp0_enable = get_gpio_by_name("disp0_bias_en");
+	if (disp0_enable > 0) {
+		gpio_request(disp0_enable, "auo4x4_display");
 		gpio_direction_output(disp0_enable, 1);
 	}
 
 	mipi_reset_gpio = get_gpio_by_name("disp0_rst");
-	if (mipi_reset_gpio <= 0)
-		mipi_reset_gpio = 190;
-	gpio_request(mipi_reset_gpio, "auo4x4_display");
+	if (mipi_reset_gpio > 0)
+		gpio_request(mipi_reset_gpio, "auo4x4_display");
 
 	lnw_gpio_set_alt(68, 1); /* Force TE as muxmode1:
 				this should not be necessary as already done in IFWI */
