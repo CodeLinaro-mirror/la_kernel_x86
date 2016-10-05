@@ -29,9 +29,13 @@ config SND_SST_IPC_ACPI
 config SND_SOC_INTEL_SST
 	tristate
 	select SND_SOC_INTEL_SST_ACPI if ACPI
+	select CONFIG_SND_SOC_INTEL_SST_PCI if SFI
 	depends on (X86 || COMPILE_TEST)
 
 config SND_SOC_INTEL_SST_ACPI
+	tristate
+
+config SND_SOC_INTEL_SST_PCI
 	tristate
 
 config SND_SOC_INTEL_HASWELL
@@ -134,6 +138,19 @@ config SND_SOC_INTEL_CHT_BSW_MAX98090_TI_MACH
 	help
       This adds support for ASoC machine driver for Intel(R) Cherrytrail & Braswell
       platforms with MAX98090 audio codec it also can support TI jack chip as aux device.
+      If unsure select "N".
+
+config SND_SOC_INTEL_CDP_ICS43432_MACH
+	tristate "ASoC Audio driver for Intel(R) Cloverdale Peak with ics43432 DMIC"
+	depends on X86 && INTEL_SCU_IPC
+	select SND_SOC_ICS43432
+	select SND_SST_MFLD_PLATFORM
+	select SND_SOC_INTEL_SST
+	select SND_SOC_INTEL_SST_PCI
+	select SND_SST_IPC_PCI
+	help
+      This adds support for ASoC machine driver for Intel(R) Cloverdale Peak platform
+      with Invensense ICS-43432 digital microphone.
       If unsure select "N".
 
 config SND_SOC_INTEL_SKYLAKE
