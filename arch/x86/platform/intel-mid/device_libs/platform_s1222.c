@@ -83,3 +83,12 @@ void *s1222_platform_data(void *info)
 
 	return &dsx_board_data;
 }
+
+static const struct devs_id synaptics_s1222_dev_id __initconst = {
+	.name = "synaptics_1222",
+	.type = SFI_DEV_TYPE_I2C,
+	.delay = 0,
+	.get_platform_data = &s1222_platform_data,
+};
+
+sfi_device(synaptics_s1222_dev_id);
