@@ -854,6 +854,8 @@ static void psb_set_uopt(struct drm_psb_uopt *uopt)
 
 static void psb_lastclose(struct drm_device *dev)
 {
+
+#ifdef ENABLE_TNG_VID_VSP
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 	struct msvdx_private *msvdx_priv;
@@ -891,6 +893,7 @@ static void psb_lastclose(struct drm_device *dev)
 		dev_priv->vsp_context.buffers = NULL;
 	}
 	mutex_unlock(&vsp_priv->vsp_mutex);
+#endif
 #endif
 }
 
@@ -4057,11 +4060,6 @@ int psb_open(struct inode *inode, struct file *filp)
 	if (unlikely(ret))
 		return ret;
 
-	psb_fp = kzalloc(sizeof(*psb_fp), GFP_KERNEL);
-
-	if (unlikely(psb_fp == NULL))
-		goto out_err0;
-
 	file_priv = (struct drm_file *) filp->private_data;
 	/* introduce from 9f76a16c8 */
 	file_priv->authenticated = 1;
@@ -4074,9 +4072,15 @@ int psb_open(struct inode *inode, struct file *filp)
 		&& (!file_priv->is_master))
 		file_priv->is_master = 1;
 
-	dev_priv = psb_priv(file_priv->minor->dev);
-
 	DRM_DEBUG("is_master %d\n", file_priv->is_master ? 1 : 0);
+
+#ifdef ENABLE_TNG_VID_VSP
+	psb_fp = kzalloc(sizeof(*psb_fp), GFP_KERNEL);
+
+	if (unlikely(psb_fp == NULL))
+		goto out_err0;
+
+	dev_priv = psb_priv(file_priv->minor->dev);
 
 	psb_fp->tfile = ttm_object_file_init(dev_priv->tdev,
 					     PSB_FILE_OBJECT_HASH_ORDER);
@@ -4093,6 +4097,7 @@ int psb_open(struct inode *inode, struct file *filp)
 
 	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
 		dev_priv->bdev.dev_mapping = dev_priv->dev->anon_inode->i_mapping;
+#endif
 
 	return 0;
 
@@ -4165,11 +4170,11 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct drm_psb_private *dev_priv;
 	int ret;
 
-#ifdef ENABLE_TNG_VID_VSP
 	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
 	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
 		return PVRSRVMMap(filp, vma);
 
+#ifdef ENABLE_TNG_VID_VSP
 	file_priv = (struct drm_file *) filp->private_data;
 	dev_priv = psb_priv(file_priv->minor->dev);
 
