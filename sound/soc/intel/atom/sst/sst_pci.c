@@ -158,6 +158,13 @@ static int intel_sst_probe(struct pci_dev *pci,
 		return ret;
 	}
 
+	sst_drv_ctx->shim_regs64 = devm_kzalloc(sst_drv_ctx->dev, sizeof(*sst_drv_ctx->shim_regs64),
+					GFP_KERNEL);
+	if (!sst_drv_ctx->shim_regs64) {
+		ret = -ENOMEM;
+		goto do_free_drv_ctx;
+	}
+
 	pci_set_drvdata(pci, sst_drv_ctx);
 	sst_configure_runtime_pm(sst_drv_ctx);
 
