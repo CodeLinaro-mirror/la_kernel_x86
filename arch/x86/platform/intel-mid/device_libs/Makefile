@@ -8,6 +8,7 @@ obj-y += platform_max3111.o
 obj-y += platform_soc_thermal.o
 obj-$(subst m,y,$(CONFIG_MFD_INTEL_MSIC)) += platform_msic.o
 obj-$(subst m,y,$(CONFIG_SND_MFLD_MACHINE)) += platform_msic_audio.o
+obj-$(subst m,y,$(CONFIG_SND_SOC_INTEL_CDP_ICS43432_MACH)) += platform_cdp_sst_ics43432.o
 obj-$(subst m,y,$(CONFIG_GPIO_MSIC)) += platform_msic_gpio.o
 obj-$(subst m,y,$(CONFIG_MFD_INTEL_MSIC)) += platform_msic_ocd.o
 obj-$(subst m,y,$(CONFIG_MFD_INTEL_MSIC)) += platform_msic_battery.o
