@@ -135,21 +135,28 @@ static int intel_sst_probe(struct pci_dev *pci,
 			"%s%04x%s", "fw_sst_",
 			sst_drv_ctx->dev_id, ".bin");
 
-	ret = sst_context_init(sst_drv_ctx);
-	if (ret < 0)
-		return ret;
-
 	/* Init the device */
 	ret = pcim_enable_device(pci);
 	if (ret) {
-		dev_err(sst_drv_ctx->dev,
+		dev_err(&pci->dev,
 			"device can't be enabled. Returned err: %d\n", ret);
-		goto do_free_drv_ctx;
+		return ret;
 	}
+
 	sst_drv_ctx->pci = pci_dev_get(pci);
 	ret = sst_platform_get_resources(sst_drv_ctx);
-	if (ret < 0)
-		goto do_free_drv_ctx;
+	if (ret < 0) {
+		dev_err(&pci->dev,
+			"cannot get resources %d\n", ret);
+		return ret;
+	}
+
+	ret = sst_context_init(sst_drv_ctx);
+	if (ret < 0) {
+		dev_err(&pci->dev,
+			"context can't be init. Returned err: %d\n", ret);
+		return ret;
+	}
 
 	pci_set_drvdata(pci, sst_drv_ctx);
 	sst_configure_runtime_pm(sst_drv_ctx);
