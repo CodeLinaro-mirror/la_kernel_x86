@@ -690,7 +690,7 @@ static int psb_drm_hdmi_test_ioctl(struct drm_device *,
 #else
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
 	 [DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = \
-	 {ioctl, flags, func, ioctl}
+	 {ioctl, flags, func, #ioctl}
 #endif
 
 static struct drm_ioctl_desc psb_ioctls[] = {

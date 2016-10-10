@@ -91,10 +91,10 @@ static struct drm_ioctl_desc pvr_ioctls[] = {
 };
 #else
 static struct drm_ioctl_desc pvr_ioctls[] = {
-	{PVR_DRM_SRVKM_IOCTL, DRM_UNLOCKED, PVRSRV_BridgeDispatchKM, PVR_DRM_SRVKM_IOCTL},
-	{PVR_DRM_IS_MASTER_IOCTL, DRM_MASTER, PVRDRMIsMaster, PVR_DRM_IS_MASTER_IOCTL},
+	{PVR_DRM_SRVKM_IOCTL, DRM_UNLOCKED, PVRSRV_BridgeDispatchKM, "PVR_DRM_SRVKM_IOCTL"},
+	{PVR_DRM_IS_MASTER_IOCTL, DRM_MASTER, PVRDRMIsMaster, "PVR_DRM_IS_MASTER_IOCTL"},
 #if defined(PDUMP)
-	{PVR_DRM_DBGDRV_IOCTL, 0, dbgdrv_ioctl. PVR_DRM_DBGDRV_IOCTL}
+	{PVR_DRM_DBGDRV_IOCTL, 0, dbgdrv_ioctl. "PVR_DRM_DBGDRV_IOCTL"}
 #endif
 };
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)) */
