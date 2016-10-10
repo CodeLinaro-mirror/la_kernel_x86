@@ -4063,6 +4063,8 @@ int psb_open(struct inode *inode, struct file *filp)
 		goto out_err0;
 
 	file_priv = (struct drm_file *) filp->private_data;
+	/* introduce from 9f76a16c8 */
+	file_priv->authenticated = 1;
 
 	/* In case that the local file priv has created a master,
 	 * which has been referenced, even if it's not authenticated
