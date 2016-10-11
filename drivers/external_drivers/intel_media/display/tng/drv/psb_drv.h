@@ -1198,8 +1198,10 @@ void psb_enable_esd(struct drm_device *dev, int pipe);
 extern u32 psb_get_vblank_counter(struct drm_device *dev, int crtc);
 extern int intel_get_vblank_timestamp(struct drm_device *dev, int pipe,
 		int *max_error, struct timeval *vblank_time, unsigned flags);
-extern int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-		int *vpos, int *hpos);
+extern int intel_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
+		unsigned int flags, int *vpos, int *hpos,
+		ktime_t *stime, ktime_t *etime,
+		const struct drm_display_mode *mode);
 extern int mdfld_enable_te(struct drm_device *dev, int pipe);
 extern int mdfld_recover_te(struct drm_device *dev, int pipe);
 extern void mdfld_disable_te(struct drm_device *dev, int pipe);

@@ -1148,11 +1148,13 @@ int intel_get_vblank_timestamp(struct drm_device *dev, int pipe,
 	/* Helper routine in DRM core does all the work: */
 	return drm_calc_vbltimestamp_from_scanoutpos(dev, pipe, max_error,
 			vblank_time, flags,
-			crtc);
+			&crtc->hwmode);
 }
 
-int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-		int *vpos, int *hpos)
+int intel_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
+		unsigned int flags, int *vpos, int *hpos,
+		ktime_t *stime, ktime_t *etime,
+		const struct drm_display_mode *mode)
 {
 	u32 vbl = 0, position = 0;
 	int vbl_start, vbl_end, vtotal;
@@ -1188,11 +1190,16 @@ int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		return 0;
 	}
 
+	if (stime)
+		*stime = ktime_get();
+
 	/* Get vtotal. */
 	vtotal = 1 + ((REG_READ(vtot_reg) >> 16) & 0x1fff);
 
 	position = REG_READ(dsl_reg);
 
+	if (etime)
+		*etime = ktime_get();
 	/*
 	 * Decode into vertical scanout position. Don't have
 	 * horizontal scanout position.
