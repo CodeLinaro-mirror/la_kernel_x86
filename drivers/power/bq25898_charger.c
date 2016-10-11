@@ -518,6 +518,7 @@ struct bq25898_charger {
 	unsigned int curr_check_interval;
 	unsigned int curr_eoc_limit;
 	int status_reg_oldvalue;
+	struct wake_lock charger_wlock; /* wakelock */
 };
 static inline struct bq25898_charger *to_bq25898(struct power_supply *psy)
 {
@@ -552,10 +553,24 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 
 	switch (action) {
 	case USB_EVENT_CHARGER:
+
+		dev_dbg(&chip->client->dev, "%s cable (type: %s)\n",
+			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT) ? "Connect" :
+			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) ? "Disconnect" : "Other charger event")),
+			(caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_SDP) ? "SDP" :
+			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) ? "DCP" :
+			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_CDP) ? "CDP" : "Other")));
+
 		switch (caps->chrg_evt) {
 		case POWER_SUPPLY_CHARGER_EVENT_CONNECT:
 			/* schedule battery monitoring */
 			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY);
+
+			/* wakelock : lock (suspend disabled), when not already locked, and on DCP (wall charger) detection */
+			if (!wake_lock_active(&chip->charger_wlock) && caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
+				dev_dbg(&chip->client->dev, "locking wakelock\n");
+				wake_lock(&chip->charger_wlock);
+			}
 			break;
 		case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 			/* cancel battery monitor */
@@ -563,6 +578,12 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			/* ensure charge termination is enabled and if needed watchdog disabled */
 			cancel_delayed_work(&chip->sw_term_work);
 			schedule_work(&chip->sw_config_work);
+
+			/* wakelock : unlock (suspend allowed) */
+			if (wake_lock_active(&chip->charger_wlock)) {
+				dev_dbg(&chip->client->dev, "unlocking wakelock\n");
+				wake_unlock(&chip->charger_wlock);
+			}
 			break;
 		default:
 			break;
@@ -2887,6 +2908,10 @@ static int bq25898_probe(struct i2c_client *client,
 #endif /* !CONFIG_SYSFS */
 
 	bq25898_debugfs_init(chip);
+
+	/* Wakelock init */
+	dev_dbg(&client->dev, "init bq25898 wakelock\n");
+	wake_lock_init(&chip->charger_wlock, WAKE_LOCK_SUSPEND, "bq25898_wakelock");
 
 	/* register for usb change */
 	ret = register_otg_notification(chip);
