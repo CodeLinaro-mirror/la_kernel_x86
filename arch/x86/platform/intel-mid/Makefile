@@ -4,7 +4,7 @@ obj-$(CONFIG_X86_INTEL_MID) += intel-mid.o intel_mid_vrtc.o mfld.o mrfl.o
 ifdef CONFIG_X86_INTEL_MID
 obj-$(CONFIG_SFI) += sfi.o device_libs/
 # SoC specific files
-obj-$(CONFIG_X86_WANT_INTEL_MID) += intel_mid_pcihelpers.o
+obj-$(CONFIG_X86_INTEL_MID) += intel_mid_pcihelpers.o
 obj-$(CONFIG_X86_INTEL_MID) += intel_mid_scu.o
 
 obj-$(CONFIG_EARLY_PRINTK_INTEL_MID)    += early_printk_intel_mid.o
