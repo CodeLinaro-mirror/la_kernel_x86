@@ -19,6 +19,7 @@
 
 #include <linux/kernel.h>
 #include <linux/device.h>
+#include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/types.h>
 #include <linux/delay.h>
@@ -126,16 +127,20 @@ static int if_usb_devices_connected(struct xhci_hcd *xhci)
 	if (!xhci)
 		return -EINVAL;
 
-	usb_dev = xhci->main_hcd->self.root_hub;
-	for (i = 1; i <= usb_dev->maxchild; ++i) {
-		if (usb_hub_find_child(usb_dev, i))
-			connected_devices++;
+	if (xhci->main_hcd) {
+		usb_dev = xhci->main_hcd->self.root_hub;
+		for (i = 1; i <= usb_dev->maxchild; ++i) {
+			if (usb_hub_find_child(usb_dev, i))
+				connected_devices++;
+		}
 	}
 
-	usb_dev = xhci->shared_hcd->self.root_hub;
-	for (i = 1; i <= usb_dev->maxchild; ++i) {
-		if (usb_hub_find_child(usb_dev, i))
-			connected_devices++;
+	if (xhci->shared_hcd) {
+		usb_dev = xhci->shared_hcd->self.root_hub;
+		for (i = 1; i <= usb_dev->maxchild; ++i) {
+			if (usb_hub_find_child(usb_dev, i))
+				connected_devices++;
+		}
 	}
 
 	if (connected_devices)
@@ -551,6 +556,11 @@ static int dwc_hcd_suspend_common(struct device *dev)
 		}
 	}
 
+	if (hcd->state == HC_STATE_HALT) {
+		dev_dbg(dev, "Root hub is halted, do not suspend\n");
+		return 0;
+	}
+
 	if (!HCD_DEAD(hcd)) {
 		/* Optimization: Don't suspend if a root-hub wakeup is
 		 * pending and it would cause the HCD to wake up anyway.
@@ -613,6 +623,11 @@ static int dwc_hcd_resume_common(struct device *dev)
 	if (!xhci)
 		return 0;
 
+	if (hcd->state == HC_STATE_HALT) {
+		dev_dbg(dev, "Root hub is halted, do not resume\n");
+		return 0;
+	}
+
 	if (HCD_RH_RUNNING(hcd) ||
 			(hcd->shared_hcd &&
 			 HCD_RH_RUNNING(hcd->shared_hcd))) {
@@ -644,7 +659,7 @@ static int dwc_hcd_runtime_suspend(struct device *dev)
 	dwc_xhci_enable_phy_auto_resume(hcd, false);
 	retval = dwc_hcd_suspend_common(dev);
 
-	if (retval)
+	if (retval && hcd->state != HC_STATE_HALT)
 		dwc_xhci_enable_phy_auto_resume(
 			hcd, false);
 
@@ -659,7 +674,7 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 	struct usb_hcd      *hcd = platform_get_drvdata(pdev);
 
 	retval = dwc_hcd_resume_common(dev);
-	if (retval)
+	if (retval && hcd->state != HC_STATE_HALT)
 		dwc_xhci_enable_phy_auto_resume(hcd, false);
 
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
@@ -679,7 +694,8 @@ static int dwc_hcd_suspend(struct device *dev)
 	struct platform_device      *pdev = to_platform_device(dev);
 	struct usb_hcd      *hcd = platform_get_drvdata(pdev);
 
-	dwc_xhci_enable_phy_auto_resume(hcd, false);
+	if (hcd->state != HC_STATE_HALT)
+		dwc_xhci_enable_phy_auto_resume(hcd, false);
 
 	retval = dwc_hcd_suspend_common(dev);
 
@@ -701,8 +717,8 @@ static const struct dev_pm_ops dwc_usb_hcd_pm_ops = {
 	.runtime_suspend = dwc_hcd_runtime_suspend,
 	.runtime_resume	= dwc_hcd_runtime_resume,
 	.runtime_idle	= dwc_hcd_runtime_idle,
-	.suspend	=	dwc_hcd_suspend,
-	.resume		=	dwc_hcd_resume,
+	.suspend	= dwc_hcd_suspend,
+	.resume		= dwc_hcd_resume,
 };
 #endif
 
@@ -716,3 +732,16 @@ static struct platform_driver dwc3_xhci_driver = {
 #endif
 	},
 };
+
+static int __init dwc3_xhci_init(void)
+{
+	return platform_driver_register(&dwc3_xhci_driver);
+}
+module_init(dwc3_xhci_init);
+
+static void __exit dwc3_xhci_exit(void)
+{
+	platform_driver_unregister(&dwc3_xhci_driver);
+	return;
+}
+module_exit(dwc3_xhci_exit);
