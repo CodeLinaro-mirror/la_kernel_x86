@@ -53,6 +53,7 @@ static int cdp_ics43432_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 			SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_CHANNELS);
+	struct sst_data *drv = snd_soc_dai_get_drvdata(rtd->cpu_dai);
 	int ret;
 
 	/* The DSP will convert the FE rate to 48k, stereo, 24bits */
@@ -76,6 +77,11 @@ static int cdp_ics43432_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 		dev_err(rtd->dev, "can't set SSP TDM slots in I2S mode %d\n", ret);
 		return ret;
 	}
+
+	/* force frame_sync_width = 64 to trigger ASRC in DSP firmware */
+	drv->ssp_cmd.frame_sync_width = 64;
+	/* ASRC is 16.667 -> 48kHz, force freq to 16kHz */
+	drv->ssp_cmd.frame_sync_frequency = SSP_FS_16_KHZ;
 
 	return 0;
 }
