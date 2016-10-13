@@ -45,7 +45,7 @@ void __init ipc_device_handler(struct sfi_device_table_entry *pentry,
 	if (intel_mid_has_msic())
 		return;
 
-	pdev = platform_device_alloc(pentry->name, 0);
+	pdev = platform_device_alloc(pentry->name, -1);
 	if (pdev == NULL) {
 		pr_err("out of memory for SFI platform device '%s'.\n",
 			pentry->name);
