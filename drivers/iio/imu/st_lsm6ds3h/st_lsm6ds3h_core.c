@@ -1520,7 +1520,7 @@ reenable_fifo_irq:
 /*
  * Enable / disable accelerometer
  */
-static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id, int min_odr)
+static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id, int min_odr, bool enable)
 {
 	int odr, err;
 	struct lsm6ds3h_sensor_data *sdata_accel = iio_priv(cdata->indio_dev[ST_MASK_ID_ACCEL]);
@@ -1529,26 +1529,17 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 	switch (id) {
 	case ST_MASK_ID_ACCEL:
 		cdata->accel_odr_dependency[0] = min_odr;
-		if (min_odr > 0)
-			cdata->accel_on = true;
-		else
-			cdata->accel_on = false;
+		cdata->accel_on = enable;
 
 		break;
 	case ST_MASK_ID_ACCEL_WK:
 		cdata->accel_odr_dependency[1] = min_odr;
-		if (min_odr > 0)
-			cdata->accel_wk_on = true;
-		else
-			cdata->accel_wk_on = false;
+		cdata->accel_wk_on = enable;
 
 		break;
 	case ST_MASK_ID_SENSOR_HUB:
 		cdata->accel_odr_dependency[2] = min_odr;
-		if (min_odr > 0)
-			cdata->magn_on = true;
-		else
-			cdata->magn_on = false;
+		cdata->magn_on = enable;
 
 		break;
 	case ST_MASK_ID_DIGITAL_FUNC:
@@ -1594,7 +1585,7 @@ static int lsm6ds3h_enable_digital_func(struct lsm6ds3h_data *cdata,
 	if (enable) {
 		if (cdata->enable_digfunc_mask == 0) {
 			err = lsm6ds3h_enable_accel(cdata,
-						ST_MASK_ID_DIGITAL_FUNC, 104);
+						ST_MASK_ID_DIGITAL_FUNC, 104, enable);
 			if (err < 0)
 				return err;
 
@@ -1616,7 +1607,7 @@ static int lsm6ds3h_enable_digital_func(struct lsm6ds3h_data *cdata,
 				return err;
 
 			err = lsm6ds3h_enable_accel(cdata,
-						ST_MASK_ID_DIGITAL_FUNC, 0);
+						ST_MASK_ID_DIGITAL_FUNC, 0, enable);
 			if (err < 0)
 				return err;
 		}
@@ -1703,7 +1694,7 @@ int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 				return err;
 
 			err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_SENSOR_HUB,
-						cdata->v_odr[ST_MASK_ID_EXT0]);
+						cdata->v_odr[ST_MASK_ID_EXT0], enable);
 			if (err < 0)
 				return err;
 
@@ -1716,7 +1707,7 @@ int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 
 		} else
 			err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_SENSOR_HUB,
-						cdata->v_odr[ST_MASK_ID_EXT0]);
+						cdata->v_odr[ST_MASK_ID_EXT0], enable);
 
 		cdata->enable_sensorhub_mask |= BIT(id);
 	} else {
@@ -1729,7 +1720,7 @@ int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 				return err;
 
 			err = lsm6ds3h_enable_accel(cdata,
-						ST_MASK_ID_SENSOR_HUB, 0);
+						ST_MASK_ID_SENSOR_HUB, 0, enable);
 			if (err < 0)
 				return err;
 
@@ -1739,7 +1730,7 @@ int st_lsm6ds3h_enable_sensor_hub(struct lsm6ds3h_data *cdata,
 				return err;
 		} else
 			err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_SENSOR_HUB,
-						cdata->v_odr[ST_MASK_ID_EXT0]);
+						cdata->v_odr[ST_MASK_ID_EXT0], enable);
 
 		cdata->enable_sensorhub_mask &= ~BIT(id);
 	}
@@ -1781,7 +1772,7 @@ static int lsm6ds3h_enable_tap_tap(struct lsm6ds3h_data *cdata, bool enable)
 
 		cdata->sensors_enabled |= BIT(ST_MASK_ID_TAP_TAP);
 		err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_ACCEL,
-				cdata->hw_odr[ST_MASK_ID_ACCEL]);
+				cdata->hw_odr[ST_MASK_ID_ACCEL], enable);
 		if (err < 0)
 			return err;
 	} else {
@@ -1794,7 +1785,7 @@ static int lsm6ds3h_enable_tap_tap(struct lsm6ds3h_data *cdata, bool enable)
 
 		cdata->sensors_enabled &= ~BIT(ST_MASK_ID_TAP_TAP);
 		err = lsm6ds3h_enable_accel(cdata, ST_MASK_ID_ACCEL,
-				cdata->hw_odr[ST_MASK_ID_ACCEL]);
+				cdata->hw_odr[ST_MASK_ID_ACCEL], enable);
 		if (err < 0)
 			return err;
 	}
@@ -1823,7 +1814,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			dis_odr = 0;
 		}
 		err = lsm6ds3h_enable_accel(sdata->cdata, ST_MASK_ID_ACCEL,
-			enable ? en_odr : dis_odr);
+			enable ? en_odr : dis_odr, enable);
 		if (err < 0)
 			return err;
 
@@ -1838,7 +1829,7 @@ int st_lsm6ds3h_set_enable(struct lsm6ds3h_sensor_data *sdata, bool enable)
 			dis_odr = 0;
 		}
 		err = lsm6ds3h_enable_accel(sdata->cdata, ST_MASK_ID_ACCEL_WK,
-			enable ? en_odr : dis_odr);
+			enable ? en_odr : dis_odr, enable);
 		if (err < 0)
 			return err;
 
@@ -2353,6 +2344,7 @@ static ssize_t st_lsm6ds3h_sysfs_set_sampling_frequency(struct device *dev,
 	err = kstrtoint(buf, 10, &odr);
 	if (err < 0)
 		return err;
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_sysfs_set_sampling_frequency: odr=%d\n", odr);
 
 	mutex_lock(&indio_dev->mlock);
 
