@@ -530,6 +530,24 @@ err_unlock:
 }
 EXPORT_SYMBOL_GPL(iio_read_channel_raw);
 
+int iio_read_channel_all_raw(struct iio_channel *chan, int *val)
+{
+	int ret;
+
+	mutex_lock(&chan->indio_dev->info_exist_lock);
+	if (chan->indio_dev->info == NULL) {
+		ret = -ENODEV;
+		goto err_unlock;
+	}
+
+	ret = chan->indio_dev->info->read_all_raw(chan, val);
+err_unlock:
+	mutex_unlock(&chan->indio_dev->info_exist_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(iio_read_channel_all_raw);
+
 int iio_read_channel_average_raw(struct iio_channel *chan, int *val)
 {
 	int ret;
