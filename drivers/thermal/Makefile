@@ -2,9 +2,15 @@
 # Makefile for sensor chip drivers.
 #
 
+CFLAGS_intel_mrfl_thermal.o := -Werror
+CFLAGS_intel_soc_thermal.o := -Werror
+CFLAGS_thermal_core.o := -Werror
+
 obj-$(CONFIG_THERMAL)		+= thermal_sys.o
 thermal_sys-y			+= thermal_core.o
 
+obj-$(CONFIG_SENSORS_THERMAL_MRFLD)     += intel_mrfl_thermal.o
+obj-$(CONFIG_SOC_THERMAL)               += intel_soc_thermal.o
 # interface to/from other layers providing sensors
 thermal_sys-$(CONFIG_THERMAL_HWMON)		+= thermal_hwmon.o
 thermal_sys-$(CONFIG_THERMAL_OF)		+= of-thermal.o
