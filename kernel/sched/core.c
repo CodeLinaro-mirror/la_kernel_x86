@@ -5128,6 +5128,9 @@ void show_state_filter(unsigned long state_filter)
 		touch_all_softlockup_watchdogs();
 		if (!state_filter || (p->state & state_filter))
 			sched_show_task(p);
+#ifdef CONFIG_EMMC_IPANIC
+		emmc_ipanic_stream_emmc();
+#endif
 	}
 
 #ifdef CONFIG_SCHED_DEBUG
@@ -5139,6 +5142,10 @@ void show_state_filter(unsigned long state_filter)
 	 */
 	if (!state_filter)
 		debug_show_all_locks();
+
+#ifdef CONFIG_EMMC_IPANIC
+	emmc_ipanic_stream_emmc();
+#endif
 }
 
 void init_idle_bootup_task(struct task_struct *idle)
