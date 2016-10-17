@@ -549,6 +549,26 @@ config MEMORY_STATE_TIME
 	help
 	  Memory time statistics exported to /sys/kernel/memory_state_time
 
+config SCU_LOGGING
+	tristate "Intel SCU fabric debug driver"
+	default n
+	---help---
+	 Driver that enable for debugging Intel SCU firmware fabric related error.
+
+config EMMC_IPANIC
+	bool "Intel kernel panic diagnostics driver FOR EMMC"
+	default n
+	---help---
+	  Driver which handles kernel panics and attempts to write
+	  critical debugging data to a dedicated partition on EMMC.
+
+config EMMC_IPANIC_PLABEL
+	string "Intel kernel panic driver (EMMC_IPANIC) partition label"
+	depends on EMMC_IPANIC
+	default "panic"
+	---help---
+	  Set the default mmc partition label for EMMC_IPANIC driver.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

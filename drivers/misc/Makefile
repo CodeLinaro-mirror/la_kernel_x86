@@ -60,3 +60,8 @@ obj-$(CONFIG_VEXPRESS_SYSCFG)	+= vexpress-syscfg.o
 obj-$(CONFIG_CXL_BASE)		+= cxl/
 obj-$(CONFIG_UID_CPUTIME) += uid_cputime.o
 obj-$(CONFIG_MEMORY_STATE_TIME) += memory_state_time.o
+
+intel_fabric_logging-objs  := intel_fw_logging.o intel_fabricerr_status.o
+
+obj-$(CONFIG_SCU_LOGGING)	+= intel_fabric_logging.o
+obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o

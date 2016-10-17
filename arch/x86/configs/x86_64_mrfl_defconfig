@@ -3865,6 +3865,9 @@ CONFIG_ANDROID_BINDER_IPC=y
 # FPGA Configuration Support
 #
 # CONFIG_FPGA is not set
+CONFIG_SCU_LOGGING=y
+CONFIG_EMMC_IPANIC=y
+CONFIG_EMMC_IPANIC_PLABEL="panic"
 
 #
 # Firmware Drivers

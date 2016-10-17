@@ -482,6 +482,14 @@ static int log_store(int facility, int level,
 	return msg->text_len;
 }
 
+/* Clears the ring-buffer */
+void log_buf_clear(void)
+{
+	clear_seq = log_next_seq;
+	clear_idx = log_next_idx;
+}
+
+
 int dmesg_restrict = IS_ENABLED(CONFIG_SECURITY_DMESG_RESTRICT);
 
 static int syslog_action_restricted(int type)

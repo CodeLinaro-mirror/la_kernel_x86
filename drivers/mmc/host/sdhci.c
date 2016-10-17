@@ -3448,7 +3448,32 @@ static void sdhci_mfld_panic_set_ios(struct mmc_panic_host *mmc)
 	if (ios->power_mode == MMC_POWER_OFF)
 		pr_info("%s: we are in panic, why need power off?\n", __func__);
 
-	sdhci_set_clock(host, ios->clock);
+	if (ios->power_mode == MMC_POWER_OFF) {
+		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
+		sdhci_reinit(host);
+	}
+
+	if (host->version >= SDHCI_SPEC_300 &&
+		(ios->power_mode == MMC_POWER_UP) &&
+		!(host->quirks2 & SDHCI_QUIRK2_PRESET_VALUE_BROKEN))
+		sdhci_enable_preset_value(host, false);
+
+	if (!ios->clock || ios->clock != host->clock) {
+		host->ops->set_clock(host, ios->clock);
+		host->clock = ios->clock;
+
+		if (host->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK &&
+		    host->clock) {
+			host->timeout_clk = host->mmc->actual_clock ?
+						host->mmc->actual_clock / 1000 :
+						host->clock / 1000;
+			host->mmc->max_busy_timeout =
+				host->ops->get_max_timeout_count ?
+				host->ops->get_max_timeout_count(host) :
+				1 << 27;
+			host->mmc->max_busy_timeout /= host->timeout_clk;
+		}
+	}
 
 	if (ios->power_mode == MMC_POWER_OFF)
 		sdhci_set_power(host, -1, ios->vdd);
@@ -3477,7 +3502,88 @@ static void sdhci_mfld_panic_set_ios(struct mmc_panic_host *mmc)
 	else
 		ctrl &= ~SDHCI_CTRL_HISPD;
 
-	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+	if (host->version >= SDHCI_SPEC_300) {
+		u16 clk, ctrl_2;
+
+		/* In case of UHS-I modes, set High Speed Enable */
+		if ((ios->timing == MMC_TIMING_MMC_HS400) ||
+		    (ios->timing == MMC_TIMING_MMC_HS200) ||
+		    (ios->timing == MMC_TIMING_MMC_DDR52) ||
+		    (ios->timing == MMC_TIMING_UHS_SDR50) ||
+		    (ios->timing == MMC_TIMING_UHS_SDR104) ||
+		    (ios->timing == MMC_TIMING_UHS_DDR50) ||
+		    (ios->timing == MMC_TIMING_UHS_SDR25))
+			ctrl |= SDHCI_CTRL_HISPD;
+
+		if (!host->preset_enabled) {
+			sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+			/*
+			 * We only need to set Driver Strength if the
+			 * preset value enable is not set.
+			 */
+			ctrl_2 = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+			ctrl_2 &= ~SDHCI_CTRL_DRV_TYPE_MASK;
+			if (ios->drv_type == MMC_SET_DRIVER_TYPE_A)
+				ctrl_2 |= SDHCI_CTRL_DRV_TYPE_A;
+			else if (ios->drv_type == MMC_SET_DRIVER_TYPE_B)
+				ctrl_2 |= SDHCI_CTRL_DRV_TYPE_B;
+			else if (ios->drv_type == MMC_SET_DRIVER_TYPE_C)
+				ctrl_2 |= SDHCI_CTRL_DRV_TYPE_C;
+			else if (ios->drv_type == MMC_SET_DRIVER_TYPE_D)
+				ctrl_2 |= SDHCI_CTRL_DRV_TYPE_D;
+			else {
+				/*pr_warn("%s: invalid driver type, default to "
+					"driver type B\n", mmc_hostname(mmc));*/
+				ctrl_2 |= SDHCI_CTRL_DRV_TYPE_B;
+			}
+
+			sdhci_writew(host, ctrl_2, SDHCI_HOST_CONTROL2);
+		} else {
+			/*
+			 * According to SDHC Spec v3.00, if the Preset Value
+			 * Enable in the Host Control 2 register is set, we
+			 * need to reset SD Clock Enable before changing High
+			 * Speed Enable to avoid generating clock gliches.
+			 */
+
+			/* Reset SD Clock Enable */
+			clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+			clk &= ~SDHCI_CLOCK_CARD_EN;
+			sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+			sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+
+			/* Re-enable SD Clock */
+			host->ops->set_clock(host, host->clock);
+		}
+
+		/* Reset SD Clock Enable */
+		clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+		clk &= ~SDHCI_CLOCK_CARD_EN;
+		sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+		host->ops->set_uhs_signaling(host, ios->timing);
+		host->timing = ios->timing;
+
+		if (!(host->quirks2 & SDHCI_QUIRK2_PRESET_VALUE_BROKEN) &&
+				((ios->timing == MMC_TIMING_UHS_SDR12) ||
+				 (ios->timing == MMC_TIMING_UHS_SDR25) ||
+				 (ios->timing == MMC_TIMING_UHS_SDR50) ||
+				 (ios->timing == MMC_TIMING_UHS_SDR104) ||
+				 (ios->timing == MMC_TIMING_UHS_DDR50) ||
+				 (ios->timing == MMC_TIMING_MMC_DDR52))) {
+			u16 preset;
+
+			sdhci_enable_preset_value(host, true);
+			preset = sdhci_get_preset_value(host);
+			ios->drv_type = (preset & SDHCI_PRESET_DRV_MASK)
+				>> SDHCI_PRESET_DRV_SHIFT;
+		}
+
+		/* Re-enable SD Clock */
+		host->ops->set_clock(host, host->clock);
+	} else
+		sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
 
 	/*
 	 * Some (ENE) controllers go apeshit on some ios operation,
