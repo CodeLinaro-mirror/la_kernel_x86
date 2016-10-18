@@ -92,3 +92,13 @@ void *tmd26723_ps_platform_data(void *info)
 
 	return &proximity_sensor_pdata;
 }
+
+static const struct devs_id tmd26723_dev_id __initconst = {
+		.name = "tmd26723",
+		.type = SFI_DEV_TYPE_I2C,
+		.delay = 0,
+		.get_platform_data = &tmd26723_ps_platform_data,
+		.device_handler = NULL,
+};
+
+sfi_device(tmd26723_dev_id);

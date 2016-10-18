@@ -366,7 +366,7 @@ static void tmd26723_reschedule_work(struct tmd26723_data *data,
 	 * If work is already scheduled then subsequent schedules will not
 	 * change the scheduled time that's why we have to cancel it first.
 	 */
-	__cancel_delayed_work(&data->dwork);
+	cancel_delayed_work(&data->dwork);
 	schedule_delayed_work(&data->dwork, delay);
 
 	spin_unlock_irqrestore(&data->lock, flags);
@@ -442,7 +442,7 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 	int ret;
 	unsigned long val;
 
-	if (strict_strtoul(buf, 10, &val))
+	if (kstrtoul(buf, 10, &val))
 		return -EINVAL;
 	dev_dbg(&client->dev,
 		"%s enable ps sensor\n", TMD_26723_DEV_NAME);
@@ -509,7 +509,7 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(enable_proximity_sensor, 0666,
+static DEVICE_ATTR(enable_proximity_sensor, 0660,
 				tmd26723_show_enable_proximity_sensor,
 				tmd26723_store_enable_proximity_sensor);
 

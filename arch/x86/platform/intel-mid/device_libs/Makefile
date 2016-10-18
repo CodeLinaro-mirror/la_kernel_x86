@@ -55,3 +55,4 @@ obj-$(subst m,y,$(CONFIG_MMC_SDHCI_ACPI)) += platform_sdio_regulator.o
 # SCU log
 obj-$(subst m,y,$(CONFIG_SCU_LOGGING)) += platform_scu_log.o
 obj-$(subst m,y,$(CONFIG_INPUT_TSL2584)) += platform_tsl258x.o
+obj-$(subst m,y,$(CONFIG_INPUT_TMD26723)) += platform_tmd26723.o
