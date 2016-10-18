@@ -508,6 +508,13 @@ iram:
 	return ret;
 }
 
+static int intel_sst_runtime_resume(struct device *dev)
+{
+	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
+	sst_restore_shim64(ctx, ctx->shim, ctx->shim_regs64);
+	return 0;
+}
+
 static int intel_sst_resume(struct device *dev)
 {
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
@@ -561,5 +568,6 @@ const struct dev_pm_ops intel_sst_pm = {
 	.suspend = intel_sst_suspend,
 	.resume = intel_sst_resume,
 	.runtime_suspend = intel_sst_runtime_suspend,
+	.runtime_resume = intel_sst_runtime_resume,
 };
 EXPORT_SYMBOL_GPL(intel_sst_pm);
