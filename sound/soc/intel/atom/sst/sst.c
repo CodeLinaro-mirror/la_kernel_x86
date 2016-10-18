@@ -377,21 +377,20 @@ void sst_configure_runtime_pm(struct intel_sst_drv *ctx)
 {
 	pm_runtime_set_autosuspend_delay(ctx->dev, SST_SUSPEND_DELAY);
 	pm_runtime_use_autosuspend(ctx->dev);
-	/*
-	 * For acpi devices, the actual physical device state is
-	 * initially active. So change the state to active before
-	 * enabling the pm
-	 */
 
-	if (!acpi_disabled)
+	if (!acpi_disabled) {
+		/*
+		 * For acpi devices, the actual physical device state is
+		 * initially active. So change the state to active before
+		 * enabling the pm
+		 */
 		pm_runtime_set_active(ctx->dev);
-
-	pm_runtime_enable(ctx->dev);
-
-	if (acpi_disabled)
-		pm_runtime_set_active(ctx->dev);
-	else
+		pm_runtime_enable(ctx->dev);
 		pm_runtime_put_noidle(ctx->dev);
+	} else {
+		pm_runtime_enable(ctx->dev);
+		pm_runtime_set_active(ctx->dev);
+	}
 
 	sst_save_shim64(ctx, ctx->shim, ctx->shim_regs64);
 }
