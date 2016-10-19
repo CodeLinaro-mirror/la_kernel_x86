@@ -819,4 +819,12 @@ config INPUT_DRV2667_HAPTICS
 	  To compile this driver as a module, choose M here: the
 	  module will be called drv2667-haptics.
 
+config INPUT_TSL2584
+	tristate "TAOS TSL2580, TSL2581, TSL2583 and TSL2584TSV ALS support"
+	depends on I2C
+	help
+	  Provides support for the TAOS tsl2580, tsl2581, tsl2583
+	  and tsl2584tsv devices.
+	  Access ALS data via input, sysfs.
+
 endif

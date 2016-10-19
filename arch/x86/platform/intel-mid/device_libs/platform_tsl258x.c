@@ -59,3 +59,13 @@ void *tsl258x_als_platform_data(void *info)
 
 	return &tsl258x_platform_data;
 }
+
+static const struct devs_id tsl258x_dev_id __initconst = {
+		.name = "tsl2584",
+		.type = SFI_DEV_TYPE_I2C,
+		.delay = 0,
+		.get_platform_data = &tsl258x_als_platform_data,
+		.device_handler = NULL,
+};
+
+sfi_device(tsl258x_dev_id);

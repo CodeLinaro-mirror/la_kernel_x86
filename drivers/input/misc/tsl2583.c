@@ -1303,10 +1303,10 @@ static char *tsl2583x_get_name(struct tsl258x_chip *chip)
 static struct i2c_driver taos_driver = {
 	.driver = {
 		.name = TSL258X_NAME,
+		.suspend	= taos_suspend,
+		.resume		= taos_resume,
 	},
 	.id_table = taos_idtable,
-	.suspend	= taos_suspend,
-	.resume		= taos_resume,
 	.probe = taos_probe,
 	.remove = taos_remove,
 };
