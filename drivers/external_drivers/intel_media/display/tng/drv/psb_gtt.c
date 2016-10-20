@@ -976,7 +976,7 @@ static int psb_gtt_mm_alloc_mem(struct drm_device *dev,
 	}
 
 	mutex_lock(&dev->struct_mutex);
-	ret = drm_mm_insert_node(&mm->base, *node, pages*PAGE_SIZE, align,
+	ret = drm_mm_insert_node(&mm->base, tmp_node, pages, align,
 				DRM_MM_SEARCH_DEFAULT);
 	mutex_unlock(&dev->struct_mutex);
 
