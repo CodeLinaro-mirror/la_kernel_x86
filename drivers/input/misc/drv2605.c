@@ -109,7 +109,7 @@ enum calibrate_state {
 	FAILED,
 };
 
-static int device_id = -1;
+static unsigned int device_id = 0;
 
 static int drv260x_setup(void);
 static int drv260x_calibrate(void);
