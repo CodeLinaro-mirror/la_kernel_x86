@@ -1055,6 +1055,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	uint32_t pipeconf_reg = PIPEACONF;
 	uint32_t reg_val = 0;
 	uint32_t high1 = 0, high2 = 0, low = 0, count = 0;
+	struct drm_vblank_crtc *vblank = &dev->vblank[pipe];
 
 	switch (pipe) {
 	case 0:
@@ -1088,6 +1089,14 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	 */
 	if (IS_MOFD(dev))
 		return 0;
+
+	/* update vblank count to convince drm */
+	assert_spin_locked(&dev->vblank_time_lock);
+	smp_wmb();
+	vblank->count++;
+	smp_wmb();
+
+	return vblank->count;
 
 	/*
 	 * High & low register fields aren't synchronized, so make sure
