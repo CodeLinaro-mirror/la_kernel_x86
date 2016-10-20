@@ -1047,9 +1047,11 @@ static void _Dispatch_Flip(DC_MRFLD_FLIP *psFlip)
 
 			/*turn on pipe power island based on active pipes*/
 			if (i == 0)
-				psFlip->uiPowerIslands |= OSPM_DISPLAY_A;
-			else
-				psFlip->uiPowerIslands |= OSPM_DISPLAY_B;
+				psFlip->uiPowerIslands |= OSPM_DISPLAY_A | OSPM_DISPLAY_MIO;
+			else if (i == 1)
+				psFlip->uiPowerIslands |= OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI;
+			else if (i == 2)
+				psFlip->uiPowerIslands |= OSPM_DISPLAY_C | OSPM_DISPLAY_MIO;
 
 			psFlip->asPipeInfo[i].uiSwapInterval =
 				psFlip->uiSwapInterval;
