@@ -17,11 +17,48 @@
 #include <asm/intel-mid.h>
 #include <asm/pmic_pdata.h>
 #include <asm/intel_mid_remoteproc.h>
-#ifdef CONFIG_BQ24261_CHARGER
-#include <linux/power/bq24261_charger.h>
-#endif
 #include "platform_ipc.h"
 #include "platform_mrfl_pmic.h"
+
+static struct temp_lookup basincove_adc_tbl[] = {
+	{0x24, 125, 0}, {0x28, 120, 0},
+	{0x2D, 115, 0}, {0x32, 110, 0},
+	{0x38, 105, 0}, {0x40, 100, 0},
+	{0x48, 95, 0}, {0x51, 90, 0},
+	{0x5C, 85, 0}, {0x68, 80, 0},
+	{0x77, 75, 0}, {0x87, 70, 0},
+	{0x99, 65, 0}, {0xAE, 60, 0},
+	{0xC7, 55, 0}, {0xE2, 50, 0},
+	{0x101, 45, 0}, {0x123, 40, 0},
+	{0x149, 35, 0}, {0x172, 30, 0},
+	{0x19F, 25, 0}, {0x1CE, 20, 0},
+	{0x200, 15, 0}, {0x233, 10, 0},
+	{0x266, 5, 0}, {0x299, 0, 0},
+	{0x2CA, -5, 0}, {0x2F9, -10, 0},
+	{0x324, -15, 0}, {0x34B, -20, 0},
+	{0x36D, -25, 0}, {0x38A, -30, 0},
+	{0x3A4, -35, 0}, {0x3B8, -40, 0},
+};
+
+static struct temp_lookup shadycove_adc_tbl[] = {
+	{0x35, 125, 0}, {0x3C, 120, 0},
+	{0x43, 115, 0}, {0x4C, 110, 0},
+	{0x56, 105, 0}, {0x61, 100, 0},
+	{0x6F, 95, 0}, {0x7F, 90, 0},
+	{0x91, 85, 0}, {0xA7, 80, 0},
+	{0xC0, 75, 0}, {0xDF, 70, 0},
+	{0x103, 65, 0}, {0x12D, 60, 0},
+	{0x161, 55, 0}, {0x1A0, 50, 0},
+	{0x1EC, 45, 0}, {0x247, 40, 0},
+	{0x2B7, 35, 0}, {0x33F, 30, 0},
+	{0x3E8, 25, 0}, {0x4B8, 20, 0},
+	{0x5BB, 15, 0}, {0x700, 10, 0},
+	{0x89A, 5, 0}, {0xAA2, 0, 0},
+	{0xD3D, -5, 0}, {0x109B, -10, 0},
+	{0x14F5, -15, 0}, {0x1AA7, -20, 0},
+	{0x2234, -25, 0}, {0x2C47, -30, 0},
+	{0x39E4, -35, 0}, {0x4C6D, -40, 0},
+};
 
 void __init *mrfl_pmic_ccsm_platform_data(void *info)
 {
@@ -30,10 +67,9 @@ void __init *mrfl_pmic_ccsm_platform_data(void *info)
 	struct platform_device *pdev = NULL;
 	int ret;
 
-#ifdef CONFIG_BQ24261_CHARGER
-	pmic_pdata.cc_to_reg = bq24261_cc_to_reg;
-	pmic_pdata.cv_to_reg = bq24261_cv_to_reg;
-#endif
+	pmic_pdata.max_tbl_row_cnt = ARRAY_SIZE(basincove_adc_tbl);
+	pmic_pdata.adc_tbl = basincove_adc_tbl;
+
 	register_rpmsg_service("rpmsg_pmic_ccsm", RPROC_SCU,
 				RP_PMIC_CCSM);
 out:
