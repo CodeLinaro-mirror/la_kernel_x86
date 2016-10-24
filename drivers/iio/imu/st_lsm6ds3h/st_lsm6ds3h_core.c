@@ -2541,6 +2541,7 @@ static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_latency(struct device *dev,
 
 	return size;
 }
+
 static ssize_t st_lsm6ds3h_sysfs_set_wrist_tilt_axes(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -3412,35 +3413,29 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_ADDR,
 				ST_LSM6DS3H_FUNC_CFG_ACCESS_MASK2,
 				ST_LSM6DS3H_EN_BIT, true);
-	if (err < 0) {
-		kfree(fw_check_data);
-		goto release_firmware;
-	}
+	if (err < 0)
+		goto free_fw_check_data;
 
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				st_lsm6ds3h_odr_table.addr[ST_MASK_ID_ACCEL],
 				st_lsm6ds3h_odr_table.mask[ST_MASK_ID_ACCEL],
 				st_lsm6ds3h_odr_table.odr_avl[3].value, false);
-	if (err < 0) {
-		kfree(fw_check_data);
-		goto release_firmware;
-	}
+	if (err < 0)
+		goto free_fw_check_data;
 
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 			ST_LSM6DS3H_FUNC_EN_ADDR,
 			ST_LSM6DS3H_FUNC_EN_MASK,
 			ST_LSM6DS3H_EN_BIT, true);
-	if (err < 0) {
-		kfree(fw_check_data);
-		goto release_firmware;
-	}
+	if (err < 0)
+		goto free_fw_check_data;
 
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_WRIST_TILT_EN_ADDR,
 				ST_LSM6DS3H_WRIST_TILT_EN_MASK,
 				ST_LSM6DS3H_EN_BIT, true);
 	if (err < 0)
-		return err;
+		goto free_fw_check_data;
 
 	msleep(50);
 
@@ -3449,25 +3444,21 @@ static int st_lsm6ds3h_upload_algo(struct lsm6ds3h_data *cdata)
 				ST_LSM6DS3H_WRIST_TILT_EN_MASK,
 				ST_LSM6DS3H_DIS_BIT, true);
 	if (err < 0)
-		return err;
+		goto free_fw_check_data;
 
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				ST_LSM6DS3H_FUNC_EN_ADDR,
 				ST_LSM6DS3H_FUNC_EN_MASK,
 				ST_LSM6DS3H_DIS_BIT, true);
-	if (err < 0) {
-		kfree(fw_check_data);
-		goto release_firmware;
-	}
+	if (err < 0)
+		goto free_fw_check_data;
 
 	err = st_lsm6ds3h_write_data_with_mask(cdata,
 				st_lsm6ds3h_odr_table.addr[ST_MASK_ID_ACCEL],
 				st_lsm6ds3h_odr_table.mask[ST_MASK_ID_ACCEL],
 				ST_LSM6DS3H_ODR_POWER_OFF_VAL, false);
-	if (err < 0) {
-		kfree(fw_check_data);
-		goto release_firmware;
-	}
+	if (err < 0)
+		goto free_fw_check_data;
 
 #ifndef CONFIG_ST_LSM6DS3H_IIO_ALGO_DISABLED
 	cdata->fifo2_algo_available = true;
