@@ -73,3 +73,4 @@ obj-$(CONFIG_POWER_RESET)	+= reset/
 obj-$(CONFIG_AXP288_FUEL_GAUGE) += axp288_fuel_gauge.o
 obj-$(CONFIG_AXP288_CHARGER)	+= axp288_charger.o
 obj-$(CONFIG_PMIC_CCSM)		+= pmic_ccsm.o
+obj-$(CONFIG_CHARGER_BQ25898)   += bq25898_charger.o

@@ -16,6 +16,7 @@
 #include <linux/sfi.h>
 #include <linux/power_supply.h>
 #include <asm/pmic_pdata.h>
+#include <asm/spid.h>
 #include <asm/intel-mid.h>
 
 #include "platform_ipc.h"
@@ -62,11 +63,13 @@ static char *bq25898_supplied_to[] = {
 void __initdata *bq25898_platform_data(void *info)
 {
 	static struct bq25898_plat_data bq25898_pdata;
+	static struct power_supply_config psy_cfg = {};
 
+	psy_cfg.supplied_to = bq25898_supplied_to;
+	psy_cfg.num_supplicants = ARRAY_SIZE(bq25898_supplied_to);
+	bq25898_pdata.psy_cfg = &psy_cfg;
 	bq25898_pdata.irq_map = PMIC_SRAM_INTR_MAP;
 	bq25898_pdata.irq_mask = PMIC_EXT_INTR_MASK;
-	bq25898_pdata.supplied_to = bq25898_supplied_to;
-	bq25898_pdata.num_supplicants = ARRAY_SIZE(bq25898_supplied_to);
 	bq25898_pdata.throttle_states = bq25898_throttle_states;
 	bq25898_pdata.num_throttle_states = ARRAY_SIZE(bq25898_throttle_states);
 	bq25898_pdata.enable_charger = NULL;
@@ -91,3 +94,11 @@ void __initdata *bq25898_platform_data(void *info)
 
 	return &bq25898_pdata;
 }
+static const struct devs_id bq25898_dev_id __initconst = {
+	.name = "bq25898_charger",
+	.type = SFI_DEV_TYPE_I2C,
+	.delay = 1,
+	.get_platform_data = &bq25898_platform_data,
+};
+
+sfi_device(bq25898_dev_id);

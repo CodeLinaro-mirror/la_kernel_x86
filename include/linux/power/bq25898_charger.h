@@ -23,8 +23,7 @@ struct restore_reg_config {
 struct bq25898_plat_data {
 	u32 irq_map;
 	u8 irq_mask;
-	char **supplied_to;
-	size_t num_supplicants;
+	struct power_supply_config *psy_cfg;
 	struct power_supply_throttle *throttle_states;
 	size_t num_throttle_states;
 	int safety_timer;

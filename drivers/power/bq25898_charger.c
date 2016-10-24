@@ -491,7 +491,8 @@ struct bq25898_charger {
 	struct mutex charge_config_lock;
 	struct i2c_client *client;
 	struct bq25898_plat_data *pdata;
-	struct power_supply psy_usb;
+	struct power_supply *psy_usb;
+	struct power_supply_desc psy_usb_desc;
 	struct delayed_work sw_term_work;
 	struct delayed_work wdt_work;
 	struct delayed_work batmon_work;
@@ -518,6 +519,10 @@ struct bq25898_charger {
 	unsigned int curr_eoc_limit;
 	int status_reg_oldvalue;
 };
+static inline struct bq25898_charger *to_bq25898(struct power_supply *psy)
+{
+	return power_supply_get_drvdata(psy);
+}
 
 static int bq25898_charger_configure(struct i2c_client *client);
 static irqreturn_t bq25898_handler(int irq, void *data);
@@ -557,7 +562,7 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			cancel_delayed_work(&chip->batmon_work);
 			/* ensure charge termination is enabled and if needed watchdog disabled */
 			cancel_delayed_work(&chip->sw_term_work);
-			queue_work(system_nrt_wq, &chip->sw_config_work);
+			schedule_work(&chip->sw_config_work);
 			break;
 		default:
 			break;
@@ -2199,7 +2204,7 @@ static int bq25898_notify_charge_status_change(struct notifier_block *self,
 
 	switch (action)	{
 	case PMIC_ACTION_CHARGING_STATUS:
-		queue_work(system_nrt_wq, &chip->charge_status_work);
+		schedule_work(&chip->charge_status_work);
 		return NOTIFY_OK;
 	case PMIC_ACTION_BATTERY_ZONE_CHANGED:
 	case PMIC_ACTION_OVERHEAT:
@@ -2579,9 +2584,7 @@ static int bq25898_get_property(struct power_supply *psy,
 				union power_supply_propval *val)
 {
 	int ret;
-	struct bq25898_charger *chip = container_of(psy,
-						struct bq25898_charger,
-						psy_usb);
+	struct bq25898_charger *chip = to_bq25898(psy);
 
 	if (!val || !chip) {
 		dev_err(&chip->client->dev, "%s power_supply_propval:%p, chip: %p\n", __func__, val, chip);
@@ -2664,9 +2667,7 @@ static int bq25898_set_property(struct power_supply *psy,
 				enum power_supply_property psp,
 				const union power_supply_propval *val)
 {
-	struct bq25898_charger *chip = container_of(psy,
-						struct bq25898_charger,
-						psy_usb);
+	struct bq25898_charger *chip = to_bq25898(psy);
 
 	if (!val || !chip)
 		return -EINVAL;
@@ -2772,7 +2773,7 @@ static irqreturn_t bq25898_thread_handler(int id, void *data)
 		dev_err(&chip->client->dev, "Error while checking fault_reg\n");
 		goto thread_handler_end;
 	}
-	power_supply_changed(&chip->psy_usb);
+	power_supply_changed(chip->psy_usb);
 
 thread_handler_end:
 	return IRQ_HANDLED;
@@ -2781,10 +2782,14 @@ thread_handler_end:
 static int bq25898_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
+	struct power_supply_desc *psy_desc;
 	struct i2c_adapter *adapter;
 	struct bq25898_charger *chip;
 	int ret, irq;
 
+	psy_desc = devm_kzalloc(&client->dev, sizeof(*psy_desc), GFP_KERNEL);
+	if (!psy_desc)
+		return -ENOMEM;
 	dev_dbg(&client->dev, ">probe");
 
 	adapter = to_i2c_adapter(client->dev.parent);
@@ -2809,13 +2814,15 @@ static int bq25898_probe(struct i2c_client *client,
 
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
-	chip->psy_usb.name = DEV_NAME;
-	chip->psy_usb.type = POWER_SUPPLY_TYPE_USB;
-	chip->psy_usb.properties = bq25898_battery_properties;
-	chip->psy_usb.num_properties = ARRAY_SIZE(bq25898_battery_properties);
-	chip->psy_usb.set_property = bq25898_set_property;
-	chip->psy_usb.get_property = bq25898_get_property;
-	chip->psy_usb.property_is_writeable = bq25898_property_is_writeable;
+
+	psy_desc->name = DEV_NAME;
+	psy_desc->type = POWER_SUPPLY_TYPE_USB;
+	psy_desc->properties = bq25898_battery_properties;
+	psy_desc->num_properties = ARRAY_SIZE(bq25898_battery_properties);
+	psy_desc->set_property = bq25898_set_property;
+	psy_desc->get_property = bq25898_get_property;
+	psy_desc->property_is_writeable = bq25898_property_is_writeable;
+
 	chip->postcharge_duration_mn = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
 	chip->current_now = 0;
 	chip->irq_counter = 0;
@@ -2895,8 +2902,10 @@ static int bq25898_probe(struct i2c_client *client,
 		goto error2;
 	}
 
-	ret = power_supply_register(&chip->client->dev, &chip->psy_usb);
-	if (ret < 0) {
+	chip->pdata->psy_cfg->drv_data = chip;
+	chip->psy_usb = power_supply_register(&chip->client->dev, psy_desc, chip->pdata->psy_cfg);
+	if (IS_ERR(chip->psy_usb)) {
+		ret = PTR_ERR(chip->psy_usb);
 		dev_err(&client->dev, "error registering power supply: %d\n", ret);
 		goto error3;
 	}
@@ -2948,7 +2957,7 @@ error5:
 	if (!chip->pdata->is_pmic_notifier)
 		gpio_free(chip->pdata->gpio_charger_int_n);
 error4:
-	power_supply_unregister(&chip->psy_usb);
+	power_supply_unregister(chip->psy_usb);
 error3:
 	unregister_reboot_notifier(&chip->reboot_notifier);
 error2:
@@ -2984,7 +2993,7 @@ static int bq25898_remove(struct i2c_client *client)
 		usb_unregister_notifier(chip->transceiver, &chip->otg_usb_change);
 
 	unregister_reboot_notifier(&chip->reboot_notifier);
-	power_supply_unregister(&chip->psy_usb);
+	power_supply_unregister(chip->psy_usb);
 
 	bq25898_debugfs_exit(chip);
 

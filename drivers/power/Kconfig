@@ -451,6 +451,14 @@ config CHARGER_BQ25890
 	help
 	  Say Y to enable support for the TI BQ25890 battery charger.
 
+config CHARGER_BQ25898
+	tristate "TI BQ25898 battery charger driver"
+	select POWER_SUPPLY_CHARGER
+	depends on PMIC_CCSM
+	depends on I2C
+	help
+	  Say Y to enable support for the TI BQ25898 battery charger.
+
 config CHARGER_SMB347
 	tristate "Summit Microelectronics SMB347 Battery Charger"
 	depends on I2C
