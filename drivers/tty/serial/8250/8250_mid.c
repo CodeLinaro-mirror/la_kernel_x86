@@ -12,7 +12,6 @@
 #include <linux/rational.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <asm/intel-mid.h>
 
 #include <linux/dma/hsu.h>
 #include <linux/8250_pci.h>
@@ -75,40 +74,6 @@ static int pnw_setup(struct mid8250 *mid, struct uart_port *p)
 	return 0;
 }
 
-/* Workaround for shared interrupts on UART IRQ line and DMA line on Tangier B0. */
-static int tng_handle_irq(struct uart_port *p)
-{
-	struct mid8250 *mid = p->private_data;
-	struct hsu_dma_chip* chip = pci_get_drvdata(mid->dma_dev);
-	int ret = IRQ_NONE;
-
-	int iir = serial_port_in(p, UART_IIR);
-
-	if( chip != NULL )
-	{
-		ret |= hsu_dma_irq(chip, 2*mid->dma_index);
-		ret |= hsu_dma_irq(chip, 2*mid->dma_index + 1);
-	}
-
-	/* On BYT, this IRQ may be shared with other HW */
-	if (unlikely(iir & 0x1)) {
-		/*
-		 * Read  UART_BYTE_COUNT and UART_OVERFLOW
-		 * registers to clear the overrun error on
-		 * Tx. This is a HW issue on VLV2 B0.
-		 * more information on HSD 4683358.
-		 */
-		serial_port_in(p, 0x818 / 4);
-		serial_port_in(p, 0x820 / 4);
-	}
-	else
-	{
-		ret |= serial8250_handle_irq(p, iir);
-	}
-
-	return ret;
-}
-
 static int tng_setup(struct mid8250 *mid, struct uart_port *p)
 {
 	struct pci_dev *pdev = to_pci_dev(p->dev);
@@ -120,15 +85,6 @@ static int tng_setup(struct mid8250 *mid, struct uart_port *p)
 
 	mid->dma_index = index;
 	mid->dma_dev = pci_get_slot(pdev->bus, PCI_DEVFN(5, 0));
-
-	/* share irq with port? ANN all and TNG chip from B0 stepping */
-	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER &&
-			pdev->revision >= 0x1) ||
-			intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)
-	{
-		p->handle_irq = tng_handle_irq;
-	}
-
 	return 0;
 }
 
