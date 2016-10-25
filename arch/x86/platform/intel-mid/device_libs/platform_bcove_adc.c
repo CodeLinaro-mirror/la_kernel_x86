@@ -57,13 +57,15 @@ static struct gpadc_regmap_t shadycove_gpadc_regmaps[SCOVE_GPADC_CH_NUM] = {
 
 static struct gpadc_regs_t basincove_gpadc_regs = {
 	.gpadcreq		= 0xDC,
-	.gpadcreq_irqen		= (1 << 1),
+	.gpadcreq_irqen		= 0,
 	.gpadcreq_busy		= (1 << 0),
 	.mirqlvl1		= 0x0C,
 	.mirqlvl1_adc		= (1 << 4),
 	.adc1cntl		= 0xDD,
 	.adcirq			= 0x06,
 	.madcirq		= 0x11,
+	.thrmmonctl		= 0xB4,
+	.thrmen			= (1 << 0),
 };
 
 static struct gpadc_regs_t shadycove_gpadc_regs = {
