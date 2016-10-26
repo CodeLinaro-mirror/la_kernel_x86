@@ -76,10 +76,19 @@ void *tmd26723_ps_platform_data(void *info)
 	static struct proximity_sensor_platform_data proximity_sensor_pdata;
 
 	proximity_sensor_pdata.gpio_int = get_gpio_by_name("prox_int_n");
-	proximity_sensor_pdata.init = tmd26723_platform_init;
-	proximity_sensor_pdata.exit = tmd26723_platform_exit;
-	proximity_sensor_pdata.power_on = tmd26723_power_on;
-	proximity_sensor_pdata.power_off = tmd26723_power_off;
+
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
+				INTEL_MID_BOARD(2, PHONE, MRFL, RBY, ENG)) {
+		proximity_sensor_pdata.init = NULL;
+		proximity_sensor_pdata.exit = NULL;
+		proximity_sensor_pdata.power_on = NULL;
+		proximity_sensor_pdata.power_off = NULL;
+	} else {
+		proximity_sensor_pdata.init = tmd26723_platform_init;
+		proximity_sensor_pdata.exit = tmd26723_platform_exit;
+		proximity_sensor_pdata.power_on = tmd26723_power_on;
+		proximity_sensor_pdata.power_off = tmd26723_power_off;
+	}
 
 	return &proximity_sensor_pdata;
 }
