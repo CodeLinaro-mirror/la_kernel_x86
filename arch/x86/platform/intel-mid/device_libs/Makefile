@@ -33,6 +33,7 @@ obj-$(subst m,y,$(CONFIG_GPIO_PCA953X)) += platform_tca6416.o
 obj-$(subst m,y,$(CONFIG_DRM_MEDFIELD)) += platform_tc35876x.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X)) += platform_pcal9555a.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX)) += platform_s1222.o
+obj-$(subst m,y,$(CONFIG_INPUT_DRV2605_VIBRA)) += platform_drv2605.o
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SPI_SPIDEV)) += platform_spidev.o
 obj-$(subst m,y,$(CONFIG_TI_ADS7955_ADC)) += platform_ads7955.o
