@@ -296,7 +296,7 @@
 #define CHARGER_STATUS_MASK			(3 << 3)
 /* PG_STAT -- 0: Not power good, 1: Power good */
 #define PG_STAT					(1 << 2)
-#define PG_STAT_MASK			(1 << 2)
+#define PG_STAT_MASK				(1 << 2)
 /* VSYS_STAT -- 0: Not in VSYSmin, 1: in Vsys min regulation (BAT < VSYSMIN) */
 #define VSYS_STAT				(1 << 0)
 #define BQ25898_STATUS_REG_DEFAULT		0x02
@@ -305,19 +305,38 @@
  *  Fault Register (REG0C)
  */
 #define BQ25898_FAULT_REG			0x0C
-/* WATCHDOG_FAULT */
-#define WATCHDOG_FAULT				(1 << 7)	/* 0: normal, 1: WD timer expiration */
-/* BOOST FAULT */
-#define BOOST_FAULT					(1 << 6)
-/* CHRG_FAULT */
-#define CHARGER_FAULT1				(1 << 5)	/* b00: normal, b01: input fault */
-#define CHARGER_FAULT0				(1 << 4)	/* b10: thermal shutdown, b11: charge safety timer expiration */
-/* BAT_FAULT */
-#define BAT_FAULT				(1 << 3)	/* 0: normal, 1: BATOVP */
-/* NTC_FAULT */
-#define NTC_FAULT2				(1 << 2)	/* Boost Mode: b000: normal,  b101: TS Cold,  b110:TS Hot */
-#define NTC_FAULT1				(1 << 1)	/* Buck Mode: b000: normal, b010: TS Warm, b011: TS Cool, b101: TS Cold*/
-#define NTC_FAULT0				(1 << 0)	/* b110: TS Hot */
+
+#define NTC_FAULT_MASK				0x07
+#define BAT_FAULT_MASK				0x08
+#define CHARGER_FAULT_MASK			0x30
+#define BOOST_FAULT_MASK			0x40
+#define WATCHDOG_FAULT_MASK			0x80
+
+const char * const NTC_fault_to_human[] = {
+	[0x0] = "Normal\n",
+	[0x2] = "TS Warm (Buck mode)\n",
+	[0x3] = "TS Cool (Buck mode)\n",
+	[0x5] = "TS Cold\n",
+	[0x6] = "TS Hot\n"
+};
+
+const char * const CHARGER_fault_to_human[] = {
+	[0x0] = "Normal\n",
+	[0x1] = "Input fault\n",
+	[0x2] = "Thermal shutdown\n",
+	[0x3] = "Charge safety timer expired\n"
+};
+
+enum {
+	BAT_FAULT_OFF = 0,
+	BOOST_FAULT_OFF,
+	WATCHDOG_FAULT_OFF,
+	NTC_FAULT_OFF,
+	CHARGER_FAULT_OFF = NTC_FAULT_OFF + ARRAY_SIZE(NTC_fault_to_human),
+	FAULT_OFF_SIZE = CHARGER_FAULT_OFF + ARRAY_SIZE(CHARGER_fault_to_human)
+};
+
+u16 fault_count[FAULT_OFF_SIZE];
 
 /*
  * Voltage IN control register (REG0D),
@@ -1094,44 +1113,30 @@ static void bq25898_regc_to_human(struct seq_file *seq, u8 reg, u8 val)
 {
 
 	seq_puts(seq, "WATCHDOG_FAULT ");
-	if (val & WATCHDOG_FAULT)
+	if (val & WATCHDOG_FAULT_MASK)
 		seq_puts(seq, "WD Timer expiration\n");
 	else
 		seq_puts(seq, "WD Normal\n");
 
 	seq_puts(seq, "BOOST_FAULT ");
-	if (val & BOOST_FAULT)
+	if (val & BOOST_FAULT_MASK)
 		seq_puts(seq, "VBUS overloaded in OTG, or VBUS OVP or battery too low\n");
 	else
 		seq_puts(seq, "Normal\n");
 
 	seq_puts(seq, "CHARGER_FAULT ");
-	if (!(val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		seq_puts(seq, "Normal\n");
-	else if (!(val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		seq_puts(seq, "Input fault\n");
-	else if ((val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		seq_puts(seq, "Thermal shutdown\n");
-	else if ((val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		seq_puts(seq, "Charge safety timer expiration\n");
+	seq_puts(seq, CHARGER_fault_to_human[(val & CHARGER_FAULT_MASK) >> 4]);
+	seq_puts(seq, "\n");
 
 	seq_puts(seq, "BAT_FAULT ");
-	if (val & BAT_FAULT)
+	if (val & BAT_FAULT_MASK)
 		seq_puts(seq, "BATOVP!!\n");
 	else
 		seq_puts(seq, "Normal\n");
 
 	seq_puts(seq, "NTC_FAULT ");
-	if (!(val & NTC_FAULT2) && !(val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "Normal\n");
-	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "TS Warm (Buck mode)\n");
-	else if (!(val & NTC_FAULT2) && (val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "TS Cool (Buck mode)\n");
-	else if ((val & NTC_FAULT2) && !(val & NTC_FAULT1) && (val & NTC_FAULT0))
-		seq_puts(seq, "TS Cold\n");
-	else if ((val & NTC_FAULT2) && (val & NTC_FAULT1) && !(val & NTC_FAULT0))
-		seq_puts(seq, "TS Hot\n");
+	seq_puts(seq, NTC_fault_to_human[val & NTC_FAULT_MASK]);
+	seq_puts(seq, "\n");
 }
 
 static void bq25898_regd_to_human(struct seq_file *seq, u8 reg, u8 val)
@@ -1384,10 +1389,13 @@ static void bq25898_reg14_to_human(struct seq_file *seq, u8 reg, u8 val)
 	seq_printf(seq, "Revision: %d\n", (val & (DEV_REV1 | DEV_REV0)));
 }
 
-/* invoked by reading content of register >= BQ25898_ALL_REGISTER
- * basically, any unknown register */
+/*
+ * Invoked by reading content of register >= BQ25898_ALL_REGISTER
+ * basically, any unknown register
+ */
 static void bq25898_regall_to_human(struct i2c_client *client, struct seq_file *seq)
 {
+	u8 i;
 	u8 reg = 0;
 	u8 val = 0;
 
@@ -1498,8 +1506,11 @@ static void bq25898_regall_to_human(struct i2c_client *client, struct seq_file *
 	val = bq25898_read_reg(client, reg++);
 	if (val >= 0)
 		bq25898_reg14_to_human(seq, reg, val);
-}
 
+	for (i = 0; i < ARRAY_SIZE(fault_count); i++) {
+		seq_printf(seq, "fault count for %d:%d\n", i, fault_count[i]);
+	}
+}
 
 static int bq25898_reg_show(struct seq_file *seq, void *unused)
 {
@@ -1642,7 +1653,7 @@ static int bq25898_debugfs_init(struct bq25898_charger *chip)
 	return 0;
 }
 
-static int bq25898_debugfs_exit(struct bq25898_charger *chip)
+static void bq25898_debugfs_exit(struct bq25898_charger *chip)
 {
 	(void) chip;
 	return;
@@ -2165,7 +2176,7 @@ static int bq25898_charger_fault_reg_handler(struct bq25898_charger *chip)
 	dev_dbg(&chip->client->dev,
 		"Charger_Fault_reg (0x%02x):0x%02x\n", BQ25898_FAULT_REG, val);
 
-	if (val & WATCHDOG_FAULT) {
+	if (val & WATCHDOG_FAULT_MASK) {
 		dev_warn(&chip->client->dev,
 			"Watchdog Timer has expired... Starting recovery\n");
 		mutex_lock(&chip->charge_config_lock);
@@ -2174,19 +2185,29 @@ static int bq25898_charger_fault_reg_handler(struct bq25898_charger *chip)
 		if (ret < 0)
 			dev_err(&chip->client->dev,
 				"Unable to restore charger's register configuration");
+		fault_count[WATCHDOG_FAULT_OFF]++;
 	}
-	if (val & BOOST_FAULT)
-		dev_dbg(&chip->client->dev, "INT triggered for Boost fault\n");
-	if (!(val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		dev_dbg(&chip->client->dev, "INT triggered for Input fault\n");
-	if ((val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		dev_dbg(&chip->client->dev, "INT triggered for Thermal shutdown\n");
-	if ((val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		dev_dbg(&chip->client->dev, "INT triggered for Safety timer expiration\n");
-	if (val & BAT_FAULT)
-		dev_dbg(&chip->client->dev, "INT triggered for Battery fault\n");
-	if ((val & NTC_FAULT0) || (val & NTC_FAULT1) || (val & NTC_FAULT2))
-		dev_dbg(&chip->client->dev, "INT triggered for NTC fault\n");
+
+	if (val & BOOST_FAULT_MASK) {
+		fault_count[BOOST_FAULT_OFF]++;
+		dev_info(&chip->client->dev, "Boost fault\n");
+	}
+	if (val & BAT_FAULT_MASK) {
+		fault_count[BAT_FAULT_OFF]++;
+		dev_info(&chip->client->dev, "Battery fault\n");
+	}
+
+	if (val & NTC_FAULT_MASK) {
+		fault_count[NTC_FAULT_OFF+(val & NTC_FAULT_MASK)]++;
+		dev_info(&chip->client->dev, "NTC fault: %s\n",
+			 NTC_fault_to_human[val & NTC_FAULT_MASK]);
+	}
+
+	if (val & CHARGER_FAULT_MASK) {
+		fault_count[CHARGER_FAULT_OFF+((val & CHARGER_FAULT_MASK) >> 4)]++;
+		dev_info(&chip->client->dev, "Charger fault: %s\n",
+			 CHARGER_fault_to_human[(val & CHARGER_FAULT_MASK) >> 4]);
+	}
 
 	return ret;
 }
@@ -2475,19 +2496,17 @@ static int bq25898_get_prop_health(struct bq25898_charger *chip)
 	if (val < 0)
 		return val;
 
-	if (val & WATCHDOG_FAULT)
+	if (val & WATCHDOG_FAULT_MASK)
 		return POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE;
 
-	if ((val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		return POWER_SUPPLY_HEALTH_OVERHEAT;
+	if (val & CHARGER_FAULT_MASK) {
+		if (((val & CHARGER_FAULT_MASK) >> 4) == 0x01)
+			return POWER_SUPPLY_HEALTH_OVERHEAT;
+		if (((val & CHARGER_FAULT_MASK) >> 4) == 0x03)
+			return POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
+	}
 
-	if (!(val & CHARGER_FAULT1) && !(val & CHARGER_FAULT0))
-		return POWER_SUPPLY_HEALTH_GOOD;
-
-	if ((val & CHARGER_FAULT1) && (val & CHARGER_FAULT0))
-		return POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
-
-	if (val & BAT_FAULT)
+	if (val & BAT_FAULT_MASK)
 		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 
 
