@@ -4020,7 +4020,7 @@ static void psb_shutdown(struct pci_dev *pdev)
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
 
-	mutex_lock(&dev->mode_config.mutex);
+	drm_modeset_lock_all(dev);
 
 	/* wait for the previous flip to be finished */
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -4030,7 +4030,8 @@ static void psb_shutdown(struct pci_dev *pdev)
 		if (enc_funcs && enc_funcs->save)
 			enc_funcs->save(encoder);
 	}
-	mutex_unlock(&dev->mode_config.mutex);
+
+	drm_modeset_unlock_all(dev);
 }
 static const struct dev_pm_ops psb_pm_ops = {
 	.runtime_suspend = rtpm_suspend,

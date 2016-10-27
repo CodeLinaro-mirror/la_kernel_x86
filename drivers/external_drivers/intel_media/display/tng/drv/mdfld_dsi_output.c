@@ -562,10 +562,12 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
+static int mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
+
+	return 0;
 }
 
 static struct drm_encoder *

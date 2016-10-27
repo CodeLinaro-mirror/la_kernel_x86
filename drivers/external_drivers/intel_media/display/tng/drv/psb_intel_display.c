@@ -1227,6 +1227,9 @@ int psb_power_mode_set_ioctl(struct drm_device *dev, void *data,
 		ret = -EINVAL;
 	}
 
+	/* connecotr dpms expect mode config lock */
+	drm_modeset_lock_all(dev);
+
 	switch (hwc_mode) {
 	case POWER_MODE_OFF:
 		funcs->dpms(connector, DRM_MODE_DPMS_OFF);
@@ -1242,6 +1245,8 @@ int psb_power_mode_set_ioctl(struct drm_device *dev, void *data,
 		DRM_INFO("Not support display standby mode yet!\n");
 		break;
 	}
+	drm_modeset_unlock_all(dev);
+
 	return ret;
 }
 
