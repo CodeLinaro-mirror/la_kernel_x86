@@ -2136,6 +2136,15 @@ static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 				mutex_unlock(&chip->charge_config_lock);
 				if (ret < 0)
 					return ret;
+				/* update current status variable as charging status
+				 * has been modified by bq25898_force_charging
+				 */
+				val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+				if (val < 0) {
+					dev_err(&chip->client->dev, "Error reading charger reg %d:%d\n",
+						BQ25898_STATUS_REG, val);
+					return val;
+				}
 			} else {
 				chip->is_charge_complete = false;
 			}
