@@ -2002,14 +2002,40 @@ static int max17042_show(struct seq_file *seq, void *unused)
 	return 0;
 }
 
+static int max17042_show_all(struct seq_file *seq, void *unused)
+{
+	u16 val;
+	long addr;
+
+	for (addr = 0; addr < MAX17042_MAX_MEM; addr++) {
+		val = max17042_read_reg(max17042_client, addr);
+		seq_printf(seq, "%x:%x\n", addr, val);
+	}
+
+	return 0;
+}
+
 static int max17042_dbgfs_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, max17042_show, inode->i_private);
 }
 
+static int max17042_dbgfs_open_all(struct inode *inode, struct file *file)
+{
+	return single_open(file, max17042_show_all, inode->i_private);
+}
+
 static const struct file_operations max17042_dbgfs_fops = {
 	.owner		= THIS_MODULE,
 	.open		= max17042_dbgfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static const struct file_operations max17042_dbgfs_all_fops = {
+	.owner		= THIS_MODULE,
+	.open		= max17042_dbgfs_open_all,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
@@ -2042,6 +2068,12 @@ static void max17042_create_debugfs(struct max17042_chip *chip)
 			return ;
 		}
 	}
+	entry = debugfs_create_file(
+			"show_all",
+			S_IRUGO,
+			max17042_dbgfs_root,
+			NULL,
+			&max17042_dbgfs_all_fops);
 }
 static inline void max17042_remove_debugfs(struct max17042_chip *chip)
 {
