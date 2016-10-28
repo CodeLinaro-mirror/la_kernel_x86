@@ -114,6 +114,7 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/tianma_cmd.o \
 	$(DISPLAYDIR)/innolux_cmd.o \
 	$(DISPLAYDIR)/auo4x4_cmd.o \
+	$(DISPLAYDIR)/auo39x39_cmd.o \
 	$(DISPLAYDIR)/himax_cmd.o \
 	$(DISPLAYDIR)/cmi_vid.o \
 	$(DISPLAYDIR)/cmi_cmd.o \

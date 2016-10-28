@@ -348,6 +348,8 @@ struct devs_id __initconst device_ids[] = {
 		&panel_handler},
 	{"AUO_CMD_4x4", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
 		&panel_handler},
+	{"AUO_CMD_39x39", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
+		&panel_handler},
 	{"HIMAX_CMD", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
 		&panel_handler},
 

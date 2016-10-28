@@ -42,6 +42,7 @@ static struct support_panel_list_t
 		{TIANMA_CMD, "TIANMA_CMD"},
 		{INNOLUX_CMD, "INNOLUX_CMD"},
 		{AUO_CMD_4x4, "AUO_CMD_4x4"},
+		{AUO_CMD_39x39, "AUO_CMD_39x39"},
 		{HIMAX_CMD, "HIMAX_CMD"}
 	};
 
