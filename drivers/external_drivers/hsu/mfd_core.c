@@ -54,10 +54,9 @@ static struct hsu_port_cfg *hsu_port_func_cfg;
 
 static void serial_hsu_command(struct uart_hsu_port *up);
 
-int hsu_register_board_info(void *inf)
+void hsu_register_board_info(struct hsu_port_cfg* inf)
 {
 	hsu_port_func_cfg = inf;
-	return 0;
 }
 
 static inline int check_qcmd(struct uart_hsu_port *up, char *cmd)

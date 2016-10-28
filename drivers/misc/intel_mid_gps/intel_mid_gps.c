@@ -17,15 +17,15 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
-#include <acpi/acpi.h>
-#include <acpi/acpi_bus.h>
+#include <linux/sysfs.h>
 #include <linux/acpi.h>
-#include <linux/acpi_gpio.h>
+#include <acpi/acpi_bus.h>
+
+
 #include <linux/efi.h>
 #include <linux/wakelock.h>
 #include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
-#include <asm/intel_mid_hsu.h>
 #include <linux/intel_mid_gps.h>
 #include <linux/lnw_gpio.h>
 
@@ -37,7 +37,17 @@
 #define ACPI_DEVICE_ID_BCM47521 "BCM47521"
 #define ACPI_DEVICE_ID_BCM47531 "BCM47531"
 
-struct device *tty_dev = NULL;
+#ifdef CONFIG_ACPI
+#include <linux/acpi_gpio.h>
+#else
+struct acpi_gpio_info;
+/* This procedure is a stub from missing linux/acpi_gpio.h. */
+static inline int acpi_get_gpio_by_name(struct device *dev, char *name,
+                                         struct acpi_gpio_info *info)
+{
+        return -ENODEV;
+}
+#endif
 
 /*********************************************************************
  *		Driver GPIO toggling functions
@@ -162,7 +172,7 @@ static int intel_mid_gps_init(struct platform_device *pdev)
 	/* we need to rename the sysfs entry to match the one created with SFI,
 	   and we are sure that there is always one GPS per platform */
 	if (ACPI_HANDLE(&pdev->dev)) {
-		ret = sysfs_rename_dir(&pdev->dev.kobj, DRIVER_NAME);
+		ret = sysfs_rename_dir_ns(&pdev->dev.kobj, DRIVER_NAME, kobject_namespace(&pdev->dev.kobj));
 		if (ret)
 			pr_err("%s: failed to rename sysfs entry\n", __func__);
 	}
@@ -246,7 +256,7 @@ static int intel_mid_gps_init(struct platform_device *pdev)
 		}
 
 		/* set gpio direction */
-		ret = gpio_direction_output(pdata->gpio_mcu_req, pdata->mcu_req);
+		ret = gpio_direction_output(pdata->gpio_mcu_req, MCU_REQ_OFF);
 		if (ret < 0) {
 			pr_err("%s: Unable to set GPIO:%d direction, err:%d\n",
 					__func__, pdata->gpio_mcu_req, ret);

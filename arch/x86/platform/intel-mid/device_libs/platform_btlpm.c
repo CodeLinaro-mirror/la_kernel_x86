@@ -37,11 +37,9 @@ struct platform_device bcm_bt_lpm_device = {
 
 static int __init bluetooth_init(void)
 {
-
 	int error_reg;
 
 	/* Get the GPIO numbers from the SFI table */
-
 	bcm_bt_lpm_pdata.gpio_enable = get_gpio_by_name("BT-reset");
 	if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_enable)) {
 		pr_err("%s: gpio %s not found\n", __func__, "BT-reset");
@@ -77,4 +75,4 @@ static int __init bluetooth_init(void)
 	return 0;
 }
 
-device_initcall(bluetooth_init);
+late_initcall(bluetooth_init);

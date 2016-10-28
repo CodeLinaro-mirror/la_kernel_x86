@@ -4,6 +4,7 @@
 
 config INTEL_MID_GPS
 	tristate "Intel MID GPS driver"
+        depends on SERIAL_8250_MID || SERIAL_MFD_HSU_EXT
 	default n
 	help
 	  Select this driver to enable kernel interface for GPS devices

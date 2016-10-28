@@ -7,8 +7,7 @@
 #include <linux/intel_mid_dma.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/dma-direction.h>
-#include <asm/intel_mid_hsu.h>
-#include <linux/lpss_dma.h>
+#include <asm/intel-mid.h>
 
 #define HSU_PORT_MAX		8
 #define HSU_DMA_BUF_SIZE	2048
@@ -20,6 +19,26 @@
 #define HSU_PIO_RX_AVB		0x04
 #define HSU_PIO_RX_TMO		0x0C
 #define HSU_PIO_TX_REQ		0x02
+
+/*
+ * Intel MID on-chip HSU (High Speed UART) defined bits
+ */
+#define UART_FCR_HSU_64_1B      0x00    /* receive FIFO treshold = 1 */
+#define UART_FCR_HSU_64_16B     0x40    /* receive FIFO treshold = 16 */
+#define UART_FCR_HSU_64_32B     0x80    /* receive FIFO treshold = 32 */
+#define UART_FCR_HSU_64_56B     0xc0    /* receive FIFO treshold = 56 */
+
+#define UART_FCR_HSU_16_1B      0x00    /* receive FIFO treshold = 1 */
+#define UART_FCR_HSU_16_4B      0x40    /* receive FIFO treshold = 4 */
+#define UART_FCR_HSU_16_8B      0x80    /* receive FIFO treshold = 8 */
+#define UART_FCR_HSU_16_14B     0xc0    /* receive FIFO treshold = 14 */
+
+#define UART_FCR_HSU_64B_FIFO   0x20    /* chose 64 bytes FIFO */
+#define UART_FCR_HSU_16B_FIFO   0x00    /* chose 16 bytes FIFO */
+
+#define UART_FCR_HALF_EMPT_TXI  0x00    /* trigger TX_EMPT IRQ for half empty */
+#define UART_FCR_FULL_EMPT_TXI  0x08    /* trigger TX_EMPT IRQ for full empty */
+
 
 enum {
 	flag_console = 0,

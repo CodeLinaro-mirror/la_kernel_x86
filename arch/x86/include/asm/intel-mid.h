@@ -16,6 +16,7 @@
 #include <linux/sfi.h>
 #include <linux/pci.h>
 #include <linux/platform_device.h>
+#include <linux/interrupt.h>
 #include <asm/intel_mid_pcihelpers.h>
 #include <asm/spid.h>
 
@@ -147,18 +148,18 @@ struct devs_id {
 				struct devs_id *dev);
 };
 
-#define SD_NAME_SIZE 16
+#define MID_NAME_SIZE 16
 /**
- * struct sd_board_info - template for device creation
- * @name: Initializes sdio_device.name; identifies the driver.
- * @bus_num: board-specific identifier for a given SDIO controller.
- * @board_ref_clock: Initializes sd_device.board_ref_clock;
- * @platform_data: Initializes sd_device.platform_data; the particular
+ * struct mid_board_info - template for device creation
+ * @name: Initializes mid_board_info.name; identifies the driver.
+ * @bus_num: board-specific identifier for a given controller.
+ * @board_ref_clock: Initializes mid_board_info.board_ref_clock;
+ * @platform_data: Initializes mid_board_info.platform_data; the particular
  *      data stored there is driver-specific.
  *
  */
-struct sd_board_info {
-       char            name[SD_NAME_SIZE];
+struct mid_board_info {
+       char            name[MID_NAME_SIZE];
        int             bus_num;
        unsigned short  addr;
        u32             board_ref_clock;
@@ -303,5 +304,81 @@ static inline enum intel_mid_sim_type intel_mid_identify_sim(void)
 }
 
 #define INTEL_MID_IRQ_OFFSET 0x100
+
+struct hsu_port_cfg {
+        int type;
+        int hw_ip;
+        int index;
+        char *name;
+        int idle;
+        int has_alt;
+        int alt;
+        int force_suspend;
+        int preamble;
+        int hw_context_save;
+        int hw_ctrl_cts;
+        struct device *dev;
+        int (*hw_init)(struct device *dev, int port, irq_handler_t wake_isr);
+        void(*hw_set_alt)(int port);
+        void(*hw_set_rts)(int port, int value);
+        void(*hw_suspend)(int port, struct device *dev, irq_handler_t wake_isr);
+        void(*hw_suspend_post)(int port);
+        void(*hw_resume)(int port, struct device *dev);
+        unsigned int (*hw_get_clk)(void);
+        void (*wake_peer)(struct device *tty);
+        void (*set_clk)(unsigned int m, unsigned int n,
+                        void __iomem *addr);
+        void (*hw_reset)(void __iomem *addr);
+};
+
+extern void hsu_register_board_info(struct hsu_port_cfg* inf);
+extern struct device *intel_mid_hsu_set_wake_peer(int port,
+	void (*wake_peer)(struct device *));
+
+enum hsu_cfg {
+        config_base,
+        config_alternative,
+};
+
+
+enum hsu_core {
+        hsu_pnw,
+        hsu_clv,
+        hsu_tng,
+        hsu_ann_lnp,
+        hsu_vlv2,
+        hsu_chv,
+};
+
+enum {
+        hsu_port0,
+        hsu_port1,
+        hsu_port2,
+        hsu_port_share,
+        hsu_port_max,
+        hsu_dma,
+};
+
+enum {
+        bt_port,
+        modem_port,
+        gps_port,
+        debug_port,
+};
+
+enum {
+        hsu_intel,
+        hsu_dw,
+};
+
+
+
+
+int intel_mid_hsu_plat_init(int port, ulong plat, struct device *dev);
+int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr);
+int intel_mid_hsu_func_to_port(unsigned int func);
+struct device *intel_mid_hsu_set_wake_peer(int port,
+                        void (*wake_peer)(struct device *));
+
 
 #endif /* _ASM_X86_INTEL_MID_H */

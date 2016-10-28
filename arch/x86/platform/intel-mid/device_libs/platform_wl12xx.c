@@ -64,7 +64,7 @@ static struct platform_device wl12xx_vwlan_device = {
 
 void __init wl12xx_platform_data_init(void *info)
 {
-	struct sd_board_info *sd_info = info;
+	struct mid_board_info *sd_info = info;
 	int err;
 
 	/*Get GPIO numbers from the SFI table*/

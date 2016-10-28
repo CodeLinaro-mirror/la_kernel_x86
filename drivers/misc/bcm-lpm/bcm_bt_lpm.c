@@ -29,7 +29,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
 #include <asm/intel-mid.h>
-#include <asm/intel_mid_hsu.h>
 
 #ifndef CONFIG_ACPI
 #include <asm/bcm_bt_lpm.h>

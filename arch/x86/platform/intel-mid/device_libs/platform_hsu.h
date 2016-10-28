@@ -64,4 +64,11 @@ struct hsu_port_pin_cfg {
 	irq_handler_t wake_isr;
 };
 
+
+#define hsu_port_func_max 4
+
+
+extern void intel_mid_hsu_force_cfg(enum hsu_cfg config);
+
+
 #endif

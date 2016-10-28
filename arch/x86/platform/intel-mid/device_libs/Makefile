@@ -51,6 +51,9 @@ obj-$(subst m,y,$(CONFIG_WILINK_PLATFORM_DATA)) += platform_wl12xx.o
 # BT Devices
 ifndef CONFIG_ACPI
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM)) += platform_btlpm.o
+obj-$(subst m,y,$(CONFIG_INTEL_MID_GPS)) += platform_gps.o
+obj-$(subst m,y,$(CONFIG_SERIAL_8250_MID)) += platform_hsu.o
+obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU_EXT)) += platform_hsu.o
 endif
 # Wifi Devices
 obj-$(subst m,y,$(CONFIG_WIFI_PLATFORM_DATA)) += platform_wifi.o

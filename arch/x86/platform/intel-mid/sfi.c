@@ -436,25 +436,29 @@ static void __init sfi_handle_i2c_dev(struct sfi_device_table_entry *pentry,
 		i2c_register_board_info(pentry->host_num, &i2c_info, 1);
 }
 
-static void __init sfi_handle_sd_dev(struct sfi_device_table_entry *pentry,
+
+/* Configures UART/SDIO devices from SFI platform devices table. */
+static void __init sfi_handle_sd_uart_dev(struct sfi_device_table_entry *pentry,
                                        struct devs_id *dev)
 {
-       struct sd_board_info sd_info;
+       struct mid_board_info board_info;
        void *pdata = NULL;
+       const char* type = (pentry->type == SFI_DEV_TYPE_SD ) ? "SDIO" : "UART";
 
-       memset(&sd_info, 0, sizeof(sd_info));
-       strncpy(sd_info.name, pentry->name, 16);
-       sd_info.bus_num = pentry->host_num;
-       sd_info.board_ref_clock = pentry->max_freq;
-       sd_info.addr = pentry->addr;
-       pr_err("SDIO bus = %d, name = %16.16s, "
+       memset(&board_info, 0, sizeof(board_info));
+       snprintf(board_info.name, sizeof(board_info.name), "%s", pentry->name );
+       board_info.bus_num = pentry->host_num;
+       board_info.board_ref_clock = pentry->max_freq;
+       board_info.addr = pentry->addr;
+       pr_err("%s bus = %d, name = %16.16s, "
                        "ref_clock = %d, addr =0x%x\n",
-                       sd_info.bus_num,
-                       sd_info.name,
-                       sd_info.board_ref_clock,
-                       sd_info.addr);
-       pdata = dev->get_platform_data(&sd_info);
-       sd_info.platform_data = pdata;
+					   type,
+					   board_info.bus_num,
+					   board_info.name,
+					   board_info.board_ref_clock,
+					   board_info.addr);
+       pdata = dev->get_platform_data(&board_info);
+       board_info.platform_data = pdata;
 }
 
 extern struct devs_id *const __x86_intel_mid_dev_start[],
@@ -507,7 +511,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 		pr_debug("%s: pentry->type=%u, pentry->host_num=%u, pentry->addr=%u, "
 			"pentry->irq=%u, pentry->max_freq=%u, pentry->name=%s\n",
 			__func__, pentry->type, pentry->host_num, pentry->addr,
-			pentry->irq, pentry->name); 
+			pentry->irq, pentry->max_freq, pentry->name);
 
 		if (irq != (u8)0xff) { /* native RTE case */
 			/* these SPI2 devices are not exposed to system as PCI
@@ -595,9 +599,14 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				pr_debug("%s: pentry->type == SFI_DEV_TYPE_SD, "
 					"pentry->name=%s, dev-name=%s\n",
 					__func__, pentry->name, dev->name);
-				sfi_handle_sd_dev(pentry, dev);
+				sfi_handle_sd_uart_dev(pentry, dev);
 				break;
 			case SFI_DEV_TYPE_UART:
+				pr_debug("%s: pentry->type == SFI_DEV_TYPE_UART, "
+					"pentry->name=%s, dev-name=%s\n",
+					__func__, pentry->name, dev->name);
+				sfi_handle_sd_uart_dev(pentry, dev);
+				break;
 			case SFI_DEV_TYPE_HSI:
 			default:
 				pr_debug("%s: SFI_DEV_TYPE_UART or SFI_DEV_TYPE_HSI, "

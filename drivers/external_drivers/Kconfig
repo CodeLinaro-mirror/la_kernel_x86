@@ -32,4 +32,5 @@ if EXTERNAL_INTEL_MEDIA
 source "drivers/external_drivers/intel_media/Kconfig"
 endif
 
+source "drivers/external_drivers/hsu/Kconfig"
 endif

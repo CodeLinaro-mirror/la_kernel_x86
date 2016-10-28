@@ -20,7 +20,7 @@
 #include <linux/intel_mid_dma.h>
 #include <linux/irq.h>
 #include <linux/acpi.h>
-#include <asm/intel_mid_hsu.h>
+#include <asm/intel-mid.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/pm_qos.h>
 

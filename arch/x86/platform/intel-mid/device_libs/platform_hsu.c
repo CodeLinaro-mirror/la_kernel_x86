@@ -19,7 +19,6 @@
 #include <linux/gpio.h>
 #include <asm/setup.h>
 #include <asm/intel-mid.h>
-#include <asm/intel_mid_hsu.h>
 
 #include "platform_hsu.h"
 
@@ -30,6 +29,15 @@
 #define VLV_HSU_RESET	0x0804
 #define VLV_HSU_OVF_IRQ	0x0820	/* Overflow interrupt related */
 
+static void intel_mid_hsu_switch(int port);
+static void intel_mid_hsu_rts(int port, int value);
+static void intel_mid_hsu_suspend_post(int port);
+static void intel_mid_hsu_resume(int port, struct device *dev);
+static void intel_mid_hsu_suspend(int port, struct device *dev, irq_handler_t wake_isr);
+static unsigned int intel_mid_hsu_get_clk(void);
+static void intel_mid_hsu_set_clk(unsigned int m, unsigned int n,
+		void __iomem *addr);
+static void intel_mid_hsu_reset(void __iomem *addr);
 static int intel_mid_gps_hsu_init(struct device *dev, int port,
 				  irq_handler_t wake_isr);
 static void intel_mid_gps_hsu_suspend(int port, struct device *dev,
@@ -768,7 +776,6 @@ static void hsu_port_disable(int port)
 
 void intel_mid_hsu_suspend(int port, struct device *dev, irq_handler_t wake_isr)
 {
-	int ret;
 	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
 
 	info->dev = dev;
@@ -951,8 +958,6 @@ int intel_mid_hsu_init(struct device *dev, int port, irq_handler_t wake_isr)
 		return -ENODEV;
 
 	port_cfg->dev = dev;
-
-	info = hsu_port_gpio_mux + port;
 
 	info->dev = dev;
 	info->wake_isr = wake_isr;
