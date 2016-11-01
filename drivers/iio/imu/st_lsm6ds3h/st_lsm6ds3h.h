@@ -240,7 +240,7 @@ struct lsm6ds3h_data {
 	u16 sensors_enabled;
 	u16 sensors_use_fifo;
 
-	int accel_odr_dependency[4];
+	int accel_odr_dependency[3];
 
 	bool accel_on;
 	bool accel_wk_on;
