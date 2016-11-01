@@ -1602,29 +1602,28 @@ static int lsm6ds3h_enable_accel(struct lsm6ds3h_data *cdata, enum st_mask_id id
 
 		break;
 	case ST_MASK_ID_ACCEL_WK:
-		cdata->accel_odr_dependency[1] = min_odr;
+		cdata->accel_odr_dependency[0] = min_odr;
 		cdata->accel_wk_on = enable;
 
 		break;
 	case ST_MASK_ID_SENSOR_HUB:
-		cdata->accel_odr_dependency[2] = min_odr;
+		cdata->accel_odr_dependency[1] = min_odr;
 		cdata->magn_on = enable;
 
 		break;
 	case ST_MASK_ID_DIGITAL_FUNC:
-		cdata->accel_odr_dependency[3] = min_odr;
+		cdata->accel_odr_dependency[2] = min_odr;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (MAX(cdata->accel_odr_dependency[0], cdata->accel_odr_dependency[1]) > cdata->accel_odr_dependency[2])
-		odr = MAX(cdata->accel_odr_dependency[0], cdata->accel_odr_dependency[1]);
-	else
-		odr = cdata->accel_odr_dependency[2];
+	odr = cdata->accel_odr_dependency[0];
+	if (!cdata->accel_on && !cdata->accel_wk_on)
+		odr = 0;
 
-	if (cdata->accel_odr_dependency[3] > odr)
-		odr = cdata->accel_odr_dependency[3];
+	if (MAX(cdata->accel_odr_dependency[1], cdata->accel_odr_dependency[2]) > odr)
+		odr = MAX(cdata->accel_odr_dependency[1], cdata->accel_odr_dependency[2]);
 
 #ifdef CONFIG_ST_LSM6DS3H_XL_DATA_INJECTION
 	if (cdata->injection_mode)
@@ -3978,7 +3977,6 @@ int st_lsm6ds3h_common_probe(struct lsm6ds3h_data *cdata, int irq)
 	cdata->accel_odr_dependency[0] = 0;
 	cdata->accel_odr_dependency[1] = 0;
 	cdata->accel_odr_dependency[2] = 0;
-	cdata->accel_odr_dependency[3] = 0;
 
 	cdata->trigger_odr = 0;
 	cdata->fifo_odr = 0;
