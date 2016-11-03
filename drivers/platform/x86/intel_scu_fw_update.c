@@ -31,6 +31,7 @@
 #include <linux/rpmsg.h>
 #include <linux/intel_mid_pm.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel-mid.h>
 #include <asm/msr.h>
@@ -169,6 +170,8 @@ struct fw_update_info {
 #define FW_VERSION_SIZE		16
 #define FW_VERSION_MAX_SIZE	36
 static u8 fw_version_raw_data[FW_VERSION_MAX_SIZE] = { 0 };
+
+static u8 pmic_nvm_version;
 
 static struct fw_update_info fui;
 
@@ -1028,6 +1031,7 @@ static void read_ifwi_version(void)
 
 #define MSR_PUNIT_VERSION_ADDR 0x667
 #define MSR_UCODE_VERSION_ADDR 0x8b
+#define MSR_PMIC_NVM_VERSION_ADDR 0x6E08
 
 static int fw_version_info(void)
 {
@@ -1062,6 +1066,14 @@ static int fw_version_info(void)
 	}
 
 	read_ifwi_version();
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) {
+		ret = intel_scu_ipc_ioread8(MSR_PMIC_NVM_VERSION_ADDR, &pmic_nvm_version);
+		if (ret < 0) {
+			cur_err("Error getting PMIC NVM version");
+			return -EINVAL;
+		}
+	}
 
 	return 0;
 }
@@ -1100,6 +1112,12 @@ static ssize_t sys_version_show(struct kobject *kobj,
 
 	pr_err("component version not found\n");
 	return 0;
+}
+
+static ssize_t pmic_nvm_version_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%.2X\n", pmic_nvm_version);
 }
 
 static ssize_t last_error_show(struct kobject *kobj,
@@ -1148,6 +1166,7 @@ static KOBJ_FW_UPDATE_ATTR(valhooks_version, S_IRUSR, sys_version_show, NULL);
 static KOBJ_FW_UPDATE_ATTR(ucode_version, S_IRUSR, sys_version_show, NULL);
 
 static KOBJ_FW_UPDATE_ATTR(last_error, S_IRUSR, last_error_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(pmic_nvm_version, S_IRUSR, pmic_nvm_version_show, NULL);
 static BIN_ATTR(dnx, S_IWUSR, NULL, write_dnx, DNX_MAX_SIZE);
 static BIN_ATTR(ifwi, S_IWUSR, NULL, write_ifwi, IFWI_MAX_SIZE);
 
@@ -1164,6 +1183,7 @@ static struct attribute *fw_update_attrs[] = {
 	&supp_ia32fw_version_attr.attr,
 	&valhooks_version_attr.attr,
 	&ucode_version_attr.attr,
+	&pmic_nvm_version_attr.attr,
 	&last_error_attr.attr,
 	NULL,
 };
