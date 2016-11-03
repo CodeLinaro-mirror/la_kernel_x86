@@ -242,8 +242,10 @@ static ssize_t gpio_conf_write(struct file *filp, const char __user *ubuf,
 	if (!buf)
 		return -ENOMEM;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (copy_from_user(buf, ubuf, cnt)) {
+		kfree(buf);
 		return -EFAULT;
+	}
 
 	start = buf;
 
@@ -254,12 +256,17 @@ static ssize_t gpio_conf_write(struct file *filp, const char __user *ubuf,
 	for (i = cnt - 1; i > 0 && isspace(buf[i]); i--)
 		buf[i] = 0;
 
-	kstrtoul(start, 16, &value);
+	if (kstrtouint(start, 16, &value)) {
+		kfree(buf);
+		return -EINVAL;
+	}
 
 	if (debug->ops->set_conf_reg)
 		debug->ops->set_conf_reg(debug, gpio, value);
 
 	*ppos += ret;
+
+	kfree(buf);
 
 	return ret;
 }
@@ -365,8 +372,10 @@ static ssize_t gpiodebug_set_gpio_write(struct file *filp,
 	if (!buf)
 		return -ENOMEM;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (copy_from_user(buf, ubuf, cnt)) {
+		kfree(buf);
 		return -EFAULT;
+	}
 
 	/* strip ending whitespace. */
 	for (i = cnt - 1; i > 0 && isspace(buf[i]); i--)
@@ -376,6 +385,8 @@ static ssize_t gpiodebug_set_gpio_write(struct file *filp,
 		debug->ops->set_pininfo(debug, gpio, type, buf);
 
 	*ppos += ret;
+
+	kfree(buf);
 
 	return ret;
 }
