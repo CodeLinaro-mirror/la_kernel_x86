@@ -1002,14 +1002,14 @@ _AllocOSHigherOrderPages(struct _PMR_OSPAGEARRAY_DATA_ *psPageArrayData,
 #endif
 
 	gfp_flags_zero_order = gfp_flags;
-	gfp_flags_other_order = (gfp_flags | __GFP_NORETRY) & ~__GFP_WAIT;
+	gfp_flags_other_order = (gfp_flags | __GFP_NORETRY) & ~__GFP_DIRECT_RECLAIM;
 
 	if (uiCutOffOrder)
 	{
 		/* Disable retry/wait at order > 0 */
 		PVR_ASSERT(psPageArrayData->uiNumPages > 1);
 		gfp_flags |= __GFP_NORETRY;
-		gfp_flags &= ~__GFP_WAIT;
+		gfp_flags &= ~__GFP_DIRECT_RECLAIM;
 	}
 
 	/* Re-express uiNumPages in multi-order up to cut-off order */
@@ -1090,7 +1090,7 @@ _AllocOSHigherOrderPages(struct _PMR_OSPAGEARRAY_DATA_ *psPageArrayData,
 				{
 					/* Enable retry/wait at order-0 */
 					gfp_flags &= ~__GFP_NORETRY;
-					gfp_flags |= __GFP_WAIT;
+					gfp_flags |= __GFP_DIRECT_RECLAIM;
 				}
 
 				/* Accumulate remaining failed order into lower order */

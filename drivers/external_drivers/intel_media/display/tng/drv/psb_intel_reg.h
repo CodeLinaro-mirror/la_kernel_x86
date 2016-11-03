@@ -723,31 +723,31 @@ struct dpst_guardband {
 #define GAMMA_GREEN_MAX_C       0x72014
 #define GAMMA_BLUE_MAX_C        0x72018
 
-#define IS_I830(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82830_CGC)
-#define IS_845G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82845G_IG)
-#define IS_I85X(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82855GM_IG)
-#define IS_I855(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82855GM_IG)
-#define IS_I865G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82865_IG)
+#define IS_I830(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82830_CGC)
+#define IS_845G(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82845G_IG)
+#define IS_I85X(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82855GM_IG)
+#define IS_I855(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82855GM_IG)
+#define IS_I865G(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82865_IG)
 
 
-/* || dev->pci_device == PCI_DEVICE_ID_INTELPCI_CHIP_E7221_G) */
-#define IS_I915G(dev) (dev->pci_device == PCI_DEVICE_ID_INTEL_82915G_IG)
-#define IS_I915GM(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82915GM_IG)
-#define IS_I945G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82945G_IG)
-#define IS_I945GM(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82945GM_IG)
+/* || dev->pdev->device == PCI_DEVICE_ID_INTELPCI_CHIP_E7221_G) */
+#define IS_I915G(dev) (dev->pdev->device == PCI_DEVICE_ID_INTEL_82915G_IG)
+#define IS_I915GM(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82915GM_IG)
+#define IS_I945G(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82945G_IG)
+#define IS_I945GM(dev) ((dev)->pdev->device == PCI_DEVICE_ID_INTEL_82945GM_IG)
 
-#define IS_I965G(dev) ((dev)->pci_device == 0x2972 || \
-		       (dev)->pci_device == 0x2982 || \
-		       (dev)->pci_device == 0x2992 || \
-		       (dev)->pci_device == 0x29A2 || \
-		       (dev)->pci_device == 0x2A02 || \
-		       (dev)->pci_device == 0x2A12)
+#define IS_I965G(dev) ((dev)->pdev->device == 0x2972 || \
+		       (dev)->pdev->device == 0x2982 || \
+		       (dev)->pdev->device == 0x2992 || \
+		       (dev)->pdev->device == 0x29A2 || \
+		       (dev)->pdev->device == 0x2A02 || \
+		       (dev)->pdev->device == 0x2A12)
 
-#define IS_I965GM(dev) ((dev)->pci_device == 0x2A02)
+#define IS_I965GM(dev) ((dev)->pdev->device == 0x2A02)
 
-#define IS_G33(dev)    ((dev)->pci_device == 0x29C2 ||	\
-			(dev)->pci_device == 0x29B2 ||	\
-			(dev)->pci_device == 0x29D2)
+#define IS_G33(dev)    ((dev)->pdev->device == 0x29C2 ||	\
+			(dev)->pdev->device == 0x29B2 ||	\
+			(dev)->pdev->device == 0x29D2)
 
 #define IS_I9XX(dev) (IS_I915G(dev) || IS_I915GM(dev) || IS_I945G(dev) || \
 		      IS_I945GM(dev) || IS_I965G(dev) || IS_POULSBO(dev) || \

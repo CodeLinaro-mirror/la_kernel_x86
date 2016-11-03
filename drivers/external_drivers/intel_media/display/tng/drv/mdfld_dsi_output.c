@@ -32,6 +32,7 @@
 #include <asm/intel_scu_ipc.h>
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/freezer.h>
+#include <drm/drm_crtc.h>
 #include "psb_drv.h"
 #include "mdfld_dsi_esd.h"
 #include "mdfld_dsi_dbi_dsr.h"
@@ -425,7 +426,7 @@ static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
 							&psb_crtc->saved_mode,
 							encoder->crtc->x,
 							encoder->crtc->y,
-							encoder->crtc->fb))
+							encoder->crtc->primary->fb))
 					goto set_prop_error;
 			} else {
 				pEncHFuncs = encoder->helper_private;
@@ -468,7 +469,7 @@ static void mdfld_dsi_connector_destroy(struct drm_connector *connector)
 	if (!dsi_connector)
 		return;
 
-	drm_sysfs_connector_remove(connector);
+	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
 
 	mdfld_dsi_dsr_destroy(dsi_config);
@@ -561,10 +562,12 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
+static int mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
+
+	return 0;
 }
 
 static struct drm_encoder *
@@ -1024,7 +1027,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 			dev_priv->encoder0 = encoder;
 	}
 
-	drm_sysfs_connector_add(connector);
+	drm_connector_register(connector);
 
 	/* DPST: TODO - get appropriate connector */
 	if (dev_priv->dpst_connector == 0)

@@ -662,8 +662,8 @@ static int msvdx_startup_init(struct drm_device *dev)
 #endif
 		msvdx_priv->fw_loaded_by_punit =
 			((dev)->pdev->revision >= 0xc) || \
-			(((dev)->pci_device & 0xffff) == 0x08c7) || \
-			(((dev)->pci_device & 0xffff) == 0x08c8);
+			(((dev)->pdev->device & 0xffff) == 0x08c7) || \
+			(((dev)->pdev->device & 0xffff) == 0x08c8);
 #endif
 	msvdx_tile_setup(dev_priv);
 	msvdx_priv->pm_gating_count = 0;

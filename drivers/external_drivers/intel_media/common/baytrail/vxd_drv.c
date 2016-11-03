@@ -162,7 +162,7 @@ struct drm_ioctl_desc vxd_ioctls[] = {
 			DRM_AUTH | DRM_UNLOCKED),
 };
 
-int vxd_max_ioctl = DRM_ARRAY_SIZE(vxd_ioctls);
+int vxd_max_ioctl = ARRAY_SIZE(vxd_ioctls);
 
 struct psb_fpriv *psb_fpriv(struct drm_file *file_priv)
 {
@@ -605,7 +605,7 @@ long vxd_ioctl(struct file *filp,
 	dev = file_priv->minor->dev;
 
 	if ((nr < DRM_COMMAND_VXD_BASE) ||
-		(nr >= DRM_COMMAND_VXD_BASE + DRM_ARRAY_SIZE(vxd_ioctls)))
+		(nr >= DRM_COMMAND_VXD_BASE + ARRAY_SIZE(vxd_ioctls)))
 		return drm_ioctl(filp, cmd, arg);
 
 	if (drm_device_is_unplugged(dev))

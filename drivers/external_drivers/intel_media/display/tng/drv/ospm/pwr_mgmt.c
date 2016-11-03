@@ -45,9 +45,6 @@
 #include "dc_ospm.h"
 #include "dc_maxfifo.h"
 #include "video_ospm.h"
-#include "early_suspend.h"
-#include "early_suspend_sysfs.h"
-
 
 struct _ospm_data_ *g_ospm_data;
 struct drm_device *gpDrmDevice;
@@ -64,9 +61,11 @@ struct ospm_power_island island_list[] = {
 	{OSPM_SIDEKICK_ISLAND, OSPM_POWER_OFF, {0}, ospm_sidekick_init, NULL},
 	{OSPM_SLC_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_init, NULL},
 	{OSPM_SLC_LDO_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_ldo_init, NULL},
+#ifdef ENABLE_TNG_VID_VSP
 	{OSPM_VIDEO_VPP_ISLAND, OSPM_POWER_OFF, {0}, ospm_vsp_init, NULL},
 	{OSPM_VIDEO_DEC_ISLAND, OSPM_POWER_OFF, {0}, ospm_ved_init, NULL},
 	{OSPM_VIDEO_ENC_ISLAND, OSPM_POWER_OFF, {0}, ospm_vec_init, NULL},
+#endif
 };
 #else
 struct ospm_power_island island_list[] = {
@@ -77,9 +76,11 @@ struct ospm_power_island island_list[] = {
 	{OSPM_DISPLAY_HDMI, OSPM_POWER_OFF, {0}, ospm_hdmi_init, NULL},
 	{OSPM_GRAPHICS_ISLAND, OSPM_POWER_OFF, {0}, ospm_gfx_init, NULL},
 	{OSPM_SLC_ISLAND, OSPM_POWER_OFF, {0}, ospm_slc_init, NULL},
+#ifdef ENABLE_TNG_VID_VSP
 	{OSPM_VIDEO_VPP_ISLAND, OSPM_POWER_OFF, {0}, ospm_vsp_init, NULL},
 	{OSPM_VIDEO_DEC_ISLAND, OSPM_POWER_OFF, {0}, ospm_ved_init, NULL},
 	{OSPM_VIDEO_ENC_ISLAND, OSPM_POWER_OFF, {0}, ospm_vec_init, NULL},
+#endif
 };
 #endif
 
@@ -579,11 +580,6 @@ void ospm_power_init(struct drm_device *dev)
 		}
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	/* register early_suspend runtime pm */
-	intel_media_early_suspend_init(dev);
-#endif
-	intel_media_early_suspend_sysfs_init(dev);
 	dc_maxfifo_init(dev);
 	rtpm_init(dev);
 out_err:
@@ -601,12 +597,6 @@ void ospm_power_uninit(void)
 	PSB_DEBUG_PM("%s\n", __func__);
 
 	rtpm_uninit(gpDrmDevice);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	/* un-init early suspend */
-	intel_media_early_suspend_uninit();
-#endif
-	intel_media_early_suspend_sysfs_uninit(gpDrmDevice);
 
 	/* Do we need to turn off all islands? */
 	power_island_put(OSPM_ALL_ISLANDS);
@@ -684,6 +674,7 @@ void ospm_power_using_hw_end(int hw_island)
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
 
+#ifdef ENABLE_TNG_VID_VSP
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	unsigned long irq_flags;
@@ -867,6 +858,7 @@ out:
 	mutex_unlock(&g_ospm_data->ospm_lock);
 	return;
 }
+#endif
 
 int ospm_runtime_pm_allow(struct drm_device *dev)
 {

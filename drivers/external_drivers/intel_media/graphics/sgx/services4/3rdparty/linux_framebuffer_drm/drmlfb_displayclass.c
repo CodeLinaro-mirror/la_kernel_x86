@@ -356,7 +356,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 				DRM_INFO("[DISPLAY][DDS] hpd = 0\n");
 				hpd = 0;
 				DRM_INFO("[DISPLAY][DDS] P01_REMOVE.\n");
-				kobject_uevent_env(&dsi_config->dev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_0);
+				kobject_uevent_env(&dsi_config->dev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_0);
 			}
 			/*	else if((panel_turn_on == DDS_NT35521) /*&& (AX_MicroP_getGPIOOutputPinLevel(OUT_uP_LCD_RST)==0)){
 				schedule_work(&dev_priv->reset_panel_work);
@@ -1801,9 +1801,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				/* MIPI A off, should not flush PIPEA */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 1 &&
-					hdmi_state &&
-					(dev_priv->early_suspended ||
-					!dev_priv->bhdmi_enable)) {
+					hdmi_state && !dev_priv->bhdmi_enable ) {
 				/* HDMI off, should not flush PIPEB */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 2) {
@@ -1824,9 +1822,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				/* MIPI A off, should not flush PIPEA */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 1 &&
-					hdmi_state &&
-					(dev_priv->early_suspended ||
-					!dev_priv->bhdmi_enable)) {
+					hdmi_state && !dev_priv->bhdmi_enable) {
 				/* HDMI off, should not flush PIPEB */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 2) {
@@ -1845,9 +1841,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 			if (psOverlayContext->pipe == 0x00 &&
 				psDevInfo->bScreenState) {
 				psOverlayContext->index = INVALID_INDEX;
-			} else if (psOverlayContext->pipe == 0x80 &&
-					hdmi_state &&
-					dev_priv->early_suspended) {
+			} else if (psOverlayContext->pipe == 0x80 && hdmi_state) {
 				psOverlayContext->index = INVALID_INDEX;
 			} else
 				bIllegal = IMG_FALSE;
@@ -2300,7 +2294,7 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 
 	spin_unlock(&display_flip_work_t.flip_commands_lock);
 
-	if (!queue_work(system_nrt_wq, &display_flip_work_t.flip_work))
+	if (!schedule_work(&display_flip_work_t.flip_work))
 		DRM_INFO("Schedule work failed, too heavy system load?\n");
 
 	return IMG_TRUE;
@@ -2999,7 +2993,7 @@ static MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_
 	IMG_UINT32 ulCounter;
 	int i;
 
-	pvBuf = __vmalloc( ui32Size, GFP_KERNEL | __GFP_HIGHMEM, __pgprot((pgprot_val(PAGE_KERNEL ) & ~_PAGE_CACHE_MASK) | _PAGE_CACHE_WC) );
+	pvBuf = __vmalloc( ui32Size, GFP_KERNEL | __GFP_HIGHMEM, __pgprot((pgprot_val(PAGE_KERNEL ) & ~_PAGE_CACHE_MASK) | _PAGE_CACHE_MODE_WC) );
 	if( pvBuf == NULL )
 	{
 		return MRST_ERROR_OUT_OF_MEMORY;

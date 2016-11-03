@@ -75,7 +75,7 @@ PVRSRV_ERROR OSSecureExport(CONNECTION_DATA *psConnection,
 	connection_file = LinuxFileFromConnection(psConnection);
 
 	/* Allocate a fd number */
-	secure_fd = get_unused_fd();
+	secure_fd = get_unused_fd_flags(O_CLOEXEC);
 	if (secure_fd < 0)
 	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;

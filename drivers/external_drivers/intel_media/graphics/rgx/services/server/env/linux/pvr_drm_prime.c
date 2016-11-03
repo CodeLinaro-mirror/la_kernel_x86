@@ -302,6 +302,12 @@ struct dma_buf *PVRSRVPrimeExport(struct drm_device unref__ *dev,
 				  int flags)
 {
 	struct pvr_drm_gem_object *psPVRObj = to_pvr_drm_gem_object(obj);
+	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
+
+	exp_info.ops = &gsPrimeOps;
+	exp_info.size = obj->size;
+	exp_info.flags = flags;
+	exp_info.priv = obj;
 
 	switch (psPVRObj->type)
 	{
@@ -313,14 +319,9 @@ struct dma_buf *PVRSRVPrimeExport(struct drm_device unref__ *dev,
 			return ERR_PTR(-EINVAL);
 	}
 
-	return dma_buf_export(obj,
-			      &gsPrimeOps,
-			      obj->size,
-			      flags
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,17,0))
-			      , NULL
-#endif
-			     );
+	/* dma_buf_export changed since 4.1 */
+	return dma_buf_export(&exp_info);
+
 }
 
 struct drm_gem_object *PVRSRVPrimeImport(struct drm_device *dev,

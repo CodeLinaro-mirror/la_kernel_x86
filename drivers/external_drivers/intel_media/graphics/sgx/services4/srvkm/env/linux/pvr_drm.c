@@ -348,7 +348,7 @@ struct drm_ioctl_desc sPVRDrmIoctls[] = {
 #endif
 };
 
-static int pvr_max_ioctl = DRM_ARRAY_SIZE(sPVRDrmIoctls);
+static int pvr_max_ioctl = ARRAY_SIZE(sPVRDrmIoctls);
 
 #if defined(PVR_DRI_DRM_PLATFORM_DEV) && !defined(SUPPORT_DRI_DRM_EXT)
 static int PVRSRVDrmProbe(struct platform_device *pDevice);
@@ -383,7 +383,6 @@ static struct drm_driver sPVRDrmDriver =
 		PVR_DRM_FOPS_IOCTL = drm_ioctl,
 		.mmap = PVRMMap,
 		.poll = drm_poll,
-		.fasync = drm_fasync,
 	},
 #if defined(PVR_DRI_DRM_PLATFORM_DEV)
 	.platform_driver =

@@ -1193,7 +1193,7 @@ done:
 	if (drm_msvdx_pmpolicy == PSB_PMPOLICY_NOPM ||
 			(IS_MDFLD(dev) && (msvdx_priv->msvdx_busy)) ||
 			(IS_MRFLD(dev) && !cmd_complete)) {
-		DRM_MEMORYBARRIER();	/* TBD check this... */
+		mb();
 		return;
 	}
 
@@ -1210,7 +1210,7 @@ done:
 	else
 		PSB_DEBUG_PM("MSVDX: Unknown Bottom Half\n");
 
-	DRM_MEMORYBARRIER();	/* TBD check this... */
+	mb();
 }
 
 /*
@@ -1254,12 +1254,12 @@ int psb_msvdx_interrupt(void *pvData)
 		/* Pause MMU */
 		PSB_WMSVDX32(MSVDX_MMU_CONTROL0_MMU_PAUSE_MASK,
 			     MSVDX_MMU_CONTROL0_OFFSET);
-		DRM_WRITEMEMORYBARRIER();
+		wmb();
 
 		/* Clear this interupt bit only */
 		PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS_MMU_FAULT_IRQ_MASK,
 			     MSVDX_INTERRUPT_CLEAR_OFFSET);
-		DRM_READMEMORYBARRIER();
+		rmb();
 
 		msvdx_priv->msvdx_needs_reset = 1;
 	} else if (msvdx_stat & MSVDX_INTERRUPT_STATUS_MTX_IRQ_MASK) {
@@ -1273,7 +1273,7 @@ int psb_msvdx_interrupt(void *pvData)
 		else
 			PSB_WMSVDX32(0xffff, MSVDX_INTERRUPT_CLEAR_OFFSET);
 
-		DRM_READMEMORYBARRIER();
+		rmb();
 
 		psb_msvdx_mtx_interrupt(dev);
 	}

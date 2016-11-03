@@ -53,6 +53,8 @@ endif
 # Wifi Devices
 obj-$(subst m,y,$(CONFIG_WIFI_PLATFORM_DATA)) += platform_wifi.o
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_ACPI)) += platform_sdio_regulator.o
+# Panel Control Device
+obj-$(subst m,y,$(CONFIG_DRM_MRFLD)) += platform_panel.o
 # SCU log
 obj-$(subst m,y,$(CONFIG_SCU_LOGGING)) += platform_scu_log.o
 obj-$(subst m,y,$(CONFIG_INPUT_TSL2584)) += platform_tsl258x.o

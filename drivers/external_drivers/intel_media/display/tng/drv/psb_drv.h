@@ -291,8 +291,8 @@ enum enum_ports {
 #define PSB_HIGH_REG_OFFS 0x0600
 
 #define PSB_NUM_VBLANKS 2
-#define PSB_WATCHDOG_DELAY (DRM_HZ * 2)
-#define PSB_LID_DELAY (DRM_HZ / 10)
+#define PSB_WATCHDOG_DELAY (HZ * 2)
+#define PSB_LID_DELAY (HZ / 10)
 
 #define MDFLD_PNW_A0 0x00
 #define MDFLD_PNW_B0 0x04
@@ -312,7 +312,7 @@ enum enum_ports {
 #define MDFLD_DSR_RR 45
 #define MDFLD_DPU_ENABLE BIT31
 #define MDFLD_DSR_FULLSCREEN BIT30
-#define MDFLD_DSR_DELAY (DRM_HZ / MDFLD_DSR_RR)
+#define MDFLD_DSR_DELAY (HZ / MDFLD_DSR_RR)
 
 #define PSB_PWR_STATE_ON		1
 #define PSB_PWR_STATE_OFF		2
@@ -346,11 +346,11 @@ enum enum_ports {
 
 #define IS_POULSBO(dev) 0
 
-#define IS_MDFLD(dev) (((dev)->pci_device & 0xfff8) == 0x0130)
-#define IS_CTP(dev) (((dev->pci_device & 0xffff) == 0x08c0) ||	\
-		((dev->pci_device & 0xffff) == 0x08c7) ||  \
-		((dev->pci_device & 0xffff) == 0x08c8))
-#define IS_MRFLD(dev) (((dev)->pci_device & 0xfff8) == 0x1180 || ((dev)->pci_device & 0xfff8) == 0x1480)
+#define IS_MDFLD(dev) (((dev)->pdev->device & 0xfff8) == 0x0130)
+#define IS_CTP(dev) (((dev->pdev->device & 0xffff) == 0x08c0) ||	\
+		((dev->pdev->device & 0xffff) == 0x08c7) ||  \
+		((dev->pdev->device & 0xffff) == 0x08c8))
+#define IS_MRFLD(dev) (((dev)->pdev->device & 0xfff8) == 0x1180 || ((dev)->pdev->device & 0xfff8) == 0x1480)
 
 #define IS_TNG_A0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) && (intel_mid_soc_stepping() == 0))
 
@@ -362,7 +362,7 @@ enum enum_ports {
 #define IS_TNG(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) && (intel_mid_soc_stepping() >= 1))
 #endif
 
-#define IS_ANN(dev) (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)
+#define IS_ANN(dev) (0)
 
 /*
  * Checking for Anniedale and Anniedale revision ID
@@ -387,11 +387,11 @@ enum enum_ports {
  * 2 --> B0
  * 1 --> K0
  */
-#define IS_ANN_A0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) && (intel_mid_soc_stepping() == 0))
+#define IS_ANN_A0(dev) (0)
 
-#define IS_ANN_B0(dev) ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) && (intel_mid_soc_stepping() == 2))
+#define IS_ANN_B0(dev) (0)
 
-#define IS_MOFD(dev) (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)
+#define IS_MOFD(dev) (0)
 
 #define IS_MID(dev) (IS_MDFLD(dev) || IS_MRFLD(dev))
 #define IS_FLDS(dev) (IS_MDFLD(dev) || IS_MRFLD(dev))
@@ -589,7 +589,6 @@ struct drm_psb_private {
 	 *OSPM info
 	 */
 	uint8_t panel_desc;
-	bool early_suspended;
 	struct wake_lock ospm_wake_lock;
 
 	/*
@@ -1171,7 +1170,7 @@ static inline struct drm_psb_private *psb_priv(struct drm_device *dev)
  *psb_irq.c
  */
 
-extern irqreturn_t psb_irq_handler(DRM_IRQ_ARGS);
+extern irqreturn_t psb_irq_handler(int irq, void *handler);
 extern int psb_irq_enable_dpst(struct drm_device *dev);
 extern int psb_irq_disable_dpst(struct drm_device *dev);
 extern int psb_dpst_diet_save(struct drm_device *dev);
@@ -1199,8 +1198,10 @@ void psb_enable_esd(struct drm_device *dev, int pipe);
 extern u32 psb_get_vblank_counter(struct drm_device *dev, int crtc);
 extern int intel_get_vblank_timestamp(struct drm_device *dev, int pipe,
 		int *max_error, struct timeval *vblank_time, unsigned flags);
-extern int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-		int *vpos, int *hpos);
+extern int intel_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
+		unsigned int flags, int *vpos, int *hpos,
+		ktime_t *stime, ktime_t *etime,
+		const struct drm_display_mode *mode);
 extern int mdfld_enable_te(struct drm_device *dev, int pipe);
 extern int mdfld_recover_te(struct drm_device *dev, int pipe);
 extern void mdfld_disable_te(struct drm_device *dev, int pipe);

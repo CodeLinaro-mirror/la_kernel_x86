@@ -576,7 +576,7 @@ void register_rgx_irq_handler(int (*pfn_rgxIrqHandler) (void *), void * pData)
 	}
 }
 
-irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
+irqreturn_t psb_irq_handler(int irq, void *arg)
 {
 	struct drm_device *dev = (struct drm_device *)arg;
 	struct drm_psb_private *dev_priv =
@@ -623,6 +623,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		handled = 1;
 	}
 
+#ifdef ENABLE_TNG_VID_VSP
 	if (msvdx_int && (IS_FLDS(dev)
 			  || ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))) {
 		psb_msvdx_interrupt(dev);
@@ -639,6 +640,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		vdc_stat &= ~_TNG_IRQ_VSP_FLAG;
 	}
 #endif
+#endif
 
 	if (sgx_int) {
 		if (dev_priv->pfn_rgxIrqHandler){
@@ -648,7 +650,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 
 	PSB_WVDC32(vdc_stat, PSB_INT_IDENTITY_R);
-	DRM_READMEMORYBARRIER();
+	rmb();
 
 	if (!handled)
 		return IRQ_NONE;
@@ -679,12 +681,12 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-			if (dev->vblank_enabled[0])
+			if (dev->vblank[0].enabled)
 				dev_priv->vdc_irq_mask |= _PSB_PIPEA_EVENT_FLAG;
-			if (dev->vblank_enabled[1])
+			if (dev->vblank[1].enabled)
 				dev_priv->vdc_irq_mask |=
 				    _MDFLD_PIPEB_EVENT_FLAG;
-			if (dev->vblank_enabled[2])
+			if (dev->vblank[2].enabled)
 				dev_priv->vdc_irq_mask |=
 				    _MDFLD_PIPEC_EVENT_FLAG;
 		}
@@ -693,6 +695,7 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 		dev_priv->vdc_irq_mask |= _PSB_IRQ_SGX_FLAG;
 	}
 
+#ifdef ENABLE_TNG_VID_VSP
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (IS_MID(dev) && ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 			dev_priv->vdc_irq_mask |= _PSB_IRQ_MSVDX_FLAG;
@@ -704,6 +707,7 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
 		if (IS_MID(dev) && ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
 			dev_priv->vdc_irq_mask |= _TNG_IRQ_VSP_FLAG;
+#endif
 
 	/*This register is safe even if display island is off*/
 	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
@@ -730,6 +734,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	/*This register is safe even if display island is off */
 	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
 
+#ifdef ENABLE_TNG_VID_VSP
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -743,6 +748,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 #ifdef SUPPORT_VSP
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
 		vsp_enableirq(dev);
+#endif
 #endif
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
@@ -791,6 +797,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 
 	wmb();
 
+#ifdef ENABLE_TNG_VID_VSP
 	/*This register is safe even if display island is off */
 	PSB_WVDC32(PSB_RVDC32(PSB_INT_IDENTITY_R), PSB_INT_IDENTITY_R);
 
@@ -808,6 +815,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
 			vsp_disableirq(dev);
+#endif
 #endif
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
@@ -892,7 +900,7 @@ static int psb_vblank_do_wait(struct drm_device *dev,
 {
 	unsigned int cur_vblank;
 	int ret = 0;
-	DRM_WAIT_ON(ret, dev->vbl_queue, 3 * DRM_HZ,
+	DRM_WAIT_ON(ret, dev->vbl_queue, 3 * HZ,
 		    (((cur_vblank = atomic_read(counter))
 		      - *sequence) <= (1 << 23)));
 	*sequence = cur_vblank;
@@ -1049,6 +1057,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	uint32_t pipeconf_reg = PIPEACONF;
 	uint32_t reg_val = 0;
 	uint32_t high1 = 0, high2 = 0, low = 0, count = 0;
+	struct drm_vblank_crtc *vblank = &dev->vblank[pipe];
 
 	switch (pipe) {
 	case 0:
@@ -1082,6 +1091,14 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	 */
 	if (IS_MOFD(dev))
 		return 0;
+
+	/* update vblank count to convince drm */
+	assert_spin_locked(&dev->vblank_time_lock);
+	smp_wmb();
+	vblank->count++;
+	smp_wmb();
+
+	return vblank->count;
 
 	/*
 	 * High & low register fields aren't synchronized, so make sure
@@ -1133,11 +1150,13 @@ int intel_get_vblank_timestamp(struct drm_device *dev, int pipe,
 	/* Helper routine in DRM core does all the work: */
 	return drm_calc_vbltimestamp_from_scanoutpos(dev, pipe, max_error,
 			vblank_time, flags,
-			crtc);
+			&crtc->hwmode);
 }
 
-int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-		int *vpos, int *hpos)
+int intel_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
+		unsigned int flags, int *vpos, int *hpos,
+		ktime_t *stime, ktime_t *etime,
+		const struct drm_display_mode *mode)
 {
 	u32 vbl = 0, position = 0;
 	int vbl_start, vbl_end, vtotal;
@@ -1173,11 +1192,16 @@ int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		return 0;
 	}
 
+	if (stime)
+		*stime = ktime_get();
+
 	/* Get vtotal. */
 	vtotal = 1 + ((REG_READ(vtot_reg) >> 16) & 0x1fff);
 
 	position = REG_READ(dsl_reg);
 
+	if (etime)
+		*etime = ktime_get();
 	/*
 	 * Decode into vertical scanout position. Don't have
 	 * horizontal scanout position.
@@ -1205,7 +1229,7 @@ int intel_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 
 	/* In vblank? */
 	if (in_vbl)
-		ret |= DRM_SCANOUTPOS_INVBL;
+		ret |= DRM_SCANOUTPOS_IN_VBLANK;
 
 	return ret;
 }

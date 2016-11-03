@@ -56,6 +56,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/file.h>
 #include <linux/seq_file.h>
 #include <linux/version.h>
+#include <uapi/asm-generic/fcntl.h>
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
 #include <linux/sw_sync.h>
@@ -67,7 +68,7 @@ static PVRSRV_ERROR AllocReleaseFence(struct sw_sync_timeline *psTimeline, const
 {
 	struct sync_fence *psFence = IMG_NULL;
 	struct sync_pt *psPt;
-	int iFd = get_unused_fd();
+	int iFd = get_unused_fd_flags(O_CLOEXEC);
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	if (iFd < 0)
@@ -295,6 +296,7 @@ IMG_VOID _SCPInsert(SCP_CONTEXT *psContext,
 static void _SCPDumpFence(const char *psczName, struct sync_fence *psFence)
 {
 	struct list_head *psEntry;
+	int i;
 	char szTime[16]  = { '\0' };
 	char szVal1[64]  = { '\0' };
 	char szVal2[64]  = { '\0' };
@@ -304,24 +306,26 @@ static void _SCPDumpFence(const char *psczName, struct sync_fence *psFence)
 	pfnDumpDebugPrintf = g_pfnDumpDebugPrintf;
 
 	PVR_DUMPDEBUG_LOG(("\t  %s: [%p] %s: %s", psczName, psFence, psFence->name,
-			 (psFence->status >  0 ? "signaled" :
-			  psFence->status == 0 ? "active" : "error")));
-	list_for_each(psEntry, &psFence->pt_list_head)
+			 (atomic_read(&psFence->status) >  0 ? "signaled" :
+			  atomic_read(&psFence->status) == 0 ? "active" : "error")));
+	/* pt_list_head removed, use num_fences to trace all sync_pt within */
+	for (i=0; i<psFence->num_fences; i++)
 	{
-		struct sync_pt *psPt = container_of(psEntry, struct sync_pt, pt_list);
-		struct timeval tv = ktime_to_timeval(psPt->timestamp);
+		struct sync_pt *psPt = container_of(psFence->cbs[i].sync_pt, struct sync_pt, base);
+		struct timeval tv = ktime_to_timeval(psPt->base.timestamp);
+		struct sync_timeline *stl = sync_pt_parent(psPt);
+
 		snprintf(szTime, sizeof(szTime), "@%ld.%06ld", tv.tv_sec, tv.tv_usec);
-		if (psPt->parent->ops->pt_value_str &&
-			psPt->parent->ops->timeline_value_str)
+		if (stl->ops->pt_value_str && stl->ops->timeline_value_str)
 		{
-			psPt->parent->ops->pt_value_str(psPt, szVal1, sizeof(szVal1));
-			psPt->parent->ops->timeline_value_str(psPt->parent, szVal2, sizeof(szVal2));
+			stl->ops->pt_value_str(psPt, szVal1, sizeof(szVal1));
+			stl->ops->timeline_value_str(stl, szVal2, sizeof(szVal2));
 			snprintf(szVal3, sizeof(szVal3), ": %s / %s", szVal1, szVal2);
 		}
-		PVR_DUMPDEBUG_LOG(("\t    %s %s%s%s", psPt->parent->name,
-				 (psPt->status >  0 ? "signaled" :
-				  psPt->status == 0 ? "active" : "error"),
-				 (psPt->status >  0 ? szTime : ""),
+		PVR_DUMPDEBUG_LOG(("\t    %s %s%s%s", stl->name,
+				 (psPt->base.status >  0 ? "signaled" :
+				  psPt->base.status == 0 ? "active" : "error"),
+				 (psPt->base.status >  0 ? szTime : ""),
 				 szVal3));
 	}
 

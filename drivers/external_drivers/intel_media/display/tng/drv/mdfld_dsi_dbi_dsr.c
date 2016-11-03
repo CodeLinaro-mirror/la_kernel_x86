@@ -146,7 +146,7 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 	dsr = dsi_config->dsr;
 	dsr->dsr_state = DSR_ENTERED_LEVEL0;
 	/*
-	 * To set the vblank_enabled to false with drm_vblank_off(), as
+	 * To set the vblank->enabled to false with drm_vblank_off(), as
 	 * vblank_disable_and_save() would be scheduled late (<= 5s), and it
 	 * would cause drm_vblank_get() fail to turn on vsync interrupt
 	 * immediately.

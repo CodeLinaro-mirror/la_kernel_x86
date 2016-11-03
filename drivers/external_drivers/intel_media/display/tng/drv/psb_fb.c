@@ -631,7 +631,7 @@ int psb_fbdev_init(struct drm_device *dev)
 	struct psb_fbdev *fbdev;
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
-	int num_crtc;
+	int num_crtc, ret;
 
 	fbdev = kzalloc(sizeof(struct psb_fbdev), GFP_KERNEL);
 	if (!fbdev) {
@@ -640,12 +640,17 @@ int psb_fbdev_init(struct drm_device *dev)
 	}
 
 	dev_priv->fbdev = fbdev;
-	fbdev->psb_fb_helper.funcs = &psb_fb_helper_funcs;
+	drm_fb_helper_prepare(dev, &fbdev->psb_fb_helper,
+				&psb_fb_helper_funcs);
 
 	num_crtc = dev_priv->num_pipe;
 
-	drm_fb_helper_init(dev, &fbdev->psb_fb_helper, num_crtc,
+	ret = drm_fb_helper_init(dev, &fbdev->psb_fb_helper, num_crtc,
 			   INTELFB_CONN_LIMIT);
+	if (ret ) {
+		kfree(fbdev);
+		return ret;
+	}
 
 	drm_fb_helper_single_add_all_connectors(&fbdev->psb_fb_helper);
 	drm_fb_helper_initial_config(&fbdev->psb_fb_helper, 32);

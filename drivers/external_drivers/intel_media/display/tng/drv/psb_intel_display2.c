@@ -341,7 +341,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	struct drm_device *dev = crtc->dev;
 	/* struct drm_i915_master_private *master_priv; */
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct psb_framebuffer *psbfb = to_psb_fb(crtc->fb);
+	struct psb_framebuffer *psbfb = to_psb_fb(crtc->primary->fb);
 	struct psb_intel_mode_device *mode_dev = psb_intel_crtc->mode_dev;
 	int pipe = psb_intel_crtc->pipe;
 	int swapchain_plane = PVRSRV_SWAPCHAIN_ATTACHED_PLANE_NONE;
@@ -359,7 +359,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	PSB_DEBUG_ENTRY("pipe = 0x%x. \n", pipe);
 
 	/* no fb bound */
-	if (!crtc->fb) {
+	if (!crtc->primary->fb) {
 		PSB_DEBUG_ENTRY("No FB bound\n");
 		return 0;
 	}
@@ -395,7 +395,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
-	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->primary->fb->pitches[0] + x * (crtc->primary->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
@@ -410,16 +410,16 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 #endif				/* FIXME MRFLD */
 	}
 #endif
-	REG_WRITE(dspstride, crtc->fb->pitches[0]);
+	REG_WRITE(dspstride, crtc->primary->fb->pitches[0]);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
-	switch (crtc->fb->bits_per_pixel) {
+	switch (crtc->primary->fb->bits_per_pixel) {
 	case 8:
 		dspcntr |= DISPPLANE_8BPP;
 		break;
 	case 16:
-		if (crtc->fb->depth == 15)
+		if (crtc->primary->fb->depth == 15)
 			dspcntr |= DISPPLANE_15_16BPP;
 		else
 			dspcntr |= DISPPLANE_16BPP;
@@ -1126,7 +1126,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	int fb_depth;
 	int hdelay;
 
-	if (!crtc || !crtc->fb) {
+	if (!crtc || !crtc->primary->fb) {
 		DRM_ERROR("Invalid CRTC\n");
 		return -EINVAL;
 	}
@@ -1137,13 +1137,13 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	}
 
 	mdfld_dsi_crtc = to_psb_intel_crtc(crtc);
-	mdfld_fb = to_psb_fb(crtc->fb);
+	mdfld_fb = to_psb_fb(crtc->primary->fb);
 	mode_dev = mdfld_dsi_crtc->mode_dev;
 	mode = adjusted_mode;
 	ctx = &dsi_config->dsi_hw_context;
-	fb_bpp = crtc->fb->bits_per_pixel;
-	fb_pitch = crtc->fb->pitches[0];
-	fb_depth = crtc->fb->depth;
+	fb_bpp = crtc->primary->fb->bits_per_pixel;
+	fb_pitch = crtc->primary->fb->pitches[0];
+	fb_depth = crtc->primary->fb->depth;
 	dev = crtc->dev;
 	dev_priv = dev->dev_private;
 
@@ -1253,7 +1253,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct drm_framebuffer *fb = crtc->fb;
+	struct drm_framebuffer *fb = crtc->primary->fb;
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	int pipe = psb_intel_crtc->pipe;
 	int fp_reg = MRST_FPA0;

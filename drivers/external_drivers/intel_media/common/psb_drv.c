@@ -104,7 +104,7 @@ int drm_psb_topaz_clockgating;
 int gfxrtdelay = 2 * 1000;
 int drm_psb_3D_vblank = 1;
 int drm_psb_smart_vsync = 1;
-int drm_psb_te_timer_delay = (DRM_HZ / 40);
+int drm_psb_te_timer_delay = (HZ / 40);
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
@@ -1639,7 +1639,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
-	DRM_INIT_WAITQUEUE(&dev_priv->rel_mapped_queue);
+	init_waitqueue_head(&dev_priv->rel_mapped_queue);
 
 	dev->dev_private = (void *) dev_priv;
 	dev_priv->chipset = chipset;
@@ -1837,7 +1837,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	 */
 	drm_vblank_offdelay = 0;
 
-	DRM_INIT_WAITQUEUE(&dev_priv->vsync_queue);
+	init_waitqueue_head(&dev_priv->vsync_queue);
 
 	dev_priv->vblank_count =
 		kmalloc(sizeof(atomic_t) * dev_priv->num_pipe, GFP_KERNEL);
@@ -3474,7 +3474,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 					    dev_priv->vsync_queue,
 					    (intel_vblank_count(dev, pipe) !=
 					     vbl_count),
-					    3 * DRM_HZ);
+					    3 * HZ);
 
 				if (!ret)
 					DRM_ERROR("Pipe %d vsync time out\n",
@@ -4089,7 +4089,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	 */
 
 	if ((nr >= DRM_COMMAND_BASE) && (nr < DRM_COMMAND_END)
-	    && (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(psb_ioctls))) {
+	    && (nr < DRM_COMMAND_BASE + ARRAY_SIZE(psb_ioctls))) {
 		struct drm_ioctl_desc *ioctl =
 					&psb_ioctls[nr - DRM_COMMAND_BASE];
 
@@ -4110,7 +4110,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 }
 
-#ifdef DISPLAY_DRIVER_DEBUG_INTERFACE
+#if 0
 static int psb_blc_proc_show(struct seq_file *seq, void *v)
 {
 	struct drm_minor *minor = (struct drm_minor *) seq->private;
@@ -4904,7 +4904,7 @@ int psb_open(struct inode *inode, struct file *filp)
 
 	pvr_file_priv->pPriv = psb_fp;
 	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
-		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
+		dev_priv->bdev.dev_mapping = dev_priv->dev->anon_inode->i_mapping;
 
 	return 0;
 
@@ -5048,7 +5048,6 @@ static const struct file_operations driver_psb_fops = {
 	.unlocked_ioctl = psb_unlocked_ioctl,
 	.mmap = psb_mmap,
 	.poll = psb_poll,
-	.fasync = drm_fasync,
 	.read = drm_read,
 };
 
@@ -5059,7 +5058,7 @@ static struct drm_driver driver = {
 	.unload = psb_driver_unload,
 
 	.ioctls = psb_ioctls,
-	.num_ioctls = DRM_ARRAY_SIZE(psb_ioctls),
+	.num_ioctls = ARRAY_SIZE(psb_ioctls),
 	.device_is_agp = psb_driver_device_is_agp,
 	.irq_preinstall = psb_irq_preinstall,
 	.irq_postinstall = psb_irq_postinstall,

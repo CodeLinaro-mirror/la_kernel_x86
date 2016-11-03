@@ -465,13 +465,6 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 
 	dev_priv->hdmi_priv = (void *)hdmi_priv;
 
-	/* Register hdmi switch_dev */
-	hdmi_priv->sdev.name = "hdmi";
-	if (switch_dev_register(&hdmi_priv->sdev) < 0) {
-		pr_err("%s: Hdmi switch registration failed\n", __func__);
-		goto free;
-	}
-
 	/* Register callback to be used with Hotplug interrupts */
 	ret = otm_hdmi_hpd_callback_register(hdmi_priv->context,
 					     &android_hdmi_irq_callback,
@@ -1792,8 +1785,6 @@ void android_hdmi_encoder_save(struct drm_encoder *encoder)
 
 	hdmi_priv->need_encoder_restore = true;
 
-	/*Use Disable pipeB plane to turn off HDMI screen
-	 in early_suspend  */
 	dspbcntr_val = REG_READ(dspcntr_reg);
 	if ((dspbcntr_val & DISPLAY_PLANE_ENABLE) != 0) {
 		REG_WRITE(dspcntr_reg,
@@ -2419,7 +2410,7 @@ set_prop_error:
 
 void android_hdmi_connector_destroy(struct drm_connector *connector)
 {
-	drm_sysfs_connector_remove(connector);
+	drm_connector_unregister(connector);
 	drm_connector_cleanup(connector);
 	kfree(connector);
 }
@@ -2539,19 +2530,6 @@ void android_hdmi_encoder_dpms(struct drm_encoder *encoder, int mode)
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
 	hdmip_enabled = REG_READ(hdmi_priv->hdmib_reg) & HDMIB_PORT_EN;
 	pr_debug("hdmip_enabled is %x\n", hdmip_enabled);
-
-	if (dev_priv->early_suspended) {
-		/* Use Disable pipeB plane to turn off HDMI screen
-		  * in early_suspend
-		  */
-		temp = REG_READ(dspcntr_reg);
-		if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
-			REG_WRITE(dspcntr_reg,
-				temp & ~DISPLAY_PLANE_ENABLE);
-			/* Flush the plane changes */
-			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
-		}
-	}
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (is_monitor_hdmi && (hdmip_enabled != 0))
@@ -2719,7 +2697,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	/* initialize hdmi encoder restore delayed work */
 	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
 
-	drm_sysfs_connector_add(connector);
+	drm_connector_register(connector);
 
 	/* Turn on power rails for HDMI */
 	power_on = otm_hdmi_power_rails_on();

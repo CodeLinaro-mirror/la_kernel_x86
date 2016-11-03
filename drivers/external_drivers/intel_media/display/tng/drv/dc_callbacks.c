@@ -932,10 +932,6 @@ bool DCCBIsSuspended(struct drm_device *dev)
 	if (!dev_priv)
 		return false;
 
-	mutex_lock(&dev->mode_config.mutex);
-	ret = dev_priv->early_suspended;
-	mutex_unlock(&dev->mode_config.mutex);
-
 	return ret;
 }
 
@@ -955,10 +951,6 @@ int DCCBIsPipeActive(struct drm_device *dev, int pipe)
 		DRM_ERROR("%s: unsupported pipe %d\n", __func__, pipe);
 		return 0;
 	}
-
-	/* FIXME: need to remove the suspended state checking. */
-	if (dev_priv->early_suspended)
-		return 0;
 
 	/* get display a for register reading */
 	if (power_island_get(OSPM_DISPLAY_A)) {

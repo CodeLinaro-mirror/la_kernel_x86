@@ -2745,18 +2745,18 @@ static ssize_t uevent_test_store(struct device *dev,
 
 		switch (x0) {
 		case 0:
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_0);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_0);
 			hpd = 0;
 			break;
 		case 1:
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_1);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_1);
 			hpd = 1;
 			break;
 		case 2:
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_3);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_3);
 			break;
 		case 3:
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_2);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_2);
 			break;
 	}
 
@@ -2875,7 +2875,7 @@ static ssize_t check_dds_store(struct device *dev,
 		DRM_INFO("[DISPLAY][DDS] hpd = 0\n");
 		hpd = 0;
 		DRM_INFO("[DISPLAY][DDS] P01_REMOVE.\n");
-		kobject_uevent_env(&otm8018b_dsi_config->dev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_0);
+		kobject_uevent_env(&otm8018b_dsi_config->dev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_0);
     }
     mutex_unlock(&otm8018b_dsi_config->context_lock);
 
@@ -2957,7 +2957,7 @@ static int mipi_event_report(struct notifier_block *this, unsigned long event, v
 			}
 
 			DRM_INFO("[DISPLAY] [DDS] P01_REMOVE.\n");
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_0);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_0);
 			mutex_unlock(&otm8018b_dsi_config->context_lock);
 			break;
 	case P01_ADD:
@@ -2969,7 +2969,7 @@ static int mipi_event_report(struct notifier_block *this, unsigned long event, v
 				DRM_INFO("[DISPLAY] [DDS] %s: early change panel_id =%d .\n", __func__, panel_id);
 			}
 			DRM_INFO("[DISPLAY] [DDS] P01_ADD.\n");
-			kobject_uevent_env(&drmdev->primary->kdev.kobj, KOBJ_CHANGE, envp_pad_state_1);
+			kobject_uevent_env(&drmdev->primary->kdev->kobj, KOBJ_CHANGE, envp_pad_state_1);
 			mutex_unlock(&otm8018b_dsi_config->context_lock);
 			break;
     }

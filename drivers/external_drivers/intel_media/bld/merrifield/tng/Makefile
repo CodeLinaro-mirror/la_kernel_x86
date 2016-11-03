@@ -28,7 +28,8 @@ ccflags-y += \
 	-I$(OTM_HDMI_INC)/os/android/include \
 	-I$(OTM_HDMI_INC)/pil/include \
 	-Iinclude/linux \
-	-Iinclude/drm
+	-Iinclude/drm \
+	-Iarch/x86/platform/intel-mid
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 ccflags-y += -DMERRIFIELD -DCONFIG_PCI_MSI
@@ -106,7 +107,6 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/mrfld_clock.o \
 	$(DISPLAYDIR)/psb_irq.o \
 	$(DISPLAYDIR)/tng_wa.o \
-	$(DISPLAYDIR)/pmu_tng.o \
 	$(DISPLAYDIR)/cmn_cabc.o \
 	$(DISPLAYDIR)/jdi_vid.o \
 	$(DISPLAYDIR)/jdi_cmd.o \
@@ -120,7 +120,6 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/sharp10x19_vid.o \
 	$(DISPLAYDIR)/sharp10x19_cmd.o \
 	$(DISPLAYDIR)/sharp25x16_vid.o \
-	$(DISPLAYDIR)/sharp25x16_cmd.o \
 	$(DISPLAYDIR)/sdc16x25_8_cmd.o \
 	$(DISPLAYDIR)/sdc25x16_cmd.o \
 	$(DISPLAYDIR)/jdi25x16_vid.o \
@@ -128,10 +127,11 @@ $(DRIVER_NAME)-objs += \
 	$(DISPLAYDIR)/ospm/pwr_mgmt.o \
 	$(DISPLAYDIR)/ospm/gfx_rtpm.o \
 	$(DISPLAYDIR)/ospm/dc_ospm.o \
-	$(DISPLAYDIR)/ospm/dc_maxfifo.o \
-	$(DISPLAYDIR)/ospm/video_ospm.o \
-	$(DISPLAYDIR)/ospm/early_suspend.o \
-	$(DISPLAYDIR)/ospm/early_suspend_sysfs.o
+	$(DISPLAYDIR)/ospm/dc_maxfifo.o
+
+
+ifeq ($(ENABLE_TNG_VID_VSP), y)
+endif
 
 $(DRIVER_NAME)-objs += $(DISPLAYDIR)/cmn_dc_callbacks.o
 
@@ -179,7 +179,10 @@ endif
 
 endif
 
+ifeq ($(ENABLE_TNG_VID_VSP), y)
+ccflags-y += -DENABLE_TNG_VID_VSP
 $(DRIVER_NAME)-objs += \
+	$(DISPLAYDIR)/ospm/video_ospm.o
 	$(VIDEO_COMMON_DIR)/psb_ttm_glue.o \
 	$(VIDEO_COMMON_DIR)/psb_cmdbuf.o \
 	$(VIDEO_COMMON_DIR)/tng_securefw.o \
@@ -197,3 +200,4 @@ $(DRIVER_NAME)-objs += \
 	$(ENCODE_DIR)/tng_topazinit.o \
 	$(VSP_DIR)/vsp.o \
 	$(VSP_DIR)/vsp_init.o
+endif

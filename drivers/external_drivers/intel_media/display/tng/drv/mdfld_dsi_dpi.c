@@ -919,8 +919,6 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 		 * We remove power operation here to prevent power is on
 		 * after ospm power off the panel, it will lead pipe hang.
 		 */
-		if (dev_priv->early_suspended)
-			goto unlock_dc;
 		DCAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOn(dsi_config->pipe);
 

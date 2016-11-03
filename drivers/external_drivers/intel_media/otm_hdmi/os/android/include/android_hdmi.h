@@ -65,7 +65,6 @@
 #define __ANDROID_HDMI_H
 
 #include <linux/types.h>
-#include <linux/switch.h>
 #include <drm/drmP.h>
 
 #define CEA_EXT     0x02
@@ -81,8 +80,6 @@
 struct android_hdmi_priv {
 	/* common */
 	struct drm_device *dev;
-
-	struct switch_dev sdev;
 
 	/*medfield specific */
 	u32 hdmib_reg;

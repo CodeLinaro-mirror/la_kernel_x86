@@ -94,7 +94,7 @@ static PVRSRV_ERROR PCIInitDev(PLAT_DATA *psPlatData)
 
 	if (!IS_MRFLD(psPlatData->psDRMDev))
 	{
-		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device 0x%08x not supported", psPlatData->psDRMDev->pci_device));
+		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device 0x%08x not supported", psPlatData->psDRMDev->pdev->device));
 		return PVRSRV_ERROR_NOT_SUPPORTED;
 	}
 

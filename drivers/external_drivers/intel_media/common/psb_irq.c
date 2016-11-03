@@ -639,7 +639,7 @@ static void mdfld_gl3_interrupt(struct drm_device *dev, uint32_t vdc_stat)
 }
 #endif
 
-irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
+irqreturn_t psb_irq_handler(int irq, void *handler)
 {
 	struct drm_device *dev = (struct drm_device *) arg;
 	struct drm_psb_private *dev_priv =
@@ -746,7 +746,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 
 	PSB_WVDC32(vdc_stat, PSB_INT_IDENTITY_R);
 	(void) PSB_RVDC32(PSB_INT_IDENTITY_R);
-	DRM_READMEMORYBARRIER();
+	rmb();
 
 	if (!handled)
 		return IRQ_NONE;
@@ -790,11 +790,11 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 		if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
 			if (IS_POULSBO(dev))
 				PSB_WVDC32(0xFFFFFFFF, PSB_HWSTAM);
-			if (dev->vblank_enabled[0])
+			if (dev->vblank[0].enabled)
 				dev_priv->vdc_irq_mask |= _PSB_PIPEA_EVENT_FLAG;
-			if (dev->vblank_enabled[1])
+			if (dev->vblank[1].enabled)
 				dev_priv->vdc_irq_mask |= _MDFLD_PIPEB_EVENT_FLAG;
-			if (dev->vblank_enabled[2])
+			if (dev->vblank[2].enabled)
 				dev_priv->vdc_irq_mask |= _MDFLD_PIPEC_EVENT_FLAG;
 		}
 	}
@@ -861,7 +861,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 			if (IS_POULSBO(dev))
 				PSB_WVDC32(0xFFFFFFFF, PSB_HWSTAM);
 
-			if (dev->vblank_enabled[0]) {
+			if (dev->vblank[0].enabled) {
 				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
 				    is_cmd_mode_panel(dev)) {
 #if 0 /* FIXME need to revisit it */
@@ -883,14 +883,14 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 							     PIPE_VBLANK_INTERRUPT_ENABLE);
 			}
 
-			if (dev->vblank_enabled[1])
+			if (dev->vblank[1].enabled)
 				psb_enable_pipestat(dev_priv, 1,
 						    PIPE_VBLANK_INTERRUPT_ENABLE);
 			else
 				psb_disable_pipestat(dev_priv, 1,
 						     PIPE_VBLANK_INTERRUPT_ENABLE);
 
-			if (dev->vblank_enabled[2]) {
+			if (dev->vblank[2].enabled) {
 				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
 				    is_cmd_mode_panel(dev)) {
 #if 0 /* FIXME need to revisit it */
@@ -971,7 +971,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 			if (IS_POULSBO(dev))
 				PSB_WVDC32(0xFFFFFFFF, PSB_HWSTAM);
 
-			if (dev->vblank_enabled[0]) {
+			if (dev->vblank[0].enabled) {
 				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
 				    is_cmd_mode_panel(dev)) {
 #if 0 /* FIXME need to revisit it */
@@ -983,11 +983,11 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 							     PIPE_VBLANK_INTERRUPT_ENABLE);
 			}
 
-			if (dev->vblank_enabled[1])
+			if (dev->vblank[1].enabled)
 				psb_disable_pipestat(dev_priv, 1,
 						     PIPE_VBLANK_INTERRUPT_ENABLE);
 
-			if (dev->vblank_enabled[2]) {
+			if (dev->vblank[2].enabled) {
 				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
 				    is_cmd_mode_panel(dev)) {
 #if 0 /* FIXME need to revisit it */
@@ -1162,7 +1162,7 @@ static int psb_vblank_do_wait(struct drm_device *dev,
 {
 	unsigned int cur_vblank;
 	int ret = 0;
-	DRM_WAIT_ON(ret, dev->vbl_queue, 3 * DRM_HZ,
+	DRM_WAIT_ON(ret, dev->vbl_queue, 3 * HZ,
 		    (((cur_vblank = atomic_read(counter))
 		      - *sequence) <= (1 << 23)));
 	*sequence = cur_vblank;

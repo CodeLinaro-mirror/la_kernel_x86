@@ -735,7 +735,7 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 		pvBuf =
 			__vmalloc(ui32Size, GFP_KERNEL | __GFP_HIGHMEM,
 				  __pgprot((pgprot_val(PAGE_KERNEL) & ~_PAGE_CACHE_MASK)
-					   | _PAGE_CACHE_WC));
+					   | _PAGE_CACHE_MODE_WC));
 		if (pvBuf == NULL) {
 			printk(KERN_ERR DRVNAME
 			       " : Failed to allocate %d bytes buffer.\n", ui32Size);
@@ -935,11 +935,14 @@ BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 #else
 #define IOCTL_DEF(ioctl, func, flags) {ioctl, flags, func, ioctl}
 #endif
+
 struct drm_ioctl_desc sBCdrmIoctls[] = {
+#ifdef ENABLE_TNG_VID_VSP
 	IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO, BCVideoBridge, DRM_AUTH)
+#endif
 };
 
-static int bc_max_ioctl = DRM_ARRAY_SIZE(sBCdrmIoctls);
+static int bc_max_ioctl = ARRAY_SIZE(sBCdrmIoctls);
 
 void BCVideoQueryIoctls(struct drm_ioctl_desc *ioctls)
 {
