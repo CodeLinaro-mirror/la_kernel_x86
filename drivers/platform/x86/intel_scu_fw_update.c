@@ -1135,19 +1135,19 @@ static ssize_t cancel_update_store(struct kobject *kobj,
 	struct kobj_attribute _name##_attr = __ATTR(_name, _mode, _show, _store)
 
 static KOBJ_FW_UPDATE_ATTR(cancel_update, S_IWUSR, NULL, cancel_update_store);
-static KOBJ_FW_UPDATE_ATTR(fw_version, S_IRUGO, fw_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(ifwi_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(chaabi_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(mia_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(scu_bs_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(scu_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(punit_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(ia32fw_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(supp_ia32fw_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(valhooks_version, S_IRUGO, sys_version_show, NULL);
-static KOBJ_FW_UPDATE_ATTR(ucode_version, S_IRUGO, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(fw_version, S_IRUSR, fw_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(ifwi_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(chaabi_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(mia_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(scu_bs_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(scu_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(punit_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(ia32fw_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(supp_ia32fw_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(valhooks_version, S_IRUSR, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(ucode_version, S_IRUSR, sys_version_show, NULL);
 
-static KOBJ_FW_UPDATE_ATTR(last_error, S_IRUGO, last_error_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(last_error, S_IRUSR, last_error_show, NULL);
 static BIN_ATTR(dnx, S_IWUSR, NULL, write_dnx, DNX_MAX_SIZE);
 static BIN_ATTR(ifwi, S_IWUSR, NULL, write_ifwi, IFWI_MAX_SIZE);
 
