@@ -36,6 +36,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX)) += platform_s1222.o
 obj-$(subst m,y,$(CONFIG_INPUT_DRV2605_VIBRA)) += platform_drv2605.o
 obj-$(subst m,y,$(CONFIG_CHARGER_BQ25898)) += platform_bq25898.o
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042_EXT)) += platform_max17042.o
+obj-$(subst m,y,$(CONFIG_NFC_NXP_PN5XX)) += platform_pn5xx.o
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SPI_SPIDEV)) += platform_spidev.o
 obj-$(subst m,y,$(CONFIG_TI_ADS7955_ADC)) += platform_ads7955.o
