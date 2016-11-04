@@ -33,14 +33,13 @@
 #include <linux/seq_file.h>
 #include <linux/pm_runtime.h>
 #include <linux/power_supply.h>
-#include <linux/power/max17042_battery.h>
+#include <linux/power/max17042_battery_ext.h>
+#include <linux/regmap.h>
 #include <linux/reboot.h>
 #include <linux/delay.h>
 #include <linux/notifier.h>
 #include <linux/miscdevice.h>
 #include <linux/atomic.h>
-#include <linux/acpi.h>
-#include <linux/acpi_gpio.h>
 
 /* Status register bits */
 #define STATUS_MASK		0xFF0A
@@ -54,9 +53,6 @@
 #define STATUS_TMX_BIT		(1 << 13)
 #define STATUS_SMX_BIT		(1 << 14)
 #define STATUS_BR_BIT		(1 << 15)
-
-#define MAX17042_IC_VERSION	0x0092
-#define MAX17050_IC_VERSION	0x00AC
 
 /* Vmax disabled, Vmin disabled */
 #define VOLT_DEF_MAX_MIN_THRLD  0xFF00
@@ -113,7 +109,7 @@
 #define	NTC_47K_TGAIN	0xE4E4
 #define	NTC_47K_TOFF	0x2F1D
 
-#define BATT_CHRG_FULL_DES		1550000
+#define BATT_CHRG_FULL_DES			416000
 #define MAX17042_VOLT_CONV_FCTR		625
 #define MAX17042_CURR_CONV_FCTR		156
 #define MAX17042_CHRG_CONV_FCTR		500
@@ -158,105 +154,12 @@
 #define BYTE_VALUE			1
 #define WORD_VALUE			0
 
-/* Time interval to write temperature values from host, if needed (in milliseconds) */
+/* Time interval to write temperature values from host,
+ * if needed (in milliseconds)
+ */
 #define TEMP_WRITE_INTERVAL		120000
-enum max17042_register {
-	MAX17042_STATUS		= 0x00,
-	MAX17042_VALRT_Th	= 0x01,
-	MAX17042_TALRT_Th	= 0x02,
-	MAX17042_SALRT_Th	= 0x03,
-	MAX17042_AtRate		= 0x04,
-	MAX17042_RepCap		= 0x05,
-	MAX17042_RepSOC		= 0x06,
-	MAX17042_Age		= 0x07,
-	MAX17042_TEMP		= 0x08,
-	MAX17042_VCELL		= 0x09,
-	MAX17042_Current	= 0x0A,
-	MAX17042_AvgCurrent	= 0x0B,
-	MAX17042_Qresidual	= 0x0C,
-	MAX17042_SOC		= 0x0D,
-	MAX17042_AvSOC		= 0x0E,
-	MAX17042_RemCap		= 0x0F,
-	MAX17042_FullCAP	= 0x10,
-	MAX17042_TTE		= 0x11,
-	MAX17042_V_empty	= 0x12,
-
-	MAX17042_RSLOW		= 0x14,
-
-	MAX17042_AvgTA		= 0x16,
-	MAX17042_Cycles		= 0x17,
-	MAX17042_DesignCap	= 0x18,
-	MAX17042_AvgVCELL	= 0x19,
-	MAX17042_MinMaxTemp	= 0x1A,
-	MAX17042_MinMaxVolt	= 0x1B,
-	MAX17042_MinMaxCurr	= 0x1C,
-	MAX17042_CONFIG		= 0x1D,
-	MAX17042_ICHGTerm	= 0x1E,
-	MAX17042_AvCap		= 0x1F,
-	MAX17042_ManName	= 0x20,
-	MAX17042_DevName	= 0x21,
-	MAX17042_DevChem	= 0x22,
-	MAX17042_FullCAPNom	= 0x23,
-
-	MAX17042_TempNom	= 0x24,
-	MAX17042_TempCold	= 0x25,
-	MAX17042_TempHot	= 0x26,
-	MAX17042_AIN		= 0x27,
-	MAX17042_LearnCFG	= 0x28,
-	MAX17042_SHFTCFG	= 0x29,
-	MAX17042_RelaxCFG	= 0x2A,
-	MAX17042_MiscCFG	= 0x2B,
-	MAX17042_TGAIN		= 0x2C,
-	MAx17042_TOFF		= 0x2D,
-	MAX17042_CGAIN		= 0x2E,
-	MAX17042_COFF		= 0x2F,
-
-	MAX17042_SOCempty	= 0x33,
-	MAX17042_T_empty	= 0x34,
-	MAX17042_FullCAP0	= 0x35,
-
-	MAX17042_LAvg_empty	= 0x36,
-	MAX17042_FCTC		= 0x37,
-	MAX17042_RCOMP0		= 0x38,
-	MAX17042_TempCo		= 0x39,
-	MAX17042_ETC		= 0x3A,
-	MAX17042_K_empty0	= 0x3B,
-	MAX17042_TaskPeriod	= 0x3C,
-	MAX17042_FSTAT		= 0x3D,
-
-	MAX17042_SHDNTIMER	= 0x3F,
-
-	MAX17042_dQacc		= 0x45,
-	MAX17042_dPacc		= 0x46,
-	MAX17042_VFSOC0         = 0x48,
-	MAX17042_VFRemCap	= 0x4A,
-
-	MAX17042_QH		= 0x4D,
-	MAX17042_QL		= 0x4E,
-
-	MAX17042_VFSOC0Enable	= 0x60,
-	MAX17042_MLOCKReg1	= 0x62,
-	MAX17042_MLOCKReg2	= 0x63,
-	MAX17042_MODELChrTbl	= 0x80,
-	MAX17042_OCV		= 0xEE,
-	MAX17042_OCVInternal	= 0xFB,
-	MAX17042_VFSOC		= 0xFF,
-
-};
-
-/* Registers specific to max17047/50 */
-enum max17050_register {
-	MAX17050_QRTbl00	= 0x12,
-	MAX17050_FullSOCThr	= 0x13,
-	MAX17050_QRTbl10	= 0x22,
-	MAX17050_QRTbl20	= 0x32,
-	MAX17050_V_empty	= 0x3A,
-	MAX17050_QRTbl30	= 0x42,
-};
 
 #define DRV_NAME "max170xx_battery"
-
-enum max170xx_chip_type {MAX17042, MAX17050};
 
 /* No of times we should retry on -EAGAIN error */
 #define NR_RETRY_CNT	3
@@ -266,7 +169,8 @@ enum max170xx_chip_type {MAX17042, MAX17050};
  * all bits and everything is handled. Also chips seems to limit
  * interrupts to ~3/s, so we have ~300ms to process, until we will
  * miss interrupt. What ever value it's, it doesn't have any
- * performance impact. */
+ * performance impact.
+ */
 #define NR_RETRY_INT	3
 
 /* No of times we should reset I2C lines */
@@ -279,23 +183,11 @@ enum max170xx_chip_type {MAX17042, MAX17050};
 #define VBATT_MAX_OFFSET	50 /* 50mV from VMAX */
 #define VALERT_VOLT_OFFSET	20 /* each bit corresponds to 20mV */
 
-/* default fuel gauge cell data for debug purpose only */
-static uint16_t cell_char_tbl[] = {
-	/* Data to be written from 0x80h */
-	0xA250, 0xB720, 0xB800, 0xB880, 0xB920, 0xBA00, 0xBA60, 0xBBF0,
-	0xBCF0, 0xBE50, 0xC060, 0xC2D0, 0xC520, 0xC750, 0xCA00, 0xD090,
-	/* Data to be written from 0x90h */
-	0x0120, 0x1C80, 0x0470, 0x0440, 0x0100, 0x5500, 0x0960, 0x2410,
-	0x2250, 0x15F0, 0x0BD0, 0x0D00, 0x0B00, 0x0BB0, 0x08A0, 0x08A0,
-	/* Data to be written from 0xA0h */
-	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
-	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
-};
-
 struct max17042_chip {
 	struct i2c_client *client;
+	struct regmap *regmap;
+	struct power_supply *battery;
 	enum max170xx_chip_type chip_type;
-	struct power_supply battery;
 	struct max17042_platform_data *pdata;
 	struct mutex batt_lock;
 	struct mutex init_lock;
@@ -320,7 +212,7 @@ struct max17042_chip {
 
 	/*
 	 * user space can set this variable to report constant
-	 * batery temperature for conformence testing.
+	 * battery temperature for conformence testing.
 	 */
 	bool	enable_fake_temp;
 	int	extra_resv_cap;
@@ -348,7 +240,7 @@ static DEVICE_ATTR(shutdown_voltage, S_IRUGO | S_IWUSR,
 	get_shutdown_voltage_set_by_user, set_shutdown_voltage);
 
 /* Sysfs entry to enable  from user space */
-static bool shutdown_mode_status = false;
+static bool shutdown_mode_status;
 static ssize_t get_shutdown_mode_status(struct device *dev,
 				struct device_attribute *attr, char *buf);
 static ssize_t set_shutdown_mode_status(struct device *dev,
@@ -383,6 +275,12 @@ static struct notifier_block max17042_reboot_notifier_block = {
 	.priority = 0,
 };
 
+static const struct regmap_config max17042_regmap_config = {
+	.reg_bits = 8,
+	.val_bits = 16,
+	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+};
+
 static bool is_battery_online(struct max17042_chip *chip);
 static void configure_interrupts(struct max17042_chip *chip);
 /* Set SOC threshold in S3 state */
@@ -396,14 +294,15 @@ static bool fake_batt_full;
 static struct max17042_config_data *fg_conf_data;
 static struct i2c_client *max17042_client;
 
-
 atomic_t fopen_count;
 
 static void update_runtime_params(struct max17042_chip *chip);
-static int read_batt_pack_temp(struct max17042_chip *chip, int *temp, int is_byte);
+static int read_batt_pack_temp(struct max17042_chip *chip, int *temp,
+							   int is_byte);
 
 /* Voltage-Capacity lookup function to get
- * capacity value against a given voltage */
+ * capacity value against a given voltage
+ */
 static unsigned int voltage_capacity_lookup(unsigned int val)
 {
 	unsigned int max = VBATT_MAX / 1000;
@@ -467,8 +366,7 @@ static ssize_t dev_file_read(struct file *f, char __user *buf,
 
 	update_runtime_params(chip);
 
-	if (sizeof(*fg_conf_data) > len)
-	{
+	if (sizeof(*fg_conf_data) > len) {
 		dev_err(&max17042_client->dev,
 			"MAX17042 FG Config data file: %d is bigger than expected length: %d.\n",
 			sizeof(*fg_conf_data),
@@ -565,7 +463,7 @@ static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
 	}
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
-		ret = i2c_smbus_write_word_data(client, reg, value);
+		ret = regmap_write(chip->regmap, reg, value);
 		if (ret == -EAGAIN || ret == -ETIMEDOUT)
 			continue;
 		else
@@ -573,7 +471,7 @@ static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
 	}
 
 	if (ret < 0)
-		dev_err(&client->dev, "I2C SMbus Write error:%d\n", ret);
+		dev_err(&client->dev, "Regmap Write error:%d\n", ret);
 
 	return ret;
 }
@@ -581,6 +479,7 @@ static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
 static int max17042_read_reg(struct i2c_client *client, u8 reg)
 {
 	int ret, i;
+	int read_value;
 	struct max17042_chip *chip = i2c_get_clientdata(client);
 
 	/* if the shutdown or reboot sequence started
@@ -593,17 +492,19 @@ static int max17042_read_reg(struct i2c_client *client, u8 reg)
 	}
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
-		ret = i2c_smbus_read_word_data(client, reg);
+		ret = regmap_read(chip->regmap, reg, &read_value);
 		if (ret == -EAGAIN || ret == -ETIMEDOUT)
 			continue;
 		else
 			break;
 	}
 
-	if (ret < 0)
-		dev_err(&client->dev, "I2C SMbus Read error:%d\n", ret);
+	if (ret < 0) {
+		dev_err(&client->dev, "Regmap Read error:%d\n", ret);
+		return ret;
+	}
 
-	return ret;
+	return read_value;
 }
 
 /*
@@ -799,6 +700,7 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 static short adjust_sign_value(int value, int is_byte)
 {
 	short result, temp = (short)value;
+
 	if (temp & MAX17042_SIGN_INDICATOR) {
 
 		if (is_byte) {
@@ -820,7 +722,8 @@ static short adjust_sign_value(int value, int is_byte)
 	return result;
 }
 
-static int read_batt_pack_temp(struct max17042_chip *chip, int *temp, int is_byte)
+static int read_batt_pack_temp(struct max17042_chip *chip, int *temp,
+							   int is_byte)
 {
 	int ret;
 	u16 val;
@@ -833,7 +736,8 @@ static int read_batt_pack_temp(struct max17042_chip *chip, int *temp, int is_byt
 
 		/* Convert the temperature to 2's complement form.
 		 * Most significant byte contains the decimal
-		 * equivalent of the data */
+		 * equivalent of the data
+		 */
 		if (fg_conf_data->cfg & CONFIG_TEX_BIT_ENBL) {
 			if (*temp < 0) {
 				val = (*temp + 0xff + 1);
@@ -866,8 +770,7 @@ static int max17042_set_property(struct power_supply *psy,
 				    enum power_supply_property psp,
 				    const union power_supply_propval *val)
 {
-	struct max17042_chip *chip = container_of(psy,
-				struct max17042_chip, battery);
+	struct max17042_chip *chip = power_supply_get_drvdata(psy);
 	int ret = 0;
 	int8_t temp;
 
@@ -916,8 +819,7 @@ static int max17042_get_property(struct power_supply *psy,
 			    enum power_supply_property psp,
 			    union power_supply_propval *val)
 {
-	struct max17042_chip *chip = container_of(psy,
-				struct max17042_chip, battery);
+	struct max17042_chip *chip = power_supply_get_drvdata(psy);
 	short int cur;
 	int volt_ocv, ret, batt_temp, batt_vmin;
 
@@ -1029,7 +931,11 @@ static int max17042_get_property(struct power_supply *psy,
 		/*
 		 * Temperature is measured in tenths of degrees celsius.
 		 */
-		val->intval = MAX17042_TEMP_CONV_FACTOR(batt_temp);
+		if (chip->pdata->battery_pack_temp)
+			val->intval = batt_temp;
+		else
+			val->intval = MAX17042_TEMP_CONV_FACTOR(batt_temp);
+		break;
 		break;
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MIN:
 		ret = max17042_read_reg(chip->client, MAX17042_TALRT_Th);
@@ -1062,7 +968,7 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
-		if (chip->chip_type == MAX17042)
+		if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17042)
 			ret = max17042_read_reg(chip->client, MAX17042_V_empty);
 		else
 			ret = max17042_read_reg(chip->client, MAX17050_V_empty);
@@ -1140,10 +1046,12 @@ static int max17042_get_property(struct power_supply *psy,
 		}
 
 		/* If current sensing is not enabled then read the
-		 * voltage based fuel gauge register for SOC */
+		 * voltage based fuel gauge register for SOC
+		 */
 		if (chip->pdata->enable_current_sense) {
 			/* If LOW Battery and not charging then
-			 * report 0% for immediate graceful shutdown */
+			 * report 0% for immediate graceful shutdown
+			 */
 			if ((chip->health == POWER_SUPPLY_HEALTH_DEAD) &&
 				(chip->status != POWER_SUPPLY_STATUS_CHARGING)) {
 				val->intval = 0;
@@ -1341,7 +1249,7 @@ static void configure_learncfg(struct max17042_chip *chip)
 	/*assigning cycles value from restored data*/
 	cycles = fg_conf_data->cycles;
 	if ((cycles >= CYCLES_ROLLOVER_CUTOFF) &&
-				(chip->chip_type == MAX17042))
+				(chip->chip_type == MAXIM_DEVICE_TYPE_MAX17042))
 		max17042_write_verify_reg(chip->client, MAX17042_LearnCFG,
 						MAX17042_DEF_RO_LRNCFG);
 	else
@@ -1358,7 +1266,7 @@ static void write_config_regs(struct max17042_chip *chip)
 						fg_conf_data->filter_cfg);
 	max17042_write_reg(chip->client, MAX17042_RelaxCFG,
 						fg_conf_data->relax_cfg);
-	if (chip->chip_type == MAX17050)
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17050)
 		max17042_write_reg(chip->client, MAX17050_FullSOCThr,
 					fg_conf_data->full_soc_thr);
 }
@@ -1385,7 +1293,7 @@ static void write_custom_regs(struct max17042_chip *chip)
 	max17042_write_reg(chip->client, MAX17042_SHDNTIMER,
 			MAX17042_SHUTDOWN_TIMEOUT_DEF);
 
-	if (chip->chip_type == MAX17042) {
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17042) {
 		max17042_write_reg(chip->client, MAX17042_ETC,
 						fg_conf_data->etc);
 		max17042_write_verify_reg(chip->client, MAX17042_K_empty0,
@@ -1428,8 +1336,7 @@ static void update_capacity_regs(struct max17042_chip *chip)
 static void reset_vfsoc0_reg(struct max17042_chip *chip)
 {
 	fg_vfSoc = max17042_read_reg(chip->client, MAX17042_VFSOC);
-	if (chip->chip_type == MAX17042)
-	{
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17042) {
 		max17042_write_reg(chip->client, MAX17042_VFSOC0Enable, VFSOC0_UNLOCK);
 		max17042_write_verify_reg(chip->client, MAX17042_VFSOC0, fg_vfSoc);
 		max17042_write_reg(chip->client, MAX17042_VFSOC0Enable, VFSOC0_LOCK);
@@ -1460,14 +1367,11 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 						rep_cap * fg_conf_data->rsense);
 	}
 
-	if (chip->chip_type == MAX17050)
-	{
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17050) {
 		/* Write dQ_acc to Capacity / 0x16 and dP_acc to 0xc80 */
 		dq_acc_div = dQ_ACC_DIV_MAX17050;
 		dp_acc = dP_ACC_MAX17050;
-	}
-	else
-	{
+	} else {
 		/* Write dQ_acc to 200% of Capacity and dP_acc to 200% */
 		dq_acc_div = dQ_ACC_DIV_MAX17042;
 		dp_acc = dP_ACC_200;
@@ -1505,7 +1409,7 @@ static void update_runtime_params(struct max17042_chip *chip)
 	 * additionally reserved capacity. We deal with reserved
 	 * capacity while restoring.
 	 */
-	if (chip->chip_type == MAX17050) {
+	if (chip->chip_type == MAXIM_DEVICE_TYPE_MAX17050) {
 		fg_conf_data->qrtbl00 = max17042_read_reg(chip->client,
 			MAX17050_QRTbl00) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl10 = max17042_read_reg(chip->client,
@@ -1541,7 +1445,7 @@ static void save_runtime_params(struct max17042_chip *chip)
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
 	if (!chip->pdata->save_config_data || !chip->pdata->is_init_done)
-		return ;
+		return;
 
 	update_runtime_params(chip);
 
@@ -1549,20 +1453,20 @@ static void save_runtime_params(struct max17042_chip *chip)
 	retval = chip->pdata->save_config_data(DRV_NAME, fg_conf_data, size);
 	if (retval < 0) {
 		dev_err(&chip->client->dev, "%s failed\n", __func__);
-		return ;
+		return;
 	}
 
 }
 
 static void enable_shutdown_mode(void)
 {
-	int val, retval;
+	int retval;
 	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
 
 	/* Set shutdown timeout reg to minimum value of 45s */
-	retval = max17042_write_reg(max17042_client, MAX17042_SHDNTIMER, MAX17042_SHUTDOWN_TIMEOUT_45S);
-	if (retval < 0)
-	{
+	retval = max17042_write_reg(max17042_client, MAX17042_SHDNTIMER,
+								MAX17042_SHUTDOWN_TIMEOUT_45S);
+	if (retval < 0) {
 		dev_err(&chip->client->dev,
 			"shutdown timeout write to maxim failed: %d", retval);
 		return;
@@ -1571,16 +1475,13 @@ static void enable_shutdown_mode(void)
 	/* Enable I2C Shutdown */
 	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
 			CONFIG_I2CSH_BIT_ENBL, 1);
-	if (retval < 0)
-	{
+	if (retval < 0) {
 		dev_err(&chip->client->dev,
 			"I2C shutdown write to maxim failed: %d", retval);
 		return;
 	}
 
 	dev_info(&chip->client->dev, "Shutdown mode enabled.");
-
-	return;
 }
 
 static int init_max17042_chip(struct max17042_chip *chip)
@@ -1763,6 +1664,7 @@ static void max17042_temp_worker(struct work_struct *w)
 	struct max17042_chip *chip = container_of(work,
 				struct max17042_chip, temp_worker);
 	int temp;
+
 	read_batt_pack_temp(chip, &temp, BYTE_VALUE);
 	schedule_delayed_work(&chip->temp_worker, TEMP_WRITE_INTERVAL);
 }
@@ -1780,19 +1682,21 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
 			"maxim RepSOC read failed:%d\n", ret);
-		return ;
+		return;
 	}
 	soc = ret >> 8;
 
 	/* if upper threshold exceeds 100% then stop
-	 * the interrupt for upper thresholds */
-	 if ((soc + offset) > 100)
+	 * the interrupt for upper thresholds
+	 */
+	if ((soc + offset) > 100)
 		soc_tr = 0xff << 8;
 	else
 		soc_tr = (soc + offset) << 8;
 
 	/* if lower threshold falls
-	 * below 1% limit it to 1% */
+	 * below 1% limit it to 1%
+	 */
 	if ((soc - offset) < 1)
 		soc_tr |= 1;
 	else
@@ -1817,7 +1721,7 @@ static void set_soc_intr_thresholds_s3(struct max17042_chip *chip)
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
 			"maxim RepSOC read failed:%d\n", ret);
-		return ;
+		return;
 	}
 	val = ret;
 	soc = val >> 8;
@@ -1931,8 +1835,7 @@ static void max17042_evt_worker(struct work_struct *work)
 	if (!chip->pdata->is_init_done &&
 	!chip->pdata->file_sys_storage_enabled)
 		schedule_work(&chip->init_worker);
-
-	power_supply_changed(&chip->battery);
+	power_supply_changed(chip->battery);
 	/* If charging is stopped and there is a sudden drop in SOC below
 	 * minimum threshold currently set, we'll not get further interrupts.
 	 * This call to set thresholds, will take care of this scenario.
@@ -1944,8 +1847,8 @@ static void max17042_evt_worker(struct work_struct *work)
 
 static void max17042_external_power_changed(struct power_supply *psy)
 {
-	struct max17042_chip *chip = container_of(psy,
-			struct max17042_chip, battery);
+	struct max17042_chip *chip = power_supply_get_drvdata(psy);
+
 	schedule_work(&chip->evt_worker);
 }
 
@@ -2023,7 +1926,7 @@ static void max17042_create_debugfs(struct max17042_chip *chip)
 	max17042_dbgfs_root = debugfs_create_dir(DRV_NAME, NULL);
 	if (IS_ERR(max17042_dbgfs_root)) {
 		dev_warn(&chip->client->dev, "DEBUGFS DIR create failed\n");
-		return ;
+		return;
 	}
 
 	for (i = 0; i < MAX17042_MAX_MEM; i++) {
@@ -2039,7 +1942,7 @@ static void max17042_create_debugfs(struct max17042_chip *chip)
 			max17042_dbgfs_root = NULL;
 			dev_warn(&chip->client->dev,
 					"DEBUGFS entry Create failed\n");
-			return ;
+			return;
 		}
 	}
 }
@@ -2115,6 +2018,7 @@ static ssize_t set_shutdown_voltage(struct device *dev,
 				size_t count)
 {
 	unsigned long value;
+
 	if (kstrtoul(buf, 10, &value))
 		return -EINVAL;
 	if ((value < VBATT_MIN) || (value > VBATT_MAX))
@@ -2143,20 +2047,20 @@ static ssize_t set_shutdown_mode_status(struct device *dev,
 				size_t count)
 {
 	unsigned long value;
+
 	if (kstrtoul(buf, 10, &value))
 		return -EINVAL;
 
 	/* allow only 0 or 1 */
-	if (value != 1 && value !=0)
+	if (value != 1 && value != 0)
 		return -EINVAL;
 
-	if (value)
-	{
+	if (value) {
 		shutdown_mode_status = true;
 		enable_shutdown_mode();
-	}
-	else
+	} else {
 		shutdown_mode_status = false;
+	}
 
 	return count;
 }
@@ -2252,11 +2156,12 @@ static void configure_interrupts(struct max17042_chip *chip)
 		edge_type = IRQF_TRIGGER_FALLING;
 
 	/* register interrupt */
-	ret = request_threaded_irq(chip->client->irq,
+	ret = devm_request_threaded_irq(&chip->client->dev,
+					chip->client->irq,
 					max17042_intr_handler,
 					max17042_thread_handler,
-					edge_type,
-					DRV_NAME, chip);
+					edge_type | IRQF_ONESHOT,
+					chip->battery->desc->name, chip);
 	if (ret) {
 		dev_warn(&chip->client->dev,
 			"cannot get IRQ:%d\n", chip->client->irq);
@@ -2289,31 +2194,41 @@ static void configure_interrupts(struct max17042_chip *chip)
 	}
 }
 
-#ifdef CONFIG_ACPI
-extern void *max17042_platform_data(void *info);
-#endif
+static const struct power_supply_desc max17042_psy_desc = {
+	.name           = "max17042_battery",
+	.type           = POWER_SUPPLY_TYPE_BATTERY,
+	.get_property   = max17042_get_property,
+	.set_property   = max17042_set_property,
+	.property_is_privileged_read = max17042_property_is_privileged_read,
+	.external_power_changed      = max17042_external_power_changed,
+	.properties     = max17042_battery_props,
+	.num_properties = ARRAY_SIZE(max17042_battery_props),
+};
+
+static const struct power_supply_desc max17050_psy_desc = {
+	.name           = "max17047_battery",
+	.type           = POWER_SUPPLY_TYPE_BATTERY,
+	.get_property   = max17042_get_property,
+	.set_property   = max17042_set_property,
+	.property_is_privileged_read = max17042_property_is_privileged_read,
+	.external_power_changed      = max17042_external_power_changed,
+	.properties     = max17042_battery_props,
+	.num_properties = ARRAY_SIZE(max17042_battery_props),
+};
+
 static int max17042_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
+	const struct power_supply_desc *max170xx_desc = &max17042_psy_desc;
+	struct power_supply_config psy_cfg = {};
 	struct max17042_chip *chip;
-	int ret, i, gpio;
-	struct acpi_gpio_info gpio_info;
+	int ret, i;
 
 #ifdef CONFIG_XEN
 	return -ENODEV;
 #endif
 
-#ifdef CONFIG_ACPI
-	client->dev.platform_data = max17042_platform_data(NULL);
-	gpio = acpi_get_gpio_by_index(&client->dev, 0, &gpio_info);
-	client->irq = gpio_to_irq(gpio);
-	ret = gpio_request_one(gpio, GPIOF_IN, client->name);
-	if (ret < 0) {
-		dev_warn(&client->dev, "gpio request failed.");
-		return -EIO;
-	}
-#endif
 	if (!client->dev.platform_data) {
 		dev_err(&client->dev, "Platform Data is NULL");
 		return -EFAULT;
@@ -2325,19 +2240,24 @@ static int max17042_probe(struct i2c_client *client,
 		return -EIO;
 	}
 
-	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
+	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip) {
 		dev_err(&client->dev, "mem alloc failed\n");
 		return -ENOMEM;
 	}
 
-	fg_conf_data = kzalloc(sizeof(*fg_conf_data), GFP_KERNEL);
+	fg_conf_data = devm_kzalloc(&client->dev, sizeof(*fg_conf_data), GFP_KERNEL);
 	if (!fg_conf_data) {
 		dev_err(&client->dev, "mem alloc failed\n");
-		kfree(chip);
 		return -ENOMEM;
 	}
 	chip->client = client;
+	chip->regmap = devm_regmap_init_i2c(client, &max17042_regmap_config);
+		if (IS_ERR(chip->regmap)) {
+			dev_err(&client->dev, "Failed to initialize regmap\n");
+				return -EINVAL;
+		}
+
 	chip->pdata = client->dev.platform_data;
 	/* LSB offset for qrtbl registers is 0.25%
 	 * ie, 0x04 = 1% reserved capacity
@@ -2355,6 +2275,8 @@ static int max17042_probe(struct i2c_client *client,
 		chip->model_algo_factor = 100;
 
 	i2c_set_clientdata(client, chip);
+	chip->chip_type = id->driver_data;
+	psy_cfg.drv_data = chip;
 	max17042_client = client;
 
 	ret = max17042_read_reg(chip->client, MAX17042_DevName);
@@ -2369,19 +2291,6 @@ static int max17042_probe(struct i2c_client *client,
 			else
 				break;
 		}
-	}
-
-	if (ret == MAX17042_IC_VERSION) {
-		dev_info(&client->dev, "chip type max17042 detected\n");
-		chip->chip_type = MAX17042;
-	} else if (ret == MAX17050_IC_VERSION) {
-		dev_info(&client->dev, "chip type max17047/50 detected\n");
-		chip->chip_type = MAX17050;
-	} else {
-		dev_err(&client->dev, "device version mismatch: %x\n", ret);
-		kfree(chip);
-		kfree(fg_conf_data);
-		return -EIO;
 	}
 
 	/* init battery properties */
@@ -2417,41 +2326,26 @@ static int max17042_probe(struct i2c_client *client,
 						MAX17042_CFG_INTR_SOCVF);
 	}
 
+	if ((chip->chip_type == MAXIM_DEVICE_TYPE_MAX17047) ||
+		(chip->chip_type == MAXIM_DEVICE_TYPE_MAX17050))
+		max170xx_desc = &max17050_psy_desc;
 	chip->technology = chip->pdata->technology;
-
-	if (chip->chip_type == MAX17042)
-		chip->battery.name = "max17042_battery";
-	else
-		chip->battery.name = "max17047_battery";
-	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
-	chip->battery.get_property	= max17042_get_property;
-	chip->battery.set_property	= max17042_set_property;
-	chip->battery.property_is_privileged_read =
-					max17042_property_is_privileged_read;
-	chip->battery.external_power_changed = max17042_external_power_changed;
-	chip->battery.properties	= max17042_battery_props;
-	chip->battery.num_properties	= ARRAY_SIZE(max17042_battery_props);
-
-	chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
-
-	ret = power_supply_register(&client->dev, &chip->battery);
-	if (ret) {
+	chip->status = POWER_SUPPLY_STATUS_UNKNOWN;
+	chip->battery = devm_power_supply_register(&client->dev, max170xx_desc,
+						&psy_cfg);
+	if (IS_ERR(chip->battery)) {
 		dev_err(&client->dev, "failed: power supply register\n");
-		kfree(chip);
-		kfree(fg_conf_data);
-		return ret;
+		return PTR_ERR(chip->battery);
 	}
 
 	/* Init Runtime PM State */
 	pm_runtime_put_noidle(&chip->client->dev);
 	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
-
 	/* In case of power supply register INT now
 	 * else the INT will registered after chip init.
 	 */
 	if (!chip->pdata->enable_current_sense)
 		configure_interrupts(chip);
-
 	if (chip->pdata->file_sys_storage_enabled)
 		misc_register(&fg_helper);
 
@@ -2488,7 +2382,6 @@ static int max17042_probe(struct i2c_client *client,
 	schedule_work(&chip->evt_worker);
 
 	pm_runtime_enable(&chip->client->dev);
-
 	return 0;
 }
 
@@ -2508,13 +2401,8 @@ static int max17042_remove(struct i2c_client *client)
 	device_remove_file(&client->dev, &dev_attr_shutdown_mode);
 	device_remove_file(&client->dev, &dev_attr_enable_fake_temp);
 	max17042_remove_debugfs(chip);
-	if (client->irq > 0)
-		free_irq(client->irq, chip);
-	power_supply_unregister(&chip->battery);
 	pm_runtime_get_noresume(&chip->client->dev);
 
-	kfree(chip);
-	kfree(fg_conf_data);
 	return 0;
 }
 
@@ -2535,7 +2423,8 @@ static int max17042_suspend(struct device *dev)
 		/* set SOC alert thresholds */
 		set_soc_intr_thresholds_s3(chip);
 		/* setting Vmin(3300mV) threshold to wake the
-		 * platfrom in under low battery conditions */
+		 * platform in under low battery conditions
+		 */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_MIN_THRLD_ENBL);
 		disable_irq(chip->client->irq);
@@ -2623,12 +2512,12 @@ static int max17042_runtime_idle(struct device *dev)
 #endif
 
 static const struct i2c_device_id max17042_id[] = {
-	{ "max17042", 0 },
-	{ "max17047", 1 },
-	{ "max17050", 2 },
-	{ "MAX17042", 0 },
-	{ "MAX17047", 1 },
-	{ "MAX17050", 2 },
+	{ "max17042", MAXIM_DEVICE_TYPE_MAX17042 },
+	{ "max17047", MAXIM_DEVICE_TYPE_MAX17047 },
+	{ "max17050", MAXIM_DEVICE_TYPE_MAX17050 },
+	{ "MAX17042", MAXIM_DEVICE_TYPE_MAX17042 },
+	{ "MAX17047", MAXIM_DEVICE_TYPE_MAX17047 },
+	{ "MAX17050", MAXIM_DEVICE_TYPE_MAX17050 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, max17042_id);
@@ -2641,23 +2530,11 @@ static const struct dev_pm_ops max17042_pm_ops = {
 	.runtime_idle		= max17042_runtime_idle,
 };
 
-#ifdef CONFIG_ACPI
-static struct acpi_device_id max17042_acpi_match[] = {
-	{"MAX17047", 0},
-	{}
-};
-MODULE_DEVICE_TABLE(acpi, max17042_acpi_match);
-
-#endif
-
 static struct i2c_driver max17042_i2c_driver = {
 	.driver	= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
 		.pm	= &max17042_pm_ops,
-#ifdef CONFIG_ACPI
-		.acpi_match_table = ACPI_PTR(max17042_acpi_match),
-#endif
 	},
 	.probe		= max17042_probe,
 	.remove		= max17042_remove,
@@ -2687,11 +2564,8 @@ static int __init max17042_init(void)
 {
 	return i2c_add_driver(&max17042_i2c_driver);
 }
-#ifdef CONFIG_ACPI
-late_initcall(max17042_init);
-#else
+
 module_init(max17042_init);
-#endif
 
 static void __exit max17042_exit(void)
 {
