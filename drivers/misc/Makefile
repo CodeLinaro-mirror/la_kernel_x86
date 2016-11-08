@@ -67,4 +67,5 @@ obj-$(CONFIG_SCU_LOGGING)	+= intel_fabric_logging.o
 obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
 obj-y                           += bcm-lpm/
 obj-y                           += intel_mid_gps/
+obj-$(CONFIG_UUID)		+= uuid.o
 

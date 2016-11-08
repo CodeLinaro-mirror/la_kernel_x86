@@ -27,6 +27,7 @@ static struct kobj_attribute _name##_attr = { \
 }
 
 
+extern char intel_platform_ssn[];
 extern struct soft_platform_id spid;
 
 int __init sfi_handle_spid(struct sfi_table_header *table);
