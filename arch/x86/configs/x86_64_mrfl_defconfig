@@ -3371,6 +3371,7 @@ CONFIG_STAGING=y
 # CONFIG_R8188EU is not set
 # CONFIG_R8723AU is not set
 # CONFIG_RTS5208 is not set
+CONFIG_DX_SEP54=y
 
 #
 # IIO staging drivers

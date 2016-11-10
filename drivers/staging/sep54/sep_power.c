@@ -117,7 +117,7 @@ enum dx_sep_state dx_sep_wait_for_state(u32 state_mask, int timeout_msec)
 	do {
 		/* Poll for state transition completion or failure */
 		/* Arm for next state change before reading current state */
-		INIT_COMPLETION(power_control.state_changed);
+		reinit_completion(&power_control.state_changed);
 		sep_state = GET_SEP_STATE(power_control.drvdata);
 		if ((sep_state & state_mask) || (wait_jiffies == 0))
 			/* It's a match or wait timed out */

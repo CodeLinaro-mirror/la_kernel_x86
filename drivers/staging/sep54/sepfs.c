@@ -34,6 +34,7 @@
 #include <linux/cred.h>
 #include <linux/uidgid.h>
 #include <linux/sched.h>
+#include <linux/kobject.h>
 
 #include "sepfs.h"
 
@@ -47,8 +48,8 @@ enum sep_inode {
 struct sep_rule {
 	struct list_head		list;
 	u32				cmd_id;   /* command to be invoked */
-	uid_t                           uid;	  /* allowed user */
-	gid_t                           gid;	  /* allowed group */
+	kuid_t                           uid;	  /* allowed user */
+	kgid_t                           gid;	  /* allowed group */
 };
 
 /* Rules that apply to an individual TA */
