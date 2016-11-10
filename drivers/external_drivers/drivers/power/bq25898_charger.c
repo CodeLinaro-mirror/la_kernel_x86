@@ -313,6 +313,11 @@
 #define BOOST_FAULT_MASK		(0x40)
 #define WATCHDOG_FAULT_MASK		(0x80)
 
+#define CHARGER_FAULT_OVERHEAT            0x01
+#define CHARGER_FAULT_SAFETY_TIMER_EXPIRE 0x03
+#define NTC_FAULT_COLD                    0x05
+#define NTC_FAULT_OVERHEAT                0x06
+
 const char * const NTC_fault_to_human[] = {
 		[0x0] = "Normal\n",
 		[0x2] = "TS Warm (Buck mode)\n",
@@ -328,7 +333,7 @@ const char * const CHARGER_fault_to_human[] = {
 	[0x3] = "Charge safety timer expired\n"
 };
 
-enum { 
+enum {
 	BAT_FAULT_OFF = 0,
 	BOOST_FAULT_OFF,
 	WATCHDOG_FAULT_OFF,
@@ -2499,19 +2504,33 @@ static int bq25898_get_prop_health(struct bq25898_charger *chip)
 	if (val < 0)
 		return val;
 
+	/*No fault*/
+	if (!val)
+		return POWER_SUPPLY_HEALTH_GOOD;
+
+	/*Watchdog fault*/
 	if (val & WATCHDOG_FAULT_MASK)
 		return POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE;
 
+	/*Charger fault*/
 	if (val & CHARGER_FAULT_MASK) {
-		if (((val & CHARGER_FAULT_MASK) >> 4) == 0x01)
+		if (((val & CHARGER_FAULT_MASK) >> 4) == CHARGER_FAULT_OVERHEAT)
 			return POWER_SUPPLY_HEALTH_OVERHEAT;
-		if (((val & CHARGER_FAULT_MASK) >> 4) == 0x03)
+		if (((val & CHARGER_FAULT_MASK) >> 4) == CHARGER_FAULT_SAFETY_TIMER_EXPIRE)
 			return POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
 	}
 
+	/*Battery fault*/
 	if (val & BAT_FAULT_MASK)
 		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 
+	/*Thermal fault*/
+	if (val & NTC_FAULT_MASK) {
+		if ((val & NTC_FAULT_MASK) == NTC_FAULT_COLD)
+			return POWER_SUPPLY_HEALTH_COLD;
+		if ((val & NTC_FAULT_MASK) == NTC_FAULT_OVERHEAT)
+			return POWER_SUPPLY_HEALTH_OVERHEAT;
+	}
 
 	return POWER_SUPPLY_HEALTH_UNKNOWN;
 }
