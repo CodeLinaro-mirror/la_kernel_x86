@@ -227,6 +227,24 @@ int auo39x39_cmd_power_on(
 		goto power_err;
 	}
 
+	err = mdfld_dsi_send_mcs_long_lp(sender,
+			frame_mem_control_column, sizeof(frame_mem_control_column),
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: frame_mem_control_column\n",
+				__func__, __LINE__);
+		goto power_err;
+	}
+
+	err = mdfld_dsi_send_mcs_long_lp(sender,
+			frame_mem_control_row, sizeof(frame_mem_control_row),
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: frame_mem_control_row\n",
+				__func__, __LINE__);
+		goto power_err;
+	}
+
 	/* set TE on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		set_tear_on, 0x00, 1,
@@ -403,6 +421,22 @@ static int auo39x39_cmd_enter_low_power(struct mdfld_dsi_config *dsi_config)
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	err = mdfld_dsi_send_mcs_long_lp(sender,
+			frame_mem_control_column, sizeof(frame_mem_control_column),
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: frame_mem_control_column\n",
+				__func__, __LINE__);
+	}
+
+	err = mdfld_dsi_send_mcs_long_lp(sender,
+			frame_mem_control_row, sizeof(frame_mem_control_row),
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: frame_mem_control_row\n",
+				__func__, __LINE__);
+	}
 
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 			idle_mode_on, 0x00, 1,

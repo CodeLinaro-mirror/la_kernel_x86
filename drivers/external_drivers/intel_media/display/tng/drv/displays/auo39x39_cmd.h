@@ -40,8 +40,16 @@
 /* In normal mode, panel scanning frequency is 60Hz */
 #define idle_mode_off 0x38
 
-/* In idle mode, panel scanning frequency is 15Hz */
+/* In idle mode, panel scanning frequency is 30Hz */
 #define idle_mode_on 0x39
+
+static u8 frame_mem_control_column[] = {
+	0x2a, 0x00, 0x04, 0x01, 0x89
+};
+
+static u8 frame_mem_control_row[] = {
+	0x2b, 0x00, 0x00, 0x01, 0x85
+};
 
 void auo39x39_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs);
 #endif
