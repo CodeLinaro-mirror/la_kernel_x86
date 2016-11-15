@@ -136,3 +136,30 @@ static const struct devs_id bcm43xx_clk_vmmc_dev_id __initconst = {
 };
 
 sfi_device(bcm43xx_clk_vmmc_dev_id);
+
+static const struct devs_id wlan_fastirq_dev_id __initconst = {
+	.name = "WLAN_FAST_IRQ",
+	.type = SFI_DEV_TYPE_SD,
+	.delay = 0,
+	.device_handler = wifi_platform_data_fastirq,
+};
+
+sfi_device(wlan_fastirq_dev_id);
+
+static const struct devs_id bcm43xx_vmmc_dev_id __initconst = {
+	.name = "bcm43xx_vmmc",
+	.type = SFI_DEV_TYPE_SD,
+	.delay = 0,
+	.get_platform_data = &wifi_platform_data,
+};
+
+sfi_device(bcm43xx_vmmc_dev_id);
+
+static const struct devs_id iwlwifi_clk_vmmc_dev_id __initconst = {
+	.name = "iwlwifi_clk_vmmc",
+	.type = SFI_DEV_TYPE_SD,
+	.delay = 0,
+	.get_platform_data = &wifi_platform_data,
+};
+
+sfi_device(iwlwifi_clk_vmmc_dev_id);
