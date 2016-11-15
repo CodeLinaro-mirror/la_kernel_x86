@@ -77,7 +77,7 @@ static void __init *msic_power_btn_platform_data(void *info)
 }
 
 static const struct devs_id msic_power_btn_dev_id __initconst = {
-	.name = "msic_power_btn",
+	.name = "bcove_power_btn",
 	.type = SFI_DEV_TYPE_IPC,
 	.delay = 1,
 	.get_platform_data = &msic_power_btn_platform_data,
