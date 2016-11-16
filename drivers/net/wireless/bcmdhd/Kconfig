@@ -15,6 +15,12 @@ config BCMDHD_PCIE
 	bool "PCIe bus interface support"
 	depends on BCMDHD && PCI && !BCMDHD_SDIO
 
+config BCM4343
+	bool "BCM4343 support"
+	depends on BCMDHD
+	---help---
+	  Enable any BCM4343 specific options.
+
 config BCM4354
 	tristate "BCM4354 support"
 	depends on BCMDHD

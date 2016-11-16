@@ -48,7 +48,7 @@
 #endif /* CONFIG_DTS */
 
 
-#define WIFI_PLAT_NAME		"bcmdhd_wlan"
+#define WIFI_PLAT_NAME		"wlan"
 #define WIFI_PLAT_NAME2		"bcm4329_wlan"
 #define WIFI_PLAT_EXT		"bcmdhd_wifi_platform"
 
@@ -305,7 +305,7 @@ static int wifi_plat_dev_drv_probe(struct platform_device *pdev)
 	adapter = &dhd_wifi_platdata->adapters[0];
 	adapter->wifi_plat_data = (struct wifi_platform_data *)(pdev->dev.platform_data);
 
-	resource = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "bcmdhd_wlan_irq");
+	resource = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "wlan_irq");
 	if (resource == NULL)
 		resource = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "bcm4329_wlan_irq");
 	if (resource) {

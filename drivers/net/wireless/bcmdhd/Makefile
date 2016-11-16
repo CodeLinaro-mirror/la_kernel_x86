@@ -10,12 +10,11 @@ DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
 	-DKEEP_ALIVE -DCSCAN -DPKT_FILTER_SUPPORT                             \
 	-DEMBEDDED_PLATFORM -DPNO_SUPPORT                                     \
 	-DDHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT                           \
-	-DGET_CUSTOM_MAC_ENABLE -DCONFIG_DTS                                  \
-	-DCUSTOMER_IMX -DDHD_FW_COREDUMP -DSEC_ENHANCEMENT
+	-DGET_CUSTOM_MAC_ENABLE -DCUSTOMER_HW2
+
 #################
 # Common feature
 #################
-DHDCFLAGS += -DWL_VIRTUAL_APSTA
 
 DHDCFLAGS += -DWL_CFG80211
 # Print out kernel panic point of file and line info when assertion happened
@@ -114,13 +113,27 @@ DHDCFLAGS += -DDISABLE_FRAMEBURST_VSDB
 # m: module type driver
 # y: built-in type driver
 ##########################
-DRIVER_TYPE ?= m
+DRIVER_TYPE ?= $(CONFIG_BCMDHD)
 
 ifeq ($(DRIVER_TYPE),y)
   DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
   DHDCFLAGS += -DUSE_LATE_INITCALL_SYNC
 else
   DHDCFLAGS += -DNO_SDIO_RESET
+endif
+
+################################
+# INTEL platform specific features
+#################################
+ifneq ($(CONFIG_INTEL_PLATFORM),)
+  DHDCFLAGS :=$(filter-out -DHW_OOB,$(DHDCFLAGS))
+  DHDCFLAGS += -DWL_SUPPORT_AUTO_CHANNEL
+  DHDCFLAGS += -DOEM_ANDROID
+  DHDCFLAGS += -DSUPPORT_MULTIPLE_REVISION -DSUPPORT_MULTIPLE_CHIPS
+  DHDCFLAGS += -DCUSTOM_LISTEN_INTERVAL=3
+
+  DHDCFLAGS += -DUSE_LATE_INITCALL_SYNC
+  DHDCFLAGS += -DGET_CUSTOM_MAC_ENABLE
 endif
 
 #########################
@@ -190,6 +203,27 @@ endif
   DHDCFLAGS += -DDHD_LB_STATS
 endif
 
+ifneq ($(CONFIG_BCM4343),)
+  DHDCFLAGS += -DBCM43430_CHIP -DHW_OOB
+
+  # tput enhancement
+  DHDCFLAGS += -DCUSTOM_GLOM_SETTING=8 -DCUSTOM_RXCHAIN=1
+  DHDCFLAGS += -DBCMSDIOH_TXGLOM
+  DHDCFLAGS += -DUSE_WL_TXBF
+  DHDCFLAGS += -DUSE_WL_FRAMEBURST
+  DHDCFLAGS += -DRXFRAME_THREAD
+  DHDCFLAGS += -DCUSTOM_AMPDU_BA_WSIZE=64
+  DHDCFLAGS += -DCUSTOM_DPC_CPUCORE=0
+  DHDCFLAGS += -DCUSTOM_MAX_TXGLOM_SIZE=32
+
+
+  # Remove common feature for BCM4343
+  DHDCFLAGS :=$(filter-out -DSUPPORT_AMPDU_MPDU_CMD,$(DHDCFLAGS))
+  DHDCFLAGS :=$(filter-out -DVSDB,$(DHDCFLAGS))
+#  DHDCFLAGS :=$(filter-out -DPROP_TXSTATUS,$(DHDCFLAGS))
+  DHDCFLAGS :=$(filter-out -DROAM_AP_ENV_DETECTION,$(DHDCFLAGS))
+  DHDCFLAGS :=$(filter-out -DDISABLE_11H_SOFTAP,$(DHDCFLAGS))
+endif
 
 ifneq ($(CONFIG_BCM4339),)
   DHDCFLAGS += -DBCM4339_CHIP -DHW_OOB
