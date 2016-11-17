@@ -300,16 +300,7 @@ static struct sst_platform_info *get_sst_platform_data(struct pci_dev *pdev)
 		break;
 	case PCI_DEVICE_ID_INTEL_SST_MRFLD:
 		sst_pinfo = &sst_data;
-		if (!(INTEL_MID_BOARD(2, PHONE, MRFL, RBY, PRO) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, RBY, ENG) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, PRO) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, MVN, ENG) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, GLC, PRO) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, GLC, ENG) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, ATC, PRO) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, ATC, ENG) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
-					INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) )) {
+		if (!INTEL_MID_BOARD_CDP_ALL()) {
 			set_mofd_sst_config(&sst_data);
 			sst_pinfo->use_alternative_mrfl_tstamp = 1;
 			sst_pinfo->use_alternative_mrfl_mailbox_size = 1;
