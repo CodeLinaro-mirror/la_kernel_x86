@@ -406,7 +406,6 @@ config PUNIT_ATOM_DEBUG
 
 config INTEL_MID_PSTORE_RAM
 	bool "Enable Intel MID support for pstore RAM (ramoops, ram_console)"
-	depends on X86_WANT_INTEL_MID
 	select PSTORE
 	select PSTORE_RAM
 	select PSTORE_CONSOLE
