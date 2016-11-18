@@ -61,7 +61,7 @@ static int serial_hsu_plat_resume(struct device *dev)
 #define serial_hsu_plat_resume	NULL
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int serial_hsu_plat_runtime_idle(struct device *dev)
 {
 	struct uart_hsu_port *up = dev_get_drvdata(dev);

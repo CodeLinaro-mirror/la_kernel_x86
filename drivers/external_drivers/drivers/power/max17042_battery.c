@@ -2485,7 +2485,7 @@ static int max17042_resume(struct device *dev)
 #define max17042_resume NULL
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int max17042_runtime_suspend(struct device *dev)
 {
 

@@ -827,7 +827,7 @@ int ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 
 power_off:
 	vxd_power_down(dev);
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 	i915_rpm_put_vxd(dev);
 #endif
 	/* MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN); */
@@ -851,7 +851,7 @@ bool ospm_power_using_video_begin(int hw_island)
 	mutex_lock(&dev_priv->vxd_pm_mutex);
 	/* ospm_resume_pci(pdev); */
 	if (!is_vxd_on()) {
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 		i915_rpm_get_vxd(dev_priv->dev);
 #endif
 		vxd_power_on(i915_drm_dev);

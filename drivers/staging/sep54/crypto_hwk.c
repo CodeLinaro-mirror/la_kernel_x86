@@ -37,14 +37,14 @@ struct hwk_context {
 
 static inline void hwk_pm_runtime_get(void)
 {
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 }
 
 static inline void hwk_pm_runtime_put(void)
 {
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 }

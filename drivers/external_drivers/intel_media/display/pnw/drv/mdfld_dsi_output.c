@@ -523,7 +523,7 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector * connector, stru
 
 static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config **dsi_configs;
@@ -533,7 +533,7 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 	dsi_configs = dev_priv->dsi_configs;
 
 	if (dsi_configs[0])

@@ -655,7 +655,7 @@ int desc_q_enqueue(void *q_h, struct sep_sw_desc *desc_p, bool may_backlog)
 	int rc;
 
 	mutex_lock(&q_p->qlock);
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -692,7 +692,7 @@ int desc_q_enqueue(void *q_h, struct sep_sw_desc *desc_p, bool may_backlog)
 		rc = -EINPROGRESS;
 	}
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 	mutex_unlock(&q_p->qlock);

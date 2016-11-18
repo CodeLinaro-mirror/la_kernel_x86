@@ -459,7 +459,7 @@ static int dispatch_crypto_op(struct sep_op_ctx *op_ctx, bool may_backlog,
 	/* Start critical section -
 	   cache allocation must be coupled to descriptor enqueue */
 	mutex_lock(&drvdata->desc_queue_sequencer);
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 	ctxmgr_set_sep_cache_idx(ctx_info,
@@ -475,7 +475,7 @@ static int dispatch_crypto_op(struct sep_op_ctx *op_ctx, bool may_backlog,
 	if ((!keep_in_cache) || unlikely(IS_DESCQ_ENQUEUE_ERR(rc)))
 		ctxmgr_sep_cache_invalidate(drvdata->sep_cache, ctx_id,
 					    CRYPTO_CTX_ID_SINGLE_MASK);
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 	mutex_unlock(&drvdata->desc_queue_sequencer);
@@ -629,7 +629,7 @@ static int symcipher_ctx_init(struct crypto_tfm *tfm)
 
 	pr_debug("Initializing context @%p for %s (%d)\n",
 		      host_ctx_p, crypto_tfm_alg_name(tfm), cipher_type);
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 	ablktfm->reqsize += sizeof(struct async_req_ctx);
@@ -638,7 +638,7 @@ static int symcipher_ctx_init(struct crypto_tfm *tfm)
 				   0);
 	if (rc != 0) {
 		pr_err("Failed mapping context (rc=%d)\n", rc);
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 		dx_sep_pm_runtime_put();
 #endif
 		return rc;
@@ -673,7 +673,7 @@ static int symcipher_ctx_init(struct crypto_tfm *tfm)
 	}
 
 init_end:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 	return rc;

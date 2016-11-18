@@ -2418,13 +2418,13 @@ void android_hdmi_connector_destroy(struct drm_connector *connector)
 void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	struct drm_device *dev = connector->dev;
-#if (defined CONFIG_PM_RUNTIME) && (!defined MERRIFIELD)
+#if (defined CONFIG_PM) && (!defined MERRIFIELD)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 #endif
 	bool hdmi_audio_busy = false;
 	u32 dspcntr_val;
 
-#if (defined CONFIG_PM_RUNTIME) && (!defined MERRIFIELD)
+#if (defined CONFIG_PM) && (!defined MERRIFIELD)
 	bool panel_on = false, panel_on2 = false;
 	struct mdfld_dsi_config **dsi_configs;
 #endif
@@ -2461,7 +2461,7 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 			DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
 	}
 
-#if (defined CONFIG_PM_RUNTIME) && (!defined MERRIFIELD)
+#if (defined CONFIG_PM) && (!defined MERRIFIELD)
 	dsi_configs = dev_priv->dsi_configs;
 
 	if (dsi_configs[0])

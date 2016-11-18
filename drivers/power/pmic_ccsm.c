@@ -2386,7 +2386,7 @@ static int pmic_chrgr_resume(struct device *dev)
 }
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int pmic_chrgr_runtime_suspend(struct device *dev)
 {
 	dev_dbg(dev, "%s called\n", __func__);
@@ -2413,7 +2413,7 @@ static int pmic_chrgr_runtime_idle(struct device *dev)
 static const struct dev_pm_ops pmic_chrgr_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(pmic_chrgr_suspend,
 				pmic_chrgr_resume)
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 	SET_RUNTIME_PM_OPS(pmic_chrgr_runtime_suspend,
 				pmic_chrgr_runtime_resume,
 				pmic_chrgr_runtime_idle)

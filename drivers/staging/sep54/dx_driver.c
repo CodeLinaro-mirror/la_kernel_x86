@@ -3781,7 +3781,7 @@ long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	if (err)
 		return -EFAULT;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -3924,7 +3924,7 @@ long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				       ioctl_start, ioctl_end);
 	}
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -4634,7 +4634,7 @@ static void sep_pci_remove(struct pci_dev *pdev)
 	/* Disable interrupts */
 	WRITE_REGISTER(drvdata->cc_base + DX_CC_REG_OFFSET(HOST, IMR), ~0);
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	pm_runtime_get_noresume(&pdev->dev);
 	pm_runtime_forbid(&pdev->dev);
 #endif
@@ -4735,7 +4735,7 @@ static int sep_pci_probe(struct pci_dev *pdev,
 
 	pdev = pci_dev_get(pdev);
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, SEP_AUTOSUSPEND_DELAY);
@@ -4753,7 +4753,7 @@ static int sep_pci_probe(struct pci_dev *pdev,
 	return error;
 }
 
-#if defined(CONFIG_PM_RUNTIME) && defined(SEP_RUNTIME_PM)
+#if defined(CONFIG_PM)
 static int sep_runtime_suspend(struct device *dev)
 {
 	int ret;
@@ -4895,15 +4895,15 @@ static const struct dev_pm_ops sep_pm_ops = {
 	.suspend = sep_suspend,
 	.resume = sep_resume,
 };
-#endif /* CONFIG_PM_RUNTIME && SEP_RUNTIME_PM */
+#endif /* CONFIG_PM */
 
 /* Field for registering driver to PCI device */
 static struct pci_driver sep_pci_driver = {
-#if defined(CONFIG_PM_RUNTIME) && defined(SEP_RUNTIME_PM)
+#if defined(CONFIG_PM)
 	.driver = {
 		.pm = &sep_pm_ops,
 	},
-#endif /* CONFIG_PM_RUNTIME && SEP_RUNTIME_PM */
+#endif /* CONFIG_PM */
 	.name = DRIVER_NAME,
 	.id_table = sep_pci_id_tbl,
 	.probe = sep_pci_probe,

@@ -496,7 +496,7 @@ int sepapp_session_close(struct sep_op_ctx *op_ctx, int session_id)
 	int rc;
 	u16 sep_session_id;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 	if (!IS_VALID_SESSION_IDX(session_id)) {
@@ -550,7 +550,7 @@ int sepapp_session_close(struct sep_op_ctx *op_ctx, int session_id)
 	}
 
 end:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 	return rc;
@@ -1064,7 +1064,7 @@ static int execute_sep(u32 command, u8 *addr, u32 size, u32 data1, u32 data2)
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1079,7 +1079,7 @@ static int execute_sep(u32 command, u8 *addr, u32 size, u32 data1, u32 data2)
 	dx_sepapp_session_close(sctx, sess_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -1141,7 +1141,7 @@ int sepapp_hdmi_status(u8 status, u8 bksv[5])
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1156,7 +1156,7 @@ int sepapp_hdmi_status(u8 status, u8 bksv[5])
 	dx_sepapp_session_close(sctx, sess_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -1187,7 +1187,7 @@ int sepapp_drm_playback(enum ied_status status)
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1201,7 +1201,7 @@ int sepapp_drm_playback(enum ied_status status)
 	dx_sepapp_session_close(sctx, ses_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -1243,7 +1243,7 @@ int sepapp_os_imr_get(u8 imr, u64 *lo, u64 *hi, u32 *rac, u32 *wac, u32 *status)
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1267,7 +1267,7 @@ int sepapp_os_imr_get(u8 imr, u64 *lo, u64 *hi, u32 *rac, u32 *wac, u32 *status)
 	dx_sepapp_session_close(sctx, sess_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -1309,7 +1309,7 @@ int sepapp_os_imr_set(u8 imr, u64 lo, u64 hi, u32 rac, u32 wac, u32 status)
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1324,7 +1324,7 @@ int sepapp_os_imr_set(u8 imr, u64 lo, u64 hi, u32 rac, u32 wac, u32 status)
 	dx_sepapp_session_close(sctx, sess_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 
@@ -1366,7 +1366,7 @@ int sepapp_os_imr_disable(u8 imr_number)
 	if (unlikely(!sctx))
 		return -ENOMEM;
 
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_get();
 #endif
 
@@ -1381,7 +1381,7 @@ int sepapp_os_imr_disable(u8 imr_number)
 	dx_sepapp_session_close(sctx, sess_id);
 
 failed:
-#ifdef SEP_RUNTIME_PM
+#ifdef CONFIG_PM
 	dx_sep_pm_runtime_put();
 #endif
 

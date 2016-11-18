@@ -1816,7 +1816,7 @@ static irqreturn_t wakeup_irq(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-#if defined(CONFIG_PM) || defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM)
 static void hsu_flush_rxfifo(struct uart_hsu_port *up)
 {
 	unsigned int lsr, cnt;
@@ -2028,7 +2028,7 @@ int serial_hsu_do_resume(struct uart_hsu_port *up)
 EXPORT_SYMBOL(serial_hsu_do_resume);
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 int serial_hsu_do_runtime_idle(struct uart_hsu_port *up)
 {
 	struct hsu_port_cfg *cfg = phsu->configs[up->index];

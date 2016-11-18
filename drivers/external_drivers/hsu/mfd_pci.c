@@ -64,7 +64,7 @@ static int serial_hsu_pci_resume(struct device *dev)
 #define serial_hsu_pci_resume	NULL
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int serial_hsu_pci_runtime_idle(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
