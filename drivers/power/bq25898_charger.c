@@ -524,6 +524,7 @@ struct bq25898_charger {
 	struct bq25898_plat_data *pdata;
 	struct power_supply *psy_usb;
 	struct power_supply_desc psy_usb_desc;
+	struct power_supply *batt_psy;
 	struct delayed_work sw_term_work;
 	struct delayed_work wdt_work;
 	struct delayed_work batmon_work;
@@ -2141,6 +2142,65 @@ static int bq25898_restore_configuration(struct bq25898_charger *chip)
 	return ret;
 }
 
+static int status_reg_to_ps_status(int val)
+{
+	/* Pre-charge or fast charge */
+	if ((!(val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) ||
+	    ((val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)))
+		return POWER_SUPPLY_STATUS_CHARGING;
+	/* Charge termination done */
+	else if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0))
+		return POWER_SUPPLY_STATUS_FULL;
+	/* Discharging or Not charging */
+	else if (!(val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)) {
+		if (!(val & PG_STAT))
+			return POWER_SUPPLY_STATUS_DISCHARGING;
+		else
+			return POWER_SUPPLY_STATUS_NOT_CHARGING;
+	}
+
+	return POWER_SUPPLY_STATUS_UNKNOWN;
+}
+
+static int update_batt_status(struct bq25898_charger *chip, int status)
+{
+	union power_supply_propval val;
+	struct power_supply *batt_psy;
+	int ret, i;
+
+	if (!chip->batt_psy) {
+		for (i = 0; i < chip->psy_usb->num_supplicants; i++) {
+			batt_psy = power_supply_get_by_name(chip->psy_usb->supplied_to[i]);
+			if (!batt_psy) {
+				dev_dbg(&chip->client->dev,
+					"battery '%s' not found\n", chip->psy_usb->supplied_to[i]);
+			} else {
+				dev_dbg(&chip->client->dev,
+					"found battery '%s'\n", batt_psy->desc->name);
+				break;
+			}
+		}
+
+		if (!batt_psy) {
+			dev_err(&chip->client->dev,
+				"no battery found\n");
+			return -ENODEV;
+		}
+		chip->batt_psy = batt_psy;
+	}
+	val.intval = status;
+	dev_dbg(&chip->client->dev, "sending status %d to psy '%s'\n",
+		val.intval, chip->batt_psy->desc->name);
+
+	ret = power_supply_set_property(chip->batt_psy,
+					POWER_SUPPLY_PROP_STATUS,
+					&val);
+	if (ret)
+		dev_err(&chip->client->dev, "failed to set battery status\n");
+
+	return ret;
+}
+
 static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 {
 	int ret = 0, val;
@@ -2192,6 +2252,8 @@ static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 		dev_dbg(&chip->client->dev,
 			"Discarding received charger interrupt\n");
 	}
+
+	update_batt_status(chip, status_reg_to_ps_status(val));
 
 	chip->status_reg_oldvalue = val;
 	return ret;
@@ -2597,31 +2659,16 @@ static int bq25898_get_prop_health(struct bq25898_charger *chip)
 
 static int bq25898_get_prop_status(struct bq25898_charger *chip)
 {
-	int val;
+	int regval;
 
 	if (!chip)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
 
-	val = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
-	if (val < 0)
-		return val;
+	regval = bq25898_read_reg(chip->client, BQ25898_STATUS_REG);
+	if (regval < 0)
+		return regval;
 
-	/* Pre-charge or fast charge */
-	if ((!(val & CHARGER_STATUS1) && (val & CHARGER_STATUS0)) ||
-	    ((val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)))
-		return POWER_SUPPLY_STATUS_CHARGING;
-	/* Charge termination done */
-	else if ((val & CHARGER_STATUS1) && (val & CHARGER_STATUS0))
-		return POWER_SUPPLY_STATUS_FULL;
-	/* Discharging or Not charging */
-	else if (!(val & CHARGER_STATUS1) && !(val & CHARGER_STATUS0)) {
-		if (!(val & PG_STAT))
-			return POWER_SUPPLY_STATUS_DISCHARGING;
-		else
-			return POWER_SUPPLY_STATUS_NOT_CHARGING;
-	}
-
-	return POWER_SUPPLY_STATUS_UNKNOWN;
+	return status_reg_to_ps_status(regval);
 }
 
 static int bq25898_get_prop_online(struct bq25898_charger *chip)
@@ -2723,6 +2770,7 @@ static int bq25898_get_property(struct power_supply *psy,
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s prop status:%d\n", __func__, val->intval);
+		update_batt_status(chip, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		ret = bq25898_get_prop_health(chip);
@@ -2777,7 +2825,6 @@ static int bq25898_get_property(struct power_supply *psy,
 	default:
 		break;
 	}
-
 
 error:
 	mutex_unlock(&chip->sysfs_lock);
