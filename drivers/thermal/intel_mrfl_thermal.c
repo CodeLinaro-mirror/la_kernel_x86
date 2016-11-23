@@ -111,8 +111,10 @@ enum thermal_sensors { SYS0, SYS1, SYS2, PMIC_DIE, _COUNT };
  *
  * static const int alert_regs_l[] = { 0xB7, 0xB9, 0xBB, 0xC1 };
  */
-static const int alert_regs_h[] = { 0xB6, 0xB8, 0xBA, 0xC0 };
+static const int alert_regs_h[] = { 0xC0, 0xBA, 0xB8, 0xB6 };
 
+ /* bit masks when sensors are in an alert condition.*/
+static const int alert_mask[] = { PMICALRT, SYS2ALRT, SYS1ALRT, SYS0ALRT };
 /*
  * ADC code vs Temperature table
  * This table will be different for different thermistors
@@ -431,6 +433,8 @@ static int store_trip_temp(struct thermal_zone_device *tzd,
 	int ret, adc_val;
 	struct thermal_device_info *td_info = tzd->devdata;
 	int alert_reg = alert_regs_h[td_info->sensor->index];
+	int alert_zone = alert_mask[td_info->sensor->index];
+
 
 	if (trip_temp != 0 && trip_temp < 1000) {
 		dev_err(&tzd->device, "Temperature should be in mC\n");
@@ -447,6 +451,19 @@ static int store_trip_temp(struct thermal_zone_device *tzd,
 		goto exit;
 
 	ret =  set_tmax(alert_reg, adc_val);
+
+	/* Unmask THRMIRQ interrupt */
+	ret = intel_scu_ipc_update_register(MTHRMIRQ, 0x00, alert_zone);
+	if (ret) {
+		dev_err(&tzd->device, "couldn't unmask THRMIRQ Interrupt ...");
+		goto exit;
+	}
+
+	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, THERM_ALRT);
+	if (ret) {
+		dev_err(&tzd->device, "couldn't unmask IRQLVL1 Interrupt ...");
+		goto exit;
+	}
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -554,6 +571,19 @@ static int store_emul_temp(struct thermal_zone_device *tzd,
 	return 0;
 }
 
+/**
+ * handle_thermal_event - Masking THRMIRQ Interrupt, to avoid
+ * multiple SYSALERT interrupt occurrence continuously.
+ * @index: thermal alert channel
+ *
+ * Can sleep
+ */
+static void handle_thermal_event(int index)
+{
+	if (intel_scu_ipc_update_register(MTHRMIRQ, 0xFF, (1 << index)))
+		dev_err(&tdata->pdev->dev, "couldn't mask THRMIRQ Interrupt ...");
+}
+
 static int enable_tm(void)
 {
 	int ret;
@@ -592,6 +622,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 	int ret, sensor, event_type;
 	uint8_t irq_status;
 	unsigned int irq_data;
+	char *thermal_event[2];
 	struct thermal_data *tdata = (struct thermal_data *)dev_data;
 
 	if (!tdata)
@@ -603,7 +634,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 
 	ret = intel_scu_ipc_ioread8(STHRMIRQ, &irq_status);
 	if (ret)
-		goto ipc_fail;
+		goto fail;
 
 	dev_dbg(&tdata->pdev->dev, "STHRMIRQ: %.2x\n", irq_status);
 
@@ -629,8 +660,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 		sensor = SYS0;
 	} else {
 		dev_err(&tdata->pdev->dev, "Invalid Interrupt\n");
-		ret = IRQ_HANDLED;
-		goto ipc_fail;
+		goto fail;
 	}
 
 	if (event_type != -1) {
@@ -639,19 +669,24 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 				event_type ? "HIGH" : "LOW", sensor);
 	}
 
+	handle_thermal_event(sensor);
+
 	/* Notify using UEvent */
-	kobject_uevent(&tdata->pdev->dev.kobj, KOBJ_CHANGE);
+	thermal_event[0] = kasprintf(GFP_KERNEL, "NAME=SYSTHERM%d:%s",
+					 sensor, event_type ?
+					 "Temperature crossed threshold" :
+					 "Temperature falls below threshold");
+	thermal_event[1] = NULL;
+	if (!thermal_event[0]) {
+		goto fail;
+	}
+	kobject_uevent_env(&tdata->tzd[sensor]->device.kobj,
+				KOBJ_CHANGE, thermal_event);
+	kfree(thermal_event[0]);
 
-	/* Unmask Thermal Interrupt in the mask register */
-	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, THERM_ALRT);
-	if (ret)
-		goto ipc_fail;
-
-	ret = IRQ_HANDLED;
-
-ipc_fail:
+fail:
 	mutex_unlock(&thrm_update_lock);
-	return ret;
+	return IRQ_HANDLED;
 }
 
 static struct thermal_zone_device_ops tzd_emul_ops = {
@@ -769,7 +804,7 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 
 	/* Register for Interrupt Handler */
 	ret = request_threaded_irq(tdata->irq, mrfl_thermal_intrpt_handler, thermal_intrpt,
-						IRQF_TRIGGER_RISING,
+						IRQF_NO_SUSPEND,
 						DRIVER_NAME, tdata);
 	if (ret) {
 		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
