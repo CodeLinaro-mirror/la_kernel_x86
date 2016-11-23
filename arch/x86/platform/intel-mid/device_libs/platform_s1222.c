@@ -74,6 +74,10 @@ void *s1222_platform_data(void *info)
 		dsx_board_data.y_flip = 1;
 		dsx_board_data.palm_gesture_en = false;
 	}
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, SPL, PRO) ||
+		   INTEL_MID_BOARD(2, PHONE, MRFL, SPL, ENG)) {
+		dsx_board_data.y_flip = 1;
+	}
 	dsx_board_data.irq_gpio = get_gpio_by_name("touch_int");
 	if (dsx_board_data.irq_gpio < 0) {
 		pr_err("%s: failed to get from sfi table, use default GP183\n",
