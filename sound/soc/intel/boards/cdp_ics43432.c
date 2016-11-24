@@ -31,11 +31,14 @@
 
 static const struct snd_soc_dapm_widget cdp_ics43432_widgets[] = {
 	SND_SOC_DAPM_MIC("Dmic", NULL),
+	SND_SOC_DAPM_OUTPUT("BT chip"),
 };
 
 static const struct snd_soc_dapm_route cdp_ics43432_audio_map[] = {
 	{"modem_in", NULL, "ssp0 Rx"},
 	{"ssp0 Rx", NULL, "Dmic"},
+	{"BT chip", NULL, "ssp1 Tx"},
+	{"ssp1 Tx", NULL, "bt_out"},
 };
 
 static const struct snd_soc_pcm_stream cdp_ics43432_dai_params = {
@@ -86,6 +89,41 @@ static int cdp_ics43432_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+static int cdp_ics43432_bt_fixup(struct snd_soc_pcm_runtime *rtd,
+			    struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+			SNDRV_PCM_HW_PARAM_RATE);
+	struct snd_interval *channels = hw_param_interval(params,
+						SNDRV_PCM_HW_PARAM_CHANNELS);
+	struct sst_data *drv = snd_soc_dai_get_drvdata(rtd->cpu_dai);
+	int ret;
+
+	/* The DSP will convert the FE rate to 48k, stereo, 16bits */
+	rate->min = rate->max = 48000;
+	channels->min = channels->max = 2;
+
+	/* set SSP1 to 16-bit */
+	params_set_format(params, SNDRV_PCM_FORMAT_S16_LE);
+
+	/* As Default mode for SSP configuration is TDM 4 channel we need to override
+	 * default setting in order to switch to I2S for Audio DSP engine configuration */
+	ret = snd_soc_dai_set_fmt(rtd->cpu_dai, SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_IF
+						| SND_SOC_DAIFMT_CBS_CFS);
+	if (ret < 0) {
+		dev_err(rtd->dev, "can't set I2S for bt chip mode %d\n", ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(rtd->cpu_dai, 0x3, 0x3, 2, 16);
+	if (ret < 0) {
+		dev_err(rtd->dev, "can't set slots for bt chip %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int cdp_ics43432_aif1_startup(struct snd_pcm_substream *substream)
 {
 	return snd_pcm_hw_constraint_single(substream->runtime,
@@ -110,6 +148,19 @@ static struct snd_soc_dai_link cdp_ics43432_dais[] = {
 		.dpcm_capture = 1,
 		.ops = &cdp_ics43432_aif1_ops,
 	},
+	[MERR_DPCM_DEEP_BUFFER] = {
+		.name = "Deepbuffer",
+		.stream_name = "Deepbuffer",
+		.cpu_dai_name = "deepbuffer-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-mfld-platform",
+		.ignore_suspend = 1,
+		.nonatomic = true,
+		.dynamic = 1,
+		.dpcm_playback = 1,
+		.ops = &cdp_ics43432_aif1_ops,
+	},
 	/* back ends */
 	{
 	  .name = "SSP0-DMIC",
@@ -123,6 +174,19 @@ static struct snd_soc_dai_link cdp_ics43432_dais[] = {
 	  .ignore_suspend = 1,
 	  .nonatomic = true,
 	  .dpcm_capture = 1,
+	},
+	{
+	  .name = "SSP1-BT",
+	  .be_id = SSP_BT,
+	  .cpu_dai_name = "ssp1-port",
+	  .platform_name = "sst-mfld-platform",
+	  .no_pcm = 1,
+	  .codec_dai_name = "snd-soc-dummy-dai",
+	  .codec_name = "snd-soc-dummy",
+	  .be_hw_params_fixup = cdp_ics43432_bt_fixup,
+	  .ignore_suspend = 1,
+	  .nonatomic = true,
+	  .dpcm_playback = 1,
 	},
 };
 
