@@ -41,14 +41,6 @@ static const struct snd_soc_dapm_route cdp_ics43432_audio_map[] = {
 	{"ssp1 Tx", NULL, "bt_out"},
 };
 
-static const struct snd_soc_pcm_stream cdp_ics43432_dai_params = {
-	.formats = SNDRV_PCM_FMTBIT_S24_LE,
-	.rate_min = 48000,
-	.rate_max = 48000,
-	.channels_min = 2,
-	.channels_max = 2,
-};
-
 static int cdp_ics43432_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 			    struct snd_pcm_hw_params *params)
 {
