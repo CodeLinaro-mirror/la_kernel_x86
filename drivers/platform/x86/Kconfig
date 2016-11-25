@@ -731,6 +731,28 @@ config ACPI_CMPC
 	  keys as input device, backlight device, tablet and accelerometer
 	  devices.
 
+config INTEL_MID_OSIP
+	tristate "osip driver for Intel MID platforms"
+	default y
+	help
+	  This driver modifies the osip header when rebooting,
+	  so that one can type 'reboot bootloader' to fall back
+	  in kboot mode.
+
+	  If unsure, say N.
+
+config INTEL_MID_OSIP_DEBUG_FS
+	tristate "osip driver debug fs"
+	depends on INTEL_MID_OSIP && DEBUG_FS
+	default y
+	help
+	  This driver adds debugfs interface.
+	  The main feature of that interface is to be able to modify the kernel
+	  cmdline directly in the OSIP.
+	  This has to be disabled if we have secure boot enabled by default.
+
+	  If unsure, say N.
+
 config INTEL_PSH_IPC
 	bool "Intel PSH IPC Support"
 	depends on X86_INTEL_MID

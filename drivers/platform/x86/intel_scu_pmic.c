@@ -43,7 +43,7 @@
 static struct kobject *scu_pmic_kobj;
 static struct rpmsg_instance *pmic_instance;
 
-static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
+static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub, bool wait)
 {
 	int i, err, inlen = 0, outlen = 0;
 
@@ -77,7 +77,11 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 	} else
 		pr_err("IPC command not supported\n");
 
-	err = rpmsg_send_command(pmic_instance, cmd, sub, wbuf,
+	if (wait)
+		err = rpmsg_send_command(pmic_instance, cmd, sub, wbuf,
+			(u32 *)rbuf, inlen, outlen);
+	else
+		err = rpmsg_atomic_send_command(pmic_instance, cmd, sub, wbuf,
 			(u32 *)rbuf, inlen, outlen);
 
 	if (sub == IPC_CMD_PCNTRL_R) {
@@ -87,6 +91,14 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 
 	return err;
 }
+
+int intel_scu_ipc_atomic_update_register(u16 addr, u8 bits, u8 mask)
+{
+	u8 data[2] = { bits, mask };
+
+	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_M, false);
+}
+EXPORT_SYMBOL(intel_scu_ipc_atomic_update_register);
 
 /* pmic sysfs for debug */
 

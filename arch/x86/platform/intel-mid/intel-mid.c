@@ -24,6 +24,8 @@
 #include <linux/notifier.h>
 #include <linux/spinlock.h>
 #include <linux/nmi.h>
+#include <linux/gpio.h>
+#include <linux/mutex.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -36,6 +38,7 @@
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_scu_pmic.h>
 #include <linux/platform_data/intel_mid_remoteproc.h>
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
@@ -74,17 +77,37 @@ static void *(*get_intel_mid_ops[])(void) = INTEL_MID_OPS_INIT;
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
+static int force_cold_boot2;
 static int force_cold_boot;
 module_param(force_cold_boot, int, 0644);
 MODULE_PARM_DESC(force_cold_boot,
 		 "Set to Y to force a COLD BOOT instead of a COLD RESET "
 		 "on the next reboot system call.");
+static int force_battery_disconnect;
+module_param(force_battery_disconnect, int, 0644);
+MODULE_PARM_DESC(force_battery_disconnect,
+		"Set to Y to force the battery to be disconnected "
+		"on the next reboot system call.");
+
+#define BATTERY_LATCH_FF_D_GPIO_PMIC			0x81	/* GPIO pmic register*/
+#define BATTERY_LATCH_FF_CLK_GPIO_PMIC			0x80	/* GPIO pmic register*/
+#define BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_VAL	0x30	/* GPIO output low*/
+#define BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_MASK	0x7F
+#define BATTERY_LATCH_FF_CLK_GPIO_PMIC_OUTVAL_MASK	(1 << 0)
+
+static int intel_mid_check_ship_mode(void);
 u32 nbr_hsi_clients = 2;
 
 static void intel_mid_power_off(void)
 {
 	pmu_power_off();
-};
+}
+
+void prg_cold_boot(void)
+{
+	force_cold_boot2 = 1;
+}
+EXPORT_SYMBOL(prg_cold_boot);
 
 void set_reboot_force(enum reboot_force_type type)
 {
@@ -110,11 +133,73 @@ static void intel_mid_reboot(void)
 		if (intel_scu_ipc_fw_update()) {
 			pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
 		}
-		if (force_cold_boot)
-			rpmsg_send_generic_simple_command(IPCMSG_COLD_BOOT, 0);
-		else
-			rpmsg_send_generic_simple_command(IPCMSG_COLD_RESET, 0);
+
+		if (intel_mid_check_ship_mode())
+			pr_err("unable to manage battery disconnection\n");
+
+		if (force_cold_boot || force_cold_boot2) {
+			outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR);
+		} else {
+			switch (reboot_force) {
+			case REBOOT_FORCE_OFF:
+				rpmsg_atomic_send_generic_simple_command(RP_COLD_OFF, 0);
+				break;
+			case REBOOT_FORCE_ON:
+				pr_info("***** INFO: reboot requested but forced to keep system on *****\n");
+				while (1) {
+					touch_nmi_watchdog();
+					mdelay(5000);
+				}
+				break;
+			case REBOOT_FORCE_COLD_RESET:
+				outb(RSTC_COLD_RESET, RSTC_IO_PORT_ADDR);
+				break;
+			case REBOOT_FORCE_COLD_BOOT:
+				outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR);
+				break;
+			default:
+				outb(RSTC_COLD_RESET, RSTC_IO_PORT_ADDR);
+			}
+		}
 	}
+}
+
+static int intel_mid_check_ship_mode(void)
+{
+	int ff_d, ff_clk;
+	int retval;
+
+	/* Control of a D flip flop is necessary.
+	 * Two GPIOs have been assigned on the PMIC for this function.
+	 * - GP3 is the pin connected to the D pin on the flip flop.
+	 * - GP2 is connected to the CLK pin on the flip flop.
+	 * The D state is latched on the flip flop output (Q) on CLK rising edge
+	 * The Q state must be set to:
+	 * - high when we want to keep the battery load switch engaged
+	 * - low when we want to disconnect the battery from the system.
+	 */
+	ff_d = BATTERY_LATCH_FF_D_GPIO_PMIC;
+	ff_clk = BATTERY_LATCH_FF_CLK_GPIO_PMIC;
+
+	retval = intel_scu_ipc_atomic_update_register(ff_clk,
+			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_VAL,
+			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_MASK);
+	if (retval < 0)
+		goto gpio_err;
+	retval = intel_scu_ipc_atomic_update_register(ff_d,
+			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_VAL,
+			BATTERY_LATCH_FF_CLK_GPIO_PMIC_INIT_MASK);
+	if (retval < 0)
+		goto gpio_err;
+
+	if (force_battery_disconnect) {
+		retval = intel_scu_ipc_atomic_update_register(ff_clk,
+				1, BATTERY_LATCH_FF_CLK_GPIO_PMIC_OUTVAL_MASK);
+		if (retval < 0)
+			goto gpio_err;
+		}
+gpio_err:
+	return retval;
 }
 
 static unsigned long __init intel_mid_calibrate_tsc(void)
@@ -139,7 +224,6 @@ static int intel_mid_msgbus_init(void)
 }
 
 fs_initcall(intel_mid_msgbus_init);
-
 
 u32 intel_mid_msgbus_read32_raw(u32 cmd)
 {
@@ -225,7 +309,9 @@ static void __init intel_mid_setup_bp_timer(void)
 
 static void __init intel_mid_time_init(void)
 {
+#ifdef CONFIG_SFI
 	sfi_table_parse(SFI_SIG_MTMR, NULL, NULL, sfi_parse_mtmr);
+#endif
 
 	switch (intel_mid_timer_options) {
 	case INTEL_MID_TIMER_APBT_ONLY:

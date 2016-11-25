@@ -2,6 +2,7 @@
 #define _INTEL_MID_RPMSG_H_
 
 #include <asm/scu_ipc_rpmsg.h>
+#include <linux/wakelock.h>
 #include <linux/rpmsg.h>
 
 #define RPMSG_TX_TIMEOUT   (5 * HZ)
@@ -48,6 +49,11 @@ extern int rpmsg_send_generic_command(u32 cmd, u32 sub, u8 *in, u32 inlen,
 				u32 *out, u32 outlen);
 
 extern int rpmsg_send_generic_simple_command(u32 cmd, u32 sub);
+extern int rpmsg_atomic_send_generic_simple_command(u32 cmd, u32 sub);
+int rpmsg_atomic_send_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub, u8 *in,
+						u32 *out, u32 inlen,
+						u32 outlen);
 
 extern int rpmsg_send_generic_raw_command(u32 cmd, u32 sub,
 				   u8 *in, u32 inlen,

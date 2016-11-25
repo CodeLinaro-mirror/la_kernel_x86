@@ -40,10 +40,9 @@
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel-mid.h>
 
-#include "reboot_target.h"
-
 #include <asm/intel_scu_ipc.h>
 #include <linux/power_supply.h>
+#include <linux/reboot/reboot_target.h>
 
 static int scurr_reboot_target_call(const char *target, int id)
 {

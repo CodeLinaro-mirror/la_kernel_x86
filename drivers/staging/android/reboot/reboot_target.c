@@ -18,8 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/reboot.h>
 #include <linux/module.h>
-
-#include "reboot_target.h"
+#include <linux/reboot/reboot_target.h>
 
 /* Currently registered Reboot Target setter  */
 static struct reboot_target *var;
@@ -32,17 +31,18 @@ struct name2id {
 static const unsigned int DEFAULT_TARGET_INDEX = 0;
 
 static const struct name2id NAME2ID[] = {
-	{ "main",        0x00 },
-	{ "android",     0x00 },
-	{ "charging",    0x0A },
-	{ "recovery",    0x0C },
-	{ "fastboot",    0x0E },
-	{ "bootloader",  0x0E },
-	{ "factory",     0x12 },
-	{ "dnx",         0x14 },
-	{ "ramconsole",  0x16 },
-	{ "factory2",    0x18 },
-	{ "bootoneshot", 0x1A },
+	{ "main",		0x00 },
+	{ "android",		0x00 },
+	{ "user_request",	0x00 },
+	{ "charging",		0x0A },
+	{ "recovery",		0x0C },
+	{ "fastboot",		0x0E },
+	{ "bootloader",		0x0E },
+	{ "factory",		0x12 },
+	{ "dnx",		0x14 },
+	{ "ramconsole",		0x16 },
+	{ "factory2",		0x18 },
+	{ "bootoneshot",	0x1A },
 };
 
 #define ALLOW_FACTORY_PARAM_NAME "allow_factory="

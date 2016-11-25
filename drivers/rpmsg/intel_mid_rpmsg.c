@@ -73,6 +73,43 @@ int rpmsg_send_generic_simple_command(u32 cmd, u32 sub)
 }
 EXPORT_SYMBOL(rpmsg_send_generic_simple_command);
 
+int rpmsg_atomic_send_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub, u8 *in,
+						u32 *out, u32 inlen,
+						u32 outlen)
+{
+	/*
+	 * Unsafe function, no locking enabled
+	 * Only to be called late in the reboot sequence
+	 * when only CPU0 is online
+	 */
+	BUG_ON(num_online_cpus() > 1);
+
+
+	/* Prepare Tx buffer */
+	instance->tx_msg->cmd = cmd;
+	instance->tx_msg->sub = sub;
+	instance->tx_msg->in = in;
+	instance->tx_msg->out = out;
+	instance->tx_msg->inlen = inlen;
+	instance->tx_msg->outlen = outlen;
+
+	rpmsg_trysend_offchannel(instance->rpdev, instance->endpoint->addr,
+								instance->rpdev->dst, instance->tx_msg,
+								sizeof(*instance->tx_msg));
+
+	return 0;
+}
+EXPORT_SYMBOL(rpmsg_atomic_send_command);
+
+int rpmsg_atomic_send_generic_simple_command(u32 cmd, u32 sub)
+{
+	struct rpmsg_instance *instance =
+		rpmsg_ddata[RPMSG_IPC_SIMPLE_COMMAND].rpmsg_instance;
+	return rpmsg_atomic_send_command(instance, cmd, sub, NULL, NULL, 0, 0);
+}
+EXPORT_SYMBOL(rpmsg_atomic_send_generic_simple_command);
+
 int rpmsg_send_generic_raw_command(u32 cmd, u32 sub,
 				   u8 *in, u32 inlen,
 				   u32 *out, u32 outlen,

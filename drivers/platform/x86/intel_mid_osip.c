@@ -30,18 +30,14 @@
 #include <linux/seq_file.h>
 #include <linux/rpmsg.h>
 #include <linux/version.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 1))
 #include <linux/platform_data/intel_mid_remoteproc.h>
-#else
-#include <asm/intel_mid_remoteproc.h>
-#endif
 #include <linux/delay.h>
+#include <linux/reboot/reboot_target.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_pmic.h>
 
-#include "reboot_target.h"
 
 /* change to "loop0" and use losetup for safe testing */
 #define EMMC_OSIP_BLKDEVICE "mmcblk0"
@@ -757,10 +753,10 @@ static void remove_debugfs_files(void)
 static int osip_init(void)
 {
 #ifdef CONFIG_INTEL_SCU_IPC
-	pr_info("%s: shutdown_notifier registered\n", __func__);
+	pr_info("%s: registering shutdown_notifier\n", __func__);
 	if (register_reboot_notifier(&osip_shutdown_notifier))
 		pr_warning("osip: unable to register shutdown notifier");
-	pr_info("%s: reboot_target registered\n", __func__);
+	pr_info("%s: registering reboot_target\n", __func__);
 	if (reboot_target_register(&osip_reboot_target))
 		pr_warning("osip: unable to register reboot notifier");
 
