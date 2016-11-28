@@ -262,6 +262,7 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 	}
 
 	pr_info("%s:data->pilt = 0x%x.data->piht = 0x%x\n", __func__, data->pilt, data->piht);
+
 	if ((data->ps_data > data->pilt) && (data->ps_data >= data->piht)) {
 		/* far-to-near detected */
 		data->ps_detection = 1;
@@ -422,6 +423,19 @@ static int tmd26723_power_on(struct tmd26723_data *data)
 /*
  * SysFS support
  */
+
+static ssize_t tmd26723_show_ps_detection(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct tmd26723_data *data = i2c_get_clientdata(client);
+
+	return sprintf(buf, "%d\n", data->ps_detection);
+}
+
+static DEVICE_ATTR(ps_detection, S_IRUGO,
+			tmd26723_show_ps_detection,
+			NULL);
 
 static ssize_t tmd26723_show_enable_proximity_sensor(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -692,6 +706,7 @@ static struct attribute *tmd26723_attributes[] = {
 	&dev_attr_chip_id.attr,
 	&dev_attr_reg.attr,
 	&dev_attr_proximity_delay.attr,
+	&dev_attr_ps_detection.attr,
 	NULL
 };
 
