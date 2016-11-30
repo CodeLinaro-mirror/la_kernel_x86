@@ -44,7 +44,11 @@ enum st_mask_id {
 /* Basic sensor number of lsm6ds3h */
 #define ST_INDIO_DEV_NUM			(ST_MASK_ID_TILT+1)
 /* Full sensor number of lsm6ds3h used */
+#ifdef CONFIG_ST_LSM6DS3H_IIO_TAP_TAP_ENABLED
 #define ST_INDIO_FULL_DEV_NUM			(ST_MASK_ID_TAP_TAP+1)
+#else
+#define ST_INDIO_FULL_DEV_NUM			(ST_MASK_ID_WRIST_TILT+1)
+#endif
 
 #define ST_INDIO_DEV_AG_MASK		((1 << ST_MASK_ID_ACCEL) | \
 					(1 << ST_MASK_ID_ACCEL_WK) | \
