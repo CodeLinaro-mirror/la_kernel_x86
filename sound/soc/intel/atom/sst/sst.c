@@ -263,7 +263,12 @@ int sst_context_init(struct intel_sst_drv *ctx)
 	/* pvt_id 0 reserved for async messages */
 	ctx->pvt_id = 1;
 	ctx->stream_cnt = 0;
-	ctx->fw_in_mem = NULL;
+	ctx->fw_in_mem = devm_kzalloc(ctx->dev, FIRMWARE_SIZE, GFP_KERNEL);
+	if (!ctx->fw_in_mem) {
+		dev_err(sst->dev, "fw memory allocation failed");
+		return -ENOMEM;
+	}
+	ctx->fw_loaded = false;
 	/* we use memcpy, so set to 0 */
 	ctx->use_dma = 0;
 	ctx->use_lli = 0;
@@ -335,8 +340,7 @@ void sst_context_cleanup(struct intel_sst_drv *ctx)
 	kfree(ctx->fw_sg_list.src);
 	kfree(ctx->fw_sg_list.dst);
 	ctx->fw_sg_list.list_len = 0;
-	kfree(ctx->fw_in_mem);
-	ctx->fw_in_mem = NULL;
+	ctx->fw_loaded = false;
 	sst_memcpy_free_resources(ctx);
 	ctx = NULL;
 }

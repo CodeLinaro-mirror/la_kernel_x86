@@ -42,6 +42,8 @@
 #define MRFLD_FW_FEATURE_BASE_OFFSET 0x4
 #define MRFLD_FW_BSS_RESET_BIT 0
 
+#define FIRMWARE_SIZE 209806
+
 extern const struct dev_pm_ops intel_sst_pm;
 enum sst_states {
 	SST_FW_LOADING = 1,
@@ -374,6 +376,7 @@ struct sst_fw_save {
  * @sst_lock : sst device lock
  * @pvt_id : sst private id
  * @stream_cnt : total sst active stream count
+ * @fw_loaded : lpe firmware loading status
  * @pb_streams : total active pb streams
  * @cp_streams : total active cp streams
  * @audio_start : audio status
@@ -419,6 +422,7 @@ struct intel_sst_drv {
 	unsigned int		stream_cnt;
 	unsigned int		csr_value;
 	void			*fw_in_mem;
+	bool			fw_loaded;
 	struct sst_sg_list	fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
 	struct sst_info		info;

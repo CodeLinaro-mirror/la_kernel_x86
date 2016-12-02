@@ -296,19 +296,19 @@ static int sst_cache_and_parse_fw(struct intel_sst_drv *sst,
 {
 	int retval = 0;
 
-	sst->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
 	if (!sst->fw_in_mem) {
 		retval = -ENOMEM;
 		goto end_release;
 	}
+	BUG_ON(FIRMWARE_SIZE != fw->size);
+	sst->fw_loaded = true;
 	dev_dbg(sst->dev, "copied fw to %p", sst->fw_in_mem);
 	dev_dbg(sst->dev, "phys: %lx", (unsigned long)virt_to_phys(sst->fw_in_mem));
 	memcpy(sst->fw_in_mem, fw->data, fw->size);
 	retval = sst_parse_fw_memcpy(sst, fw->size, &sst->memcpy_list);
 	if (retval) {
 		dev_err(sst->dev, "Failed to parse fw\n");
-		kfree(sst->fw_in_mem);
-		sst->fw_in_mem = NULL;
+		sst->fw_loaded = false;
 	}
 
 end_release:
@@ -331,7 +331,7 @@ void sst_firmware_load_cb(const struct firmware *fw, void *context)
 	mutex_lock(&ctx->sst_lock);
 
 	if (ctx->sst_state != SST_RESET ||
-			ctx->fw_in_mem != NULL) {
+			ctx->fw_loaded) {
 		release_firmware(fw);
 		mutex_unlock(&ctx->sst_lock);
 		return;
@@ -408,7 +408,7 @@ int sst_load_fw(struct intel_sst_drv *sst_drv_ctx)
 			sst_drv_ctx->sst_state == SST_SHUTDOWN)
 		return -EAGAIN;
 
-	if (!sst_drv_ctx->fw_in_mem) {
+	if (!sst_drv_ctx->fw_loaded) {
 		dev_dbg(sst_drv_ctx->dev, "sst: FW not in memory retry to download\n");
 		ret_val = sst_request_fw(sst_drv_ctx);
 		if (ret_val)
