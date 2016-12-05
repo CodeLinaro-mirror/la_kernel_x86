@@ -762,10 +762,6 @@ static int sst_soc_prepare(struct device *dev)
 	struct sst_data *drv = dev_get_drvdata(dev);
 	int i;
 
-	/* suspend all pcms first */
-	snd_soc_suspend(drv->soc_card->dev);
-	snd_soc_poweroff(drv->soc_card->dev);
-
 	/* set the SSPs to idle */
 	for (i = 0; i < drv->soc_card->num_rtd; i++) {
 		struct snd_soc_dai *dai = drv->soc_card->rtd[i].cpu_dai;
@@ -793,7 +789,6 @@ static void sst_soc_complete(struct device *dev)
 			send_ssp_cmd(dai, dai->name, 1);
 		}
 	}
-	snd_soc_resume(drv->soc_card->dev);
 }
 
 #else
