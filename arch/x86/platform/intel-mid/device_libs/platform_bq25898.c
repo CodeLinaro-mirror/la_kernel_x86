@@ -27,6 +27,7 @@
 #define BQ25898_REG04_RESTORE_VALUE	0x05		/* ICHG = 320mA*/
 #define BQ25898_REG05_RESTORE_VALUE	0x00		/* PRECHARGE_CUR = 64mA, TERM_CUR = 64mA */
 #define BQ25898_REG06_RESTORE_VALUE	0x83		/* VREG = 4.352V, BATLOWV = 3.0V, VRECHG = 200mV*/
+#define BQ25898_REG0D_RESTORE_VALUE	0x94		/* FORCE_VINDPM = 1, VINDPM = 4.6V */
 
 /*
  * Extract of the documentation:
@@ -91,6 +92,7 @@ void __initdata *bq25898_platform_data(void *info)
 	bq25898_pdata.reg_config.reg04 = BQ25898_REG04_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg05 = BQ25898_REG05_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg06 = BQ25898_REG06_RESTORE_VALUE;
+	bq25898_pdata.reg_config.reg0d = BQ25898_REG0D_RESTORE_VALUE;
 
 	return &bq25898_pdata;
 }
