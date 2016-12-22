@@ -2419,6 +2419,10 @@ static void wl_scan_prep(struct wl_scan_params *params, struct cfg80211_scan_req
 #else
 		wdev = request->dev->ieee80211_ptr;
 #endif /* WL_CFG80211_P2P_DEV_IF */
+
+		if (!wdev)
+			return;
+
 		cfg = WDEV_GET_CFG80211_PRIV(wdev);
 		for (i = 0; i < n_channels; i++) {
 			chanspec = 0;
