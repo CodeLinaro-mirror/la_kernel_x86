@@ -269,7 +269,6 @@ dhd_bus_t* dhdpcie_bus_attach(osl_t *osh, volatile char* regs, volatile char* tc
 		bus->tcm = tcm;
 		bus->tcm_size = tcm_size;
 		bus->osh = osh;
-		bus->sih = NULL;
 
 		dll_init(&bus->const_flowring);
 
@@ -455,11 +454,7 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 
 
 	bus->alp_only = TRUE;
-
-	if (bus->sih) {
-		si_detach(bus->sih);
-		bus->sih = NULL;
-	}
+	bus->sih = NULL;
 
 	/* Set bar0 window to si_enum_base */
 	dhdpcie_bus_cfg_set_bar0_win(bus, SI_ENUM_BASE);

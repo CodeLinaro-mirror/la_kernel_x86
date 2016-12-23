@@ -6944,7 +6944,6 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	bus->bus = DHD_BUS;
 	bus->bus_num = bus_no;
 	bus->slot_num = slot;
-	bus->sih = NULL;
 	bus->tx_seq = SDPCM_SEQUENCE_WRAP - 1;
 	bus->usebufpool = FALSE; /* Use bufpool if allocated, else use locally malloced rxbuf */
 
@@ -7024,12 +7023,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 	uint8 clkctl = 0;
 
 	bus->alp_only = TRUE;
-
-	/* Free bus->sih to avoid memory leak*/
-	if (bus->sih) {
-		si_detach(bus->sih);
-		bus->sih = NULL;
-	}
+	bus->sih = NULL;
 
 	/* Return the window to backplane enumeration space for core access */
 	if (dhdsdio_set_siaddr_window(bus, SI_ENUM_BASE)) {
