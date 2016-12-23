@@ -78,6 +78,11 @@
 
 #define BQ25898_I2C_SLAVE_ADDR			0x6B
 
+#define BQ25898_VINDPM_ADDED_VALUE		400
+#define BQ25898_VINDPM_REG_OFFSET		2600
+#define BQ25898_VINDPM_REG_RATIO		100
+#define BQ25898_VINDPM_TO_REG(x)		(((x) - BQ25898_VINDPM_REG_OFFSET) / BQ25898_VINDPM_REG_RATIO)
+
 /*
  * Input source control register (REG00)
  */
@@ -362,6 +367,7 @@ u16 fault_count[FAULT_OFF_SIZE];
 #define VINDPM2					(1 << 2)	/* 400mV */
 #define VINDPM1					(1 << 1)	/* 200mV */
 #define VINDPM0					(1 << 0)	/* 100mV */
+#define VINDPM_MASK				0x7F		/* 0b01111111 */
 
 /*
  * Battery voltage register	(REG0E), readonly
@@ -549,6 +555,7 @@ static int bq25898_charger_configure(struct i2c_client *client);
 static irqreturn_t bq25898_handler(int irq, void *data);
 static irqreturn_t bq25898_thread_handler(int id, void *data);
 static int bq25898_force_charging(struct bq25898_charger *chip);
+static int bq25898_adc_convert(struct i2c_client *client);
 
 static enum power_supply_property bq25898_battery_properties[] = {
 	POWER_SUPPLY_PROP_STATUS,		/* charging status */
@@ -2026,6 +2033,13 @@ static int bq25898_check_configuration(struct i2c_client *client)
 	/* check register 0x06 */
 	ret = bq25898_check_expected_register(client, BQ25898_VLIM_CHRG_CTRL_REG,
 			chip->pdata->reg_config.reg06);
+	if (ret < 0)
+		return ret;
+
+	/* check register 0x0D : FORCE_VINDPM */
+	dev_dbg(&client->dev, "check FORCE_VINDPM\n");
+	ret = bq25898_check_expected_register(client, BQ25898_VIN_CTRL_REG,
+			chip->pdata->reg_config.reg0d);
 
 	return ret;
 }
@@ -2094,6 +2108,12 @@ static int bq25898_restore_configuration(struct bq25898_charger *chip)
 	ret = bq25898_write_reg(chip->client, BQ25898_VLIM_CHRG_CTRL_REG, chip->pdata->reg_config.reg06);
 	if (ret < 0) {
 		dev_err(&chip->client->dev, "error restoring reg06 value\n");
+		return ret;
+	}
+	/* Restore correct value for reg 0x0d*/
+	ret = bq25898_write_reg(chip->client, BQ25898_VIN_CTRL_REG, chip->pdata->reg_config.reg0d);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "error restoring reg0d value\n");
 		return ret;
 	}
 
@@ -2343,6 +2363,8 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 						batmon_work.work);
 	int ret;
 
+	int val = 0;
+
 	if (!chip)
 		return;
 
@@ -2378,8 +2400,31 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 	 * above 60 deg : stop charging
 	 */
 
+	/* configure dynamically VINDPM */
+	/* Get VBAT */
+	ret = bq25898_adc_convert(chip->client);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "failure to convert (ADC): %d\n", ret);
+	ret = bq25898_read_reg(chip->client, BQ25898_BAT_VOLT_REG);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "failure to read BATT_VOLT reg: %d\n", ret);
+		return;
+	}
+	/* Convert register encoded value to VBATT(mV) */
+	val = bq25898_rege_convert_uv(ret)/1000;
+
+	/* Set VINDPM */
+	/* VBAT + 400mV */
+	val += BQ25898_VINDPM_ADDED_VALUE;
+	/* Write in register */
+	ret = bq25898_read_modify_reg(chip->client, BQ25898_VIN_CTRL_REG,
+		VINDPM_MASK, BQ25898_VINDPM_TO_REG(val));
+	if (ret < 0)
+		dev_err(&chip->client->dev, "failure to write VINDPM: %d\n", ret);
+
 	/* reschedule ourself */
 	schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY);
+
 	return;
 }
 

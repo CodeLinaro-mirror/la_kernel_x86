@@ -18,6 +18,7 @@ struct restore_reg_config {
 	u8 reg04;
 	u8 reg05;
 	u8 reg06;
+	u8 reg0d;
 };
 
 struct bq25898_plat_data {
