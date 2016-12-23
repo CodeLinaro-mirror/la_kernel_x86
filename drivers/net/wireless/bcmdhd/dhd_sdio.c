@@ -8121,8 +8121,15 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 						dhdsdio_release_dongle(bus, bus->dhd->osh,
 							TRUE, FALSE);
 					}
-				} else
+				} else {
+					DHD_ERROR(("%s Failed to download binary to the dongle\n",
+						__FUNCTION__));
+					if (bus->sih != NULL) {
+						si_detach(bus->sih);
+						bus->sih = NULL;
+					}
 					bcmerror = BCME_SDIO_ERROR;
+				}
 			} else
 				bcmerror = BCME_SDIO_ERROR;
 
