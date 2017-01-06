@@ -1150,11 +1150,12 @@ static int wl_cfgvendor_rtt_cancel_config(struct wiphy *wiphy, struct wireless_d
 			if ((target_cnt > 0) &&
 				(target_cnt < RTT_MAX_TARGET_CNT)) {
 				mac_list = (struct ether_addr *)kzalloc(target_cnt * ETHER_ADDR_LEN,
-				GFP_KERNEL);
-			if (mac_list == NULL) {
-				WL_ERR(("failed to allocate mem for mac list\n"));
-				err = -EINVAL;
-				goto exit;
+					GFP_KERNEL);
+				if (mac_list == NULL) {
+					WL_ERR(("failed to allocate mem for mac list\n"));
+					err = -EINVAL;
+					goto exit;
+				}
 			}
 			break;
 		case RTT_ATTRIBUTE_TARGET_MAC:
