@@ -2537,6 +2537,7 @@ static int register_pmic_notification(struct bq25898_charger *chip)
 static int register_reboot_notification(struct bq25898_charger *chip)
 {
 	chip->reboot_notifier.notifier_call = bq25898_notify_reboot;
+	chip->reboot_notifier.priority = 10;
 	return register_reboot_notifier(&chip->reboot_notifier);
 }
 
