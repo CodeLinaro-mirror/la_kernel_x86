@@ -23,7 +23,7 @@
 
 static struct resource wifi_res[] = {
 	{
-	.name = "wlan_irq",
+	.name = "bcmdhd_wlan_irq",
 	.start = -1,
 	.end = -1,
 	.flags = IORESOURCE_IRQ | IRQF_TRIGGER_FALLING ,
@@ -33,7 +33,7 @@ static struct resource wifi_res[] = {
 static struct wifi_platform_data pdata;
 
 static struct platform_device wifi_device = {
-	.name = "wlan",
+	.name = "bcmdhd_wlan",
 	.dev = {
 		.platform_data = &pdata,
 		},
