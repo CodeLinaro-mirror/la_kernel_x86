@@ -25,6 +25,7 @@
 #include <linux/irq.h>
 #include <linux/rfkill.h>
 #include <linux/platform_device.h>
+#include <linux/wakelock.h>
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
@@ -43,30 +44,42 @@ enum {
 };
 #endif
 
+#define LPM_ON
+
+#define TIMER_LPM 200
+#define WKL_HZ HZ/2
+
 static struct rfkill *bt_rfkill;
 static bool bt_enabled;
+
+#ifdef LPM_ON
 static bool host_wake_uart_enabled;
 static bool wake_uart_enabled;
 static bool int_handler_enabled;
-
-#define LPM_ON
+#endif
 
 static void activate_irq_handler(void);
 
 struct bcm_bt_lpm {
+#ifdef LPM_ON
 	unsigned int gpio_wake;
 	unsigned int gpio_host_wake;
 	unsigned int int_host_wake;
+#endif
 	unsigned int gpio_enable_bt;
 
+#ifdef LPM_ON
 	int wake;
 	int host_wake;
-
+#endif
 	struct hrtimer enter_lpm_timer;
 	ktime_t enter_lpm_delay;
 
 	struct device *tty_dev;
-
+#ifdef LPM_ON
+	struct wake_lock wake_lock;
+	char wake_lock_name[100];
+#endif
 	int port;
 } bt_lpm;
 
@@ -96,7 +109,7 @@ static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 	/*
 	 * Handle ACPI specific initializations.
 	 */
-	dev_dbg(&pdev->dev, "BCM2E1A ACPI specific probe\n");
+	dev_dbg(&pdev->dev, "ACPI specific probe\n");
 
 	bt_lpm.gpio_enable_bt = acpi_get_gpio_by_index(&pdev->dev,
 						gpio_enable_bt_acpi_idx, &info);
@@ -157,12 +170,14 @@ static int bcm43xx_bt_rfkill_set_power(void *data, bool blocked)
 	/* rfkill_ops callback. Turn transmitter on when blocked is false */
 
 	if (!blocked) {
+#ifdef LPM_ON
 		gpio_set_value(bt_lpm.gpio_wake, 1);
 		/*
 		* Delay advice by BRCM is min 2.5ns,
 		* setting it between 10 and 50us for more confort
 		*/
 		usleep_range(10, 50);
+#endif
 
 		gpio_set_value(bt_lpm.gpio_enable_bt, 1);
 		pr_debug("%s: turn BT on\n", __func__);
@@ -184,6 +199,9 @@ static const struct rfkill_ops bcm43xx_bt_rfkill_ops = {
 static void set_wake_locked(int wake)
 {
 	bt_lpm.wake = wake;
+
+	if (!wake)
+		wake_unlock(&bt_lpm.wake_lock);
 
 	if (!wake_uart_enabled && wake) {
 		WARN_ON(!bt_lpm.tty_dev);
@@ -217,6 +235,7 @@ static void update_host_wake_locked(int host_wake)
 	bt_lpm.host_wake = host_wake;
 
 	if (host_wake) {
+		wake_lock(&bt_lpm.wake_lock);
 		if (!host_wake_uart_enabled) {
 			WARN_ON(!bt_lpm.tty_dev);
 			uart_enable(bt_lpm.tty_dev);
@@ -226,6 +245,12 @@ static void update_host_wake_locked(int host_wake)
 			WARN_ON(!bt_lpm.tty_dev);
 			uart_disable(bt_lpm.tty_dev);
 		}
+		/*
+		 * Take a timed wakelock, so that upper layers can take it.
+		 * The chipset deasserts the hostwake lock, when there is no
+		 * more data to send.
+		 */
+		wake_lock_timeout(&bt_lpm.wake_lock, WKL_HZ);
 	}
 
 	host_wake_uart_enabled = host_wake;
@@ -301,7 +326,7 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 
 	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,
 							HRTIMER_MODE_REL);
-	bt_lpm.enter_lpm_delay = ktime_set(1, 0);  /* 1 sec */
+	bt_lpm.enter_lpm_delay = ktime_set(0, TIMER_LPM * NSEC_PER_MSEC);  /* TIMER_LPM msec */
 	bt_lpm.enter_lpm_timer.function = enter_lpm;
 
 	bt_lpm.host_wake = 0;
@@ -327,6 +352,11 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 		gpio_free(bt_lpm.gpio_host_wake);
 		return -ENODEV;
 	}
+
+	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
+			"BTLowPower");
+	wake_lock_init(&bt_lpm.wake_lock, WAKE_LOCK_SUSPEND,
+			 bt_lpm.wake_lock_name);
 
 	bcm_bt_lpm_wake_peer(tty_dev);
 	return 0;
@@ -356,9 +386,11 @@ static int bcm43xx_bluetooth_pdata_probe(struct platform_device *pdev)
 	}
 #endif
 
+#ifdef LPM_ON
 	bt_lpm.gpio_wake = pdata->gpio_wake;
 	bt_lpm.gpio_host_wake = pdata->gpio_host_wake;
 	bt_lpm.int_host_wake = pdata->int_host_wake;
+#endif
 	bt_lpm.gpio_enable_bt = pdata->gpio_enable;
 
 	bt_lpm.port = pdata->port;
@@ -371,9 +403,9 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 {
 	bool default_state = true;	/* off */
 	int ret = 0;
-
+#ifdef LPM_ON
 	int_handler_enabled = false;
-
+#endif
 #ifdef CONFIG_ACPI
 	if (ACPI_HANDLE(&pdev->dev)) {
 		/*
@@ -496,6 +528,7 @@ static int bcm43xx_bluetooth_remove(struct platform_device *pdev)
 #ifdef LPM_ON
 	gpio_free(bt_lpm.gpio_wake);
 	gpio_free(bt_lpm.gpio_host_wake);
+	wake_lock_destroy(&bt_lpm.wake_lock);
 #endif
 	return 0;
 }
