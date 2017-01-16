@@ -38,8 +38,8 @@
 #define TMD26723_INT		IRQ_EINT20
 
 #define TMD_STARTUP_DELAY		5 /* ms */
-#define TMD26723_PS_DETECTION_THRESHOLD		0x100
-#define TMD26723_PS_HYSTERESIS_THRESHOLD	0x100
+#define TMD26723_PS_DETECTION_THRESHOLD		0x60
+#define TMD26723_PS_HYSTERESIS_THRESHOLD	0x60
 
 /*
  * Defines
@@ -91,6 +91,8 @@ struct tmd26723_data {
 	struct i2c_client *client;
 	struct mutex update_lock;
 	struct mutex sysfs_lock;
+        struct mutex change_ps_lock;
+	struct mutex irq_lock;
 	spinlock_t lock;
 	struct delayed_work	dwork;	/* for PS interrupt */
 	struct input_dev *input_dev_ps;
@@ -119,7 +121,7 @@ struct tmd26723_data {
 	unsigned int ps_detection;
 	/* to store PS data */
 	int ps_data;
-
+	int irq_enabled;
 };
 
 static int tmd26723_init_client(struct i2c_client *client);
@@ -208,11 +210,10 @@ static int tmd26723_set_register(struct i2c_client *client, int reg, int value)
 
 	mutex_lock(&data->update_lock);
 
-	if ((TMD26723_PILTL_REG == reg) || (TMD26723_PIHTL_REG == reg)){
+	if ((TMD26723_PILTL_REG == reg) || (TMD26723_PIHTL_REG == reg))
 		ret = tmd26723_write_word(client, CMD_WORD | reg, value);
-	} else {
+	else
 		ret = tmd26723_write_byte(client, CMD_BYTE | reg, value);
-	}
 
 	switch (reg)
 	{
@@ -252,6 +253,30 @@ static int tmd26723_set_register(struct i2c_client *client, int reg, int value)
 	return ret;
 }
 
+static int tmd26723_disable_irq(struct i2c_client *client)
+{
+	struct tmd26723_data *data = i2c_get_clientdata(client);
+
+	mutex_lock(&data->irq_lock);
+	if ((data->pdata->gpio_int >= 0) && (data->irq_enabled)) {
+		data->irq_enabled = 0;
+		disable_irq(client->irq);
+	}
+        mutex_unlock(&data->irq_lock);
+}
+
+static int tmd26723_enable_irq(struct i2c_client *client)
+{
+        struct tmd26723_data *data = i2c_get_clientdata(client);
+
+        mutex_lock(&data->irq_lock);
+        if ((data->pdata->gpio_int >= 0) && (!data->irq_enabled)) {
+                data->irq_enabled = 1;
+                enable_irq(client->irq);
+        }
+        mutex_unlock(&data->irq_lock);
+}
+
 static int tmd26723_change_ps_threshold(struct i2c_client *client)
 {
 	struct tmd26723_data *data = i2c_get_clientdata(client);
@@ -259,20 +284,16 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 
 	data->ps_data =	tmd26723_read_word(client,
 				CMD_WORD|TMD26723_PDATAL_REG);
-	if (data->ps_data < 0) {
-		dev_err(&client->dev, "%s: tmd26723 read adc failed\n", __func__);
+	if ((data->ps_data < SET_LOW_THRESHOLD) || (data->ps_data > SET_MAX_THRESHOLD)) {
+		dev_err(&client->dev, "%s: tmd26723 read adc failed, ps_data : %d\n", __func__, data->ps_data);
 		return data->ps_data;
 	}
 
-	pr_info("%s:data->pilt = 0x%x.data->piht = 0x%x\n", __func__, data->pilt, data->piht);
+	pr_info("%s:data->pilt = 0x%x.data->piht = 0x%x, data->psdata = 0x%x\n", __func__, data->pilt, data->piht, data->ps_data);
 
-	if ((data->ps_data > data->pilt) && (data->ps_data >= data->piht)) {
+	if (data->ps_data >= data->ps_threshold) {
 		/* far-to-near detected */
 		data->ps_detection = 1;
-
-		/* FAR-to-NEAR detection */
-		input_report_abs(data->input_dev_ps, ABS_DISTANCE, 0);
-		input_sync(data->input_dev_ps);
 
 		ret = tmd26723_write_word(client, CMD_WORD|TMD26723_PILTL_REG,
 						data->ps_hysteresis_threshold);
@@ -286,19 +307,19 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 			dev_err(&client->dev,"%s: write failed to TMD26723_PIHTL_REG\n", __func__);
 			return ret;
 		}
+
+		/* FAR-to-NEAR detection */
+		input_report_abs(data->input_dev_ps, ABS_DISTANCE, 0);
+		input_sync(data->input_dev_ps);
+
 		data->pilt = data->ps_hysteresis_threshold;
 		data->piht = SET_MAX_THRESHOLD;
 
 		dev_dbg(&client->dev,
 			"%s far-to-near detected\n", TMD_26723_DEV_NAME);
-	} else if ((data->ps_data <= data->pilt) &&
-			(data->ps_data < data->piht)) {
+	} else if (data->ps_data < data->ps_hysteresis_threshold) {
 		/* near-to-far detected */
 		data->ps_detection = 0;
-
-		/* NEAR-to-FAR detection */
-		input_report_abs(data->input_dev_ps, ABS_DISTANCE, 5);
-		input_sync(data->input_dev_ps);
 
 		ret = tmd26723_write_word(client, CMD_WORD|TMD26723_PILTL_REG, 0);
 		if (ret < 0) {
@@ -311,6 +332,10 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 			dev_err(&client->dev,"%s: write failed to TMD26723_PIHTL_REG\n", __func__);
 			return ret;
 		}
+
+		/* NEAR-to-FAR detection */
+		input_report_abs(data->input_dev_ps, ABS_DISTANCE, 5);
+		input_sync(data->input_dev_ps);
 
 		data->pilt = 0;
 		data->piht = data->ps_threshold;
@@ -337,19 +362,21 @@ static void tmd26723_work_handler(struct work_struct *work)
 		dev_err(&client->dev,"%s:read failed from TMD26723_STATUS_REG\n", __func__);
 	}
 	/* disable 990x's ADC first */
-	ret = tmd26723_write_byte(client, CMD_BYTE|TMD26723_ENABLE_REG, 1);
+	ret = tmd26723_write_byte(client, CMD_BYTE|TMD26723_ENABLE_REG, DISABLE_REG_VALUE);
 	if (ret < 0) {
 		dev_err(&client->dev,"%s:write failed to TMD26723_ENABLE_REG\n", __func__);
 	}
 	if (PROXIMITY_INTERRUPT == (status & data->enable & PROXIMITY_INTERRUPT)) {
 		/* The device is asserting a proximity interruption */
+		mutex_lock(&data->change_ps_lock);
 		ret = tmd26723_change_ps_threshold(client);
+		mutex_unlock(&data->change_ps_lock);
 		if (ret < 0) {
 			dev_err(&client->dev,"%s: tmd26723_change_ps_threshold\n", __func__);
 		}
 
 		/* 0 = CMD_CLR_PS_INT */
-		tmd26723_set_command(client, 0);
+		tmd26723_set_command(client, TMD_CMD_CLEAR);
 	}
 
 	ret = tmd26723_write_byte(client, CMD_BYTE|TMD26723_ENABLE_REG,
@@ -370,7 +397,7 @@ static void tmd26723_reschedule_work(struct tmd26723_data *data,
 	 * If work is already scheduled then subsequent schedules will not
 	 * change the scheduled time that's why we have to cancel it first.
 	 */
-	__cancel_delayed_work(&data->dwork);
+	cancel_delayed_work(&data->dwork);
 	schedule_delayed_work(&data->dwork, delay);
 
 	spin_unlock_irqrestore(&data->lock, flags);
@@ -391,11 +418,9 @@ static irqreturn_t tmd26723_interrupt(int vec, void *info)
 
 static int tmd26723_power_off(struct tmd26723_data *data)
 {
-
 	int err = -1;
+
 	mutex_lock(&data->update_lock);
-	if (data->pdata->gpio_int >= 0)
-		disable_irq(data->client->irq);
 	if (data->pdata->power_off) {
 		err = data->pdata->power_off(&data->input_dev_ps->dev);
 		if (err < 0)
@@ -407,8 +432,8 @@ static int tmd26723_power_off(struct tmd26723_data *data)
 }
 static int tmd26723_power_on(struct tmd26723_data *data)
 {
-
 	int err = -1;
+
 	mutex_lock(&data->update_lock);
 	if (data->pdata->power_on) {
 		err = data->pdata->power_on(&data->input_dev_ps->dev);
@@ -420,9 +445,8 @@ static int tmd26723_power_on(struct tmd26723_data *data)
 		}
 	}
 	msleep(TMD_STARTUP_DELAY);
-	if (data->pdata->gpio_int >= 0)
-		enable_irq(data->client->irq);
 	mutex_unlock(&data->update_lock);
+
 	return 0;
 }
 
@@ -470,52 +494,18 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 	if (val == 1) {
 		dev_info(&client->dev, "%s: Proximity sensor power-on\n", __func__);
 		/*turn on p sensor */
-		if (data->enable_proximity_sensor == 0) {
-			data->enable_proximity_sensor = 1;
-			err = tmd26723_power_on(data);
-			if (err < 0)
-				goto exit_error;
-			err = tmd26723_set_register(client, TMD26723_ENABLE_REG,  DISABLE_REG_VALUE);/*Power off*/
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_DISABLE_REG is faild\n", __func__);
-				goto exit_error;
-			}
-			err = tmd26723_set_register(client, TMD26723_PTIME_REG,   PTIME_REG_VALUE);/* 2.73ms*/
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_PTIME_REG is faild\n", __func__);
-				goto exit_error;
-			}
-			/* 1-pulse */
-			err = tmd26723_set_register(client, TMD26723_PPCOUNT_REG, PPCOUNT_REG_VALUE);
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_PPCOUNT_REG is faild\n", __func__);
-				goto exit_error;
-			}
-			/* 100mA, CH0+CH1 IR-diode, 1X AGAIN */
-			err = tmd26723_set_register(client, TMD26723_CONTROL_REG, CONTROL_REG_VALUE);
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_CONTROL_REG is faild\n", __func__);
-				goto exit_error;
-			}
-
-			err = tmd26723_set_register(client, TMD26723_WTIME_REG,   WTIME_REG_VALUE);
-			if (err < 0) {
-				dev_err(&client->dev, "%s TMD26723 set TMD26723_WTIME_REG is faild\n", __func__);
-				goto exit_error;
-			}
-			data->ps_threshold = TMD26723_PS_DETECTION_THRESHOLD;
-			/* 3 persistence */
-			err = tmd26723_set_register(client, TMD26723_PERS_REG, PERS_REG_VALUE);
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_PERS_REG is faild\n", __func__);
-				goto exit_error;
-			}
-			err = tmd26723_set_register(client, TMD26723_ENABLE_REG,  ENABLE_REG_VALUE);
-			if (err < 0) {
-				dev_err(&client->dev, "%s: TMD26723 set TMD26723_ENABLE_REG is faild\n", __func__);
-				goto exit_error;
-			}
+		data->enable_proximity_sensor = 1;
+		err = tmd26723_power_on(data);
+		if (err < 0)
+			goto exit_error;
+		/* Initialize the TMD26723 chip */
+		err = tmd26723_init_client(client);
+		if (err < 0) {
+			dev_err(&client->dev, "Device initialization Failed: %s\n",
+			data->input_dev_ps->name);
+			return err;
 		}
+		tmd26723_enable_irq(client);
 	} else {
 		/* turn off p sensor - 21 Apr 2016 .
 		 * we can't turn off the entire sensor,
@@ -528,6 +518,7 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 			dev_err(&client->dev, "%s: TMD26723 set TMD26723_DISABLE_REG is faild\n", __func__);
 			goto exit_error;
 		}
+		tmd26723_disable_irq(client);
 		err = tmd26723_power_off(data);
 		if (err < 0) {
 			dev_err(&client->dev, "%s: Proximity sensor power-off failed\n",  __func__);
@@ -741,30 +732,12 @@ static const struct attribute_group tmd26723_attr_group = {
 
 static int tmd26723_init_client(struct i2c_client *client)
 {
-	struct tmd26723_data *data = i2c_get_clientdata(client);
-	int err;
-	int id;
 	int ret;
 
-	err = tmd26723_set_register(client, TMD26723_ENABLE_REG,  DISABLE_REG_VALUE);
-	if (err < 0)
-		return err;
+	ret = tmd26723_set_register(client, TMD26723_ENABLE_REG,  DISABLE_REG_VALUE);
+	if (ret < 0)
+		return ret;
 
-	id = tmd26723_read_byte(client, CMD_BYTE|TMD26723_ID_REG);
-	if (id == 0x00) {
-		dev_dbg(&client->dev,
-		"%s TMD27711 or TMD27715\n", TMD_26723_DEV_NAME);
-	} else if (id == 0x09) {
-		dev_dbg(&client->dev,
-		"%s TMD27713 or TMD27717\n", TMD_26723_DEV_NAME);
-	} else if (id == 0x3b){
-		dev_dbg(&client->dev,
-		"%s TMD26723\n", TMD_26723_DEV_NAME);
-	} else {
-		dev_dbg(&client->dev,
-		"%s No TMD26723 chip detected\n", TMD_26723_DEV_NAME);
-		return -EIO;
-	}
 	/* 2.73ms Prox integration time */
 	ret = tmd26723_set_register(client, TMD26723_PTIME_REG,   PTIME_REG_VALUE);
 	if(ret < 0){
@@ -772,49 +745,36 @@ static int tmd26723_init_client(struct i2c_client *client)
 		return ret;
 	}
 	/* 2.72ms Wait time */
-	tmd26723_set_register(client, TMD26723_WTIME_REG,   WTIME_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_WTIME_REG,   WTIME_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_WTIME_REG is faild\n", __func__);
 		return ret;
 	}
 	/* 1-Pulse for proximity */
-	tmd26723_set_register(client, TMD26723_PPCOUNT_REG, PPCOUNT_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_PPCOUNT_REG, PPCOUNT_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_PPCOUNT_REG is faild\n", __func__);
 		return ret;
 	}
 	/* no long wait */
-	tmd26723_set_register(client, TMD26723_CONFIG_REG,  CONFIG_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_CONFIG_REG,  CONFIG_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_CONFIG_REG is faild\n", __func__);
 		return ret;
 	}
 	/* 100mA, CH0+CH1 IR-diode, 1X AGAIN */
-	tmd26723_set_register(client, TMD26723_CONTROL_REG, CONTROL_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_CONTROL_REG, CONTROL_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_CONTROL_REG is faild\n", __func__);
 		return ret;
 	}
-	/* init threshold for proximity */
-	tmd26723_set_register(client, TMD26723_PILTL_REG, 0);
-	if(ret < 0){
-		dev_err(&client->dev,"%s TMD26723 set TMD26723_PILTL_REG is faild\n", __func__);
-		return ret;
-	}
-	tmd26723_set_register(client, TMD26723_PIHTL_REG, SET_MAX_THRESHOLD);
-	if(ret < 0){
-		dev_err(&client->dev,"%s TMD26723 set TMD26723_PIHTL_REG is faild\n", __func__);
-		return ret;
-	}
-	data->ps_threshold = TMD26723_PS_DETECTION_THRESHOLD;
-	data->ps_hysteresis_threshold = TMD26723_PS_HYSTERESIS_THRESHOLD;
 	/* 2 consecutive Interrupt persistence */
-	tmd26723_set_register(client, TMD26723_PERS_REG,    PERS_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_PERS_REG,    PERS_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_PERS_REG is faild\n", __func__);
 		return ret;
 	}
-	tmd26723_set_register(client, TMD26723_ENABLE_REG,  ENABLE_REG_VALUE);
+	ret = tmd26723_set_register(client, TMD26723_ENABLE_REG,  ENABLE_REG_VALUE);
 	if(ret < 0){
 		dev_err(&client->dev,"%s TMD26723 set TMD26723_ENABLE_REG is faild\n", __func__);
 		return ret;
@@ -835,7 +795,7 @@ static int tmd26723_probe(struct i2c_client *client,
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct tmd26723_data *data;
-	int err = 0;
+	int err = 0, chip_id;
 
 	pr_info("%s: tmd26723 probe be called\n", TMD_26723_DEV_NAME);
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE)) {
@@ -858,10 +818,11 @@ static int tmd26723_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, data);
 
 	data->enable = 0;
-	data->ps_threshold = 0;
-	data->ps_hysteresis_threshold = 0;
+        data->ps_threshold = TMD26723_PS_DETECTION_THRESHOLD;
+        data->ps_hysteresis_threshold = TMD26723_PS_HYSTERESIS_THRESHOLD;
 	data->ps_detection = 0;	/* default to no detection */
 	data->enable_proximity_sensor = 0;	/* default to 0 */
+	data->irq_enabled = 0;
 
 	dev_dbg(&client->dev, "enable = %s\n",
 			data->enable ? "1" : "0");
@@ -869,6 +830,8 @@ static int tmd26723_probe(struct i2c_client *client,
 	mutex_init(&data->update_lock);
 	spin_lock_init(&data->lock);
 	mutex_init(&data->sysfs_lock);
+	mutex_init(&data->change_ps_lock);
+	mutex_init(&data->irq_lock);
 
 	err = gpio_request(data->pdata->gpio_int, "PROX_INTR");
 	if (err) {
@@ -877,8 +840,6 @@ static int tmd26723_probe(struct i2c_client *client,
 		goto exit_kfree;
 	}
 	if(data->pdata->gpio_int){
-		/* FIXME: should be configured in IFWI */
-		set_flis_value(0x120,0x944);
 
 		client->irq = gpio_to_irq(data->pdata->gpio_int);
 		if (client->irq < 0) {
@@ -939,6 +900,35 @@ static int tmd26723_probe(struct i2c_client *client,
 		       data->input_dev_ps->name);
 		goto exit_plat_exit;
 	}
+
+        chip_id = tmd26723_read_byte(client, CMD_BYTE|TMD26723_ID_REG);
+        if (chip_id == 0x00) {
+                dev_dbg(&client->dev,
+                "%s TMD27711 or TMD27715\n", TMD_26723_DEV_NAME);
+        } else if (chip_id == 0x09) {
+                dev_dbg(&client->dev,
+                "%s TMD27713 or TMD27717\n", TMD_26723_DEV_NAME);
+        } else if (chip_id == 0x3b){
+                dev_dbg(&client->dev,
+                "%s TMD26723\n", TMD_26723_DEV_NAME);
+        } else {
+                dev_dbg(&client->dev,
+                "%s No TMD26723 chip detected\n", TMD_26723_DEV_NAME);
+                goto exit_power_off;
+        }
+
+        /* init threshold for proximity */
+        err = tmd26723_set_register(client, TMD26723_PILTL_REG, 0);
+        if(err < 0){
+                dev_err(&client->dev,"%s TMD26723 set TMD26723_PILTL_REG is faild\n", __func__);
+                goto exit_power_off;
+        }
+        err = tmd26723_set_register(client, TMD26723_PIHTL_REG, SET_MAX_THRESHOLD);
+        if(err < 0){
+                dev_err(&client->dev,"%s TMD26723 set TMD26723_PIHTL_REG is faild\n", __func__);
+                goto exit_power_off;
+        }
+
 	/* Initialize the TMD26723 chip */
 	err = tmd26723_init_client(client);
 	if (err < 0) {
@@ -947,7 +937,14 @@ static int tmd26723_probe(struct i2c_client *client,
 		goto exit_power_off;
 	}
 
-	tmd26723_power_off(data);
+	data->enable_proximity_sensor = 1;
+	/* Read ps_data when proximity_sensor_enabled */
+	mutex_lock(&data->change_ps_lock);
+	err = tmd26723_change_ps_threshold(client);
+	mutex_unlock(&data->change_ps_lock);
+	if (err < 0)
+		dev_err(&data->client->dev, "%s: tmd26723_change_ps_threshold\n", __func__);
+
 	/* Register sysfs hooks */
 	err = sysfs_create_group(&client->dev.kobj, &tmd26723_attr_group);
 	if (err)
@@ -1007,11 +1004,12 @@ static int tmd26723_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct tmd26723_data *data = i2c_get_clientdata(client);
 
-	disable_irq(client->irq);
+	tmd26723_disable_irq(client);
 	if (data->enable_proximity_sensor == 1) {
 		tmd26723_set_register(client, TMD26723_ENABLE_REG, DISABLE_REG_VALUE);
 		tmd26723_power_off(data);
 	}
+
 	return 0;
 }
 
@@ -1026,19 +1024,27 @@ static int tmd26723_resume(struct device *dev)
 		if (err < 0) {
 			dev_err(&client->dev, "Power ON Failed: %s\n",
 				data->input_dev_ps->name);
-			goto out;
 		}
-		tmd26723_set_register(client, TMD26723_ENABLE_REG,  ENABLE_REG_VALUE);
+		/* Initialize the TMD26723 chip */
+		err = tmd26723_init_client(client);
 		if (err < 0) {
-			dev_err(&client->dev, "Enable Failed: %s\n",
+			dev_err(&client->dev, "Device initialization Failed: %s\n",
 				data->input_dev_ps->name);
 			tmd26723_power_off(data);
 			goto out;
 		}
+		/* Read ps_data after resume */
+		mutex_lock(&data->change_ps_lock);
+		err = tmd26723_change_ps_threshold(client);
+		mutex_unlock(&data->change_ps_lock);
+		if (err < 0) {
+			dev_err(&client->dev, "%s: tmd26723_change_ps_threshold\n", __func__);
+			goto out;
+		}
 	}
-out:
-	enable_irq(client->irq);
+	tmd26723_enable_irq(client);
 
+out:
 	return err;
 }
 static SIMPLE_DEV_PM_OPS(tsl_pm_ops, tmd26723_suspend, tmd26723_resume);
