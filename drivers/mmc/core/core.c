@@ -1798,6 +1798,10 @@ void mmc_power_off(struct mmc_host *host)
 	host->ios.power_mode = MMC_POWER_OFF;
 	/* Set initial state and call mmc_set_ios */
 	mmc_set_initial_state(host);
+	host->ios.signal_voltage = 3;
+	if (!mmc_host_is_spi(host)) {
+		host->ios.bus_mode = MMC_BUSMODE_OPENDRAIN;
+	}
 
 	/*
 	 * Some configurations, such as the 802.11 SDIO card in the OLPC
