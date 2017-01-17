@@ -696,9 +696,9 @@ static void taos_workqueue_handler(struct work_struct *work)
 		/* Sync it up */
 		input_sync(chip->input);
 	}
-	mutex_unlock(&chip->als_mutex);
 	mod_timer(&chip->timer,
 			jiffies + msecs_to_jiffies(chip->taos_settings.als_odr));
+	mutex_unlock(&chip->als_mutex);
 }
 
 
