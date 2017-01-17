@@ -96,6 +96,7 @@ void sdio_function_cleanup(void);
 
 /* module param defaults */
 static int clockoverride = 0;
+static struct sdio_func *gfunc;
 
 module_param(clockoverride, int, 0644);
 MODULE_PARM_DESC(clockoverride, "SDIO card clock override");
@@ -104,6 +105,24 @@ MODULE_PARM_DESC(clockoverride, "SDIO card clock override");
 #define BCMSDH_SDMMC_MAX_DEVICES 1
 
 extern volatile bool dhd_mmc_suspend;
+
+int bcmsdh_sdmmc_set_power(int on)
+{
+	static struct sdio_func *sdio_func;
+	struct sdhci_host *host;
+
+	if (gfunc) {
+		sdio_func = gfunc;
+
+		host = (struct sdhci_host *)sdio_func->card->host;
+
+		if (on)
+			mmc_power_restore_host(sdio_func->card->host);
+		else
+			mmc_power_save_host(sdio_func->card->host);
+	}
+	return 0;
+}
 
 #if defined(OOB_PARAM)
 extern uint dhd_oob_disable;
@@ -189,8 +208,10 @@ static int bcmsdh_sdmmc_probe(struct sdio_func *func,
 	sd_info(("Function#: 0x%04x\n", func->num));
 
 	/* 4318 doesn't have function 2 */
-	if ((func->num == 2) || (func->num == 1 && func->device == 0x4))
+	if ((func->num == 2) || (func->num == 1 && func->device == 0x4)) {
+		gfunc = func;
 		ret = sdioh_probe(func);
+	}
 
 	return ret;
 }
