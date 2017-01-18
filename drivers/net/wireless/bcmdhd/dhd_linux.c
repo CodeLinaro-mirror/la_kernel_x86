@@ -10177,9 +10177,7 @@ dhd_os_wd_timer(void *bus, uint wdtick)
 	/* don't start the wd until fw is loaded */
 	if (pub->busstate == DHD_BUS_DOWN) {
 		DHD_GENERAL_UNLOCK(pub, flags);
-#if !defined(DHD_USE_IDLECOUNT) && defined(BCMPCIE)
 			DHD_OS_WD_WAKE_UNLOCK(pub);
-#endif /* !DHD_USE_IDLECOUNT && BCMPCIE */
 		return;
 	}
 
