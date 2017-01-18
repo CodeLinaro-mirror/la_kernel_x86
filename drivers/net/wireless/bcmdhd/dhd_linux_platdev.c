@@ -82,7 +82,10 @@ extern struct wifi_platform_data dhd_wlan_control;
 #else
 static bool dts_enabled = FALSE;
 struct resource dhd_wlan_resources = {0};
-struct wifi_platform_data dhd_wlan_control = {0};
+extern int bcmsdh_sdmmc_set_power(int on);
+struct wifi_platform_data dhd_wlan_control = {
+	.set_power = bcmsdh_sdmmc_set_power,
+};
 #endif /* CONFIG_OF && !defined(CONFIG_ARCH_MSM) */
 #endif /* !defind(CONFIG_DTS) */
 
@@ -305,6 +308,11 @@ static int wifi_plat_dev_drv_probe(struct platform_device *pdev)
 	ASSERT(dhd_wifi_platdata->num_adapters == 1);
 	adapter = &dhd_wifi_platdata->adapters[0];
 	adapter->wifi_plat_data = (struct wifi_platform_data *)(pdev->dev.platform_data);
+	if (!adapter->wifi_plat_data) {
+		DHD_ERROR(("%s: unable to get platform data !\n", __FUNCTION__));
+		return -ENODATA;
+	}
+	((struct wifi_platform_data *)(adapter->wifi_plat_data))->set_power = bcmsdh_sdmmc_set_power;
 
 	resource = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "bcmdhd_wlan_irq");
 	if (resource == NULL)
