@@ -76,6 +76,7 @@ struct intel_mid_pwm_chip {
 	void __iomem *regs;
 	union pwmctrl_reg *pwmctrls;
 	int num_of_pwms;
+	struct mutex lock;
 };
 
 
@@ -284,6 +285,7 @@ static int
 intel_mid_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 {
 	struct intel_mid_pwm_chip *pwm = to_pwm(chip);
+	mutex_lock(&pwm->lock);
 	union pwmctrl_reg *pwmctrl = &pwm->pwmctrls[pwm_dev->hwpwm];
 	int ret;
 	void __iomem *reg = get_control_register(pwm, pwm_dev->hwpwm);
@@ -292,8 +294,10 @@ intel_mid_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 
 	ret = intel_mid_pwm_setup(reg, pwmctrl, pwm_dev->duty_cycle,
 		pwm_dev->period);
-	if (ret)
+	if (ret) {
+		mutex_unlock(&pwm->lock);
 		return ret;
+	}
 
 	pwm_set_enable_bit(reg, pwmctrl, 1U);
 
@@ -304,7 +308,7 @@ intel_mid_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 	lnw_gpio_set_alt(get_gpio_by_name(get_gpio_label(pwm_dev->hwpwm)), GPIO_PWM_CONFIG|0x1);
 
 	dev_dbg(chip->dev, "%s: pwmctrl %#x\n", __func__, pwmctrl->full);
-
+	mutex_unlock(&pwm->lock);
 	return 0;
 }
 
@@ -312,6 +316,7 @@ static void
 intel_mid_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 {
 	struct intel_mid_pwm_chip *pwm = to_pwm(chip);
+	mutex_lock(&pwm->lock);
 	union pwmctrl_reg *pwmctrl = &pwm->pwmctrls[pwm_dev->hwpwm];
 	void __iomem *reg = get_control_register(pwm, pwm_dev->hwpwm);
 
@@ -329,6 +334,7 @@ intel_mid_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm_dev)
 			__func__, pwm_dev->hwpwm);
 	pm_runtime_put(chip->dev);
 	dev_dbg(chip->dev, "%s: pwmctrl %#x\n", __func__, pwmctrl->full);
+	mutex_unlock(&pwm->lock);
 }
 
 static const struct pwm_ops intel_mid_pwm_ops = {
@@ -402,6 +408,7 @@ intel_mid_pwm_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	pm_runtime_allow(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
 
+	mutex_init(&pwm->lock);
 	/* gpio mode is used to force pwm to zero */
 	ret = -EINVAL;
 	for (i = 0; i < pwm->num_of_pwms; i++) {
