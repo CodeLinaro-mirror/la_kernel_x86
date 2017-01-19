@@ -952,6 +952,10 @@ int DCCBIsPipeActive(struct drm_device *dev, int pipe)
 		return 0;
 	}
 
+	/* cancel flip if system is going down */
+	if (dev_priv->is_psb_shutdown)
+		return active;
+
 	/* get display a for register reading */
 	if (power_island_get(OSPM_DISPLAY_A)) {
 		if ((pipe != 1) && dev_priv->dsi_configs) {

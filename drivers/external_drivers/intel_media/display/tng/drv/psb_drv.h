@@ -676,6 +676,9 @@ struct drm_psb_private {
 	/* first boot phase */
 	bool first_boot;
 
+	/* system power down status */
+	bool is_psb_shutdown;
+
 	bool is_mipi_on;
 
 	/* DSI clock */

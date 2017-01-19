@@ -3021,10 +3021,12 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 		else if (pipe == 2)
 			dsi_config = dev_priv->dsi_configs[1];
 
+		/* Once system power down, ignore vsync polling */
 		if (arg->vsync_operation_mask & VSYNC_WAIT) {
 			if (dev_priv->vsync_enabled[pipe] && ((pipe == 1) ||
 						(dsi_config &&
-						 dsi_config->dsi_hw_context.panel_on))) {
+						 dsi_config->dsi_hw_context.panel_on))
+						&& (!dev_priv->is_psb_shutdown)) {
 				vblwait.request.type =
 					(_DRM_VBLANK_RELATIVE |
 					 _DRM_VBLANK_NEXTONMISS);
@@ -4021,6 +4023,9 @@ static void psb_shutdown(struct pci_dev *pdev)
 	struct drm_encoder_helper_funcs *enc_funcs;
 
 	drm_modeset_lock_all(dev);
+
+	/* avoid DC flip & skip wait vsync when shutdown */
+	dev_priv->is_psb_shutdown = true;
 
 	/* wait for the previous flip to be finished */
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
