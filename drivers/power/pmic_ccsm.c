@@ -203,7 +203,7 @@ static inline struct power_supply *get_psy_battery(void)
 	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		pst = (struct power_supply *)dev_get_drvdata(dev);
-		if (pst->type == POWER_SUPPLY_TYPE_BATTERY) {
+		if (pst->desc->type == POWER_SUPPLY_TYPE_BATTERY) {
 			class_dev_iter_exit(&iter);
 			return pst;
 		}
@@ -777,8 +777,8 @@ static void pmic_bat_zone_changed(void)
 
 	psy_bat = get_psy_battery();
 
-	if (psy_bat && psy_bat->external_power_changed)
-		psy_bat->external_power_changed(psy_bat);
+	if (psy_bat && psy_bat->desc->external_power_changed)
+		psy_bat->desc->external_power_changed(psy_bat);
 
 	pmic_notify(PMIC_ACTION_BATTERY_ZONE_CHANGED,
 		    (void *)(unsigned long)(cur_zone));
