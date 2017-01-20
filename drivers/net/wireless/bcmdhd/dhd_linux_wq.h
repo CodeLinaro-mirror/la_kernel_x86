@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Generic work queue framework
  * Generic interface to handle dhd deferred work events
  *
- * Copyright (C) 1999-2016, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,10 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: dhd_linux_wq.h 653928 2016-08-10 10:32:42Z $
+ * $Id: dhd_linux_wq.h 408802 2013-06-20 19:08:47Z $
  */
 #ifndef _dhd_linux_wq_h_
 #define _dhd_linux_wq_h_
@@ -39,9 +36,6 @@ enum _wq_event {
 	DHD_WQ_WORK_SET_MCAST_LIST,
 	DHD_WQ_WORK_IPV6_NDO,
 	DHD_WQ_WORK_HANG_MSG,
-	DHD_WQ_WORK_SOC_RAM_DUMP,
-	DHD_WQ_WORK_DHD_LOG_DUMP,
-	DHD_WQ_WORK_BANDSTEER_STEP_MOVE,
 
 	DHD_MAX_WQ_EVENTS
 };
@@ -64,7 +58,7 @@ enum _wq_event {
 typedef void (*event_handler_t)(void *handle, void *event_data, u8 event);
 
 void *dhd_deferred_work_init(void *dhd);
-void dhd_deferred_work_deinit(void *workq);
-int dhd_deferred_schedule_work(void *workq, void *event_data, u8 event,
+void dhd_deferred_work_deinit(void *work);
+int dhd_deferred_schedule_work(void *event_data, u8 event,
 	event_handler_t evt_handler, u8 priority);
 #endif /* _dhd_linux_wq_h_ */

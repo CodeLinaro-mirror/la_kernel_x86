@@ -1,7 +1,7 @@
 /*
  * Linux Wireless Extensions support
  *
- * Copyright (C) 1999-2016, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,10 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: wl_iw.c 591286 2015-10-07 11:59:26Z $
+ * $Id: wl_iw.c 425990 2013-09-26 07:28:16Z $
  */
 
 #if defined(USE_IW)
@@ -41,10 +38,9 @@
 #include <linux/if_arp.h>
 #include <asm/uaccess.h>
 
-#include <wlioctl.h>
-#include <wlioctl_utils.h>
-
 typedef const struct si_pub	si_t;
+#include <wlioctl.h>
+
 
 #include <wl_dbg.h>
 #include <wl_iw.h>
@@ -220,8 +216,7 @@ dev_wlc_ioctl(
 	ioc.buf = arg;
 	ioc.len = len;
 
-	strncpy(ifr.ifr_name, dev->name, sizeof(ifr.ifr_name));
-	ifr.ifr_name[sizeof(ifr.ifr_name) - 1] = '\0';
+	strcpy(ifr.ifr_name, dev->name);
 	ifr.ifr_data = (caddr_t) &ioc;
 
 	fs = get_fs();
@@ -455,8 +450,7 @@ wl_iw_send_priv_event(
 	if (strlen(flag) > sizeof(extra))
 		return -1;
 
-	strncpy(extra, flag, sizeof(extra));
-	extra[sizeof(extra) - 1] = '\0';
+	strcpy(extra, flag);
 	wrqu.data.length = strlen(extra);
 	wireless_send_event(dev, cmd, &wrqu, extra);
 	WL_TRACE(("Send IWEVCUSTOM Event as %s\n", extra));
@@ -518,27 +512,27 @@ wl_iw_get_name(
 	band[0] = dtoh32(band[0]);
 	switch (phytype) {
 		case WLC_PHY_TYPE_A:
-			strncpy(cap, "a", sizeof(cap));
+			strcpy(cap, "a");
 			break;
 		case WLC_PHY_TYPE_B:
-			strncpy(cap, "b", sizeof(cap));
+			strcpy(cap, "b");
 			break;
+		case WLC_PHY_TYPE_LP:
 		case WLC_PHY_TYPE_G:
 			if (band[0] >= 2)
-				strncpy(cap, "abg", sizeof(cap));
+				strcpy(cap, "abg");
 			else
-				strncpy(cap, "bg", sizeof(cap));
+				strcpy(cap, "bg");
 			break;
 		case WLC_PHY_TYPE_N:
 			if (band[0] >= 2)
-				strncpy(cap, "abgn", sizeof(cap));
+				strcpy(cap, "abgn");
 			else
-				strncpy(cap, "bgn", sizeof(cap));
+				strcpy(cap, "bgn");
 			break;
 	}
 done:
-	(void)snprintf(cwrq->name, IFNAMSIZ, "IEEE 802.11%s", cap);
-
+	snprintf(cwrq->name, IFNAMSIZ, "IEEE 802.11%s", cap);
 	return 0;
 }
 
@@ -749,8 +743,8 @@ wl_iw_get_range(
 		return error;
 	if ((error = dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &phytype, sizeof(phytype))))
 		return error;
-	if (nmode == 1 && (((phytype == WLC_PHY_TYPE_LCN) ||
-	                    (phytype == WLC_PHY_TYPE_LCN40)))) {
+	if (nmode == 1 && ((phytype == WLC_PHY_TYPE_SSN) || (phytype == WLC_PHY_TYPE_LCN) ||
+		(phytype == WLC_PHY_TYPE_LCN40))) {
 		if ((error = dev_wlc_intvar_get(dev, "mimo_bw_cap", &bw_cap)))
 			return error;
 		if ((error = dev_wlc_intvar_get(dev, "sgi_tx", &sgi_tx)))
@@ -1333,33 +1327,22 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 	if (bi->ie_length) {
 		/* look for wpa/rsn ies in the ie list... */
 		bcm_tlv_t *ie;
-		uint8 *ptr = ((uint8 *)bi) + bi->ie_offset;
+		uint8 *ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
 		int ptr_len = bi->ie_length;
-
-		/* OSEN IE */
-		if ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_VS_ID)) &&
-			ie->len > WFA_OUI_LEN + 1 &&
-			!bcmp((const void *)&ie->data[0], (const void *)WFA_OUI, WFA_OUI_LEN) &&
-			ie->data[WFA_OUI_LEN] == WFA_OUI_TYPE_OSEN) {
-			iwe.cmd = IWEVGENIE;
-			iwe.u.data.length = ie->len + 2;
-			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
-		}
-		ptr = ((uint8 *)bi) + bi->ie_offset;
 
 		if ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_RSN_ID))) {
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->len + 2;
 			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
 		}
-		ptr = ((uint8 *)bi) + bi->ie_offset;
+		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
 
 		if ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_MDIE_ID))) {
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->len + 2;
 			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
 		}
-		ptr = ((uint8 *)bi) + bi->ie_offset;
+		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
 
 		while ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_WPA_ID))) {
 			/* look for WPS IE */
@@ -1371,7 +1354,7 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 			}
 		}
 
-		ptr = ((uint8 *)bi) + bi->ie_offset;
+		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
 		ptr_len = bi->ie_length;
 		while ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_WPA_ID))) {
 			if (ie_is_wpa_ie(((uint8 **)&ie), &ptr, &ptr_len)) {
@@ -1461,9 +1444,8 @@ wl_iw_get_scan(
 
 		/* Channel */
 		iwe.cmd = SIOCGIWFREQ;
-
 		iwe.u.freq.m = wf_channel2mhz(CHSPEC_CHANNEL(bi->chanspec),
-			(CHSPEC_IS2G(bi->chanspec)) ?
+			CHSPEC_CHANNEL(bi->chanspec) <= CH_MAX_2G_CHANNEL ?
 			WF_CHAN_FACTOR_2_4_G : WF_CHAN_FACTOR_5_G);
 		iwe.u.freq.e = 6;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_FREQ_LEN);
@@ -1475,6 +1457,7 @@ wl_iw_get_scan(
 		iwe.u.qual.noise = 0x100 + bi->phy_noise;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_QUAL_LEN);
 
+		/* WPA, WPA2, WPS, WAPI IEs */
 		 wl_iw_handle_scanresults_ies(&event, end, info, bi);
 
 		/* Encryption */
@@ -1584,9 +1567,8 @@ wl_iw_iscan_get_scan(
 
 		/* Channel */
 		iwe.cmd = SIOCGIWFREQ;
-
 		iwe.u.freq.m = wf_channel2mhz(CHSPEC_CHANNEL(bi->chanspec),
-			(CHSPEC_IS2G(bi->chanspec)) ?
+			CHSPEC_CHANNEL(bi->chanspec) <= CH_MAX_2G_CHANNEL ?
 			WF_CHAN_FACTOR_2_4_G : WF_CHAN_FACTOR_5_G);
 		iwe.u.freq.e = 6;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_FREQ_LEN);
@@ -1598,6 +1580,7 @@ wl_iw_iscan_get_scan(
 		iwe.u.qual.noise = 0x100 + bi->phy_noise;
 		event = IWE_STREAM_ADD_EVENT(info, event, end, &iwe, IW_EV_QUAL_LEN);
 
+		/* WPA, WPA2, WPS, WAPI IEs */
 		wl_iw_handle_scanresults_ies(&event, end, info, bi);
 
 		/* Encryption */
@@ -2376,7 +2359,7 @@ wl_iw_set_encodeext(
 
 		/* copy the raw hex key to the appropriate format */
 		for (j = 0; j < (WSEC_MAX_PSK_LEN / 2); j++) {
-			(void)snprintf(charptr, 3, "%02x", iwe->key[j]);
+			sprintf(charptr, "%02x", iwe->key[j]);
 			charptr += 2;
 		}
 		len = strlen(keystring);
@@ -2973,7 +2956,7 @@ const struct iw_handler_def wl_iw_handler_def =
 	.num_standard = ARRAYSIZE(wl_iw_handler),
 	.num_private = ARRAY_SIZE(wl_iw_priv_handler),
 	.num_private_args = ARRAY_SIZE(wl_iw_priv_args),
-	.standard = (const iw_handler *) wl_iw_handler,
+	.standard = (iw_handler *) wl_iw_handler,
 	.private = wl_iw_priv_handler,
 	.private_args = wl_iw_priv_args,
 #if WIRELESS_EXT >= 19
@@ -3153,7 +3136,8 @@ wl_iw_conn_status_str(uint32 event_type, uint32 status, uint32 reason,
 	/* If found, generate a connection failure string and return TRUE */
 	if (cause) {
 		memset(stringBuf, 0, buflen);
-		(void)snprintf(stringBuf, buflen, "%s %s %02d %02d", name, cause, status, reason);
+		snprintf(stringBuf, buflen, "%s %s %02d %02d",
+			name, cause, status, reason);
 		WL_TRACE(("Connection status: %s\n", stringBuf));
 		return TRUE;
 	} else {
@@ -3223,6 +3207,7 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 		break;
 
 	case WLC_E_LINK:
+	case WLC_E_NDIS_LINK:
 		cmd = SIOCGIWAP;
 		wrqu.data.length = strlen(extra);
 		if (!(flags & WLC_EVENT_MSG_LINK)) {
@@ -3344,77 +3329,13 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 #endif /* WIRELESS_EXT > 13 */
 }
 
-static int wl_iw_get_wireless_stats_cbfn(void *ctx, uint8 *data, uint16 type, uint16 len)
-{
-	struct iw_statistics *wstats = ctx;
-	int res = BCME_OK;
-
-	switch (type) {
-		case WL_CNT_XTLV_WLC: {
-			wl_cnt_wlc_t *cnt = (wl_cnt_wlc_t *)data;
-			if (len > sizeof(wl_cnt_wlc_t)) {
-				printf("counter structure length invalid! %d > %d\n",
-					len, (int)sizeof(wl_cnt_wlc_t));
-			}
-			wstats->discard.nwid = 0;
-			wstats->discard.code = dtoh32(cnt->rxundec);
-			wstats->discard.fragment = dtoh32(cnt->rxfragerr);
-			wstats->discard.retries = dtoh32(cnt->txfail);
-			wstats->discard.misc = dtoh32(cnt->rxrunt) + dtoh32(cnt->rxgiant);
-			wstats->miss.beacon = 0;
-			WL_TRACE(("wl_iw_get_wireless_stats counters txframe=%d txbyte=%d\n",
-				dtoh32(cnt->txframe), dtoh32(cnt->txbyte)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxundec=%d\n",
-				dtoh32(cnt->rxundec)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters txfail=%d\n",
-				dtoh32(cnt->txfail)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxfragerr=%d\n",
-				dtoh32(cnt->rxfragerr)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxrunt=%d\n",
-				dtoh32(cnt->rxrunt)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxgiant=%d\n",
-				dtoh32(cnt->rxgiant)));
-			break;
-		}
-		case WL_CNT_XTLV_CNTV_LE10_UCODE:
-		case WL_CNT_XTLV_LT40_UCODE_V1:
-		case WL_CNT_XTLV_GE40_UCODE_V1:
-		{
-			/* Offsets of rxfrmtoolong and rxbadplcp are the same in
-			 * wl_cnt_v_le10_mcst_t, wl_cnt_lt40mcst_v1_t, and wl_cnt_ge40mcst_v1_t.
-			 * So we can just cast to wl_cnt_v_le10_mcst_t here.
-			 */
-			wl_cnt_v_le10_mcst_t *cnt = (wl_cnt_v_le10_mcst_t *)data;
-			if (len != WL_CNT_MCST_STRUCT_SZ) {
-				printf("counter structure length mismatch! %d != %d\n",
-					len, WL_CNT_MCST_STRUCT_SZ);
-			}
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxfrmtoolong=%d\n",
-				dtoh32(cnt->rxfrmtoolong)));
-			WL_TRACE(("wl_iw_get_wireless_stats counters rxbadplcp=%d\n",
-				dtoh32(cnt->rxbadplcp)));
-			BCM_REFERENCE(cnt);
-			break;
-		}
-		default:
-			WL_ERROR(("%s %d: Unsupported type %d\n", __FUNCTION__, __LINE__, type));
-			break;
-	}
-	return res;
-}
-
 int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics *wstats)
 {
 	int res = 0;
+	wl_cnt_t cnt;
 	int phy_noise;
 	int rssi;
 	scb_val_t scb_val;
-#if WIRELESS_EXT > 11
-	char *cntbuf = NULL;
-	wl_cnt_info_t *cntinfo;
-	uint16 ver;
-	uint32 corerev = 0;
-#endif /* WIRELESS_EXT > 11 */
 
 	phy_noise = 0;
 	if ((res = dev_wlc_ioctl(dev, WLC_GET_PHY_NOISE, &phy_noise, sizeof(phy_noise))))
@@ -3452,70 +3373,43 @@ int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics *wstat
 #endif /* WIRELESS_EXT > 18 */
 
 #if WIRELESS_EXT > 11
-	WL_TRACE(("wl_iw_get_wireless_stats counters=%d\n *****", WL_CNTBUF_MAX_SIZE));
+	WL_TRACE(("wl_iw_get_wireless_stats counters=%d\n *****", (int)sizeof(wl_cnt_t)));
 
-	if (WL_CNTBUF_MAX_SIZE > MAX_WLIW_IOCTL_LEN)
-	{
-		WL_ERROR(("wl_iw_get_wireless_stats buffer too short %d < %d\n",
-			WL_CNTBUF_MAX_SIZE, MAX_WLIW_IOCTL_LEN));
-		res = BCME_BUFTOOSHORT;
-		goto done;
-	}
-
-	cntbuf = kmalloc(WL_CNTBUF_MAX_SIZE, GFP_KERNEL);
-	if (!cntbuf) {
-		res = BCME_NOMEM;
-		goto done;
-	}
-
-	memset(cntbuf, 0, WL_CNTBUF_MAX_SIZE);
-	res = dev_wlc_bufvar_get(dev, "counters", cntbuf, WL_CNTBUF_MAX_SIZE);
+	memset(&cnt, 0, sizeof(wl_cnt_t));
+	res = dev_wlc_bufvar_get(dev, "counters", (char *)&cnt, sizeof(wl_cnt_t));
 	if (res)
 	{
 		WL_ERROR(("wl_iw_get_wireless_stats counters failed error=%d ****** \n", res));
 		goto done;
 	}
 
-	cntinfo = (wl_cnt_info_t *)cntbuf;
-	cntinfo->version = dtoh16(cntinfo->version);
-	cntinfo->datalen = dtoh16(cntinfo->datalen);
-	ver = cntinfo->version;
-	if (ver > WL_CNT_T_VERSION) {
+	cnt.version = dtoh16(cnt.version);
+	if (cnt.version != WL_CNT_T_VERSION) {
 		WL_TRACE(("\tIncorrect version of counters struct: expected %d; got %d\n",
-			WL_CNT_T_VERSION, ver));
-		res = BCME_VERSION;
+			WL_CNT_T_VERSION, cnt.version));
 		goto done;
 	}
 
-	if (ver == WL_CNT_VERSION_11) {
-		wlc_rev_info_t revinfo;
-		memset(&revinfo, 0, sizeof(revinfo));
-		res = dev_wlc_ioctl(dev, WLC_GET_REVINFO, &revinfo, sizeof(revinfo));
-		if (res) {
-			WL_ERROR(("%s: WLC_GET_REVINFO failed %d\n", __FUNCTION__, res));
-			goto done;
-		}
-		corerev = dtoh32(revinfo.corerev);
-	}
+	wstats->discard.nwid = 0;
+	wstats->discard.code = dtoh32(cnt.rxundec);
+	wstats->discard.fragment = dtoh32(cnt.rxfragerr);
+	wstats->discard.retries = dtoh32(cnt.txfail);
+	wstats->discard.misc = dtoh32(cnt.rxrunt) + dtoh32(cnt.rxgiant);
+	wstats->miss.beacon = 0;
 
-	res = wl_cntbuf_to_xtlv_format(NULL, cntinfo, WL_CNTBUF_MAX_SIZE, corerev);
-	if (res) {
-		WL_ERROR(("%s: wl_cntbuf_to_xtlv_format failed %d\n", __FUNCTION__, res));
-		goto done;
-	}
+	WL_TRACE(("wl_iw_get_wireless_stats counters txframe=%d txbyte=%d\n",
+		dtoh32(cnt.txframe), dtoh32(cnt.txbyte)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxfrmtoolong=%d\n", dtoh32(cnt.rxfrmtoolong)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxbadplcp=%d\n", dtoh32(cnt.rxbadplcp)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxundec=%d\n", dtoh32(cnt.rxundec)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxfragerr=%d\n", dtoh32(cnt.rxfragerr)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters txfail=%d\n", dtoh32(cnt.txfail)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxrunt=%d\n", dtoh32(cnt.rxrunt)));
+	WL_TRACE(("wl_iw_get_wireless_stats counters rxgiant=%d\n", dtoh32(cnt.rxgiant)));
 
-	if ((res = bcm_unpack_xtlv_buf(wstats, cntinfo->data, cntinfo->datalen,
-		BCM_XTLV_OPTION_ALIGN32, wl_iw_get_wireless_stats_cbfn))) {
-		goto done;
-	}
 #endif /* WIRELESS_EXT > 11 */
 
 done:
-#if WIRELESS_EXT > 11
-	if (cntbuf) {
-		kfree(cntbuf);
-	}
-#endif /* WIRELESS_EXT > 11 */
 	return res;
 }
 

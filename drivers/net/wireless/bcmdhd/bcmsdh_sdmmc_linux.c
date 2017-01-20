@@ -1,7 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Copyright (C) 1999-2016, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,10 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- *
- * <<Broadcom-WL-IPTag/Proprietary,Open:>>
- *
- * $Id: bcmsdh_sdmmc_linux.c 652901 2016-08-04 06:23:47Z $
+ * $Id: bcmsdh_sdmmc_linux.c 662758 2016-11-10 08:03:26Z $
  */
 
 #include <typedefs.h>
@@ -75,11 +72,8 @@
 #define SDIO_DEVICE_ID_BROADCOM_43239    43239
 #endif /* !defined(SDIO_DEVICE_ID_BROADCOM_43239) */
 #if !defined(SDIO_DEVICE_ID_BROADCOM_43430)
-#define SDIO_DEVICE_ID_BROADCOM_43430    0x9a96
+#define SDIO_DEVICE_ID_BROADCOM_43430    43430
 #endif /* !defined(SDIO_DEVICE_ID_BROADCOM_43430) */
-#if !defined(SDIO_DEVICE_ID_BROADCOM_43436l)
-#define SDIO_DEVICE_ID_BROADCOM_43436l    0xa9a6
-#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_43436l) */
 
 extern void wl_cfg80211_set_parent_dev(void *dev);
 extern void sdioh_sdmmc_devintr_off(sdioh_info_t *sd);
@@ -96,7 +90,6 @@ void sdio_function_cleanup(void);
 
 /* module param defaults */
 static int clockoverride = 0;
-static struct sdio_func *gfunc;
 
 module_param(clockoverride, int, 0644);
 MODULE_PARM_DESC(clockoverride, "SDIO card clock override");
@@ -105,28 +98,6 @@ MODULE_PARM_DESC(clockoverride, "SDIO card clock override");
 #define BCMSDH_SDMMC_MAX_DEVICES 1
 
 extern volatile bool dhd_mmc_suspend;
-
-int bcmsdh_sdmmc_set_power(int on)
-{
-	static struct sdio_func *sdio_func;
-	struct sdhci_host *host;
-
-	if (gfunc) {
-		sdio_func = gfunc;
-
-		host = (struct sdhci_host *)sdio_func->card->host;
-
-		if (on)
-			mmc_power_restore_host(sdio_func->card->host);
-		else
-			mmc_power_save_host(sdio_func->card->host);
-	}
-	return 0;
-}
-
-#if defined(OOB_PARAM)
-extern uint dhd_oob_disable;
-#endif /* OOB_PARAM */
 
 static int sdioh_probe(struct sdio_func *func)
 {
@@ -208,10 +179,8 @@ static int bcmsdh_sdmmc_probe(struct sdio_func *func,
 	sd_info(("Function#: 0x%04x\n", func->num));
 
 	/* 4318 doesn't have function 2 */
-	if ((func->num == 2) || (func->num == 1 && func->device == 0x4)) {
-		gfunc = func;
+	if ((func->num == 2) || (func->num == 1 && func->device == 0x4))
 		ret = sdioh_probe(func);
-	}
 
 	return ret;
 }
@@ -245,12 +214,25 @@ static const struct sdio_device_id bcmsdh_sdmmc_ids[] = {
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4324) },
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_43239) },
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_43430) },
-	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_43436l) },
 	{ SDIO_DEVICE_CLASS(SDIO_CLASS_NONE)		},
 	{ /* end: all zeroes */				},
 };
 
 MODULE_DEVICE_TABLE(sdio, bcmsdh_sdmmc_ids);
+
+#ifdef OOB_PARAM
+uint
+sdioh_get_oob_disable(sdioh_info_t *sd)
+{
+	int host_idx = sd->func[0]->card->host->index;
+	uint32 rca = sd->func[0]->card->rca;
+	wifi_adapter_info_t *adapter;
+
+	adapter = dhd_wifi_platform_get_adapter(SDIO_BUS, host_idx, rca);
+
+	return adapter->oob_disable;
+}
+#endif /* OOB_PARAM */
 
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) && defined(CONFIG_PM)
 static int bcmsdh_sdmmc_suspend(struct device *pdev)
@@ -287,7 +269,7 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 		return err;
 	}
 #if defined(OOB_INTR_ONLY)
-	OOB_PARAM_IF(!dhd_oob_disable) {
+	OOB_PARAM_IF(!(sdioh_get_oob_disable(sdioh))) {
 		bcmsdh_oob_intr_set(sdioh->bcmsdh, FALSE);
 	}
 #endif 
@@ -298,22 +280,16 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 
 static int bcmsdh_sdmmc_resume(struct device *pdev)
 {
-	struct sdio_func *func = dev_to_sdio_func(pdev);
-#if defined(OOB_INTR_ONLY)
 	sdioh_info_t *sdioh;
-#endif 
+	struct sdio_func *func = dev_to_sdio_func(pdev);
 
 	sd_err(("%s Enter\n", __FUNCTION__));
 	if (func->num != 2)
 		return 0;
 
-	dhd_mmc_suspend = FALSE;
-#if defined(OOB_INTR_ONLY)
 	sdioh = sdio_get_drvdata(func);
-	OOB_PARAM_IF(!dhd_oob_disable) {
-		bcmsdh_resume(sdioh->bcmsdh);
-	}
-#endif 
+	dhd_mmc_suspend = FALSE;
+	bcmsdh_resume(sdioh->bcmsdh);
 
 	smp_mb();
 	return 0;

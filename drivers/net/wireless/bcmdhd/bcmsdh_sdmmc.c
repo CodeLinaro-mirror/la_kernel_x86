@@ -1,7 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Copyright (C) 1999-2016, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,10 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- *
- * <<Broadcom-WL-IPTag/Proprietary,Open:>>
- *
- * $Id: bcmsdh_sdmmc.c 657455 2016-09-01 08:59:25Z $
+ * $Id: bcmsdh_sdmmc.c 662739 2016-11-08 09:20:31Z $
  */
 #include <typedefs.h>
 
@@ -57,23 +54,24 @@ extern int sdio_function_init(void);
 extern void sdio_function_cleanup(void);
 #endif /* BCMSDH_MODULE */
 
-#if defined(OOB_PARAM)
-extern uint dhd_oob_disable;
-#endif /* OOB_PARAM */
 #if !defined(OOB_INTR_ONLY) || defined(OOB_PARAM)
 static void IRQHandler(struct sdio_func *func);
 static void IRQHandlerF2(struct sdio_func *func);
 #endif /* !defined(OOB_INTR_ONLY) || defined(OOB_PARAM) */
 static int sdioh_sdmmc_get_cisaddr(sdioh_info_t *sd, uint32 regaddr);
 
-#if defined(CUSTOMER_IMX) && defined(NO_SDIO_RESET)
+#ifdef OOB_PARAM
+extern int sdioh_get_oob_disable(sdioh_info_t *sd);
+#endif /* OOB_PRARM */
+
+#if defined(NO_SDIO_RESET)
 static int sdio_reset_comm(struct mmc_card *card)
 {
 	return 0;
 }
 #else
 extern int sdio_reset_comm(struct mmc_card *card);
-#endif /* defined(CUSTOMER_IMX) && defined(NO_SDIO_RESET) */
+#endif /* NO_SDIO_RESET */
 
 #define DEFAULT_SDIO_F2_BLKSIZE		512
 #ifndef CUSTOM_SDIO_F2_BLKSIZE
@@ -317,7 +315,7 @@ sdioh_interrupt_register(sdioh_info_t *sd, sdioh_cb_fn_t fn, void *argh)
 		return SDIOH_API_RC_FAIL;
 	}
 #if !defined(OOB_INTR_ONLY) || defined(OOB_PARAM)
-	OOB_PARAM_IF(dhd_oob_disable) {
+	OOB_PARAM_IF(dhd_get_oob_disable(argh)) {
 		sd->intr_handler = fn;
 		sd->intr_handler_arg = argh;
 		sd->intr_handler_valid = TRUE;
@@ -336,11 +334,13 @@ sdioh_interrupt_register(sdioh_info_t *sd, sdioh_cb_fn_t fn, void *argh)
 		}
 	} OOB_PARAM_ELSE()
 #endif /* !defined(OOB_INTR_ONLY) || defined(OOB_PARAM) */
-#if defined(OOB_INTR_ONLY) && defined(HW_OOB)
+#if defined(OOB_INTR_ONLY)
 	{
+#if defined(HW_OOB)
 		sdioh_enable_func_intr(sd);
+#endif /* HW_OOB */
 	}
-#endif /* defined(OOB_INTR_ONLY) && defined(HW_OOB) */
+#endif /* defined(OOB_INTR_ONLY) */
 
 	return SDIOH_API_RC_SUCCESS;
 }
@@ -351,7 +351,7 @@ sdioh_interrupt_deregister(sdioh_info_t *sd)
 	sd_trace(("%s: Entering\n", __FUNCTION__));
 
 #if !defined(OOB_INTR_ONLY) || defined(OOB_PARAM)
-	OOB_PARAM_IF(dhd_oob_disable) {
+	OOB_PARAM_IF(sd->intr_handler_valid) {
 		if (sd->func[1]) {
 			/* register and unmask irq */
 			sdio_claim_host(sd->func[1]);
@@ -372,11 +372,14 @@ sdioh_interrupt_deregister(sdioh_info_t *sd)
 		sd->intr_handler_arg = NULL;
 	} OOB_PARAM_ELSE()
 #endif /* !defined(OOB_INTR_ONLY) || defined(OOB_PARAM) */
-#if defined(OOB_INTR_ONLY) && defined(HW_OOB)
+#if defined(OOB_INTR_ONLY)
 	{
-	sdioh_disable_func_intr(sd);
+#if defined(HW_OOB)
+		sdioh_disable_func_intr(sd);
+#endif /* HW_OOB */
 	}
-#endif /* defined(OOB_INTR_ONLY) && defined(HW_OOB) */
+#endif /* defined(OOB_INTR_ONLY) */
+
 	return SDIOH_API_RC_SUCCESS;
 }
 
@@ -546,19 +549,6 @@ sdioh_iovar_op(sdioh_info_t *si, const char *name,
 		/* Now set it */
 		si->client_block_size[func] = blksize;
 
-#ifdef USE_DYNAMIC_F2_BLKSIZE
-		if (si->func[func] == NULL) {
-			sd_err(("%s: SDIO Device not present\n", __FUNCTION__));
-			bcmerror = BCME_NORESOURCE;
-			break;
-		}
-		sdio_claim_host(si->func[func]);
-		bcmerror = sdio_set_block_size(si->func[func], blksize);
-		if (bcmerror)
-			sd_err(("%s: Failed to set F%d blocksize to %d(%d)\n",
-				__FUNCTION__, func, blksize, bcmerror));
-		sdio_release_host(si->func[func]);
-#endif /* USE_DYNAMIC_F2_BLKSIZE */
 		break;
 	}
 
@@ -983,6 +973,7 @@ sdioh_request_word(sdioh_info_t *sd, uint cmd_type, uint rw, uint func, uint add
 	return ((err_ret == 0) ? SDIOH_API_RC_SUCCESS : SDIOH_API_RC_FAIL);
 }
 
+#ifdef BCMSDIOH_TXGLOM
 static SDIOH_API_RC
 sdioh_request_packet_chain(sdioh_info_t *sd, uint fix_inc, uint write, uint func,
                      uint addr, void *pkt)
@@ -1105,6 +1096,7 @@ sdioh_request_packet_chain(sdioh_info_t *sd, uint fix_inc, uint write, uint func
 	sd_trace(("%s: Exit\n", __FUNCTION__));
 	return SDIOH_API_RC_SUCCESS;
 }
+#endif /* BCMSDIOH_TXGLOM */
 
 static SDIOH_API_RC
 sdioh_buffer_tofrom_bus(sdioh_info_t *sd, uint fix_inc, uint write, uint func,
@@ -1173,12 +1165,13 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 	DHD_PM_RESUME_RETURN_ERROR(SDIOH_API_RC_FAIL);
 
 	if (pkt) {
+#ifdef BCMSDIOH_TXGLOM
 		/* packet chain, only used for tx/rx glom, all packets length
 		 * are aligned, total length is a block multiple
 		 */
 		if (PKTNEXT(sd->osh, pkt))
 			return sdioh_request_packet_chain(sd, fix_inc, write, func, addr, pkt);
-
+#endif /* BCMSDIOH_TXGLOM */
 		/* non-glom mode, ignore the buffer parameter and use the packet pointer
 		 * (this shouldn't happen)
 		 */
@@ -1368,7 +1361,7 @@ sdioh_start(sdioh_info_t *sd, int stage)
 		   2.6.27. The implementation prior to that is buggy, and needs broadcom's
 		   patch for it
 		*/
-		if (FALSE /*(ret = sdio_reset_comm(sd->func[0]->card))*/) {
+		if ((ret = sdio_reset_comm(sd->func[0]->card))) {
 			sd_err(("%s Failed, error = %d\n", __FUNCTION__, ret));
 			return ret;
 		}
@@ -1412,7 +1405,7 @@ sdioh_start(sdioh_info_t *sd, int stage)
 			}
 		} else {
 #if !defined(OOB_INTR_ONLY) || defined(OOB_PARAM)
-			OOB_PARAM_IF(dhd_oob_disable) {
+			OOB_PARAM_IF(sdioh_get_oob_disable(sd)) {
 				sdio_claim_host(sd->func[0]);
 				if (sd->func[2])
 					sdio_claim_irq(sd->func[2], IRQHandlerF2);
@@ -1428,7 +1421,7 @@ sdioh_start(sdioh_info_t *sd, int stage)
 #endif /* defined(HW_OOB) */
 				bcmsdh_oob_intr_set(sd->bcmsdh, TRUE);
 			}
-#endif /* !defined(OOB_INTR_ONLY) */
+#endif /* defined(OOB_INTR_ONLY) */
 		}
 	}
 	else
@@ -1448,7 +1441,7 @@ sdioh_stop(sdioh_info_t *sd)
 	*/
 	if (sd->func[0]) {
 #if !defined(OOB_INTR_ONLY) || defined(OOB_PARAM)
-		OOB_PARAM_IF(dhd_oob_disable) {
+		OOB_PARAM_IF(sdioh_get_oob_disable(sd)) {
 			sdio_claim_host(sd->func[0]);
 			if (sd->func[1])
 				sdio_release_irq(sd->func[1]);
