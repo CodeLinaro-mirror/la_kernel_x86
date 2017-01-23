@@ -213,6 +213,7 @@ struct dw_controller;
  * @adapter: i2c subsystem adapter node
  * @tx_fifo_depth: depth of the hardware tx fifo
  * @rx_fifo_depth: depth of the hardware rx fifo
+ * @rx_outstanding: current master-rx elements in tx fifo
  * @ss_hcnt: standard speed HCNT value
  * @ss_lcnt: standard speed LCNT value
  * @fs_hcnt: fast speed HCNT value
@@ -257,6 +258,7 @@ struct dw_i2c_dev {
 	u32			master_cfg;
 	unsigned int		tx_fifo_depth;
 	unsigned int		rx_fifo_depth;
+	int			rx_outstanding;
 	int			use_dyn_clk;	/* use dynamic clk setting */
 	u32			clk_khz;	/* input clock */
 	u32			speed_cfg;
