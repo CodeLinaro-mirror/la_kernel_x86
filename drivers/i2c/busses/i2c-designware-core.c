@@ -740,6 +740,7 @@ struct dw_i2c_dev *i2c_dw_setup(struct device *pdev, int bus_idx,
 		dev_err(&adap->dev,
 			"Failed to add lock_xfer sysfs files: %d\n", r);
 
+	pm_runtime_enable(&adap->dev);
 	return dev;
 
 #ifdef CONFIG_I2C_DW_SPEED_MODE_DEBUG
@@ -865,6 +866,7 @@ void i2c_dw_free(struct device *pdev, struct dw_i2c_dev *dev)
 	sysfs_remove_group(&pdev->kobj, &i2c_dw_attr_group);
 #endif
 
+	pm_runtime_disable(&adap->dev);
 	i2c_del_adapter(&dev->adapter);
 	put_device(pdev);
 	free_irq(dev->irq, dev);
@@ -1243,6 +1245,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	dev_dbg(dev->dev, "%s: msgs: %d\n", __func__, num);
 
 	down(&dev->lock);
+	WARN_ON(dev->status & STATUS_SUSPENDED);
 
 	if (dev->status & STATUS_SUSPENDED) {
 		dev_err(dev->dev, "access i2c after suspend!\n");
