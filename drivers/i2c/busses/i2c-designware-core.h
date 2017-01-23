@@ -52,6 +52,7 @@
 #define DW_IC_CLR_GEN_CALL	0x68
 #define DW_IC_ENABLE		0x6c
 #define DW_IC_STATUS		0x70
+#define DW_IC_SDA_HOLD		0x7c
 #define DW_IC_TXFLR		0x74
 #define DW_IC_RXFLR		0x78
 #define DW_IC_TX_ABRT_SOURCE	0x80
@@ -161,6 +162,11 @@
 #define CLV_FS_SCLK_LCNT		0x98
 #define CLV_HS_SCLK_HCNT		0x8
 #define CLV_HS_SCLK_LCNT		0x17
+
+/*
+ * default value of i2c hold time
+ */
+#define DEFAULT_I2C_HOLD_TIME 0x05
 
 /* inofficial configuration
 #define MERR_SS_SCLK_HCNT 0x2c8
