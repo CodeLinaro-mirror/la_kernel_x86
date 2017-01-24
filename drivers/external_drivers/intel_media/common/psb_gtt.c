@@ -385,7 +385,7 @@ int psb_gtt_mm_init(struct psb_gtt *pg)
 	spin_lock_init(&gtt_mm->lock);
 
 	ht = &gtt_mm->hash;
-	ret = drm_ht_create(ht, 20);
+	ret = drm_ht_create(ht, 16);
 	if (ret) {
 		DRM_DEBUG("Create hash table failed(%d)\n", ret);
 		goto err_free;
@@ -513,7 +513,7 @@ static int psb_gtt_mm_alloc_insert_ht(struct psb_gtt_mm *mm,
 		return -ENOMEM;
 	}
 
-	ret = drm_ht_create(&hentry->ht, 20);
+	ret = drm_ht_create(&hentry->ht, 16);
 	if (ret) {
 		DRM_DEBUG("Create hash table failed\n");
 		goto failed_drm_ht_create;
