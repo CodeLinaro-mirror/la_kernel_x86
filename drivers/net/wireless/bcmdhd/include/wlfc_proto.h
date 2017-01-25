@@ -207,8 +207,13 @@
 	WL_SEQ_NUM_MASK)
 
 /* 32 STA should be enough??, 6 bits; Must be power of 2 */
+#ifdef EMBEDDED_PLATFORM
+#define WLFC_MAC_DESC_TABLE_SIZE	16
+#define WLFC_MAX_IFNUM				8
+#else
 #define WLFC_MAC_DESC_TABLE_SIZE	32
 #define WLFC_MAX_IFNUM				16
+#endif /* EMBEDDED_PLATFORM */
 #define WLFC_MAC_DESC_ID_INVALID	0xff
 
 /* b[7:5] -reuse guard, b[4:0] -value */
