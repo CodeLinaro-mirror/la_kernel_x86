@@ -812,6 +812,7 @@ static int tmd26723_probe(struct i2c_client *client,
 	if (!data->pdata) {
 		dev_err(&client->dev,
 		"%s No Platform data\n", TMD_26723_DEV_NAME);
+		err = -EINVAL;
 		goto exit_kfree;
 	}
 	data->client = client;
@@ -845,6 +846,7 @@ static int tmd26723_probe(struct i2c_client *client,
 		if (client->irq < 0) {
 			dev_err(&client->dev,
 			"%s gpio to irq failed\n", TMD_26723_DEV_NAME);
+			err = client->irq;
 			goto exit_free_gpio;
 		}
 		dev_dbg(&client->dev, "%s: %s has set irq to irq:"
@@ -852,11 +854,11 @@ static int tmd26723_probe(struct i2c_client *client,
 					TMD_26723_DEV_NAME, __func__, client->irq,
 					data->pdata->gpio_int);
 
-		if (request_irq(client->irq, tmd26723_interrupt, IRQF_TRIGGER_FALLING,
-			TMD26723_DRV_NAME, (void *)client)) {
+		err = request_irq(client->irq, tmd26723_interrupt, IRQF_TRIGGER_FALLING,
+				TMD26723_DRV_NAME, (void *)client);
+		if (err) {
 			dev_dbg(&client->dev,
 				"tmd26723.c: Could not allocate TMD26723_INT !\n");
-
 			goto exit_free_gpio;
 		}
 
@@ -914,6 +916,7 @@ static int tmd26723_probe(struct i2c_client *client,
         } else {
                 dev_dbg(&client->dev,
                 "%s No TMD26723 chip detected\n", TMD_26723_DEV_NAME);
+                err = -ENODEV;
                 goto exit_power_off;
         }
 
@@ -949,7 +952,6 @@ static int tmd26723_probe(struct i2c_client *client,
 	err = sysfs_create_group(&client->dev.kobj, &tmd26723_attr_group);
 	if (err)
 		goto exit_power_off;
-
 	pm_runtime_enable(&client->dev);
 
 	return 0;
@@ -971,6 +973,8 @@ exit_free_gpio:
 exit_kfree:
 	kfree(data);
 exit:
+	if (err >= 0)
+		err = -EINVAL;
 	return err;
 }
 
