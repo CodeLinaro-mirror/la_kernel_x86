@@ -1522,7 +1522,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 
 		/*copy the context from userspace*/
 		err = copy_from_user(psSurfCustom,
-				(void *)(pasSurfAttrib[i].ui64Custom),
+				(void *)(long)(pasSurfAttrib[i].ui64Custom),
 				sizeof(DC_MRFLD_SURF_CUSTOM));
 		if (err) {
 			DRM_ERROR("Failed to copy plane context\n");
