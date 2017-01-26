@@ -73,15 +73,22 @@ static int st_lsm6ds3h_do_div(struct lsm6ds3h_data *cdata,
 #endif
 			cdata->last_timestamp = cdata->timestamp - pattern_timestamp * pattern_num;
 		} else {
-			pattern_timestamp = (cdata->timestamp - cdata->last_timestamp) / pattern_num;
+			pattern_timestamp = cdata->timestamp - cdata->last_timestamp;
+			do_div(pattern_timestamp, pattern_num);
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
-			if (ext0_sip)
-				*ext0_deltatime = pattern_timestamp / ext0_sip;
+			if (ext0_sip) {
+				*ext0_deltatime = pattern_timestamp;
+				do_div(*ext0_deltatime, ext0_sip);
+			}
 #endif
-			if (gyro_sip)
-				*gyro_deltatime = pattern_timestamp / gyro_sip;
-			if (accel_sip)
-				*accel_deltatime = pattern_timestamp / accel_sip;
+			if (gyro_sip) {
+				*gyro_deltatime = pattern_timestamp;
+				do_div(*gyro_deltatime, gyro_sip);
+			}
+			if (accel_sip) {
+				*accel_deltatime = pattern_timestamp;
+				do_div(*accel_deltatime, accel_sip);
+			}
 		}
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_MASTER_SUPPORT
