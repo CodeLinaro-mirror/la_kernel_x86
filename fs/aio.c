@@ -40,6 +40,7 @@
 #include <linux/ramfs.h>
 #include <linux/percpu-refcount.h>
 #include <linux/mount.h>
+#include <linux/personality.h>
 
 #include <asm/kmap_types.h>
 #include <asm/uaccess.h>
@@ -442,6 +443,9 @@ static int aio_setup_ring(struct kioctx *ctx)
 	int nr_pages;
 	int i;
 	struct file *file;
+
+	if (current->personality & READ_IMPLIES_EXEC)
+		return -EPERM;
 
 	/* Compensate for the ring buffer's head/tail overlap entry */
 	nr_events += 2;	/* 1 is required, 2 for good luck */
