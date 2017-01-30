@@ -89,7 +89,7 @@ void panel_handler(struct sfi_device_table_entry *pentry,
 #define DECLARE_PANEL(panel_name)					\
 	static const struct devs_id panel_name##_dev_id __initconst = {	\
 		.name = #panel_name,					\
-		.type = SFI_DEV_TYPE_MDM,				\
+		.type = SFI_DEV_TYPE_DISPLAY,				\
 		.delay = 0,						\
 		.device_handler = &panel_handler,			\
 	};								\
