@@ -71,6 +71,7 @@
 
 #define BQ25898_POSTCHARGE_DEFAULT_DURATION_MN	30
 #define ONE_MINUTE                              (60 * HZ)
+#define BQ25898_BAT_MONITOR_DELAY_FIRST         0
 #define BQ25898_BAT_MONITOR_DELAY               ONE_MINUTE
 #define BQ25898_CURR_CHECK_INTERVAL_DEFAULT     ONE_MINUTE
 #define BQ25898_CURR_EOC_LIMIT_DEFAULT          20000  /* uA */
@@ -594,7 +595,7 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 		switch (caps->chrg_evt) {
 		case POWER_SUPPLY_CHARGER_EVENT_CONNECT:
 			/* schedule battery monitoring */
-			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY);
+			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY_FIRST);
 
 			/* wakelock : lock (suspend disabled), when not already locked, and on DCP (wall charger) detection */
 			if (!wake_lock_active(&chip->charger_wlock) && caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
@@ -2422,10 +2423,10 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 	/* Set VINDPM */
 	/* VBAT + 400mV */
 	val += BQ25898_VINDPM_ADDED_VALUE;
-	/* Write in register */
+	/* Write in register (Absolute + Threshold) */
 	/* if val < 3.9V then it is clamped to 3.9V (done at HW level) */
-	ret = bq25898_read_modify_reg(chip->client, BQ25898_VIN_CTRL_REG,
-		VINDPM_MASK, BQ25898_VINDPM_TO_REG(val));
+	dev_dbg(&chip->client->dev, "writing VINDPM reg0D : 0x%02x\n", BQ25898_VINDPM_TO_REG(val) | FORCE_VINDPM);
+	ret = bq25898_write_reg(chip->client, BQ25898_VIN_CTRL_REG, BQ25898_VINDPM_TO_REG(val) | FORCE_VINDPM);
 	if (ret < 0)
 		dev_err(&chip->client->dev, "failure to write VINDPM: %d\n", ret);
 
