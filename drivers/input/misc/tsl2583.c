@@ -292,6 +292,17 @@ static int taos_i2c_smbus_write_data(struct i2c_client *client, u8 command, u8 v
 	return ret;
 }
 
+static int taos_i2c_smbus_read_word_data(struct i2c_client *client, u8 command)
+{
+	int ret;
+
+	pm_runtime_get_sync(&client->dev);
+	ret = i2c_smbus_read_word_data(client, command);
+	pm_runtime_put(&client->dev);
+
+	return ret;
+}
+
 /*
  * Read a number of bytes starting at register (reg) location.
  * Return 0, or taos_i2c_smbus_write ERROR code.
@@ -461,10 +472,10 @@ static int taos_read_channel_data(struct tsl258x_chip *chip, int channel, u16 *v
 	int ret = 0;
 
 	if (channel == TSL258X_CHANNEL0)
-		ret = i2c_smbus_read_word_data(chip->client,
+		ret = taos_i2c_smbus_read_word_data(chip->client,
 			TSL258X_CMD_REG | TSL258X_CMD_AUTO_INC | TSL258X_ALS_CHAN0LO);
 	else
-		ret = i2c_smbus_read_word_data(chip->client,
+		ret = taos_i2c_smbus_read_word_data(chip->client,
 			TSL258X_CMD_REG | TSL258X_CMD_AUTO_INC | TSL258X_ALS_CHAN1LO);
 
 	if (ret >= 0) {
