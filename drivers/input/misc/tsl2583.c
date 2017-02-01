@@ -47,38 +47,38 @@
 #define ID_TSL2583		3
 #define ID_TSL2584TSV		4
 
-#define TSL258X_CHANNEL0		0x00
-#define TSL258X_CHANNEL1		0x01
+#define TSL258X_CHANNEL0	0x00
+#define TSL258X_CHANNEL1	0x01
 
-#define TSL258X_MAX_DEVICE_REGS		32
+#define TSL258X_MAX_DEVICE_REGS	32
 
 /* Triton register offsets */
 #define	TSL258X_REG_MAX		8
 
 /* Device Registers and Masks */
-#define TSL258X_CNTRL			0x00
-#define TSL258X_ALS_TIME		0X01
-#define TSL258X_INTERRUPT		0x02
-#define TSL258X_GAIN			0x07
-#define TSL258X_REVID			0x11
-#define TSL258X_CHIPID			0x12
-#define TSL258X_ALS_CHAN0LO		0x14
-#define TSL258X_ALS_CHAN0HI		0x15
-#define TSL258X_ALS_CHAN1LO		0x16
-#define TSL258X_ALS_CHAN1HI		0x17
-#define TSL258X_TMR_LO			0x18
-#define TSL258X_TMR_HI			0x19
-#define TSL258X_ID2			0x1e
+#define TSL258X_CNTRL		0x00
+#define TSL258X_ALS_TIME	0X01
+#define TSL258X_INTERRUPT	0x02
+#define TSL258X_GAIN		0x07
+#define TSL258X_REVID		0x11
+#define TSL258X_CHIPID		0x12
+#define TSL258X_ALS_CHAN0LO	0x14
+#define TSL258X_ALS_CHAN0HI	0x15
+#define TSL258X_ALS_CHAN1LO	0x16
+#define TSL258X_ALS_CHAN1HI	0x17
+#define TSL258X_TMR_LO		0x18
+#define TSL258X_TMR_HI		0x19
+#define TSL258X_ID2		0x1e
 
 /* tsl258x cmd reg masks */
-#define TSL258X_CMD_REG			0x80
-#define TSL258X_CMD_SPL_FN		0x60
+#define TSL258X_CMD_REG		0x80
+#define TSL258X_CMD_SPL_FN	0x60
 #define TSL258X_CMD_AUTO_INC	0x20
-#define TSL258X_CMD_ALS_INT_CLR	0X01
+#define TSL258X_CMD_ALS_INT_CLR	0x01
 
 /* tsl258x cntrl reg masks */
 #define TSL258X_CNTL_ADC_ENBL	0x02
-#define TSL258X_CNTL_PWR_ON		0x01
+#define TSL258X_CNTL_PWR_ON	0x01
 #define TSL258X_CNTL_PWR_OFF	0x00
 
 /* tsl258x status reg masks */
@@ -86,19 +86,19 @@
 #define TSL258X_STA_ADC_INTR	0x10
 
 /* Lux calculation constants */
-#define	TSL258X_LUX_CALC_OVER_FLOW		65535
+#define	TSL258X_LUX_CALC_OVER_FLOW	65535
 
 /* constants for lux calculations */
-#define MPOW                    13
-#define MFACT                   (1 << MPOW)
+#define MPOW			13
+#define MFACT			(1 << MPOW)
 
-#define ALS_TIME_MIN	50
-#define ALS_TIME_MAX	650
+#define ALS_TIME_MIN		50
+#define ALS_TIME_MAX		650
 
 #define ALS_TIME_TO_COUNT(ms)		((((ms) * 100 + 135) / 270) ? (((ms) * 100 + 135) / 270) : 1)
 #define ALS_COUNT_TO_TIME(count)	(((count) * 27 + 5) / 10)
 
-#define GAIN_RATIO 16
+#define GAIN_RATIO		16
 
 /*******************************************************************
 start TSL2584TSV lux equation defines
@@ -121,7 +121,7 @@ since atime * again is an integer
 *******************************************************************/
 
 /* No glass Coefficients */
-#define COFF_1_NO_GLASS         105
+#define COFF_1_NO_GLASS		105
 #define COFF_CH0_NO_GLASS       (u32)(1    * MFACT)
 #define COFF_CH1_NO_GLASS       (u32)(1.13 * MFACT)
 #define CH0_COFF_NO_GLASS       (u32)((COFF_1_NO_GLASS * COFF_CH0_NO_GLASS))
@@ -157,10 +157,13 @@ since atime * again is an integer
 #define TSL2584TSV_CH1_COFF1	1110
 #define FORMULA_NUM		1
 /* end TSL2584TSV lux equation defines on Marvin */
+
+/* For als_status */
 enum {
-	TSL258X_CHIP_UNKNOWN = 0,
-	TSL258X_CHIP_WORKING = 1,
-	TSL258X_CHIP_SUSPENDED = 2
+	TSL258X_STATUS_UNKNOWN		= 0, /* Initial state */
+	TSL258X_STATUS_ENABLED		= 1, /* Enabled */
+	TSL258X_STATUS_SUSPENDED	= 2, /* Disabled */
+	TSL258X_STATUS_POWERED_OFF	= 3, /* Powered off */
 };
 
 struct taos_settings {
@@ -276,7 +279,7 @@ static void taos_defaults(struct tsl258x_chip *chip)
 }
 
 /* i2c smbus read access */
-static int toas_i2c_smbus_read(struct i2c_client *client)
+static int taos_i2c_smbus_read(struct i2c_client *client)
 {
 	int ret;
 
@@ -288,7 +291,7 @@ static int toas_i2c_smbus_read(struct i2c_client *client)
 }
 
 /* i2c smbus write access */
-static int toas_i2c_smbus_write(struct i2c_client *client, u8 command)
+static int taos_i2c_smbus_write(struct i2c_client *client, u8 command)
 {
 	int ret;
 
@@ -299,7 +302,7 @@ static int toas_i2c_smbus_write(struct i2c_client *client, u8 command)
 	return ret;
 }
 
-static int toas_i2c_smbus_write_data(struct i2c_client *client, u8 command, u8 value)
+static int taos_i2c_smbus_write_data(struct i2c_client *client, u8 command, u8 value)
 {
 	int ret;
 
@@ -312,7 +315,7 @@ static int toas_i2c_smbus_write_data(struct i2c_client *client, u8 command, u8 v
 
 /*
  * Read a number of bytes starting at register (reg) location.
- * Return 0, or toas_i2c_smbus_write ERROR code.
+ * Return 0, or taos_i2c_smbus_write ERROR code.
  */
 static int
 taos_i2c_read(struct i2c_client *client, u8 reg, u8 *val, unsigned int len)
@@ -321,14 +324,14 @@ taos_i2c_read(struct i2c_client *client, u8 reg, u8 *val, unsigned int len)
 
 	for (i = 0; i < len; i++) {
 		/* select register to write */
-		ret = toas_i2c_smbus_write(client, (TSL258X_CMD_REG | reg));
+		ret = taos_i2c_smbus_write(client, (TSL258X_CMD_REG | reg));
 		if (ret < 0) {
 			dev_err(&client->dev, "taos_i2c_read failed to write"
 				" register %x\n", reg);
 			return ret;
 		}
 		/* read the data */
-		*val = toas_i2c_smbus_read(client);
+		*val = taos_i2c_smbus_read(client);
 		val++;
 		reg++;
 	}
@@ -340,12 +343,25 @@ static int taos_set_power(struct tsl258x_chip *chip, int on)
 	u8 cntrl = 0;
 	int ret = 0;
 
-	if (!on)
-		cntrl = 0x0;
-	else
+	if (!on) {
+		dev_info(&chip->client->dev, "powering down sensor\n");
+		cntrl = TSL258X_CNTL_PWR_OFF;
+	} else {
+		dev_info(&chip->client->dev, "powering up sensor\n");
 		cntrl = TSL258X_CNTL_PWR_ON;
-	ret = toas_i2c_smbus_write_data(chip->client,
-					 TSL258X_CMD_REG | TSL258X_CNTRL, cntrl);
+	}
+	ret = taos_i2c_smbus_write_data(chip->client,
+					TSL258X_CMD_REG | TSL258X_CNTRL, cntrl);
+	if (!ret && on)
+		/* Transition from powered off to disabled */
+		chip->als_status = TSL258X_STATUS_SUSPENDED;
+	else if (!ret && !on)
+		/* Transition from enabled/disabled to powered off */
+		chip->als_status = TSL258X_STATUS_POWERED_OFF;
+	else
+		dev_err(&chip->client->dev, "failed to power %s the sensor\n",
+			(on == 1) ? "up" : "down");
+
 	return ret;
 }
 
@@ -354,19 +370,29 @@ static int taos_set_enable(struct tsl258x_chip *chip, int en)
 	u8 cntrl = 0;
 	int ret = 0;
 
-	if (!en)
+	if (!en) {
 		cntrl = TSL258X_CNTL_PWR_ON;
-	else {
+		dev_info(&chip->client->dev, "disabling sensor\n");
+	} else {
 		mdelay(3);
 		cntrl = TSL258X_CNTL_PWR_ON | TSL258X_CNTL_ADC_ENBL;
+		dev_info(&chip->client->dev, "enabling sensor\n");
+
+		dev_dbg(&chip->client->dev, "%s: integration time als_time=%dms\n",
+			__func__, chip->taos_settings.als_time);
+		dev_dbg(&chip->client->dev, "%s: polling period als_odr=%dms\n",
+			__func__, chip->taos_settings.als_odr);
 	}
 
-	ret = toas_i2c_smbus_write_data(chip->client,
+	ret = taos_i2c_smbus_write_data(chip->client,
 					TSL258X_CMD_REG | TSL258X_CNTRL, cntrl);
 	if (!ret && en)
-		chip->als_status = TSL258X_CHIP_WORKING;
+		chip->als_status = TSL258X_STATUS_ENABLED;
 	else if (!ret && !en)
-		chip->als_status = TSL258X_CHIP_SUSPENDED;
+		chip->als_status = TSL258X_STATUS_SUSPENDED;
+	else
+		dev_err(&chip->client->dev, "failed to %s the sensor\n",
+			(en == 1) ? "enable" : "disable");
 
 	return ret;
 }
@@ -391,7 +417,7 @@ static int taos_set_als_time(struct tsl258x_chip *chip, int ms)
 	/* convert back to time (encompasses overrides) */
 	als_time = ALS_COUNT_TO_TIME(als_count);
 
-	ret = toas_i2c_smbus_write_data(chip->client,
+	ret = taos_i2c_smbus_write_data(chip->client,
 			TSL258X_CMD_REG | TSL258X_ALS_TIME,
 			(256 - als_count));
 
@@ -417,7 +443,7 @@ static int taos_set_gain(struct tsl258x_chip *chip, int gain)
 	if (i >= TSL2584_ALS_GAIN_NUM)
 		return -EINVAL;
 
-	ret = toas_i2c_smbus_write_data(chip->client,
+	ret = taos_i2c_smbus_write_data(chip->client,
 			TSL258X_CMD_REG | TSL258X_GAIN, tsl2584_als_gain_tbl[i].gain_idex);
 	if (ret < 0)
 		return ret;
@@ -437,11 +463,17 @@ static int taos_channel_data_valid(struct tsl258x_chip *chip)
 		dev_err(&chip->client->dev, "failed to read ctrnl\n");
 		return ret;
 	}
-	/* is data new & valid */
-	if (!(cntrl & TSL258X_STA_ADC_INTR) || !(cntrl & TSL258X_STA_ADC_VALID)) {
+
+	if (!(cntrl & TSL258X_STA_ADC_INTR)) {
+		dev_err(&chip->client->dev, "channel data not new\n");
+		return -ENODATA;
+	}
+
+	if (!(cntrl & TSL258X_STA_ADC_VALID)) {
 		dev_err(&chip->client->dev, "channel data not valid\n");
 		return -ENODATA;
 	}
+
 	return ret;
 }
 
@@ -466,7 +498,7 @@ static int taos_read_channel_data(struct tsl258x_chip *chip, int channel, u16 *v
 
 static int taos_chip_clear_interrupt(struct tsl258x_chip *chip)
 {
-	return toas_i2c_smbus_write(chip->client,
+	return taos_i2c_smbus_write(chip->client,
 		TSL258X_CMD_REG | TSL258X_CMD_SPL_FN | TSL258X_CMD_ALS_INT_CLR);
 }
 
@@ -512,7 +544,7 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 	int lux1;
 	int lux2;
 
-	if (chip->als_status != TSL258X_CHIP_WORKING) {
+	if (chip->als_status != TSL258X_STATUS_ENABLED) {
 		/* device is not enabled */
 		dev_err(&chip->client->dev, "taos_get_lux device is not enabled\n");
 		return -EBUSY;
@@ -548,7 +580,7 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 
 	if (ch0 == 0) {
 		/* have no data, so return LAST VALUE */
-		dev_info(&chip->client->dev, "ch0 have no data\n");
+		dev_info(&chip->client->dev, "ch0 has no data\n");
 		lux = chip->lux;
 		chip->lux = 0;
 		return lux;
@@ -627,7 +659,7 @@ static int taos_als_calibrate(struct tsl258x_chip *chip)
 	int ret;
 	int lux_val;
 
-	ret = toas_i2c_smbus_write(chip->client,
+	ret = taos_i2c_smbus_write(chip->client,
 				   (TSL258X_CMD_REG | TSL258X_CNTRL));
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
@@ -636,7 +668,7 @@ static int taos_als_calibrate(struct tsl258x_chip *chip)
 		return ret;
 	}
 
-	reg_val = toas_i2c_smbus_read(chip->client);
+	reg_val = taos_i2c_smbus_read(chip->client);
 	if ((reg_val & (TSL258X_CNTL_ADC_ENBL | TSL258X_CNTL_PWR_ON))
 			!= (TSL258X_CNTL_ADC_ENBL | TSL258X_CNTL_PWR_ON)) {
 		dev_err(&chip->client->dev,
@@ -644,7 +676,7 @@ static int taos_als_calibrate(struct tsl258x_chip *chip)
 		return -1;
 	}
 
-	ret = toas_i2c_smbus_write(chip->client,
+	ret = taos_i2c_smbus_write(chip->client,
 				   (TSL258X_CMD_REG | TSL258X_CNTRL));
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
@@ -652,7 +684,7 @@ static int taos_als_calibrate(struct tsl258x_chip *chip)
 			ret);
 		return ret;
 	}
-	reg_val = toas_i2c_smbus_read(chip->client);
+	reg_val = taos_i2c_smbus_read(chip->client);
 
 	if ((reg_val & TSL258X_STA_ADC_VALID) != TSL258X_STA_ADC_VALID) {
 		dev_err(&chip->client->dev,
@@ -685,7 +717,7 @@ static void taos_workqueue_handler(struct work_struct *work)
 			container_of(work, struct tsl258x_chip, data_work);
 
 	mutex_lock(&chip->als_mutex);
-	if (chip->als_status != TSL258X_CHIP_WORKING) {
+	if (chip->als_status != TSL258X_STATUS_ENABLED) {
 		mutex_unlock(&chip->als_mutex);
 		return;
 	}
@@ -706,20 +738,20 @@ static void taos_timer_handler(unsigned long private)
 {
 	struct tsl258x_chip *chip = (struct tsl258x_chip *)private;
 
-	if (chip->als_status == TSL258X_CHIP_WORKING)
+	if (chip->als_status == TSL258X_STATUS_ENABLED)
 		queue_work(tsl258x_wq, &chip->data_work);
 }
 
 /* Sysfs Interface Functions */
 
-static ssize_t taos_power_state_show(struct device *dev,
+static ssize_t taos_enable_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct tsl258x_chip *chip = i2c_get_clientdata(client);
 	int enable = 0;
 
-	if (chip->als_status == TSL258X_CHIP_WORKING)
+	if (chip->als_status == TSL258X_STATUS_ENABLED)
 		enable = 1;
 	else
 		enable = 0;
@@ -727,7 +759,7 @@ static ssize_t taos_power_state_show(struct device *dev,
 	return sprintf(buf, "%d\n", enable);
 }
 
-static ssize_t taos_power_state_store(struct device *dev,
+static ssize_t taos_enable_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -742,8 +774,8 @@ static ssize_t taos_power_state_store(struct device *dev,
 
 	mutex_lock(&chip->als_mutex);
 	if (value == 1) {
-		/* turn on light  sensor */
-		if (chip->als_status != TSL258X_CHIP_WORKING) {
+		/* Enable light sensor */
+		if (chip->als_status != TSL258X_STATUS_ENABLED) {
 			err = taos_set_enable(chip, true);
 			if (err) {
 				dev_err(&client->dev, "taos_set_enable true failed\n");
@@ -755,7 +787,7 @@ static ssize_t taos_power_state_store(struct device *dev,
 			}
 		}
 	} else {
-		/* turn off light sensor */
+		/* Disable light sensor */
 		err = taos_set_enable(chip, false);
 		if (err) {
 			dev_err(&client->dev, "taos_set_enable false failed\n");
@@ -788,6 +820,11 @@ static ssize_t taos_als_delay_store(struct device *dev,
 		return -EINVAL;
 	if (!value)
 		return -EINVAL;
+
+	if (value < chip->taos_settings.als_time)
+		dev_warn(&client->dev,
+			 "warning: polling period als_odr=%dms shorter than integration time als_time=%dms\n",
+			 value, chip->taos_settings.als_time);
 
 	mutex_lock(&chip->als_mutex);
 	chip->taos_settings.als_odr = value;
@@ -861,6 +898,11 @@ static ssize_t taos_als_time_store(struct device *dev,
 		return -EINVAL;
 	if (!value)
 		return -EINVAL;
+
+	if (value > chip->taos_settings.als_odr)
+		dev_warn(&client->dev,
+			 "warning: polling period als_odr=%dms shorter than integration time als_time=%dms\n",
+			 chip->taos_settings.als_odr, value);
 
 	mutex_lock(&chip->als_mutex);
 	err = taos_set_als_time(chip, value);
@@ -1020,7 +1062,7 @@ static ssize_t taos_luxtable_store(struct device *dev,
 		}
 	}
 
-	if (chip->als_status == TSL258X_CHIP_WORKING)
+	if (chip->als_status == TSL258X_STATUS_ENABLED)
 		taos_set_enable(chip, false);
 
 	/* Zero out the table */
@@ -1033,7 +1075,7 @@ static ssize_t taos_luxtable_store(struct device *dev,
 }
 
 static DEVICE_ATTR(als_enable, S_IRUGO | S_IWUSR,
-		taos_power_state_show, taos_power_state_store);
+		taos_enable_show, taos_enable_store);
 
 static DEVICE_ATTR(als_delay, S_IRUGO | S_IWUSR,
 		taos_als_delay_show, taos_als_delay_store);
@@ -1163,22 +1205,22 @@ static int taos_probe(struct i2c_client *clientp,
 	setup_timer(&chip->timer, taos_timer_handler, (unsigned long)chip);
 
 	mutex_init(&chip->als_mutex);
-	chip->als_status = TSL258X_CHIP_UNKNOWN;
+	chip->als_status = TSL258X_STATUS_UNKNOWN;
 
 	if (((struct tsl258x_platform_data *)chip->pdata)->gpio_conf)
 		((struct tsl258x_platform_data *)chip->pdata)->gpio_conf();
 
 	for (i = 0; i < TSL258X_MAX_DEVICE_REGS; i++) {
-		ret = toas_i2c_smbus_write(clientp,
+		ret = taos_i2c_smbus_write(clientp,
 				(TSL258X_CMD_REG | (TSL258X_CNTRL + i)));
 		if (ret < 0) {
-			dev_err(&clientp->dev, "toas_i2c_smbus_write() to cmd "
+			dev_err(&clientp->dev, "taos_i2c_smbus_write() to cmd "
 				"reg failed in taos_probe(), err = %d\n", ret);
 			goto err_tsl_hw_failed;
 		}
-		ret = toas_i2c_smbus_read(clientp);
+		ret = taos_i2c_smbus_read(clientp);
 		if (ret < 0) {
-			dev_err(&clientp->dev, "toas_i2c_smbus_read from "
+			dev_err(&clientp->dev, "taos_i2c_smbus_read from "
 				"reg failed in taos_probe(), err = %d\n", ret);
 
 			goto err_tsl_hw_failed;
@@ -1198,9 +1240,9 @@ static int taos_probe(struct i2c_client *clientp,
 	else
 		chip->id = taos_tsl258x_chip_id(buf);
 
-	ret = toas_i2c_smbus_write(clientp, (TSL258X_CMD_REG | TSL258X_CNTRL));
+	ret = taos_i2c_smbus_write(clientp, (TSL258X_CMD_REG | TSL258X_CNTRL));
 	if (ret < 0) {
-		dev_err(&clientp->dev, "toas_i2c_smbus_write() to cmd reg "
+		dev_err(&clientp->dev, "taos_i2c_smbus_write() to cmd reg "
 			"failed in taos_probe(), err = %d\n", ret);
 		goto err_tsl_hw_failed;
 	}
@@ -1232,32 +1274,32 @@ err_input_alloc_failed:
 	return ret;
 }
 
-static int taos_suspend(struct i2c_client *client, pm_message_t state)
+#ifdef CONFIG_PM_SLEEP
+static int taos_suspend(struct device *dev)
 {
-	struct tsl258x_chip *chip = i2c_get_clientdata(client);
+	struct tsl258x_chip *chip = dev_get_drvdata(dev);
 	int ret = 0;
 
 	mutex_lock(&chip->als_mutex);
-	if (chip->als_status == TSL258X_CHIP_WORKING) {
+	if (chip->als_status != TSL258X_STATUS_POWERED_OFF) {
 		ret = taos_set_power(chip, false);
-		chip->als_status = TSL258X_CHIP_SUSPENDED;
 	}
 	mutex_unlock(&chip->als_mutex);
 	return ret;
 }
 
-static int taos_resume(struct i2c_client *client)
+static int taos_resume(struct device *dev)
 {
-	struct tsl258x_chip *chip = i2c_get_clientdata(client);
+	struct tsl258x_chip *chip = dev_get_drvdata(dev);
 	int ret = 0;
 
 	mutex_lock(&chip->als_mutex);
-	if (chip->als_status == TSL258X_CHIP_SUSPENDED)
+	if (chip->als_status == TSL258X_STATUS_POWERED_OFF)
 		ret = taos_set_power(chip, true);
 	mutex_unlock(&chip->als_mutex);
 	return ret;
 }
-
+#endif /* CONFIG_PM_SLEEP */
 
 static int taos_remove(struct i2c_client *client)
 {
@@ -1299,12 +1341,13 @@ static char *tsl2583x_get_name(struct tsl258x_chip *chip)
 	return "unknown sensor";
 }
 
+SIMPLE_DEV_PM_OPS(taos_pm_ops, taos_suspend, taos_resume);
+
 /* Driver definition */
 static struct i2c_driver taos_driver = {
 	.driver = {
 		.name = TSL258X_NAME,
-		.suspend	= taos_suspend,
-		.resume		= taos_resume,
+		.pm = &taos_pm_ops,
 	},
 	.id_table = taos_idtable,
 	.probe = taos_probe,
