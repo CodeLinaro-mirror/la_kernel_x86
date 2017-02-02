@@ -117,6 +117,8 @@ struct gpadc_regs_t {
 	u16 adc1cntl;
 	u16 adcirq;
 	u16 madcirq;
+	u16 thrmmonctl;
+	u16 thrmen;
 };
 
 struct iio_dev;

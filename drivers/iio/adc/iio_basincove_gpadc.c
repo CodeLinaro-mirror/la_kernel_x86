@@ -61,7 +61,6 @@ struct gpadc_info {
 	int irq;
 	u8 irq_status;
 	wait_queue_head_t wait;
-	int sample_done;
 	void __iomem *intr;
 	u8 intr_mask;
 	int channel_num;
@@ -169,7 +168,6 @@ static irqreturn_t gpadc_isr(int irq, void *data)
 	struct gpadc_info *info = iio_priv(data);
 
 	info->irq_status = ioread8(info->intr);
-	info->sample_done = 1;
 	wake_up(&info->wait);
 #endif
 	return IRQ_WAKE_THREAD;
@@ -181,7 +179,6 @@ static irqreturn_t gpadc_threaded_isr(int irq, void *data)
 	struct gpadc_regs_t *regs = info->gpadc_regs;
 #ifndef CONFIG_INTEL_SCU_IPC
 	gpadc_read(regs->adcirq, &info->irq_status);
-	info->sample_done = 1;
 	wake_up(&info->wait);
 #else
 	/* Clear IRQLVL1MASK */
@@ -209,7 +206,7 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 {
 	struct gpadc_info *info = iio_priv(indio_dev);
 	int i, ret, reg_val;
-	u8 tmp, th, tl;
+	u8 req_ch, th, tl;
 	u8 mask, cursrc;
 	unsigned long rlsb;
 	unsigned long rlsb_array[] = {
@@ -227,18 +224,19 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 
 	mutex_lock(&info->lock);
 
+	gpadc_clear_bits(regs->thrmmonctl, regs->thrmen);/*Disable automatic HW timer conversion*/
 	mask = info->intr_mask;
 	gpadc_clear_bits(regs->madcirq, mask);
 	gpadc_clear_bits(regs->mirqlvl1, regs->mirqlvl1_adc);
 
-	tmp = regs->gpadcreq_irqen;
+	req_ch = 0;
 
 	for (i = 0; i < info->channel_num; i++) {
 		if (ch & (1 << i))
-			tmp |= (1 << info->gpadc_regmaps[i].cntl);
+			req_ch |= (1 << info->gpadc_regmaps[i].cntl);
 	}
 
-	info->sample_done = 0;
+	info->irq_status = 0;
 
 	ret = gpadc_busy_wait(regs);
 	if (ret) {
@@ -246,9 +244,10 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 		goto done;
 	}
 
-	gpadc_write(regs->gpadcreq, tmp);
+	gpadc_write(regs->gpadcreq, req_ch);
 
-	ret = wait_event_timeout(info->wait, info->sample_done, HZ);
+	/* Verify that the requested conversion tasks are completed */
+	ret = wait_event_timeout(info->wait, ((info->irq_status & req_ch) == req_ch), HZ);
 	if (ret == 0) {
 		gpadc_dump(info);
 		ret = -ETIMEDOUT;
@@ -308,6 +307,7 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 	}
 
 done:
+	gpadc_set_bits(regs->thrmmonctl, regs->thrmen);/*Reset thrmmonctl to its initial value*/
 	gpadc_set_bits(regs->mirqlvl1, regs->mirqlvl1_adc);
 	gpadc_set_bits(regs->madcirq, mask);
 	mutex_unlock(&info->lock);
