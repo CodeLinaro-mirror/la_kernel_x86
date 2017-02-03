@@ -244,6 +244,7 @@ EXPORT_SYMBOL_GPL(sst_alloc_drv_context);
 int sst_context_init(struct intel_sst_drv *ctx)
 {
 	int ret = 0, i;
+	struct sst_fw_save *fw_save;
 
 	if (!ctx->pdata)
 		return -EINVAL;
@@ -312,16 +313,52 @@ int sst_context_init(struct intel_sst_drv *ctx)
 	pm_qos_add_request(ctx->qos, PM_QOS_CPU_DMA_LATENCY,
 				PM_QOS_DEFAULT_VALUE);
 
+	/* Allocating memory to restore FW to ram when resuming */
+	fw_save = kzalloc(sizeof(*fw_save), GFP_KERNEL);
+	if (!fw_save)
+		return -ENOMEM;
+	fw_save->iram = kzalloc(ctx->iram_end - ctx->iram_base, GFP_KERNEL);
+	if (!fw_save->iram) {
+		ret = -ENOMEM;
+		goto iram;
+	}
+	fw_save->dram = kzalloc(ctx->dram_end - ctx->dram_base, GFP_KERNEL);
+	if (!fw_save->dram) {
+		ret = -ENOMEM;
+		goto dram;
+	}
+	fw_save->sram = kzalloc(SST_MAILBOX_SIZE, GFP_KERNEL);
+	if (!fw_save->sram) {
+		ret = -ENOMEM;
+		goto sram;
+	}
+
+	fw_save->ddr = kzalloc(ctx->ddr_end - ctx->ddr_base, GFP_KERNEL);
+	if (!fw_save->ddr) {
+		ret = -ENOMEM;
+		goto ddr;
+	}
+
+	ctx->fw_save = fw_save;
+
 	dev_dbg(ctx->dev, "Requesting FW %s now...\n", ctx->firmware_name);
 	ret = request_firmware_nowait(THIS_MODULE, true, ctx->firmware_name,
 				      ctx->dev, GFP_KERNEL, ctx, sst_firmware_load_cb);
 	if (ret) {
 		dev_err(ctx->dev, "Firmware download failed:%d\n", ret);
-		goto do_free_mem;
+		goto ddr;
 	}
 	sst_register(ctx->dev);
 	return 0;
 
+ddr:
+	kfree(fw_save->sram);
+sram:
+	kfree(fw_save->dram);
+dram:
+	kfree(fw_save->iram);
+iram:
+	kfree(fw_save);
 do_free_mem:
 	destroy_workqueue(ctx->post_msg_wq);
 	return ret;
@@ -342,6 +379,11 @@ void sst_context_cleanup(struct intel_sst_drv *ctx)
 	ctx->fw_sg_list.list_len = 0;
 	ctx->fw_loaded = false;
 	sst_memcpy_free_resources(ctx);
+	kfree(ctx->fw_save->sram);
+	kfree(ctx->fw_save->dram);
+	kfree(ctx->fw_save->iram);
+	kfree(ctx->fw_save->ddr);
+	kfree(ctx->fw_save);
 	ctx = NULL;
 }
 EXPORT_SYMBOL_GPL(sst_context_cleanup);
@@ -438,7 +480,7 @@ static int intel_sst_runtime_suspend(struct device *dev)
 static int intel_sst_suspend(struct device *dev)
 {
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
-	struct sst_fw_save *fw_save;
+	struct sst_fw_save *fw_save = ctx->fw_save;
 	int i, ret = 0;
 
 	/* check first if we are already in SW reset */
@@ -467,49 +509,13 @@ static int intel_sst_suspend(struct device *dev)
 	if (ctx->ops->save_dsp_context(ctx))
 		return -EBUSY;
 
-	/* save the memories */
-	fw_save = kzalloc(sizeof(*fw_save), GFP_KERNEL);
-	if (!fw_save)
-		return -ENOMEM;
-	fw_save->iram = kzalloc(ctx->iram_end - ctx->iram_base, GFP_KERNEL);
-	if (!fw_save->iram) {
-		ret = -ENOMEM;
-		goto iram;
-	}
-	fw_save->dram = kzalloc(ctx->dram_end - ctx->dram_base, GFP_KERNEL);
-	if (!fw_save->dram) {
-		ret = -ENOMEM;
-		goto dram;
-	}
-	fw_save->sram = kzalloc(SST_MAILBOX_SIZE, GFP_KERNEL);
-	if (!fw_save->sram) {
-		ret = -ENOMEM;
-		goto sram;
-	}
-
-	fw_save->ddr = kzalloc(ctx->ddr_end - ctx->ddr_base, GFP_KERNEL);
-	if (!fw_save->ddr) {
-		ret = -ENOMEM;
-		goto ddr;
-	}
-
 	memcpy32_fromio(fw_save->iram, ctx->iram, ctx->iram_end - ctx->iram_base);
 	memcpy32_fromio(fw_save->dram, ctx->dram, ctx->dram_end - ctx->dram_base);
 	memcpy32_fromio(fw_save->sram, ctx->mailbox, SST_MAILBOX_SIZE);
 	memcpy32_fromio(fw_save->ddr, ctx->ddr, ctx->ddr_end - ctx->ddr_base);
 
-	ctx->fw_save = fw_save;
 	ctx->ops->reset(ctx);
 	return 0;
-ddr:
-	kfree(fw_save->sram);
-sram:
-	kfree(fw_save->dram);
-dram:
-	kfree(fw_save->iram);
-iram:
-	kfree(fw_save);
-	return ret;
 }
 
 static int intel_sst_runtime_resume(struct device *dev)
@@ -534,18 +540,10 @@ static int intel_sst_resume(struct device *dev)
 	/* we have to restore the memory saved */
 	ctx->ops->reset(ctx);
 
-	ctx->fw_save = NULL;
-
 	memcpy32_toio(ctx->iram, fw_save->iram, ctx->iram_end - ctx->iram_base);
 	memcpy32_toio(ctx->dram, fw_save->dram, ctx->dram_end - ctx->dram_base);
 	memcpy32_toio(ctx->mailbox, fw_save->sram, SST_MAILBOX_SIZE);
 	memcpy32_toio(ctx->ddr, fw_save->ddr, ctx->ddr_end - ctx->ddr_base);
-
-	kfree(fw_save->sram);
-	kfree(fw_save->dram);
-	kfree(fw_save->iram);
-	kfree(fw_save->ddr);
-	kfree(fw_save);
 
 	block = sst_create_block(ctx, 0, FW_DWNL_ID);
 	if (block == NULL)
