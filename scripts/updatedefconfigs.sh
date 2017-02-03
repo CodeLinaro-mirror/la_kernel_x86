@@ -9,11 +9,11 @@
 # In the end all defconfigs will be updated and ready for a patch.
 
 
-for arch in x86_64
+for arch in i386 x86_64
 do
-	ALLDEFCONFIGS="`ls arch/x86/configs/${arch}_*_defconfig`"
+	ALLDEFCONFIGS="`ls arch/x86/configs/${arch}_mrfl_defconfig`"
 	for conf in $ALLDEFCONFIGS; do
-		echo "Updating $conf (O=oldconfig, m=menuconfig, x=xconfig): [O/m/x default=O]?"
+		echo "Updating $conf (O=oldconfig, m=menuconfig, x=xconfig, d=olddefconfig): [O/m/x/d default=O]?"
 		read -s -n1 ANSWER < /dev/tty
 		cp $conf .config
 		case "$ANSWER" in
@@ -22,6 +22,9 @@ do
 			;;
 			[xX] )
 				make ARCH=${arch} xconfig
+			;;
+			[dD] )
+				make ARCH=${arch} olddefconfig
 			;;
 			 *)
 				make ARCH=${arch} oldconfig
