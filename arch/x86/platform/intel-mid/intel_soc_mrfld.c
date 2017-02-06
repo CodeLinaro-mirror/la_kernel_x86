@@ -151,8 +151,7 @@ static int mrfld_pmu_init(void)
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
-				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15)	|
-				SSMSK(D0I3_MASK, PMU_GP_DMA_LSS_25));
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 as unused on Tangier */
 	mid_pmu_cxt->os_sss[0] |= \
@@ -161,6 +160,7 @@ static int mrfld_pmu_init(void)
 	mid_pmu_cxt->os_sss[1] = (SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|
 				SSMSK(D0I3_MASK, PMU_SSP3_LSS_17-16)|
 				SSMSK(D0I3_MASK, PMU_SSP6_LSS_19-16)|
+				SSMSK(D0I3_MASK, PMU_GP_DMA_LSS_25-16)|
 				SSMSK(D0I3_MASK, PMU_USB_OTG_LSS_28-16)|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_29-16)|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_30-16));
@@ -283,8 +283,7 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
-				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15)	|
-				SSMSK(D0I3_MASK, PMU_GP_DMA_LSS_25));
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 as unused on Tangier */
 	pmu_config->pmu2_states[0] |= \
@@ -294,6 +293,7 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 				(SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|
 				SSMSK(D0I3_MASK, PMU_SSP3_LSS_17-16)|
 				SSMSK(D0I3_MASK, PMU_SSP6_LSS_19-16)|
+				SSMSK(D0I3_MASK, PMU_GP_DMA_LSS_25-16)|
 				SSMSK(D0I3_MASK, PMU_USB_OTG_LSS_28-16)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_29-16)|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_30-16));
