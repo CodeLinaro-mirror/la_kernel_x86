@@ -1151,22 +1151,23 @@ static int taos_probe(struct i2c_client *clientp,
 		return -EOPNOTSUPP;
 	}
 
-	chip = kzalloc(sizeof(struct tsl258x_chip), GFP_KERNEL);
+	chip = devm_kzalloc(&clientp->dev, sizeof(*chip), GFP_KERNEL);
 	if (chip == NULL) {
 		dev_err(&clientp->dev, "couldn't allocate memory for chip\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_alloc_failed;
 	}
 
 	chip->client = clientp;
 	chip->pdata = clientp->dev.platform_data;
 	i2c_set_clientdata(clientp, chip);
 
-	chip->input = input_allocate_device();
+	chip->input = devm_input_allocate_device(&clientp->dev);
 	/* couldn't allocate input device */
 	if (!chip->input) {
 		dev_err(&clientp->dev, "couldn't allocate input device\n");
 		ret = -ENOMEM;
-		goto err_input_alloc_failed;
+		goto err_alloc_failed;
 	}
 	/* set up the input device, this name is the dev-node-name under /dev/input/ */
 	chip->input->name = "tsl2584 ambient light sensor";
@@ -1251,10 +1252,7 @@ err_tsl_hw_failed:
 err_sysfs_failed:
 	input_unregister_device(chip->input);
 err_input_register_failed:
-	/* REVERTME: skip the free device call in case no als is detected */
-	// input_free_device(chip->input);
-err_input_alloc_failed:
-	kfree(chip);
+err_alloc_failed:
 	return ret;
 }
 
