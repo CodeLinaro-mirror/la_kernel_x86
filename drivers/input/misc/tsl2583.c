@@ -177,6 +177,8 @@ struct taos_lux {
 /* Sized to 11 = max 10 segments + 1 termination segment */
 /* Assumption is is one and only one type of glass used  */
 static struct taos_lux taos_device_lux[11];
+/* Protects access to taos_device_lux. Must be locked after als_mutex. */
+static struct mutex taos_lux_mutex;
 
 /* tsl2581, tsl2583 */
 static struct taos_lux taos_device_lux_tsl258x[] = {
@@ -241,6 +243,7 @@ static void taos_defaults(struct tsl258x_chip *chip)
 	chip->taos_settings.als_cal_target = chip->pdata->als_def_cal_target;
 
 	/* populate the default lux table */
+	mutex_lock(&taos_lux_mutex);
 	if (chip->id == ID_TSL2584TSV) {
 		memcpy(&taos_device_lux[0],
 			&taos_device_lux_tsl2584tsv[0],
@@ -250,6 +253,7 @@ static void taos_defaults(struct tsl258x_chip *chip)
 			&taos_device_lux_tsl258x[0],
 			sizeof(taos_device_lux_tsl258x));
 	}
+	mutex_unlock(&taos_lux_mutex);
 
 	/* Known external ALS reading used for calibration */
 }
@@ -596,6 +600,7 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 	} else {
 		/* calculate ratio */
 		ratio = (ch1 << 15) / ch0;
+		mutex_lock(&taos_lux_mutex);
 		/* convert to unscaled lux using the pointer to the table */
 		for (p = (struct taos_lux *) taos_device_lux;
 		     p->ratio != 0 && p->ratio < ratio; p++)
@@ -612,6 +617,7 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 				 / gainadj[chip->taos_settings.als_gain_idex].ch1;
 			lux = ch0lux - ch1lux;
 		}
+		mutex_unlock(&taos_lux_mutex);
 
 		/* note: lux is 31 bit max at this point */
 		if (ch1lux > ch0lux) {
@@ -992,6 +998,7 @@ static ssize_t taos_luxtable_show(struct device *dev,
 	int i;
 	int offset = 0;
 
+	mutex_lock(&taos_lux_mutex);
 	for (i = 0; i < ARRAY_SIZE(taos_device_lux); i++) {
 		offset += sprintf(buf + offset, "%d,%d,%d,",
 				  taos_device_lux[i].ratio,
@@ -1004,6 +1011,7 @@ static ssize_t taos_luxtable_show(struct device *dev,
 			break;
 		}
 	}
+	mutex_unlock(&taos_lux_mutex);
 
 	offset += sprintf(buf + offset, "\n");
 	return offset;
@@ -1049,14 +1057,11 @@ static ssize_t taos_luxtable_store(struct device *dev,
 		}
 	}
 
-	if (chip->als_status == TSL258X_STATUS_ENABLED)
-		taos_set_enable(chip, false);
-
 	/* Zero out the table */
+	mutex_lock(&taos_lux_mutex);
 	memset(taos_device_lux, 0, sizeof(taos_device_lux));
 	memcpy(taos_device_lux, &value[1], (value[0] * 4));
-
-	taos_set_enable(chip, true);
+	mutex_unlock(&taos_lux_mutex);
 
 	return len;
 }
@@ -1183,6 +1188,7 @@ static int taos_probe(struct i2c_client *clientp,
 
 	INIT_DELAYED_WORK(&chip->polling_work, taos_polling_worker);
 
+	mutex_init(&taos_lux_mutex);
 	mutex_init(&chip->als_mutex);
 	chip->als_status = TSL258X_STATUS_UNKNOWN;
 	chip->als_adc_enabled = false;
