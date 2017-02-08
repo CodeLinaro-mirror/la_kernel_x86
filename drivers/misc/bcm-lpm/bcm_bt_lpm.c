@@ -265,9 +265,6 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 
 	pr_debug("%s: lpm %s\n", __func__, host_wake ? "off" : "on");
 
-	irq_set_irq_type(irq, host_wake ? IRQF_TRIGGER_FALLING :
-							IRQF_TRIGGER_RISING);
-
 	if (!bt_lpm.tty_dev) {
 		bt_lpm.host_wake = host_wake;
 		return IRQ_HANDLED;
@@ -292,6 +289,7 @@ static void activate_irq_handler(void)
 		gpio_free(bt_lpm.gpio_wake);
 		gpio_free(bt_lpm.gpio_host_wake);
 	}
+	irq_set_irq_type(bt_lpm.int_host_wake, IRQ_TYPE_EDGE_BOTH);
 }
 
 
@@ -556,10 +554,16 @@ int bcm43xx_bluetooth_suspend(struct platform_device *pdev, pm_message_t state)
 
 int bcm43xx_bluetooth_resume(struct platform_device *pdev)
 {
+	int host_wake;
+
 	pr_debug("%s\n", __func__);
 
 	if (bt_enabled)
 		enable_irq(bt_lpm.int_host_wake);
+
+	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
+	update_host_wake_locked(host_wake);
+
 	return 0;
 }
 #endif
