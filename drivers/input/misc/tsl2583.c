@@ -33,7 +33,6 @@
 #include <linux/gpio.h>
 #include <linux/time.h>
 #include <linux/jiffies.h>
-#include <linux/posix-timers.h>
 #include <linux/pm_runtime.h>
 
 #include <linux/tsl258x_als.h>
@@ -156,14 +155,14 @@ struct tsl258x_chip {
 	struct mutex als_mutex;
 	struct i2c_client *client;
 	struct input_dev *input;
-	struct timer_list timer;
-	struct work_struct data_work;
+	struct delayed_work polling_work;
 	struct tsl258x_platform_data *pdata;
 	struct taos_settings taos_settings;
 	u16 lux;
 	int als_time_scale;
 	int als_saturation;
 	int als_status;
+	/* Tracks sysfs sensor activation for system PM */
 	bool als_adc_enabled;
 	int id;
 };
@@ -226,8 +225,6 @@ static struct tsl2584_als_gain_tbl {
 		.gain_val = 111,
 	},
 };
-
-static struct workqueue_struct *tsl258x_wq;
 
 static char *tsl2583x_get_name(struct tsl258x_chip *chip);
 
@@ -377,13 +374,19 @@ static int taos_set_enable(struct tsl258x_chip *chip, int en)
 
 	ret = taos_i2c_smbus_write_data(chip->client,
 					TSL258X_CMD_REG | TSL258X_CNTRL, cntrl);
-	if (!ret && en)
+	if (!ret && en) {
 		chip->als_status = TSL258X_STATUS_ENABLED;
-	else if (!ret && !en)
+		/* Start polling */
+		schedule_delayed_work(&chip->polling_work,
+				      msecs_to_jiffies(chip->taos_settings.als_odr));
+	} else if (!ret && !en) {
 		chip->als_status = TSL258X_STATUS_SUSPENDED;
-	else
+		/* Stop polling. als_status ensures the worker does nothing before being canceled. */
+		cancel_delayed_work(&chip->polling_work);
+	} else {
 		dev_err(&chip->client->dev, "failed to %s the sensor\n",
 			(en == 1) ? "enable" : "disable");
+	}
 
 	return ret;
 }
@@ -700,17 +703,16 @@ static int taos_als_calibrate(struct tsl258x_chip *chip)
 	return (int) gain_trim_val;
 }
 
-static void taos_workqueue_handler(struct work_struct *work)
+static void taos_polling_worker(struct work_struct *work)
 {
 	int ret = 0;
-	struct tsl258x_chip *chip =
-			container_of(work, struct tsl258x_chip, data_work);
+	struct tsl258x_chip *chip = container_of(work, struct tsl258x_chip,
+						 polling_work.work);
 
 	mutex_lock(&chip->als_mutex);
-	if (chip->als_status != TSL258X_STATUS_ENABLED) {
-		mutex_unlock(&chip->als_mutex);
-		return;
-	}
+	if (chip->als_status != TSL258X_STATUS_ENABLED)
+		goto out;
+
 	ret = taos_get_lux(chip);
 	if (ret > 0) {
 		/* report the resultant_lux level */
@@ -718,18 +720,12 @@ static void taos_workqueue_handler(struct work_struct *work)
 		/* Sync it up */
 		input_sync(chip->input);
 	}
-	mod_timer(&chip->timer,
-			jiffies + msecs_to_jiffies(chip->taos_settings.als_odr));
+
+	schedule_delayed_work(&chip->polling_work,
+			      msecs_to_jiffies(chip->taos_settings.als_odr));
+
+out:
 	mutex_unlock(&chip->als_mutex);
-}
-
-
-static void taos_timer_handler(unsigned long private)
-{
-	struct tsl258x_chip *chip = (struct tsl258x_chip *)private;
-
-	if (chip->als_status == TSL258X_STATUS_ENABLED)
-		queue_work(tsl258x_wq, &chip->data_work);
 }
 
 /* Sysfs Interface Functions */
@@ -773,8 +769,6 @@ static ssize_t taos_enable_store(struct device *dev,
 				goto enable_als_err;
 			} else {
 				chip->als_adc_enabled = true;
-				mod_timer(&chip->timer,
-					jiffies + msecs_to_jiffies(chip->taos_settings.als_odr));
 			}
 		}
 	} else {
@@ -785,6 +779,7 @@ static ssize_t taos_enable_store(struct device *dev,
 			len = err;
 			goto enable_als_err;
 		}
+
 		chip->als_adc_enabled = false;
 	}
 
@@ -1186,15 +1181,7 @@ static int taos_probe(struct i2c_client *clientp,
 		goto err_sysfs_failed;
 	}
 
-	tsl258x_wq = create_workqueue("tsl258x");
-	if (!tsl258x_wq) {
-		dev_err(&clientp->dev, "work queue create failed:%d\n", ret);
-		ret = -ENOMEM;
-		goto err_tsl_wq_failed;
-	}
-
-	INIT_WORK(&chip->data_work, taos_workqueue_handler);
-	setup_timer(&chip->timer, taos_timer_handler, (unsigned long)chip);
+	INIT_DELAYED_WORK(&chip->polling_work, taos_polling_worker);
 
 	mutex_init(&chip->als_mutex);
 	chip->als_status = TSL258X_STATUS_UNKNOWN;
@@ -1254,8 +1241,6 @@ static int taos_probe(struct i2c_client *clientp,
 	return 0;
 
 err_tsl_hw_failed:
-	destroy_workqueue(tsl258x_wq);
-err_tsl_wq_failed:
 	sysfs_remove_group(&clientp->dev.kobj, &tsl258x_attribute_group);
 err_sysfs_failed:
 	input_unregister_device(chip->input);
@@ -1315,9 +1300,7 @@ static int taos_remove(struct i2c_client *client)
 
 	pm_runtime_disable(&client->dev);
 
-	if (tsl258x_wq)
-		destroy_workqueue(tsl258x_wq);
-	del_timer(&chip->timer);
+	cancel_delayed_work_sync(&chip->polling_work);
 	sysfs_remove_group(&client->dev.kobj, &tsl258x_attribute_group);
 	if (chip->input) {
 		input_unregister_device(chip->input);
