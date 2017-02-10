@@ -44,5 +44,11 @@ void *lsm6ds3h_platform_data(void *info)
 	} else
 		lsm6ds3h_pdata.gpio_conf = NULL;
 
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG) ||
+			INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO))
+		lsm6ds3h_pdata.tilt_thres = ST_LSM6DS3H_WRIST_TILT_THRESHOLD_15DEG;
+	else
+		lsm6ds3h_pdata.tilt_thres = ST_LSM6DS3H_WRIST_TILT_THRESHOLD_20DEG;
+
 	return &lsm6ds3h_pdata;
 }

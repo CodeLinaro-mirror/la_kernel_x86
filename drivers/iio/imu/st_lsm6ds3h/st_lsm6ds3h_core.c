@@ -26,6 +26,7 @@
 #include <linux/iio/buffer.h>
 #include <linux/iio/events.h>
 #include <asm/unaligned.h>
+#include <linux/platform_data/st_lsm6ds3h_pdata.h>
 
 #include <linux/iio/common/st_sensors.h>
 #include <linux/pm_runtime.h>
@@ -33,7 +34,6 @@
 
 #ifdef CONFIG_ST_LSM6DS3H_IIO_ALGO_UPLOAD_WRIST_TILT
 #define ST_LSM6DS3H_DATA_FW		"st_lsm6ds3h_wrist_tilt_data.fw"
-#define ST_LSM6DS3H_WRIST_TILT_THRESHOLD 0x10
 
 static const u8 st_lsm6ds3h_fw[] = {
 	#include "st_lsm6ds3h_wrist_tilt_data.fw"
@@ -1738,7 +1738,7 @@ static int lsm6ds3h_enable_pedometer(struct lsm6ds3h_data *cdata,
 static int st_lsm6ds3h_set_wrist_tilt_threshold(struct lsm6ds3h_data *cdata)
 {
 	int err;
-	u8 default_tilt_angle = ST_LSM6DS3H_WRIST_TILT_THRESHOLD;
+	u8 default_tilt_angle = ((struct st_lsm6ds3h_platform_data *)cdata->dev->platform_data)->tilt_thres;
 
 	err = st_lsm6ds3h_write_embedded_registers(cdata, ST_LSM6DS3H_WRIST_TILT_THS1_ADDR,
 					&default_tilt_angle, 1);
