@@ -296,6 +296,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define SIGN_X_G			1
 #define SIGN_Y_G			1
 #define SIGN_Z_G			1
+#define ACCEL_SCOPE_SCALE	4
 #define ST_LSM6DS3H_ACCEL_FS_2G_SENSITIVITY		61      /*  ug/LSB */
 #define ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ() \
 		IIO_DEV_ATTR_SAMP_FREQ(S_IWUSR | S_IRUGO, \
@@ -3398,11 +3399,11 @@ ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
 	/* The 4th parameter used for data sum check */
 	if (sdata->sindex == ST_MASK_ID_ACCEL)
 		return sprintf(buf, "%d %d %d %d\n",
-				0 * SIGN_X_A - no_cali[0],
-				0 * SIGN_Y_A - no_cali[1],
-				GRAVITY_ACCEL_LSB_2G * SIGN_Z_A - no_cali[2],
+				0 * SIGN_X_A - ACCEL_SCOPE_SCALE * no_cali[0],
+				0 * SIGN_Y_A - ACCEL_SCOPE_SCALE * no_cali[1],
+				GRAVITY_ACCEL_LSB_2G * SIGN_Z_A - ACCEL_SCOPE_SCALE * no_cali[2],
 				0 * SIGN_X_A + 0 * SIGN_Y_A + GRAVITY_ACCEL_LSB_2G * SIGN_Z_A -
-				no_cali[0] - no_cali[1] - no_cali[2]);
+				ACCEL_SCOPE_SCALE * (no_cali[0] + no_cali[1] + no_cali[2]));
 	else
 		return sprintf(buf, "%d %d %d %d\n",
 				0 * SIGN_X_G - no_cali[0],
