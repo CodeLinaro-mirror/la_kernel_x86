@@ -1084,6 +1084,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_psb_private *dev_priv;
 	struct panel_funcs *p_funcs;
 	u32    power_island;
+	static int dpms_prev_mode = DRM_MODE_DPMS_OFF; /* Record dmps previous status */
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
@@ -1096,7 +1097,8 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	dev_priv = dev->dev_private;
 
 	PSB_DEBUG_ENTRY("%s\n", (mode == DRM_MODE_DPMS_ON ? "on" :
-		DRM_MODE_DPMS_STANDBY == mode ? "standby" : "off"));
+		DRM_MODE_DPMS_STANDBY == mode ? "standby" :
+		DRM_MODE_DPMS_SUSPEND == mode ? "suspend" : "off"));
 
 	power_island = pipe_to_island(dsi_config->pipe);
 
@@ -1114,12 +1116,22 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 
 		DCAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOn(dsi_config->pipe);
+		dpms_prev_mode = DRM_MODE_DPMS_ON;
 	} else if (mode == DRM_MODE_DPMS_STANDBY) {
 		/* Make the pending flip request as completed. */
 		DCUnAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOff(dsi_config->pipe);
 	} else if (mode == DRM_MODE_DPMS_SUSPEND) {
+		if (dpms_prev_mode == DRM_MODE_DPMS_OFF) {
+				mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_ON);
+
+				drm_vblank_on(dev, dsi_config->pipe);
+
+				DCAttachPipe(dsi_config->pipe);
+				DC_MRFLD_onPowerOn(dsi_config->pipe);
+		}
 		mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_SUSPEND);
+		dpms_prev_mode = DRM_MODE_DPMS_SUSPEND;
 	} else {
 		drm_handle_vblank(dev, dsi_config->pipe);
 
@@ -1130,6 +1142,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		DCUnAttachPipe(dsi_config->pipe);
 		DC_MRFLD_onPowerOff(dsi_config->pipe);
 		mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_OFF);
+		dpms_prev_mode = DRM_MODE_DPMS_OFF;
 	}
 
 	DCUnLockMutex();
