@@ -25,20 +25,20 @@
 static struct intel_mid_thermal_sensor mrfl_sensors[] = {
 	{
 		.name = "SYSTHERM0",
-		.index = 0,
+		.index = 3,
 	},
 	{
 		.name = "SYSTHERM1",
-		.index = 1,
+		.index = 2,
 	},
 	{
 		.name = "SYSTHERM2",
-		.index = 2,
+		.index = 1,
 	},
 	{
 		.name = MSIC_DIE_NAME,
 		.direct = true,
-		.index = 3,
+		.index = 0,
 	},
 	{
 		.name = "FrontSkin",
