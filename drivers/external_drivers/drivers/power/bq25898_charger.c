@@ -582,9 +582,10 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 	switch (action) {
 	case USB_EVENT_CHARGER:
 
-		dev_info(&chip->client->dev, "%s cable (type: %s)\n",
+		dev_info(&chip->client->dev, "%s cable (type: %d [%s])\n",
 			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT) ? "Connect" :
 			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) ? "Disconnect" : "Other charger event")),
+			caps->chrg_type,
 			(caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_SDP) ? "SDP" :
 			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) ? "DCP" :
 			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_CDP) ? "CDP" : "Other")));
@@ -594,10 +595,12 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			/* schedule battery monitoring */
 			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY_FIRST);
 
-			/* wakelock : lock (suspend disabled), when not already locked, and on DCP (wall charger) detection */
-			if (!wake_lock_active(&(chip->charger_wlock)) && caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
+			/* wakelock : lock (suspend disabled), when not already locked, and not on SDP or CDP (host) detection */
+			if (!wake_lock_active(&chip->charger_wlock) &&
+				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
+				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_CDP)) {
 				dev_info(&chip->client->dev, "locking wakelock\n");
-				wake_lock(&(chip->charger_wlock));
+				wake_lock(&chip->charger_wlock);
 			}
 			break;
 		case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
@@ -608,9 +611,9 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			queue_work(system_nrt_wq, &chip->sw_config_work);
 
 			/* wakelock : unlock (suspend allowed) */
-			if (wake_lock_active(&(chip->charger_wlock))) {
+			if (wake_lock_active(&chip->charger_wlock)) {
 				dev_info(&chip->client->dev, "unlocking wakelock\n");
-				wake_unlock(&(chip->charger_wlock));
+				wake_unlock(&chip->charger_wlock);
 			}
 			break;
 		default:
@@ -2997,7 +3000,7 @@ static int bq25898_probe(struct i2c_client *client,
 
 	/* Wakelock init */
 	dev_info(&client->dev, "init bq25898 wakelock\n");
-	wake_lock_init(&(chip->charger_wlock), WAKE_LOCK_SUSPEND, "bq25898_wakelock");
+	wake_lock_init(&chip->charger_wlock, WAKE_LOCK_SUSPEND, "bq25898_wakelock");
 
 	/* register for usb change */
 	ret = register_otg_notification(chip);
