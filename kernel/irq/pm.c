@@ -169,6 +169,15 @@ static void resume_irqs(bool want_early)
 		if (irq_settings_is_nested_thread(desc))
 			continue;
 
+#ifdef CONFIG_PM_DEBUG
+		if ((desc->istate & IRQS_PENDING) && irqd_is_wakeup_set(&desc->irq_data)) {
+			printk(KERN_DEBUG "Wakeup from IRQ %d %s\n",
+				irq,
+				desc->action && desc->action->name ?
+				desc->action->name : "");
+		}
+#endif /* CONFIG_PM_DEBUG */
+
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
