@@ -253,8 +253,9 @@ static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 void log_wakeup_irq(void)
 {
 	unsigned int irr = 0, vector = 0;
-	int offset = 0, irq = 0;
+	int offset = 0;
 	struct irq_desc *desc;
+	struct irq_data *data;
 	const char *act_name;
 
 	if ((mid_pmu_cxt->pmu_current_state != SYS_STATE_S3)
@@ -267,18 +268,17 @@ void log_wakeup_irq(void)
 		while (irr) {
 			vector = __ffs(irr);
 			irr &= ~(1 << vector);
-			irq = __this_cpu_read(
+			desc = __this_cpu_read(
 					vector_irq[vector + (offset * 32)]);
-			if (irq < 0)
+			if (IS_ERR_OR_NULL(desc))
 				continue;
-			pr_info("wakeup from  IRQ %d\n", irq);
-
-			desc = irq_to_desc(irq);
+			data = irq_desc_get_irq_data(desc);
+			pr_info("wakeup from  IRQ %d\n", data->irq);
 
 			if ((desc) && (desc->action)) {
 				act_name = desc->action->name;
 				pr_info("IRQ %d,action name:%s\n",
-					irq,
+					data->irq,
 					(act_name) ? (act_name) : "no action");
 			}
 		}
