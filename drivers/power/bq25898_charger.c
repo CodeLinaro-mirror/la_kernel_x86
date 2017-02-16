@@ -585,9 +585,10 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 	switch (action) {
 	case USB_EVENT_CHARGER:
 
-		dev_dbg(&chip->client->dev, "%s cable (type: %s)\n",
+		dev_info(&chip->client->dev, "%s cable (type: %d [%s])\n",
 			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT) ? "Connect" :
 			((caps->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) ? "Disconnect" : "Other charger event")),
+			caps->chrg_type,
 			(caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_SDP) ? "SDP" :
 			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) ? "DCP" :
 			((caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_CDP) ? "CDP" : "Other")));
@@ -597,8 +598,10 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			/* schedule battery monitoring */
 			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY_FIRST);
 
-			/* wakelock : lock (suspend disabled), when not already locked, and on DCP (wall charger) detection */
-			if (!wake_lock_active(&chip->charger_wlock) && caps->chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
+			/* wakelock : lock (suspend disabled), when not already locked, and not on SDP or CDP (host) detection */
+			if (!wake_lock_active(&chip->charger_wlock) &&
+				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
+				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_CDP)) {
 				dev_dbg(&chip->client->dev, "locking wakelock\n");
 				wake_lock(&chip->charger_wlock);
 			}
