@@ -337,9 +337,7 @@ static int pn54x_dev_open(struct inode *inode, struct file *filp)
 
 static int pn54x_dev_release(struct inode *inode, struct file *filp)
 {
-	struct pn54x_dev *pn54x_dev = container_of(filp->private_data,
-											   struct pn54x_dev,
-											   pn54x_device);
+	struct pn54x_dev *pn54x_dev = filp->private_data;
 
 	filp->private_data = NULL;
 
