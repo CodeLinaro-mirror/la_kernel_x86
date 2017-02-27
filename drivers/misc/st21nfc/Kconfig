@@ -1,0 +1,10 @@
+#
+# Near Field Communication (NFC) devices
+#
+
+config ST21NFC_PLATFORM_DATA
+	bool "ST Microelectronics ST21NFCA & ST21NFCB NFC Controller Driver"
+	depends on I2C && SYSFS
+	default n
+	help
+	  ST Microelectronics ST21NFCA & ST21NFCB Near Field Communication controller support.

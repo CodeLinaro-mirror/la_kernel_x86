@@ -590,4 +590,5 @@ source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/bcm-lpm/Kconfig"
 source "drivers/misc/intel_mid_gps/Kconfig"
 source "drivers/misc/nxp-pn5xx/Kconfig"
+source "drivers/misc/st21nfc/Kconfig"
 endmenu

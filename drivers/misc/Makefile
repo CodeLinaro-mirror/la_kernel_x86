@@ -69,4 +69,5 @@ obj-y                           += bcm-lpm/
 obj-y                           += intel_mid_gps/
 obj-$(CONFIG_UUID)		+= uuid.o
 obj-$(CONFIG_NFC_NXP_PN5XX)     += nxp-pn5xx/
+obj-$(CONFIG_ST21NFC_PLATFORM_DATA) += st21nfc/
 
