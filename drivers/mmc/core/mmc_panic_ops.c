@@ -686,13 +686,11 @@ int mmc_emergency_init(void)
 	 * used has no data. So we can reuse the sdhci ops
 	 */
 
-	/* This is a hack, mmc_emergency_reinit_card call should be
-	 * uncommented once timeout issue resolved */
-	/*ret = mmc_emergency_reinit_card();
+	ret = mmc_emergency_reinit_card();
 	if (ret) {
 		pr_info("%s: reinit card failed\n", __func__);
 		goto out;
-	}*/
+	}
 
 	/*
 	 * OK. we are ready
