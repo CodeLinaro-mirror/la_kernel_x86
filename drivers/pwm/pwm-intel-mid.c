@@ -375,7 +375,7 @@ intel_mid_pwm_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	if (!pwm->regs) {
 		dev_err(&pci->dev, "ioremap failed\n");
 		ret = -EIO;
-		goto do_disable_device;
+		goto do_release_regions;
 	}
 
 	/* Calculate number of available pwm modules */
@@ -424,17 +424,20 @@ intel_mid_pwm_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 
 	if (ret < 0) {
 		dev_err(&pci->dev, "%s: unable to request gpio for any pwm\n", __func__);
-		goto do_unmap_regs;
+		goto do_remove_chips;
 	}
 
 	return ret;
 
+do_remove_chips:
+	pwmchip_remove(&pwm->chip);
 do_unmap_regs:
 	iounmap(pwm->regs);
+do_release_regions:
 	pci_release_regions(pci);
 do_disable_device:
 	pci_disable_device(pci);
-
+	pci_set_drvdata(pci, NULL);
 	return ret;
 }
 
