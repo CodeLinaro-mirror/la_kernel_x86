@@ -277,16 +277,6 @@ int auo39x39_cmd_power_on(
 
 	msleep(120);
 
-	/* Rotate screen 180 degree */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_address_mode, 0x13, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: set_address_mode\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-
 	/* set display on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		set_display_on, 0x00, 0,
