@@ -58,7 +58,7 @@ static bool wake_uart_enabled;
 static bool int_handler_enabled;
 #endif
 
-static void activate_irq_handler(void);
+static int activate_irq_handler(void);
 
 struct bcm_bt_lpm {
 #ifdef LPM_ON
@@ -275,23 +275,36 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-static void activate_irq_handler(void)
+static int activate_irq_handler(void)
 {
 	int ret;
 
 	pr_debug("%s\n", __func__);
 
+	/*
+	 * the irq is enabled during initialisation.
+	 * in the original code, the irq should be in levels but, since mfld
+	 * does not support them, irq is triggering with edges.
+	 *
+	 * Interrupt init must be done in that order:
+	 * 1- request irq with request_irq()
+	 * 2- set irq as wakeable with irq_set_irq_wake()
+	 */
 	ret = request_irq(bt_lpm.int_host_wake, host_wake_isr,
-				IRQF_TRIGGER_RISING, "bt_host_wake", NULL);
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+				"bt_host_wake", NULL);
 
 	if (ret < 0) {
 		pr_err("Error lpm request IRQ");
-		gpio_free(bt_lpm.gpio_wake);
-		gpio_free(bt_lpm.gpio_host_wake);
 	}
-	irq_set_irq_type(bt_lpm.int_host_wake, IRQ_TYPE_EDGE_BOTH);
+	else {
+		ret = irq_set_irq_wake(bt_lpm.int_host_wake, 1);
+		if (ret < 0) {
+			pr_err("Error lpm set wake IRQ");
+		}
+	}
+	return ret;
 }
-
 
 static void bcm_bt_lpm_wake_peer(struct device *dev)
 {
@@ -334,11 +347,13 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = irq_set_irq_wake(bt_lpm.int_host_wake, 1);
+	/* Interrupt init done through activate_irq_handler(), which
+	 * first requests irq, then sets it as wakeable */
+	ret = activate_irq_handler();
 	if (ret < 0) {
-		pr_err("Error lpm set irq IRQ");
 		gpio_free(bt_lpm.gpio_wake);
 		gpio_free(bt_lpm.gpio_host_wake);
+		free_irq(bt_lpm.int_host_wake, NULL);
 		return ret;
 	}
 
@@ -540,10 +555,8 @@ int bcm43xx_bluetooth_suspend(struct platform_device *pdev, pm_message_t state)
 	if (!bt_enabled)
 		return 0;
 
-	disable_irq(bt_lpm.int_host_wake);
 	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
 	if (host_wake) {
-		enable_irq(bt_lpm.int_host_wake);
 		pr_err("%s suspend error, gpio %d set\n", __func__,
 							bt_lpm.gpio_host_wake);
 		return -EBUSY;
@@ -557,9 +570,6 @@ int bcm43xx_bluetooth_resume(struct platform_device *pdev)
 	int host_wake;
 
 	pr_debug("%s\n", __func__);
-
-	if (bt_enabled)
-		enable_irq(bt_lpm.int_host_wake);
 
 	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
 	update_host_wake_locked(host_wake);
