@@ -46,17 +46,11 @@ enum {
 
 #define LPM_ON
 
-#define TIMER_LPM 200
-#define WKL_HZ HZ/2
+#define TIMER_LPM	200
+#define WKL_HZ		HZ/2
 
 static struct rfkill *bt_rfkill;
 static bool bt_enabled;
-
-#ifdef LPM_ON
-static bool host_wake_uart_enabled;
-static bool wake_uart_enabled;
-static bool int_handler_enabled;
-#endif
 
 static int activate_irq_handler(void);
 
@@ -96,6 +90,23 @@ static void uart_disable(struct device *tty)
 	pr_debug("%s: runtime put\n", __func__);
 	/* Tell PM runtime to release tty device and allow s0i3 */
 	pm_runtime_put(tty);
+}
+
+/**
+ * Control (enable/disable) bt uart line
+ *
+ * @param int enable: UART_ENABLE (1) or UART_DISABLE (0)
+ * @param struct device *tty: tty device ptr
+ */
+static void uart_control(int enable, struct device *tty)
+{
+	if (WARN_ON_ONCE(!tty)) {
+		dev_err(tty, "%s: Error no tty dev\n", __func__);
+	}
+	if (enable)
+		uart_enable(tty);
+	else
+		uart_disable(tty);
 }
 #endif
 
@@ -198,23 +209,17 @@ static const struct rfkill_ops bcm43xx_bt_rfkill_ops = {
 #ifdef LPM_ON
 static void set_wake_locked(int wake)
 {
-	bt_lpm.wake = wake;
+	/* Update if new state != current state */
+	if (wake != bt_lpm.wake) {
+		if (!wake)
+			wake_unlock(&bt_lpm.wake_lock);
 
-	if (!wake)
-		wake_unlock(&bt_lpm.wake_lock);
+		uart_control(wake, bt_lpm.tty_dev); /* UART_ENABLE or UART_DISABLE */
 
-	if (!wake_uart_enabled && wake) {
-		WARN_ON(!bt_lpm.tty_dev);
-		uart_enable(bt_lpm.tty_dev);
+		gpio_set_value(bt_lpm.gpio_wake, wake);
+
+		bt_lpm.wake = wake;
 	}
-
-	gpio_set_value(bt_lpm.gpio_wake, wake);
-
-	if (wake_uart_enabled && !wake) {
-		WARN_ON(!bt_lpm.tty_dev);
-		uart_disable(bt_lpm.tty_dev);
-	}
-	wake_uart_enabled = wake;
 }
 
 static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
@@ -229,32 +234,23 @@ static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
 
 static void update_host_wake_locked(int host_wake)
 {
-	if (host_wake == bt_lpm.host_wake)
-		return;
+	/* Update if new state != current state */
+	if (host_wake != bt_lpm.host_wake) {
 
-	bt_lpm.host_wake = host_wake;
-
-	if (host_wake) {
-		wake_lock(&bt_lpm.wake_lock);
-		if (!host_wake_uart_enabled) {
-			WARN_ON(!bt_lpm.tty_dev);
-			uart_enable(bt_lpm.tty_dev);
+		if (host_wake) {
+			wake_lock(&bt_lpm.wake_lock);
+			uart_control(host_wake, bt_lpm.tty_dev); /* UART_ENABLE */
+		} else  {
+			uart_control(host_wake, bt_lpm.tty_dev); /* UART_DISABLE */
+			/*
+			* Take a timed wakelock, so that upper layers can take it.
+			* The chipset deasserts the hostwake lock, when there is no
+			* more data to send.
+			*/
+			wake_lock_timeout(&bt_lpm.wake_lock, WKL_HZ);
 		}
-	} else  {
-		if (host_wake_uart_enabled) {
-			WARN_ON(!bt_lpm.tty_dev);
-			uart_disable(bt_lpm.tty_dev);
-		}
-		/*
-		 * Take a timed wakelock, so that upper layers can take it.
-		 * The chipset deasserts the hostwake lock, when there is no
-		 * more data to send.
-		 */
-		wake_lock_timeout(&bt_lpm.wake_lock, WKL_HZ);
+		bt_lpm.host_wake = host_wake;
 	}
-
-	host_wake_uart_enabled = host_wake;
-
 }
 
 static irqreturn_t host_wake_isr(int irq, void *dev)
@@ -265,12 +261,11 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 
 	pr_debug("%s: lpm %s\n", __func__, host_wake ? "off" : "on");
 
-	if (!bt_lpm.tty_dev) {
-		bt_lpm.host_wake = host_wake;
-		return IRQ_HANDLED;
+	if (bt_lpm.tty_dev) {
+		update_host_wake_locked(host_wake);
+	} else {
+		pr_err("%s ISR error, tty_dev NULL\n", __func__);
 	}
-
-	update_host_wake_locked(host_wake);
 
 	return IRQ_HANDLED;
 }
@@ -310,24 +305,12 @@ static void bcm_bt_lpm_wake_peer(struct device *dev)
 {
 	bt_lpm.tty_dev = dev;
 
-	/*
-	 * the irq is enabled after the first host wake up signal.
-	 * in the original code, the irq should be in levels but, since mfld
-	 * does not support them, irq is triggering with edges.
-	 */
-
-	if (!int_handler_enabled) {
-		int_handler_enabled = true;
-		activate_irq_handler();
-	}
-
 	hrtimer_try_to_cancel(&bt_lpm.enter_lpm_timer);
 
 	set_wake_locked(1);
 
 	hrtimer_start(&bt_lpm.enter_lpm_timer, bt_lpm.enter_lpm_delay,
 		HRTIMER_MODE_REL);
-
 }
 
 static int bcm_bt_lpm_init(struct platform_device *pdev)
@@ -340,6 +323,7 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 	bt_lpm.enter_lpm_delay = ktime_set(0, TIMER_LPM * NSEC_PER_MSEC);  /* TIMER_LPM msec */
 	bt_lpm.enter_lpm_timer.function = enter_lpm;
 
+	bt_lpm.wake = 0;
 	bt_lpm.host_wake = 0;
 
 	if (bt_lpm.gpio_host_wake < 0) {
@@ -416,9 +400,6 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 {
 	bool default_state = true;	/* off */
 	int ret = 0;
-#ifdef LPM_ON
-	int_handler_enabled = false;
-#endif
 #ifdef CONFIG_ACPI
 	if (ACPI_HANDLE(&pdev->dev)) {
 		/*
@@ -542,6 +523,7 @@ static int bcm43xx_bluetooth_remove(struct platform_device *pdev)
 	gpio_free(bt_lpm.gpio_wake);
 	gpio_free(bt_lpm.gpio_host_wake);
 	wake_lock_destroy(&bt_lpm.wake_lock);
+	free_irq(bt_lpm.int_host_wake, NULL);
 #endif
 	return 0;
 }
