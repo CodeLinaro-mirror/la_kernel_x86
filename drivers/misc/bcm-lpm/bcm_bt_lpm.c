@@ -572,7 +572,10 @@ int bcm43xx_bluetooth_resume(struct platform_device *pdev)
 	pr_debug("%s\n", __func__);
 
 	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
-	update_host_wake_locked(host_wake);
+	if (host_wake != bt_lpm.host_wake) {
+		pr_err("%s missed interrupt, gpio %d set\n", __func__,
+							bt_lpm.gpio_host_wake);
+	}
 
 	return 0;
 }
