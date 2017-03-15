@@ -112,17 +112,17 @@ int auo39x39_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (err)
 		goto ic_init_err;
 
+	/* set sleep-out */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x35, 0x00, 1,
+		exit_sleep_mode, 0x00, 0,
 		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
+	if (err) {
+		DRM_ERROR("%s: %d: exit_sleep_mode\n",
+		__func__, __LINE__);
 		goto ic_init_err;
+	}
 
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x29, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
+	msleep(130);
 
 	return 0;
 
@@ -216,7 +216,7 @@ int auo39x39_cmd_power_on(
 
 	PSB_DEBUG_ENTRY("\n");
 
-	msleep(5);
+	msleep(10);
 
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		write_mode_page, 0x00, 1,
@@ -245,6 +245,16 @@ int auo39x39_cmd_power_on(
 		goto power_err;
 	}
 
+	/* set display on */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		set_display_on, 0x00, 0,
+		MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: set_display_on\n",
+		__func__, __LINE__);
+		goto power_err;
+	}
+
 	/* set TE on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		set_tear_on, 0x00, 1,
@@ -264,29 +274,6 @@ int auo39x39_cmd_power_on(
 		__func__, __LINE__);
 		goto power_err;
 	}
-
-	/* set sleep-out */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		exit_sleep_mode, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: exit_sleep_mode\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-
-	msleep(120);
-
-	/* set display on */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_display_on, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: set_display_on\n",
-		__func__, __LINE__);
-		goto power_err;
-	}
-
 	return 0;
 
 power_err:
@@ -308,6 +295,16 @@ static int auo39x39_cmd_power_off(
 	}
 
 	msleep(10);
+
+	/* set TE off */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		set_tear_off, 0x00, 0,
+		MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: set_tear_off\n",
+		__func__, __LINE__);
+		goto power_off_err;
+	}
 
 	/* set display off */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
@@ -382,11 +379,11 @@ int auo39x39_cmd_panel_reset(
 
 	gpio_direction_output(mipi_reset_gpio, 0);
 
-	usleep_range(20, 30);
+	usleep_range(11000, 12000);
 
 	gpio_set_value(mipi_reset_gpio, 1);
 
-	usleep_range(5000, 5010);
+	usleep_range(21000, 22000);
 
 	return 0;
 }
@@ -406,10 +403,10 @@ int auo39x39_cmd_exit_deep_standby(
 		gpio_set_value(disp0_enable, 1);
 	}
 
-	usleep_range(3000, 3100);
+	usleep_range(11000, 12000);
 
 	gpio_set_value(mipi_reset_gpio, 1);
-	usleep_range(10000, 12000);
+	usleep_range(21000, 22000);
 
 	return 0;
 }
