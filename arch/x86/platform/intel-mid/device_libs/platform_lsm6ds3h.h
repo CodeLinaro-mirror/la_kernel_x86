@@ -11,8 +11,5 @@
 #ifndef _PLATFORM_LSM6DS3H_H_
 #define _PLATFORM_LSM6DS3H_H_
 
-#define ST_LSM6DS3H_WRIST_TILT_THRESHOLD_15DEG 0x0F
-#define ST_LSM6DS3H_WRIST_TILT_THRESHOLD_20DEG 0x10
-
 extern void *lsm6ds3h_platform_data(void *info) __attribute__((weak));
 #endif

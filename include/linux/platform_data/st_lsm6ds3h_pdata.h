@@ -18,7 +18,6 @@
 struct st_lsm6ds3h_platform_data {
 	int gpio_int1;
 	int (*gpio_conf)(void);
-	int tilt_thres;
 };
 
 #endif /* ST_LSM6DS3H_PDATA_H */
