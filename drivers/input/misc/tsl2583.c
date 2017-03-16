@@ -502,13 +502,13 @@ static int taos_init_configure(struct tsl258x_chip *chip,
 static int taos_get_lux(struct tsl258x_chip *chip)
 {
 	u16 ch0, ch1; /* separated ch0/ch1 data from device */
-	u32 lux; /* raw lux calculated from device data */
+	int lux; /* raw lux calculated from device data */
 	u32 ratio;
 	struct taos_lux *p;
 	int ret;
 	u32 ch0lux = 0;
 	u32 ch1lux = 0;
-	u32 gain;
+	int gain;
 	int lux1;
 	int lux2;
 
