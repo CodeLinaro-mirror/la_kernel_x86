@@ -36,11 +36,7 @@
 
 #include "displays/auo39x39_cmd.h"
 
-static int mipi_reset_gpio;
-static int disp0_enable = -1;
-
-static bool reset_enable = false;
-
+#define read_errors			0x05
 typedef struct {
 	struct dentry *dir;
 /* atomic ops */
@@ -52,12 +48,13 @@ typedef struct {
 	unsigned int addr;
 } dbgfs_t;
 
-
 static dbgfs_t dbgfs;
 static struct mdfld_dsi_config *dbgfs_dsi_config;
+static int mipi_reset_gpio;
+static int disp0_enable = -1;
+static bool reset_enable = false;
 
-static
-int auo39x39_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -70,59 +67,26 @@ int auo39x39_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
+	err = mdfld_dsi_send_mcs_short_lp(sender, write_mode_page, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err)
 		goto ic_init_err;
 
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x05, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
+	err = mdfld_dsi_send_mcs_short_lp(sender, read_errors, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err)
 		goto ic_init_err;
 
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x07, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x07, 0x4f, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x0A, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-			0x1c, 0x1b, 1,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
+	/*
+	 * Sleep Out command can not be sent for 120msec after releasing RESX pin.
+	 * Since after relasing RESX pin, we have 5msec delay ahead. Here 115msec is enough.
+	 */
+	msleep(115);
 
 	/* set sleep-out */
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		exit_sleep_mode, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
+	err = mdfld_dsi_send_mcs_short_lp(sender, exit_sleep_mode, 0x00, 0, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: exit_sleep_mode\n",
-		__func__, __LINE__);
+		DRM_ERROR("%s: %d: exit_sleep_mode\n", __func__, __LINE__);
 		goto ic_init_err;
 	}
-
-	msleep(130);
 
 	return 0;
 
@@ -133,12 +97,9 @@ ic_init_err:
 	return err;
 }
 
-static
-void auo39x39_cmd_controller_init(
-		struct mdfld_dsi_config *dsi_config)
+static void auo39x39_cmd_controller_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_hw_context *hw_ctx =
-				&dsi_config->dsi_hw_context;
+	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -146,16 +107,19 @@ void auo39x39_cmd_controller_init(
 	dsi_config->lane_count = 1;
 	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
 
-	/* DSI PLL 400 MHz, set it to 0 for 800 MHz */
-	hw_ctx->cck_div = 1;
 	hw_ctx->pll_bypass_mode = 0;
-
+	/* Set TLPX to 100ns */
 	hw_ctx->mipi_control = 0x20;
 	hw_ctx->intr_en = 0xFFFFFFFF;
 	hw_ctx->hs_tx_timeout = 0xFFFFFF;
 	hw_ctx->lp_rx_timeout = 0xFFFFFF;
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->turn_around_timeout = 0x1a;
+	/*
+	 * Below fields can be calculated based on PLL clock.
+	 * PLL clock rate can be calculated based on panel info.
+	 * But DC driver is not perfect yet, so hardcode is here now.
+	 */
 	hw_ctx->high_low_switch_count = 0x16;
 	hw_ctx->clk_lane_switch_time_cnt = 0x16000c;
 	hw_ctx->lp_byteclk = 0x4;
@@ -186,9 +150,7 @@ void auo39x39_cmd_controller_init(
 		dbgfs_dsi_config = dsi_config;
 }
 
-static
-int auo39x39_cmd_panel_connection_detect(
-	struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_panel_connection_detect(struct mdfld_dsi_config *dsi_config)
 {
 	int status;
 	int pipe = dsi_config->pipe;
@@ -198,32 +160,24 @@ int auo39x39_cmd_panel_connection_detect(
 	if (pipe == 0) {
 		status = MDFLD_DSI_PANEL_CONNECTED;
 	} else {
-		DRM_INFO("%s: do NOT support dual panel\n",
-		__func__);
+		DRM_INFO("%s: do NOT support dual panel\n", __func__);
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
 	}
 
 	return status;
 }
 
-static
-int auo39x39_cmd_power_on(
-	struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	msleep(10);
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_mode_page, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
+	err = mdfld_dsi_send_mcs_short_lp(sender, write_mode_page,
+					0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: write_mode_page\n",
-		__func__, __LINE__);
+		DRM_ERROR("%s: %d: write_mode_page\n", __func__, __LINE__);
 		goto power_err;
 	}
 
@@ -231,8 +185,7 @@ int auo39x39_cmd_power_on(
 			frame_mem_control_column, sizeof(frame_mem_control_column),
 			MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: frame_mem_control_column\n",
-				__func__, __LINE__);
+		DRM_ERROR("%s: %d: frame_mem_control_column\n", __func__, __LINE__);
 		goto power_err;
 	}
 
@@ -247,8 +200,7 @@ int auo39x39_cmd_power_on(
 
 	/* set display on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_display_on, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
+		set_display_on, 0x00, 0, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: set_display_on\n",
 		__func__, __LINE__);
@@ -257,21 +209,18 @@ int auo39x39_cmd_power_on(
 
 	/* set TE on */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		set_tear_on, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
+		set_tear_on, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: set_tear_on\n",
 		__func__, __LINE__);
 		goto power_err;
 	}
 
-	/* set backlight on */
+	/* set backlight on. Disable display dimming control. */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		write_ctrl_display, 0x20, 1,
-		MDFLD_DSI_SEND_PACKAGE);
+		write_ctrl_display, 0x20, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: write_ctrl_display\n",
-		__func__, __LINE__);
+		DRM_ERROR("%s: %d: write_ctrl_display\n", __func__, __LINE__);
 		goto power_err;
 	}
 	return 0;
@@ -280,11 +229,9 @@ power_err:
 	return err;
 }
 
-static int auo39x39_cmd_power_off(
-		struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	int err;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -293,8 +240,6 @@ static int auo39x39_cmd_power_off(
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;
 	}
-
-	msleep(10);
 
 	/* set TE off */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
@@ -316,21 +261,30 @@ static int auo39x39_cmd_power_off(
 		goto power_off_err;
 	}
 
+	/*
+	 * Host processor must wait 120msec after sending a Sleep Out command
+	 * beforing sending a Sleep-In command. Here we can reduce the delay,
+	 * since when cpu is here, Sleep Out command has been sent out for a long time.
+	 */
+	msleep(120);
+
 	/* set sleep-in */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-		enter_sleep_mode, 0x00, 0,
-		MDFLD_DSI_SEND_PACKAGE);
+		enter_sleep_mode, 0x00, 0, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: Set Sleep-in\n",
 		__func__, __LINE__);
 		goto power_off_err;
 	}
 
-	msleep(120);
+	/*
+	 * It must wait 5msec before sending next command for the supply voltages
+	 * and clock circuits to stabilize.
+	 */
+	msleep(5);
 
 	if (mipi_reset_gpio != 0) {
 		gpio_set_value(mipi_reset_gpio, 0);
-		msleep(1);
 	}
 	/* ensure VCI is low 10ms earlier than VDDIO */
 	if (disp0_enable != -1) {
@@ -338,21 +292,15 @@ static int auo39x39_cmd_power_off(
 		usleep_range(10000, 11000);
 	}
 
-	return 0;
-
 power_off_err:
-	err = -EIO;
 	return err;
 }
 
-static
-int auo39x39_cmd_set_brightness(
-		struct mdfld_dsi_config *dsi_config,
-		int level)
+static int auo39x39_cmd_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 duty_val = 0;
+	int err;
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -360,15 +308,15 @@ int auo39x39_cmd_set_brightness(
 	}
 
 	duty_val = (u8)(level & 0xFF);
-	mdfld_dsi_send_mcs_short_hs(sender,
-		write_display_brightness, duty_val, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	return 0;
+	err = mdfld_dsi_send_mcs_short_hs(sender,
+		write_display_brightness, duty_val, 1, MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s:%d: Set brightness\n", __func__, __LINE__);
+	}
+	return err;
 }
 
-static
-int auo39x39_cmd_panel_reset(
-		struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
 	u8 value;
 
@@ -379,18 +327,19 @@ int auo39x39_cmd_panel_reset(
 
 	gpio_direction_output(mipi_reset_gpio, 0);
 
-	usleep_range(11000, 12000);
+	usleep_range(100, 200); /* reset low pulse width must be greater than 10us */
 
 	gpio_set_value(mipi_reset_gpio, 1);
 
-	usleep_range(21000, 22000);
+	/*
+	 * After releasing RESX, it's necessary to wait 5msec before sending commands.
+	 */
+	usleep_range(5000, 6000);
 
 	return 0;
 }
 
-static
-int auo39x39_cmd_exit_deep_standby(
-		struct mdfld_dsi_config *dsi_config)
+static int auo39x39_cmd_exit_deep_standby(struct mdfld_dsi_config *dsi_config)
 {
 	PSB_DEBUG_ENTRY("\n");
 
@@ -406,41 +355,26 @@ int auo39x39_cmd_exit_deep_standby(
 	usleep_range(11000, 12000);
 
 	gpio_set_value(mipi_reset_gpio, 1);
-	usleep_range(21000, 22000);
+
+	/*
+	 * After releasing RESX, it's necessary to wait 5msec before sending commands.
+	 */
+	usleep_range(5000, 6000);
 
 	return 0;
 }
 
 static int auo39x39_cmd_enter_low_power(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	err = mdfld_dsi_send_mcs_long_lp(sender,
-			frame_mem_control_column, sizeof(frame_mem_control_column),
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: frame_mem_control_column\n",
-				__func__, __LINE__);
-	}
-
-	err = mdfld_dsi_send_mcs_long_lp(sender,
-			frame_mem_control_row, sizeof(frame_mem_control_row),
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s: %d: frame_mem_control_row\n",
-				__func__, __LINE__);
-	}
-
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-			idle_mode_on, 0x00, 1,
-			MDFLD_DSI_SEND_PACKAGE);
+			idle_mode_on, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s: %d: idle_mode_on\n",
-				__func__, __LINE__);
+		DRM_ERROR("%s: %d: idle_mode_on\n", __func__, __LINE__);
 	}
 
 	return err;
@@ -448,15 +382,13 @@ static int auo39x39_cmd_enter_low_power(struct mdfld_dsi_config *dsi_config)
 
 static int auo39x39_cmd_exit_low_power(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
 	err = mdfld_dsi_send_mcs_short_lp(sender,
-			idle_mode_off, 0x00, 1,
-			MDFLD_DSI_SEND_PACKAGE);
+			idle_mode_off, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: idle_mode_on\n",
 				__func__, __LINE__);
@@ -465,8 +397,7 @@ static int auo39x39_cmd_exit_low_power(struct mdfld_dsi_config *dsi_config)
 	return err;
 }
 
-static
-struct drm_display_mode *auo39x39_cmd_get_config_mode(void)
+static struct drm_display_mode *auo39x39_cmd_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
 
@@ -496,9 +427,7 @@ struct drm_display_mode *auo39x39_cmd_get_config_mode(void)
 	return mode;
 }
 
-static
-void auo39x39_cmd_get_panel_info(int pipe,
-		struct panel_info *pi)
+static void auo39x39_cmd_get_panel_info(int pipe, struct panel_info *pi)
 {
 	PSB_DEBUG_ENTRY("\n");
 
@@ -549,8 +478,7 @@ static const struct file_operations dbgfs_read_hs_ops = {
 	.llseek		= no_llseek,
 };
 
-void auo39x39_cmd_init(struct drm_device *dev,
-		struct panel_funcs *p_funcs)
+void auo39x39_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 
 	if (!dev || !p_funcs) {
@@ -635,7 +563,7 @@ void auo39x39_cmd_init(struct drm_device *dev,
 /* atomic operations */
 static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum dbgfs_type type)
 {
-	char *str;
+	char *str = NULL;
 	u8 data = 0;
 	ssize_t len = 0;
 	u32 power_island = 0;
@@ -646,6 +574,15 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 		return -EINVAL;
 	}
 
+	if (count  <= 0)
+		return -EINVAL;
+
+	str = kzalloc(count, GFP_KERNEL);
+	if (!str) {
+		DRM_ERROR("%s:%d: kzalloc fails\n", __func__, __LINE__);
+		return -ENOMEM;
+	}
+
 	/* setting display and MIPI bus in correct state for reading */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
 		power_island = pipe_to_island(dbgfs_dsi_config->pipe);
@@ -653,19 +590,18 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 			power_island |= OSPM_DISPLAY_MIO;
 
-		if (!power_island_get(power_island))
+		if (!power_island_get(power_island)) {
+			DRM_ERROR("%s:%d:Can't get power island\n", __func__, __LINE__);
+			kfree(str);
 			return -EIO;
+		}
 
 		mdfld_dsi_dsr_forbid(dbgfs_dsi_config);
 	}
 
-	str = kzalloc(count, GFP_KERNEL);
-	if (!str)
-		return -ENOMEM;
-
 	switch (type) {
 	case ADDR:
-		len = sprintf(str, "addr = 0x%x\n", (u8)dbgfs.addr);
+		len = snprintf(str, count, "addr = 0x%x\n", (u8)dbgfs.addr);
 		break;
 	case HIGH_SPEED:
 		mdfld_dsi_read_mcs_hs(sender, (u8)dbgfs.addr, &data, 1);
@@ -677,7 +613,10 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 
 	/* releasing display and MIPI bus */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
-		len = sprintf(str, "addr = 0x%x, value = 0x%x\n", (u8)dbgfs.addr, data);
+		count -= len;
+		if ( count > 0) {
+			len = snprintf(str + len, count, "addr = 0x%x, value = 0x%x\n", (u8)dbgfs.addr, data);
+		}
 		mdfld_dsi_dsr_allow(dbgfs_dsi_config);
 		power_island_put(power_island);
 	}
@@ -685,7 +624,7 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 	if (len < 0)
 		DRM_ERROR("Can't read data\n");
 	else
-		len = simple_read_from_buffer(buff, count, ppos, str, len);
+		len = simple_read_from_buffer(buff, count, ppos, str, strlen(str));
 
 	kfree(str);
 
@@ -695,40 +634,28 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 static ssize_t dbgfs_addr_read(struct file *file, char __user *buff,
 				size_t count, loff_t *ppos)
 {
-	ssize_t len = 0;
-
-	if (*ppos < 0 || !count)
+	if (ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
-	len = dbgfs_read(buff, count, ppos, ADDR);
-
-	return len;
+	return dbgfs_read(buff, count, ppos, ADDR);
 }
 
 static ssize_t dbgfs_read_hs_read(struct file *file, char __user *buff,
 				   size_t count, loff_t *ppos)
 {
-	ssize_t len;
-
-	if (*ppos < 0 || !count)
+	if (ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
-	len = dbgfs_read(buff, count, ppos, HIGH_SPEED);
-
-	return len;
+	return dbgfs_read(buff, count, ppos, HIGH_SPEED);
 }
 
 static ssize_t dbgfs_read_lp_read(struct file *file, char __user *buff,
 				   size_t count, loff_t *ppos)
 {
-	ssize_t len;
-
-	if (*ppos < 0 || !count)
+	if ( ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
-	len = dbgfs_read(buff, count, ppos, LOW_POWER);
-
-	return len;
+	return dbgfs_read(buff, count, ppos, LOW_POWER);
 }
 
 static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type type)
@@ -749,17 +676,18 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 		return -ENOMEM;
 
 	if (copy_from_user(str, buff, count)) {
+		DRM_ERROR("%s:%d: copying user space buf fails.\n", __func__, __LINE__);
 		ret = -EFAULT;
 		goto exit_dbgfs_write;
 	}
 
 	start = str;
 
-	while (*start == ' ')
+	while (*start == ' ' || *start == '\t')
 		start++;
 
-	/* strip ending whitespace */
-	for (i = count - 1; i > 0 && isspace(str[i]); i--)
+	/* strip ending whitespace and table character */
+	for (i = count - 1; i > 0 && (isspace(str[i]) || str[i] == '\t'); i--)
 		str[i] = 0;
 
 	/* setting display and MIPI bus in correct state for writting */
@@ -770,6 +698,7 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 			power_island |= OSPM_DISPLAY_MIO;
 
 		if (!power_island_get(power_island)) {
+			DRM_ERROR("%s:%d:Can't get power island\n", __func__, __LINE__);
 			ret = -EIO;
 			goto exit_dbgfs_write;
 		}
@@ -778,7 +707,7 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 
 		if (kstrtouint(start, 16, &arg)) {
 			ret = -EINVAL;
-			goto exit_dbgfs_write;
+			goto exit_power_restore;
 		}
 	}
 
@@ -800,11 +729,10 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 	}
 
 	if (err) {
-		DRM_ERROR("%s: %d: error\n",
-		__func__, __LINE__);
+		DRM_ERROR("%s: %d: error = %d\n", __func__, __LINE__, err);
 		ret = -1;
 	}
-
+exit_power_restore:
 	/* releasing display and MIPI bus */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
 		mdfld_dsi_dsr_allow_locked(dbgfs_dsi_config);
@@ -819,59 +747,50 @@ exit_dbgfs_write:
 static ssize_t dbgfs_addr_write(struct file *file, const char __user *buff,
 				size_t count, loff_t *ppos)
 {
-	ssize_t ret = 0;
 	int err = 0;
 
-	ret = count;
-
-	if (*ppos < 0 || !count)
+	if (ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
 	err = dbgfs_write(buff, count, ADDR);
-	if (err < 0)
-		return err;
+	if (!err) {
+		*ppos += count;
+		return count;
+	}
 
-	*ppos += ret;
-
-	return ret;
+	return err;
 }
 
 static ssize_t dbgfs_send_hs_write(struct file *file, const char __user *buff,
 				    size_t count, loff_t *ppos)
 {
-	ssize_t ret = 0;
 	int err = 0;
 
-	ret = count;
-
-	if (*ppos < 0 || !count)
+	if (ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
 	err = dbgfs_write(buff, count, HIGH_SPEED);
-	if (err < 0)
-		return err;
+	if (!err) {
+		*ppos += count;
+		return count;
+	}
 
-	*ppos += ret;
-
-	return count;
+	return err;
 }
 
 static ssize_t dbgfs_send_lp_write(struct file *file, const char __user *buff,
 				    size_t count, loff_t *ppos)
 {
-	ssize_t ret = 0;
 	int err = 0;
 
-	ret = count;
-
-	if (*ppos < 0 || !count)
+	if (ppos == NULL || *ppos < 0 || !count)
 		return -EINVAL;
 
 	err = dbgfs_write(buff, count, LOW_POWER);
-	if (err < 0)
-		return err;
+	if (!err) {
+		*ppos += count;
+		return count;
+	}
 
-	*ppos += ret;
-
-	return count;
+	return err;
 }
