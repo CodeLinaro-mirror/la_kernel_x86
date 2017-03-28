@@ -913,7 +913,7 @@ int dwc3_intel_suspend(struct dwc_otg2 *otg)
 		otg_err(otg, "pci_save_state failed!\n");
 		return -EIO;
 	}
-	enable_usb_phy(otg, false);
+
 	pci_disable_device(pci_dev);
 	pci_set_power_state(pci_dev, state);
 
