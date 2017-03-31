@@ -740,7 +740,7 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 	user_events = 0;
 
 	otg_mask = OEVT_A_DEV_SESS_END_DET_EVNT;
-	user_mask = USER_ID_A_CHANGE_EVENT;
+	user_mask = USER_ID_A_CHANGE_EVENT | USER_GADGET_EVENT;
 
 	rc = sleep_until_event(otg,
 			otg_mask, user_mask,
@@ -759,6 +759,11 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 		otg_dbg(otg, "USER_ID_A_CHANGE_EVENT\n");
 		otg->user_events |= USER_ID_A_CHANGE_EVENT;
 		return DWC_STATE_B_IDLE;
+	}
+
+	if (user_events & USER_GADGET_EVENT) {
+		otg_dbg(otg, "USER_GADGET_EVENT\n");
+		return DWC_STATE_B_PERIPHERAL;
 	}
 
 	return DWC_STATE_INVALID;
@@ -826,10 +831,14 @@ int otg_main_thread(void *data)
 			break;
 		case DWC_STATE_B_PERIPHERAL:
 			otg_dbg(otg, "DWC_STATE_B_PERIPHERAL\n");
-			start_peripheral(otg);
-			next = do_b_peripheral(otg);
+			if (otg->otg.gadget) {
+				start_peripheral(otg);
+				next = do_b_peripheral(otg);
 
-			stop_peripheral(otg);
+				stop_peripheral(otg);
+			} else {
+				next = do_b_peripheral(otg);
+			}
 			break;
 		case DWC_STATE_EXIT:
 			otg_dbg(otg, "DWC_STATE_EXIT\n");
@@ -872,7 +881,7 @@ static void start_main_thread(struct dwc_otg2 *otg)
 		children_ready = true;
 
 	if ((mode == DWC3_DRD) &&
-			otg->otg.host && otg->otg.gadget)
+			otg->otg.host)
 		children_ready = true;
 
 	if (!otg->main_thread && children_ready) {
@@ -915,7 +924,12 @@ static int dwc_otg2_set_peripheral(struct usb_otg *x,
 
 	otg->otg.gadget = gadget;
 	otg->usb2_phy.state = OTG_STATE_B_IDLE;
-	start_main_thread(otg);
+
+	otg->user_events |= USER_GADGET_EVENT;
+	mutex_lock(&lock);
+	dwc3_wakeup_otg_thread(otg);
+	mutex_unlock(&lock);
+
 	return 0;
 }
 

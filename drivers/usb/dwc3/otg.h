@@ -333,6 +333,7 @@ struct dwc_otg2 {
 	/** User space ID switch event */
 #define USER_ID_A_CHANGE_EVENT 0x01
 #define USER_ID_B_CHANGE_EVENT 0x02
+#define USER_GADGET_EVENT      0x04
        /** a_bus_drop event from userspace */
 #define USER_A_BUS_DROP 0x40
 
