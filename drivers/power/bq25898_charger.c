@@ -598,10 +598,8 @@ static int bq25898_usb_change_notifier(struct notifier_block *self, unsigned lon
 			/* schedule battery monitoring */
 			schedule_delayed_work(&chip->batmon_work, BQ25898_BAT_MONITOR_DELAY_FIRST);
 
-			/* wakelock : lock (suspend disabled), when not already locked, and not on SDP or CDP (host) detection */
-			if (!wake_lock_active(&chip->charger_wlock) &&
-				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
-				(caps->chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_CDP)) {
+			/* wakelock : lock (suspend disabled), when not already locked */
+			if (!wake_lock_active(&chip->charger_wlock)) {
 				dev_dbg(&chip->client->dev, "locking wakelock\n");
 				wake_lock(&chip->charger_wlock);
 			}
