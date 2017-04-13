@@ -170,12 +170,15 @@ void blk_queue_split(struct request_queue *q, struct bio **bio,
 	struct bio *split, *res;
 	unsigned nsegs;
 
-	if ((*bio)->bi_rw & REQ_DISCARD)
-		split = blk_bio_discard_split(q, *bio, bs, &nsegs);
-	else if ((*bio)->bi_rw & REQ_WRITE_SAME)
+	if ((*bio)->bi_rw & REQ_DISCARD) {
+		/* WA: disable splitting of discard requests */
+		split = NULL; //blk_bio_discard_split(q, *bio, bs, &nsegs);
+		nsegs = 1;
+	} else if ((*bio)->bi_rw & REQ_WRITE_SAME) {
 		split = blk_bio_write_same_split(q, *bio, bs, &nsegs);
-	else
+	} else {
 		split = blk_bio_segment_split(q, *bio, q->bio_split, &nsegs);
+	}
 
 	/* physical segments can be figured out during splitting */
 	res = split ? split : *bio;
