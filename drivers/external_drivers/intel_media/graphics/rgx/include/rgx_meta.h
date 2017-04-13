@@ -49,6 +49,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 #include "img_defs.h"
+#include "km/rgxdefs_km.h"
+
 
 /************************************************************************
 * META registers and MACROS 
@@ -79,15 +81,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define META_CR_PERF_ICORE1						(0x0480FFD8)
 #define META_CR_PERF_ICORE_DCACHEMISS			(0x8)
 
-typedef enum
-{
-	META_PERF_CONF_NONE = 0,
-	META_PERF_CONF_ICACHE = 1,
-	META_PERF_CONF_DCACHE = 2,
-	META_PERF_CONF_POLLS = 3,
-	META_PERF_CONF_CUSTOM_TIMER = 4
-} META_PERF_CONF;
-
 #define META_CR_PERF_COUNT(CTRL, THR)			((META_CR_PERF_COUNT_CTRL_##CTRL << META_CR_PERF_COUNT_CTRL_SHIFT) | \
 												 (THR << META_CR_PERF_COUNT_THR_SHIFT))
 
@@ -100,7 +93,11 @@ typedef enum
 #define META_CR_TXUXXRXRQ_RX_S       			(4)
 #define META_CR_TXUXXRXRQ_UXX_S      			(0)
 
+#define META_CR_TXUIN_ID						(0x0)			/* Internal ctrl regs */
+#define META_CR_TXUD0_ID						(0x1)			/* Data unit regs */
+#define META_CR_TXUD1_ID						(0x2)			/* Data unit regs */
 #define META_CR_TXUA0_ID						(0x3)			/* Address unit regs */
+#define META_CR_TXUA1_ID						(0x4)			/* Address unit regs */
 #define META_CR_TXUPC_ID						(0x5)			/* PC registers */
 
 /* Macros to calculate register access values */
@@ -122,17 +119,21 @@ typedef enum
 #define	META_CR_COREREG_ENABLE			(0x0000000)
 #define	META_CR_COREREG_STATUS			(0x0000010)
 #define	META_CR_COREREG_DEFR			(0x00000A0)
+#define	META_CR_COREREG_PRIVEXT			(0x00000E8)
 
 #define	META_CR_T0ENABLE_OFFSET			(META_CR_CTRLREG_BASE(0) + META_CR_COREREG_ENABLE)
 #define	META_CR_T0STATUS_OFFSET			(META_CR_CTRLREG_BASE(0) + META_CR_COREREG_STATUS)
 #define	META_CR_T0DEFR_OFFSET			(META_CR_CTRLREG_BASE(0) + META_CR_COREREG_DEFR)
+#define	META_CR_T0PRIVEXT_OFFSET		(META_CR_CTRLREG_BASE(0) + META_CR_COREREG_PRIVEXT)
 
 #define	META_CR_T1ENABLE_OFFSET			(META_CR_CTRLREG_BASE(1) + META_CR_COREREG_ENABLE)
 #define	META_CR_T1STATUS_OFFSET			(META_CR_CTRLREG_BASE(1) + META_CR_COREREG_STATUS)
 #define	META_CR_T1DEFR_OFFSET			(META_CR_CTRLREG_BASE(1) + META_CR_COREREG_DEFR)
+#define	META_CR_T1PRIVEXT_OFFSET		(META_CR_CTRLREG_BASE(1) + META_CR_COREREG_PRIVEXT)
 
 #define META_CR_TXENABLE_ENABLE_BIT		(0x00000001)   /* Set if running */
-#define META_CR_TXSTATUS_PRIV			(0x00020000)   
+#define META_CR_TXSTATUS_PRIV			(0x00020000)
+#define META_CR_TXPRIVEXT_MINIM			(0x00000080)
 
 #define META_MEM_GLOBAL_RANGE_BIT				(0x80000000)
 
@@ -213,31 +214,25 @@ typedef struct
 #define RGX_META_LDR_CFG_MEMSET			(0x0003)
 #define RGX_META_LDR_CFG_MEMCHECK		(0x0004)
 
+
 /************************************************************************
 * RGX FW segmented MMU definitions
 ************************************************************************/
 /* All threads can access the segment */
 #define RGXFW_SEGMMU_ALLTHRS	(0xf << 8)
-/* Writeable */
+/* Writable */
 #define RGXFW_SEGMMU_WRITEABLE	(0x1 << 1)
-/* All threads can access and writeable */
+/* All threads can access and writable */
 #define RGXFW_SEGMMU_ALLTHRS_WRITEABLE	(RGXFW_SEGMMU_ALLTHRS | RGXFW_SEGMMU_WRITEABLE)
-
-/* Direct map regions mapping (8-10) */
-#define RGXFW_SEGMMU_DMAP_ID_START			(8)
-#define RGXFW_SEGMMU_DMAP_ADDR_START		(0x06000000U)
-#define RGXFW_SEGMMU_DMAP_ADDR_META			(0x86000000U)
-#define RGXFW_SEGMMU_DMAP_SIZE				(8*1024*1024) /* 8 MB */
 
 /* Direct map region 11 used for mapping GPU memory */
 #define RGXFW_SEGMMU_DMAP_GPU_ID			(11)
-#define RGXFW_SEGMMU_DMAP_GPU_ADDR_START	(RGXFW_SEGMMU_DMAP_ADDR_START + 3*RGXFW_SEGMMU_DMAP_SIZE)
+#define RGXFW_SEGMMU_DMAP_GPU_ADDR_START	(0x07800000U)
 
 /* Segment IDs */
-#define RGXFW_SEGMMU_TEXT_ID			(0)
-#define RGXFW_SEGMMU_SHARED_ID			(1)
+#define RGXFW_SEGMMU_DATA_ID			(1)
 #define RGXFW_SEGMMU_BOOTLDR_ID			(2)
-#define RGXFW_SEGMMU_DATA_ID			(3)
+#define RGXFW_SEGMMU_TEXT_ID			(RGXFW_SEGMMU_BOOTLDR_ID)
 
 #define RGXFW_SEGMMU_META_DM_ID			(0x7)
 
@@ -279,9 +274,39 @@ typedef struct
 #define META_CR_MMCU_SEGMENTn_OUTA0(n)			(0x04850008 + (n)*0x10)
 #define META_CR_MMCU_SEGMENTn_OUTA1(n)			(0x0485000C + (n)*0x10)
 
-/* Win mode for data cache */
-#define RGXFW__SEGMMU_DMAP_DC_WIN (0x3)
-#define RGXFW__SEGMMU_DMAP_DC_SHIFT (0x6)
+/* The following defines must be recalculated if the Meta MMU segments
+ * used to access Host-FW data are changed
+ * Current combinations are:
+ * - SLC uncached, META cached,   FW base address 0x70000000
+ * - SLC uncached, META uncached, FW base address 0xF0000000
+ * - SLC cached,   META cached,   FW base address 0x10000000
+ * - SLC cached,   META uncached, FW base address 0x90000000
+ */
+#define RGXFW_SEGMMU_DATA_BASE_ADDRESS        (0x10000000)
+#define RGXFW_SEGMMU_DATA_META_CACHED         (0x0)
+#define RGXFW_SEGMMU_DATA_META_UNCACHED       (META_MEM_GLOBAL_RANGE_BIT) // 0x80000000
+#define RGXFW_SEGMMU_DATA_META_CACHE_MASK     (META_MEM_GLOBAL_RANGE_BIT)
+/* For non-VIVT SLCs the cacheability of the FW data in the SLC is selected
+ * in the PTEs for the FW data, not in the Meta Segment MMU,
+ * which means these defines have no real effect in those cases */
+#define RGXFW_SEGMMU_DATA_VIVT_SLC_CACHED     (0x0)
+#define RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED   (0x60000000)
+#define RGXFW_SEGMMU_DATA_VIVT_SLC_CACHE_MASK (0x60000000)
+
+
+/************************************************************************
+* RGX FW RGX MMU definitions
+************************************************************************/
+#if defined(RGX_FEATURE_SLC_VIVT) && defined(SUPPORT_TRUSTED_DEVICE)
+
+#define META_MMU_CONTEXT_MAPPING        (0x1) /* fw data */
+#define META_MMU_CONTEXT_MAPPING_CODE   (0x0) /* fw code */
+
+#else 
+
+#define META_MMU_CONTEXT_MAPPING       (0x0)
+
+#endif 
 
 /************************************************************************
 * RGX FW Bootloader defaults
@@ -295,27 +320,60 @@ typedef struct
 /* Bootloader configuration offset is in dwords (512 bytes) */
 #define RGXFW_BOOTLDR_CONF_OFFSET	(0x80)
 
+
 /************************************************************************
 * RGX META Stack
 ************************************************************************/
-#define RGX_META_STACK_SIZE  (0xC00)
+#define RGX_META_STACK_SIZE  (0x1000)
 
 /************************************************************************
 * RGX META Core memory
 ************************************************************************/
-#define RGX_META_COREMEM_BSS_SIZE    (0xA00)
-#define RGX_META_COREMEM_DATA_SIZE   (RGX_META_COREMEM_BSS_SIZE + RGX_META_STACK_SIZE)
+#if defined(RGXFW_META_SUPPORT_2ND_THREAD)
+	#define RGX_META_COREMEM_STACK_SIZE  (RGX_META_STACK_SIZE*2)
+	#define RGX_META_COREMEM_BSS_SIZE    (0xF40)
+	#if defined(RGX_FEATURE_META_DMA)
+		#define RGX_META_COREMEM_CCBBUF_SIZE (0x2E0)
+		#define RGX_META_COREMEM_DATA_SIZE   (RGX_META_COREMEM_CCBBUF_SIZE + RGX_META_COREMEM_BSS_SIZE + RGX_META_COREMEM_STACK_SIZE)
+	#else
+		#define RGX_META_COREMEM_DATA_SIZE   (RGX_META_COREMEM_BSS_SIZE + RGX_META_COREMEM_STACK_SIZE)
+	#endif
+#else
+	#define RGX_META_COREMEM_STACK_SIZE  (RGX_META_STACK_SIZE)
+	#define RGX_META_COREMEM_BSS_SIZE    (0xB00)
+	#if defined(RGX_FEATURE_META_DMA)
+		#define RGX_META_COREMEM_CCBBUF_SIZE (0x2E0)
+		#define RGX_META_COREMEM_DATA_SIZE   (RGX_META_COREMEM_CCBBUF_SIZE + RGX_META_COREMEM_BSS_SIZE + RGX_META_COREMEM_STACK_SIZE)
+	#else
+		#define RGX_META_COREMEM_DATA_SIZE   (RGX_META_COREMEM_BSS_SIZE + RGX_META_COREMEM_STACK_SIZE)
+	#endif
+#endif
+
+#if defined (RGX_META_COREMEM_CODE)
 #define RGX_META_COREMEM_CODE_SIZE   (RGX_META_COREMEM_SIZE - RGX_META_COREMEM_DATA_SIZE)
+#endif
+
 /* code and data both map to the same physical memory */
 #define RGX_META_COREMEM_CODE_ADDR   (0x80000000)
 #define RGX_META_COREMEM_DATA_ADDR   (0x82000000)
-#define RGX_META_COREMEM_STACK_ADDR  (RGX_META_COREMEM_DATA_ADDR)
-#define RGX_META_COREMEM_BSS_ADDR    (RGX_META_COREMEM_STACK_ADDR + RGX_META_STACK_SIZE)
 /* because data and code share the same memory, base address for code is offset by the data */
 #define RGX_META_COREMEM_CODE_BADDR  (RGX_META_COREMEM_CODE_ADDR + RGX_META_COREMEM_DATA_SIZE)
 
-#define RGX_META_IS_COREMEM_CODE(A)  (((A) >= RGX_META_COREMEM_CODE_BADDR) && ((A) < (RGX_META_COREMEM_CODE_ADDR + RGX_META_COREMEM_SIZE)))
-#define RGX_META_IS_COREMEM_DATA(A)  (((A) >= RGX_META_COREMEM_DATA_ADDR) && ((A) < (RGX_META_COREMEM_DATA_ADDR + RGX_META_COREMEM_DATA_SIZE)))
+#if defined(RGXFW_META_SUPPORT_2ND_THREAD)
+	#define RGX_META_COREMEM_STACK_ADDR      (RGX_META_COREMEM_DATA_ADDR)
+	#define RGX_META_COREMEM_2ND_STACK_ADDR  (RGX_META_COREMEM_DATA_ADDR + RGX_META_STACK_SIZE)
+	#define RGX_META_COREMEM_BSS_ADDR        (RGX_META_COREMEM_2ND_STACK_ADDR + RGX_META_STACK_SIZE)
+#else
+	#define RGX_META_COREMEM_STACK_ADDR      (RGX_META_COREMEM_DATA_ADDR)
+	#define RGX_META_COREMEM_BSS_ADDR        (RGX_META_COREMEM_STACK_ADDR + RGX_META_STACK_SIZE)
+#endif
+
+#if defined(RGX_FEATURE_META_DMA)
+	#define RGX_META_COREMEM_CCBBUF_ADDR (RGX_META_COREMEM_BSS_ADDR + RGX_META_COREMEM_BSS_SIZE)
+#endif
+
+#define RGX_META_IS_COREMEM_CODE(A, B)  (((A) >= RGX_META_COREMEM_CODE_ADDR) && ((A) < (RGX_META_COREMEM_CODE_ADDR + (B))))
+#define RGX_META_IS_COREMEM_DATA(A, B)  (((A) >= RGX_META_COREMEM_DATA_ADDR) && ((A) < (RGX_META_COREMEM_DATA_ADDR + (B))))
 
 /************************************************************************
 * 2nd thread
@@ -331,17 +389,29 @@ typedef struct
 #define META_CR_CORE_ID_VER_SHIFT	(16U)
 #define META_CR_CORE_ID_VER_CLRMSK	(0XFF00FFFFU)
 
-#if (RGX_FEATURE_META == MTP218)
-#define RGX_CR_META_CORE_ID_VALUE 0x19
-#elif (RGX_FEATURE_META == MTP219)
-#define RGX_CR_META_CORE_ID_VALUE 0x1E
-#elif (RGX_FEATURE_META == LTP218)
-#define RGX_CR_META_CORE_ID_VALUE 0x1C
-#elif (RGX_FEATURE_META == LTP217)
-#define RGX_CR_META_CORE_ID_VALUE 0x1F
+#if !defined(__KERNEL__) && defined(RGX_FEATURE_META)
+
+	#if (RGX_FEATURE_META == MTP218)
+	#define RGX_CR_META_CORE_ID_VALUE 0x19
+	#elif (RGX_FEATURE_META == MTP219)
+	#define RGX_CR_META_CORE_ID_VALUE 0x1E
+	#elif (RGX_FEATURE_META == LTP218)
+	#define RGX_CR_META_CORE_ID_VALUE 0x1C
+	#elif (RGX_FEATURE_META == LTP217)
+	#define RGX_CR_META_CORE_ID_VALUE 0x1F
+	#else
+	#error "Unknown META ID"
+	#endif
 #else
-#error "Unknown META ID"
+
+	#define RGX_CR_META_MTP218_CORE_ID_VALUE 0x19
+	#define RGX_CR_META_MTP219_CORE_ID_VALUE 0x1E
+	#define RGX_CR_META_LTP218_CORE_ID_VALUE 0x1C
+	#define RGX_CR_META_LTP217_CORE_ID_VALUE 0x1F
+
 #endif
+#define RGXFW_PROCESSOR_META        "META"
+
 
 #endif /*  __RGX_META_H__ */
 

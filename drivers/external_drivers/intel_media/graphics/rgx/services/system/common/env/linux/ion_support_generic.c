@@ -61,8 +61,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 static struct ion_platform_data generic_config = {
 	.nr = 2,
 	.heaps =
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,4,39))
-#else
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,39))
 		(struct ion_platform_heap [])
 #endif
 		{
@@ -128,23 +127,18 @@ failHeapCreate:
 	return PVRSRV_ERROR_OUT_OF_MEMORY;
 }
 
-struct ion_device *IonDevAcquire(IMG_VOID)
+struct ion_device *IonDevAcquire(void)
 {
 	return g_psIonDev;
 }
 
-IMG_VOID IonDevRelease(struct ion_device *psIonDev)
+void IonDevRelease(struct ion_device *psIonDev)
 {
 	/* Nothing to do, sanity check the pointer we're passed back */
 	PVR_ASSERT(psIonDev == g_psIonDev);
 }
 
-IMG_UINT32 IonPhysHeapID(IMG_VOID)
-{
-	return 0;
-}
-
-IMG_VOID IonDeinit(IMG_VOID)
+void IonDeinit(void)
 {
 	int uiHeapCount = generic_config.nr;
 	int i;

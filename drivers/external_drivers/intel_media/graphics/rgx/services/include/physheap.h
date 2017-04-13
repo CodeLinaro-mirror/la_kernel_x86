@@ -1,6 +1,6 @@
 /*************************************************************************/ /*!
 @File
-@Title          Physcial heap management header
+@Title          Physical heap management header
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description    Defines the interface for the physical heap management
 @License        Dual MIT/GPLv2
@@ -43,21 +43,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
+#include "pvrsrv_memallocflags.h"
 
 #ifndef _PHYSHEAP_H_
 #define _PHYSHEAP_H_
 
 typedef struct _PHYS_HEAP_ PHYS_HEAP;
 
-typedef IMG_VOID (*CpuPAddrToDevPAddr)(IMG_HANDLE hPrivData,
-									   IMG_UINT32 ui32NumOfAddr,
-									   IMG_DEV_PHYADDR *psDevPAddr,
-									   IMG_CPU_PHYADDR *psCpuPAddr);
+typedef void (*CpuPAddrToDevPAddr)(IMG_HANDLE hPrivData,
+								   IMG_UINT32 ui32NumOfAddr,
+								   IMG_DEV_PHYADDR *psDevPAddr,
+								   IMG_CPU_PHYADDR *psCpuPAddr);
 
-typedef IMG_VOID (*DevPAddrToCpuPAddr)(IMG_HANDLE hPrivData,
-									   IMG_UINT32 ui32NumOfAddr,
-									   IMG_CPU_PHYADDR *psCpuPAddr,
-									   IMG_DEV_PHYADDR *psDevPAddr);
+typedef void (*DevPAddrToCpuPAddr)(IMG_HANDLE hPrivData,
+								   IMG_UINT32 ui32NumOfAddr,
+								   IMG_CPU_PHYADDR *psCpuPAddr,
+								   IMG_DEV_PHYADDR *psDevPAddr);
+
+typedef IMG_UINT32 (*GetRegionId)(IMG_HANDLE hPrivData,
+								   PVRSRV_MEMALLOCFLAGS_T uiAllocationFlags);
 
 typedef struct _PHYS_HEAP_FUNCTIONS_
 {
@@ -65,6 +69,8 @@ typedef struct _PHYS_HEAP_FUNCTIONS_
 	CpuPAddrToDevPAddr	pfnCpuPAddrToDevPAddr;
 	/*! Translate device physical address to CPU physical address */
 	DevPAddrToCpuPAddr	pfnDevPAddrToCpuPAddr;
+	/*! Return id of heap region to allocate from */
+	GetRegionId			pfnGetRegionId;
 } PHYS_HEAP_FUNCTIONS;
 
 typedef enum _PHYS_HEAP_TYPE_
@@ -72,53 +78,83 @@ typedef enum _PHYS_HEAP_TYPE_
 	PHYS_HEAP_TYPE_UNKNOWN = 0,
 	PHYS_HEAP_TYPE_UMA,
 	PHYS_HEAP_TYPE_LMA,
+#if defined(SUPPORT_PVRSRV_GPUVIRT)
+	PHYS_HEAP_TYPE_DMA,
+#endif
 } PHYS_HEAP_TYPE;
+
+typedef struct _PHYS_HEAP_REGION_
+{
+	IMG_CPU_PHYADDR			sStartAddr;
+	IMG_DEV_PHYADDR			sCardBase;
+	IMG_UINT64				uiSize;
+#if defined(SUPPORT_PVRSRV_GPUVIRT)
+	IMG_HANDLE				hPrivData;
+	IMG_BOOL				bDynAlloc;
+#endif
+} PHYS_HEAP_REGION;
 
 typedef struct _PHYS_HEAP_CONFIG_
 {
 	IMG_UINT32				ui32PhysHeapID;
 	PHYS_HEAP_TYPE			eType;
-	/*
-		Note:
-		sStartAddr and uiSize are only required for LMA heaps
-	*/
-	IMG_CPU_PHYADDR			sStartAddr;
-	IMG_UINT64				uiSize;
 	IMG_CHAR				*pszPDumpMemspaceName;
 	PHYS_HEAP_FUNCTIONS		*psMemFuncs;
+
+	PHYS_HEAP_REGION		*pasRegions;
+	IMG_UINT32				ui32NumOfRegions;
+
 	IMG_HANDLE				hPrivData;
 } PHYS_HEAP_CONFIG;
 
 PVRSRV_ERROR PhysHeapRegister(PHYS_HEAP_CONFIG *psConfig,
 							  PHYS_HEAP **ppsPhysHeap);
 
-IMG_VOID PhysHeapUnregister(PHYS_HEAP *psPhysHeap);
+void PhysHeapUnregister(PHYS_HEAP *psPhysHeap);
 
 PVRSRV_ERROR PhysHeapAcquire(IMG_UINT32 ui32PhysHeapID,
 							 PHYS_HEAP **ppsPhysHeap);
 
-IMG_VOID PhysHeapRelease(PHYS_HEAP *psPhysHeap);
+void PhysHeapRelease(PHYS_HEAP *psPhysHeap);
 
 PHYS_HEAP_TYPE PhysHeapGetType(PHYS_HEAP *psPhysHeap);
 
-PVRSRV_ERROR PhysHeapGetAddress(PHYS_HEAP *psPhysHeap,
+PVRSRV_ERROR PhysHeapRegionGetCpuPAddr(PHYS_HEAP *psPhysHeap,
+									   IMG_UINT32 ui32RegionId,
 								IMG_CPU_PHYADDR *psCpuPAddr);
 
-PVRSRV_ERROR PhysHeapGetSize(PHYS_HEAP *psPhysHeap,
+
+PVRSRV_ERROR PhysHeapRegionGetSize(PHYS_HEAP *psPhysHeap,
+							IMG_UINT32 ui32RegionId,
 						     IMG_UINT64 *puiSize);
 
-IMG_VOID PhysHeapCpuPAddrToDevPAddr(PHYS_HEAP *psPhysHeap,
-									IMG_UINT32 ui32NumOfAddr,
-									IMG_DEV_PHYADDR *psDevPAddr,
-									IMG_CPU_PHYADDR *psCpuPAddr);
-IMG_VOID PhysHeapDevPAddrToCpuPAddr(PHYS_HEAP *psPhysHeap,
-									IMG_UINT32 ui32NumOfAddr,
-									IMG_CPU_PHYADDR *psCpuPAddr,
-									IMG_DEV_PHYADDR *psDevPAddr);
+PVRSRV_ERROR PhysHeapRegionGetDevPAddr(PHYS_HEAP *psPhysHeap,
+									   IMG_UINT32 ui32RegionId,
+							 		   IMG_DEV_PHYADDR *psDevPAddr);
+
+PVRSRV_ERROR PhysHeapRegionGetSize(PHYS_HEAP *psPhysHeap,
+								   IMG_UINT32 ui32RegionId,
+						     	   IMG_UINT64 *puiSize);
+
+IMG_UINT32 PhysHeapNumberOfRegions(PHYS_HEAP *psPhysHeap);
+
+void PhysHeapCpuPAddrToDevPAddr(PHYS_HEAP *psPhysHeap,
+								IMG_UINT32 ui32NumOfAddr,
+								IMG_DEV_PHYADDR *psDevPAddr,
+								IMG_CPU_PHYADDR *psCpuPAddr);
+
+void PhysHeapDevPAddrToCpuPAddr(PHYS_HEAP *psPhysHeap,
+								IMG_UINT32 ui32NumOfAddr,
+								IMG_CPU_PHYADDR *psCpuPAddr,
+								IMG_DEV_PHYADDR *psDevPAddr);
+
+IMG_UINT32 PhysHeapGetRegionId(PHYS_HEAP *psPhysHeap,
+						PVRSRV_MEMALLOCFLAGS_T uiAllocFlags);
+
 
 IMG_CHAR *PhysHeapPDumpMemspaceName(PHYS_HEAP *psPhysHeap);
 
-PVRSRV_ERROR PhysHeapInit(IMG_VOID);
-PVRSRV_ERROR PhysHeapDeinit(IMG_VOID);
+PVRSRV_ERROR PhysHeapInit(void);
+PVRSRV_ERROR PhysHeapDeinit(void);
 
 #endif /* _PHYSHEAP_H_ */

@@ -69,19 +69,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* services/server/include/ */
 #include "pmr_impl.h"
 #include "physheap.h"
-/* A typical symbolic address for physical memory may look like:
-   :MEMORYSPACE:SUBSYS_NNNNNN_0X1234567890_XYZ.  That example is quite
-   extreme, they are likely shorter than that.  We'll make the define
-   here plentiful, however, note that this is _advisory_ not
-   _mandatory_ - in other words, it's the allocator's responsibility
-   to choose the amount of memory to set aside, and it's up to us to
-   honour the size passed in by the caller.  i.e. this define is for
-   GUIDANCE ONLY.
-*/
-#define PMR_MAX_SYMBOLIC_ADDRESS_LENGTH_DEFAULT		(60)
-#define PMR_MAX_MEMSPACE_NAME_LENGTH_DEFAULT		(20)
-#define PMR_MAX_MEMSPNAME_SYMB_ADDR_LENGTH_DEFAULT	(PMR_MAX_SYMBOLIC_ADDRESS_LENGTH_DEFAULT + PMR_MAX_MEMSPACE_NAME_LENGTH_DEFAULT)
-#define PMR_MAX_PARAMSTREAM_FILENAME_LENGTH_DEFAULT (100)
+
 #define PMR_MAX_TRANSLATION_STACK_ALLOC				(32)
 
 typedef IMG_UINT64 PMR_BASE_T;
@@ -92,12 +80,24 @@ typedef IMG_UINT64 PMR_SIZE_T;
 typedef IMG_UINT32 PMR_LOG2ALIGN_T;
 typedef IMG_UINT64 PMR_PASSWORD_T;
 
-typedef struct _PMR_ PMR;
+struct _PMR_MAPPING_TABLE_
+{
+	PMR_SIZE_T	uiChunkSize;			/*!< Size of a "chunk" */
+	IMG_UINT32 	ui32NumPhysChunks;		/*!< Number of physical chunks that are valid */
+	IMG_UINT32 	ui32NumVirtChunks;		/*!< Number of virtual chunks in the mapping */
+	/* Must be last */
+	IMG_UINT32 	aui32Translation[1];    /*!< Translation mapping for "logical" to physical */
+};
+
+#define TRANSLATION_INVALID 0xFFFFFFFFUL
+#define INVALID_PAGE 0ULL
+
 typedef struct _PMR_EXPORT_ PMR_EXPORT;
 
 typedef struct _PMR_PAGELIST_ PMR_PAGELIST;
 
-struct _PVRSRV_DEVICE_NODE_;
+typedef struct _CONNECTION_DATA_ CONNECTION_DATA;
+typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
 
 /*
  * PMRCreatePMR
@@ -136,22 +136,6 @@ struct _PVRSRV_DEVICE_NODE_;
  *
  *       (device MMU page size) <= 2**(uiLog2ContiguityGuarantee) <= (actual contiguity of physical memory)
  *
- *
- * Note also that the implementation may supply pszPDumpFlavour and
- * pszPDumpDefaultMemspaceName, which are irrelevant where the PMR
- * implementation overrides the default symbolic name construction
- * routine.  Where the function pointer for PDump symbolic name
- * derivation is not overridden (i.e. IMG_NULL appears in the relevant
- * entry of the functab) and default implementation shall be used
- * which will copy the PDumpDefaultMemspaceName into the namespace
- * argument, and create the symbolic name by concatenating the
- * "PDumpFlavour" and a numeric representation of the PMR's serial
- * number.
- *
- * The implementation must guarantee that the storage for these two
- * strings, and the function table, are maintained, as copies are not
- * made, the pointer is simply stored.
- *
  * The function table will contain the following callbacks which may
  * be overridden by the PMR implementation:
  *
@@ -161,12 +145,12 @@ struct _PVRSRV_DEVICE_NODE_;
  *      be locked down via the PMRLockSysPhysAddresses() API.  Note
  *      that if physical pages are prefaulted at PMR creation time and
  *      therefore static, it would not be necessary to override this
- *      function, in which case IMG_NULL may be supplied.
+ *      function, in which case NULL may be supplied.
  *
  * pfnUnlockPhysAddresses
  *
  *      The reverse of pfnLockPhysAddresses.  Note that this should be
- *      IMG_NULL if and only if pfnLockPhysAddresses is IMG_NULL
+ *      NULL if and only if pfnLockPhysAddresses is NULL
  *
  * pfnSysPhysAddr
  *
@@ -180,15 +164,6 @@ struct _PVRSRV_DEVICE_NODE_;
  *      pmr.c abstraction will handle the refcounting for the whole
  *      PMR.
  *
- * pfnPDumpSymbolicAddr
- *
- *      Derives the PDump symbolic address for the given offset.  The
- *      default implementation will copy the PDumpDefaultMemspaceName
- *      into the namespace argument (or use SYSMEM if none was
- *      supplied), and create the symbolic name by concatenating the
- *      "PDumpFlavour" and a numeric representation of the PMR's
- *      serial number.
- *
  * pfnFinalize
  *
  *      Called when the PMR's refcount reaches zero and it gets
@@ -197,19 +172,20 @@ struct _PVRSRV_DEVICE_NODE_;
  *
  */
 extern PVRSRV_ERROR
-PMRCreatePMR(PHYS_HEAP *psPhysHeap,
+PMRCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
+             PHYS_HEAP *psPhysHeap,
              PMR_SIZE_T uiLogicalSize,
              PMR_SIZE_T uiChunkSize,
              IMG_UINT32 ui32NumPhysChunks,
              IMG_UINT32 ui32NumVirtChunks,
-             IMG_BOOL *pabMappingTable,
+             IMG_UINT32 *pui32MappingTable,
              PMR_LOG2ALIGN_T uiLog2ContiguityGuarantee,
              PMR_FLAGS_T uiFlags,
-             const IMG_CHAR *pszPDumpFlavour,
+             const IMG_CHAR *pszAnnotation,
              const PMR_IMPL_FUNCTAB *psFuncTab,
              PMR_IMPL_PRIVDATA pvPrivData,
+             PMR_IMPL_TYPE eType,
              PMR **ppsPMRPtr,
-             IMG_HANDLE *phPDumpAllocInfo,
              IMG_BOOL bForcePersistent);
 
 /*
@@ -219,8 +195,7 @@ PMRCreatePMR(PHYS_HEAP *psPhysHeap,
  *
  * Before this call, it is not valid to use any of the information
  * getting APIs: PMR_Flags(), PMR_SysPhysAddr(),
- * PMR_PDumpSymbolicAddr() [ see note below about lock/unlock
- * semantics ]
+ * [ see note below about lock/unlock semantics ]
  *
  * The caller of this function does not have to care about how the PMR
  * is implemented.  He only has to know that he is allowed access to
@@ -244,12 +219,10 @@ PMRCreatePMR(PHYS_HEAP *psPhysHeap,
  */
 
 extern PVRSRV_ERROR
-PMRLockSysPhysAddresses(PMR *psPMR,
-                        IMG_UINT32 uiLog2DevPageSize);
+PMRLockSysPhysAddresses(PMR *psPMR);
 
 extern PVRSRV_ERROR
 PMRLockSysPhysAddressesNested(PMR *psPMR,
-                        IMG_UINT32 uiLog2DevPageSize,
                         IMG_UINT32 ui32NestingLevel);
 
 /*
@@ -260,17 +233,56 @@ PMRLockSysPhysAddressesNested(PMR *psPMR,
 extern PVRSRV_ERROR
 PMRUnlockSysPhysAddresses(PMR *psPMR);
 
-IMG_VOID PMRLock(void);
-IMG_VOID PMRUnlock(void);
-IMG_BOOL PMRIsLocked(void);
-IMG_BOOL PMRIsLockedByMe(void);
+extern PVRSRV_ERROR
+PMRUnlockSysPhysAddressesNested(PMR *psPMR, IMG_UINT32 ui32NestingLevel);
+
+
+/**************************************************************************/ /*!
+@Function       PMRUnpinPMR
+@Description    This is the counterpart to PMRPinPMR(). It is meant to be
+                called before repinning an allocation.
+
+                For a detailed description see client API documentation.
+
+@Input          psPMR           The physical memory to unpin.
+
+@Input          bDevMapped      A flag that indicates if this PMR has been
+                                mapped to device virtual space.
+                                Needed to check if this PMR is allowed to be
+                                unpinned or not.
+
+@Return         PVRSRV_ERROR:   PVRSRV_OK on success and the memory is
+                                registered to be reclaimed. Error otherwise.
+*/ /***************************************************************************/
+PVRSRV_ERROR PMRUnpinPMR(PMR *psPMR, IMG_BOOL bDevMapped);
+
+/**************************************************************************/ /*!
+@Function       PMRPinPMR
+@Description    This is the counterpart to PMRUnpinPMR(). It is meant to be
+                called after unpinning an allocation.
+
+                For a detailed description see client API documentation.
+
+@Input          psPMR           The physical memory to pin.
+
+@Return         PVRSRV_ERROR:   PVRSRV_OK on success and the allocation content
+                                was successfully restored.
+
+                                PVRSRV_ERROR_PMR_NEW_MEMORY when the content
+                                could not be restored and new physical memory
+                                was allocated.
+
+                                A different error otherwise.
+*/ /***************************************************************************/
+PVRSRV_ERROR PMRPinPMR(PMR *psPMR);
+
 
 /*
  * PhysmemPMRExport()
  *
  * Given a PMR, creates a PMR "Export", which is a handle that
  * provides sufficient data to be able to "import" this PMR elsewhere.
- * The PMR Export is an object in its own right, whose existance
+ * The PMR Export is an object in its own right, whose existence
  * implies a reference on the PMR, thus the PMR cannot be destroyed
  * while the PMR Export exists.  The intention is that the PMR Export
  * will be wrapped in the devicemem layer by a cross process handle,
@@ -294,22 +306,45 @@ PMRExportPMR(PMR *psPMR,
              PMR_LOG2ALIGN_T *puiLog2Contig,
              PMR_PASSWORD_T *puiPassword);
 
-/*
- * PMRMakeServerExportClientExport()
- * 
- * This is a "special case" function for making a server export cookie
- * which went through the direct bridge into an export cookie that can
- * be passed through the client bridge.
- */
-PVRSRV_ERROR
-PMRMakeServerExportClientExport(DEVMEM_EXPORTCOOKIE *psPMRExportIn,
-								PMR_EXPORT **ppsPMRExportPtr,
-								PMR_SIZE_T *puiSize,
-								PMR_LOG2ALIGN_T *puiLog2Contig,
-								PMR_PASSWORD_T *puiPassword);
+/*!
+*******************************************************************************
 
-PVRSRV_ERROR
-PMRUnmakeServerExportClientExport(PMR_EXPORT *psPMRExport);
+ @Function	PMRMakeLocalImportHandle
+
+ @Description
+
+ Transform a general handle type into one that we are able to import.
+ Takes a PMR reference.
+
+ @Input   psPMR     The input PMR.
+ @Output  ppsPMR    The output PMR that is going to be transformed to the
+                    correct handle type.
+
+ @Return   PVRSRV_ERROR
+
+******************************************************************************/
+extern PVRSRV_ERROR
+PMRMakeLocalImportHandle(PMR *psPMR,
+                         PMR **ppsPMR);
+
+/*!
+*******************************************************************************
+
+ @Function	PMRUnmakeLocalImportHandle
+
+ @Description
+
+ Take a PMR, destroy the handle and release a reference.
+ Counterpart to PMRMakeServerExportClientExport().
+
+ @Input   psPMR       PMR to destroy.
+                      Created by PMRMakeLocalImportHandle().
+
+ @Return   PVRSRV_ERROR
+
+******************************************************************************/
+extern PVRSRV_ERROR
+PMRUnmakeLocalImportHandle(PMR *psPMR);
 
 /*
  * PMRUnexporPMRt()
@@ -339,7 +374,9 @@ PMRUnexportPMR(PMR_EXPORT *psPMRExport);
  * promising to later call PhysmemPMRUnimport()
  */
 extern PVRSRV_ERROR
-PMRImportPMR(PMR_EXPORT *psPMRExport,
+PMRImportPMR(CONNECTION_DATA *psConnection,
+             PVRSRV_DEVICE_NODE *psDevNode,
+             PMR_EXPORT *psPMRExport,
              PMR_PASSWORD_T uiPassword,
              PMR_SIZE_T uiSize,
              PMR_LOG2ALIGN_T uiLog2Contig,
@@ -366,24 +403,33 @@ PMRLocalImportPMR(PMR *psPMR,
  */
 extern PVRSRV_ERROR
 PMRAcquireKernelMappingData(PMR *psPMR,
-                            IMG_SIZE_T uiLogicalOffset,
-                            IMG_SIZE_T uiSize,
-                            IMG_VOID **ppvKernelAddressOut,
-                            IMG_SIZE_T *puiLengthOut,
+                            size_t uiLogicalOffset,
+                            size_t uiSize,
+                            void **ppvKernelAddressOut,
+                            size_t *puiLengthOut,
                             IMG_HANDLE *phPrivOut);
 
 extern PVRSRV_ERROR
 PMRAcquireSparseKernelMappingData(PMR *psPMR,
-                                  IMG_SIZE_T uiLogicalOffset,
-                                  IMG_SIZE_T uiSize,
-                                  IMG_VOID **ppvKernelAddressOut,
-                                  IMG_SIZE_T *puiLengthOut,
+                                  size_t uiLogicalOffset,
+                                  size_t uiSize,
+                                  void **ppvKernelAddressOut,
+                                  size_t *puiLengthOut,
                                   IMG_HANDLE *phPrivOut);
 
 extern PVRSRV_ERROR
 PMRReleaseKernelMappingData(PMR *psPMR,
                             IMG_HANDLE hPriv);
 
+#if defined(INTEGRITY_OS)
+extern PVRSRV_ERROR
+PMRMapMemoryObject(PMR *psPMR,
+                   IMG_HANDLE *phMemObj,
+                   IMG_HANDLE hPriv);
+extern PVRSRV_ERROR
+PMRUnmapMemoryObject(PMR *psPMR,
+                     IMG_HANDLE hPriv);
+#endif
 
 /*
  * PMR_ReadBytes()
@@ -402,8 +448,8 @@ extern PVRSRV_ERROR
 PMR_ReadBytes(PMR *psPMR,
               IMG_DEVMEM_OFFSET_T uiLogicalOffset,
               IMG_UINT8 *pcBuffer,
-              IMG_SIZE_T uiBufSz,
-              IMG_SIZE_T *puiNumBytes);
+              size_t uiBufSz,
+              size_t *puiNumBytes);
 
 /*
  * PMR_WriteBytes()
@@ -422,15 +468,30 @@ extern PVRSRV_ERROR
 PMR_WriteBytes(PMR *psPMR,
 			   IMG_DEVMEM_OFFSET_T uiLogicalOffset,
                IMG_UINT8 *pcBuffer,
-               IMG_SIZE_T uiBufSz,
-               IMG_SIZE_T *puiNumBytes);
+               size_t uiBufSz,
+               size_t *puiNumBytes);
+
+/**************************************************************************/ /*!
+@Function       PMRMMapPMR
+@Description    Performs the necessary steps to map the PMR into a user process
+                address space. The caller does not need to call
+                PMRLockSysPhysAddresses before calling this function.
+
+@Input          psPMR           PMR to map.
+
+@Input          pOSMMapData     OS specific data needed to create a mapping.
+
+@Return         PVRSRV_ERROR:   PVRSRV_OK on success or an error otherwise.
+*/ /***************************************************************************/
+extern PVRSRV_ERROR
+PMRMMapPMR(PMR *psPMR, PMR_MMAP_DATA pOSMMapData);
 
 /*
  * PMRRefPMR()
  *
  * Take a reference on the passed in PMR
  */
-extern IMG_VOID
+extern void
 PMRRefPMR(PMR *psPMR);
 
 /*
@@ -446,6 +507,16 @@ PMRRefPMR(PMR *psPMR);
 extern PVRSRV_ERROR
 PMRUnrefPMR(PMR *psPMR);
 
+/*
+ * PMRUnrefUnlockPMR()
+ *
+ * Same as above but also unlocks the PMR.
+ */
+extern PVRSRV_ERROR
+PMRUnrefUnlockPMR(PMR *psPMR);
+
+extern PVRSRV_DEVICE_NODE *
+PMR_DeviceNode(const PMR *psPMR);
 
 /*
  * PMR_Flags()
@@ -457,14 +528,41 @@ PMRUnrefPMR(PMR *psPMR);
  * Returns the flags as specified on the PMR.  The flags are to be
  * interpreted as mapping permissions
  */
-extern PVRSRV_ERROR
-PMR_Flags(const PMR *psPMR,
-          PMR_FLAGS_T *puiMappingFlags);
+extern PMR_FLAGS_T
+PMR_Flags(const PMR *psPMR);
+
+extern IMG_BOOL
+PMR_IsSparse(const PMR *psPMR);
+
 
 
 extern PVRSRV_ERROR
 PMR_LogicalSize(const PMR *psPMR,
 				IMG_DEVMEM_SIZE_T *puiLogicalSize);
+
+extern PHYS_HEAP *
+PMR_PhysHeap(const PMR *psPMR);
+
+extern PMR_MAPPING_TABLE *
+PMR_GetMappigTable(const PMR *psPMR);
+
+extern IMG_UINT32
+PMR_GetLog2Contiguity(const PMR *psPMR);
+/*
+ * PMR_IsOffsetValid()
+ *
+ * Returns if an address offset inside a PMR has a valid
+ * physical backing.
+ */
+extern PVRSRV_ERROR
+PMR_IsOffsetValid(const PMR *psPMR,
+				IMG_UINT32 ui32Log2PageSize,
+				IMG_UINT32 ui32NumOfPages,
+				IMG_DEVMEM_OFFSET_T uiLogicalOffset,
+				IMG_BOOL *pbValid);
+
+extern PMR_IMPL_TYPE
+PMR_GetType(const PMR *psPMR);
 
 /*
  * PMR_SysPhysAddr()
@@ -512,9 +610,72 @@ PMR_CpuPhysAddr(const PMR *psPMR,
 
 PVRSRV_ERROR
 PMRGetUID(PMR *psPMR,
-		  IMG_UINT64 *pui64UID);
+          IMG_UINT64 *pui64UID);
+/*
+ * PMR_ChangeSparseMem()
+ *
+ * See note above about Lock/Unlock semantics.
+ *
+ * This function alters the memory map of the given PMR in device space by adding/deleting the pages
+ * as requested.
+ *
+ */
+PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
+                                 IMG_UINT32 ui32AllocPageCount,
+                                 IMG_UINT32 *pai32AllocIndices,
+                                 IMG_UINT32 ui32FreePageCount,
+                                 IMG_UINT32 *pai32FreeIndices,
+                                 IMG_UINT32	uiFlags);
+
+/*
+ * PMR_ChangeSparseMemCPUMap()
+ *
+ * See note above about Lock/Unlock semantics.
+ *
+ * This function alters the memory map of the given PMR in CPU space by adding/deleting the pages
+ * as requested.
+ *
+ */
+PVRSRV_ERROR PMR_ChangeSparseMemCPUMap(PMR *psPMR,
+                                       IMG_UINT64 sCpuVAddrBase,
+                                       IMG_UINT32 ui32AllocPageCount,
+                                       IMG_UINT32 *pai32AllocIndices,
+                                       IMG_UINT32 ui32FreePageCount,
+                                       IMG_UINT32 *pai32FreeIndices);
 
 #if defined(PDUMP)
+
+extern void
+PDumpPMRMallocPMR(PMR *psPMR,
+                  IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiBlockSize,
+                  IMG_UINT32 ui32ChunkSize,
+                  IMG_UINT32 ui32NumPhysChunks,
+                  IMG_UINT32 ui32NumVirtChunks,
+                  IMG_UINT32 *puiMappingTable,
+                  IMG_UINT32 uiLog2Contiguity,
+                  IMG_BOOL bInitialise,
+                  IMG_UINT32 ui32InitValue,
+                  IMG_BOOL bForcePersistent,
+                  IMG_HANDLE *phPDumpAllocInfoPtr);
+
+extern void
+PDumpPMRFreePMR(PMR *psPMR,
+                IMG_DEVMEM_SIZE_T uiSize,
+                IMG_DEVMEM_ALIGN_T uiBlockSize,
+                IMG_UINT32 uiLog2Contiguity,
+                IMG_HANDLE hPDumpAllocationInfoHandle);
+
+extern void
+PDumpPMRChangeSparsePMR(PMR *psPMR,
+                        IMG_UINT32 uiBlockSize,
+                        IMG_UINT32 ui32AllocPageCount,
+                        IMG_UINT32 *pai32AllocIndices,
+                        IMG_UINT32 ui32FreePageCount,
+                        IMG_UINT32 *pai32FreeIndices,
+                        IMG_BOOL bInitialise,
+                        IMG_UINT32 ui32InitValue,
+                        IMG_HANDLE *phPDumpAllocInfoOut);
 /*
  * PMR_PDumpSymbolicAddr()
  *
@@ -604,9 +765,80 @@ PMRPDumpSaveToFile(const PMR *psPMR,
                    IMG_DEVMEM_OFFSET_T uiLogicalOffset,
                    IMG_DEVMEM_SIZE_T uiSize,
                    IMG_UINT32 uiArraySize,
-                   const IMG_CHAR *pszFilename);
+                   const IMG_CHAR *pszFilename,
+                   IMG_UINT32 uiFileOffset);
 #else	/* PDUMP */
 
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(PDumpPMRMallocPMR)
+#endif
+static INLINE void
+PDumpPMRMallocPMR(PMR *psPMR,
+                  IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiBlockSize,
+                  IMG_UINT32 ui32NumPhysChunks,
+                  IMG_UINT32 ui32NumVirtChunks,
+                  IMG_UINT32 *puiMappingTable,
+                  IMG_UINT32 uiLog2Contiguity,
+                  IMG_BOOL bInitialise,
+                  IMG_UINT32 ui32InitValue,
+                  IMG_BOOL bForcePersistent,
+                  IMG_HANDLE *phPDumpAllocInfoPtr)
+{
+	PVR_UNREFERENCED_PARAMETER(psPMR);
+	PVR_UNREFERENCED_PARAMETER(uiSize);
+	PVR_UNREFERENCED_PARAMETER(uiBlockSize);
+	PVR_UNREFERENCED_PARAMETER(ui32NumPhysChunks);
+	PVR_UNREFERENCED_PARAMETER(ui32NumVirtChunks);
+	PVR_UNREFERENCED_PARAMETER(puiMappingTable);
+	PVR_UNREFERENCED_PARAMETER(uiLog2Contiguity);
+	PVR_UNREFERENCED_PARAMETER(bInitialise);
+	PVR_UNREFERENCED_PARAMETER(ui32InitValue);
+	PVR_UNREFERENCED_PARAMETER(bForcePersistent);
+	PVR_UNREFERENCED_PARAMETER(phPDumpAllocInfoPtr);
+}
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(PDumpPMRFreePMR)
+#endif
+static INLINE void
+PDumpPMRFreePMR(PMR *psPMR,
+                IMG_DEVMEM_SIZE_T uiSize,
+                IMG_DEVMEM_ALIGN_T uiBlockSize,
+                IMG_UINT32 uiLog2Contiguity,
+                IMG_HANDLE hPDumpAllocationInfoHandle)
+{
+	PVR_UNREFERENCED_PARAMETER(psPMR);
+	PVR_UNREFERENCED_PARAMETER(uiSize);
+	PVR_UNREFERENCED_PARAMETER(uiBlockSize);
+	PVR_UNREFERENCED_PARAMETER(uiLog2Contiguity);
+	PVR_UNREFERENCED_PARAMETER(hPDumpAllocationInfoHandle);
+}
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(PDumpPMRChangeSparsePMR)
+#endif
+static INLINE void
+PDumpPMRChangeSparsePMR(PMR *psPMR,
+                        IMG_UINT32 uiBlockSize,
+                        IMG_UINT32 ui32AllocPageCount,
+                        IMG_UINT32 *pai32AllocIndices,
+                        IMG_UINT32 ui32FreePageCount,
+                        IMG_UINT32 *pai32FreeIndices,
+                        IMG_BOOL bInitialise,
+                        IMG_UINT32 ui32InitValue,
+                        IMG_HANDLE *phPDumpAllocInfoOut)
+{
+	PVR_UNREFERENCED_PARAMETER(psPMR);
+	PVR_UNREFERENCED_PARAMETER(uiBlockSize);
+	PVR_UNREFERENCED_PARAMETER(ui32AllocPageCount);
+	PVR_UNREFERENCED_PARAMETER(pai32AllocIndices);
+	PVR_UNREFERENCED_PARAMETER(ui32FreePageCount);
+	PVR_UNREFERENCED_PARAMETER(pai32FreeIndices);
+	PVR_UNREFERENCED_PARAMETER(bInitialise);
+	PVR_UNREFERENCED_PARAMETER(ui32InitValue);
+	PVR_UNREFERENCED_PARAMETER(phPDumpAllocInfoOut);
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PMR_PDumpSymbolicAddr)
@@ -691,13 +923,15 @@ PMRPDumpSaveToFile(const PMR *psPMR,
                    IMG_DEVMEM_OFFSET_T uiLogicalOffset,
                    IMG_DEVMEM_SIZE_T uiSize,
                    IMG_UINT32 uiArraySize,
-                   const IMG_CHAR *pszFilename)
+                   const IMG_CHAR *pszFilename,
+                   IMG_UINT32 uiFileOffset)
 {
 	PVR_UNREFERENCED_PARAMETER(psPMR);
 	PVR_UNREFERENCED_PARAMETER(uiLogicalOffset);
 	PVR_UNREFERENCED_PARAMETER(uiSize);
 	PVR_UNREFERENCED_PARAMETER(uiArraySize);
 	PVR_UNREFERENCED_PARAMETER(pszFilename);
+	PVR_UNREFERENCED_PARAMETER(uiFileOffset);
 	return PVRSRV_OK;
 }
 
@@ -709,7 +943,7 @@ PMRPDumpSaveToFile(const PMR *psPMR,
    subtype implementation.  We can assume (assert) that.  It would be
    a bug in the implementation of the pmr subtype if this assertion
    ever fails. */
-extern IMG_VOID *
+extern void *
 PMRGetPrivateDataHack(const PMR *psPMR,
                       const PMR_IMPL_FUNCTAB *psFuncTab);
 
@@ -729,11 +963,10 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
                    /* Referenced PMR, and "page" granularity */
                    PMR *psReferencePMR,
                    IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
-                   PMR_PAGELIST **ppsPageList,
-                   IMG_UINT64 *pui64CheckSum);
+                   PMR_PAGELIST **ppsPageList);
 
 /* Doesn't actually erase the page list - just releases the appropriate refcounts */
-extern PVRSRV_ERROR // should be IMG_VOID, surely
+extern PVRSRV_ERROR // should be void, surely
 PMRUnwritePMPageList(PMR_PAGELIST *psPageList);
 
 #if defined(PDUMP)
@@ -800,7 +1033,7 @@ PMRPDumpCBP(const PMR *psPMR,
  * Not for general use.  Only PVRSRVInit(); should be calling this.
  */
 extern PVRSRV_ERROR
-PMRInit(IMG_VOID);
+PMRInit(void);
 
 /*
  * PMRDeInit()
@@ -811,12 +1044,12 @@ PMRInit(IMG_VOID);
  * Not for general use.  Only PVRSRVDeInit(); should be calling this.
  */
 extern PVRSRV_ERROR
-PMRDeInit(IMG_VOID);
+PMRDeInit(void);
 
 #if defined(PVR_RI_DEBUG)
 extern PVRSRV_ERROR
 PMRStoreRIHandle(PMR *psPMR,
-				 IMG_PVOID hRIHandle);
+				 void *hRIHandle);
 #endif
 
 #endif /* #ifdef _SRVSRV_PMR_H_ */

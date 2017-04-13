@@ -64,65 +64,47 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #error Apollo only supports LMA at the minute
 #endif
 
-#define TC_SYSTEM_NAME		"Rogue Test Chip"
-
 /* Valid values for the TC_MEMORY_CONFIG configuration option */
 #define TC_MEMORY_LOCAL		(1)
 #define TC_MEMORY_HOST		(2)
 #define TC_MEMORY_HYBRID	(3)
-#define TC_MEMORY_DIRECT_MAPPED	(4)
 
 #if TC_MEMORY_CONFIG != TC_MEMORY_LOCAL
 #error Apollo only supports TC_MEMORY_LOCAL at the minute
 #endif
 
+/* These must be consecutive */
+#define PHYS_HEAP_IDX_GENERAL	0
+#define PHYS_HEAP_IDX_DMABUF	1
+#define PHYS_HEAP_IDX_COUNT		2
+
 #define SYS_RGX_ACTIVE_POWER_LATENCY_MS (10)
 
-static PVRSRV_SYSTEM_CONFIG gsSysConfig;
+#if defined(PVR_DVFS) || defined(SUPPORT_PDVFS)
 
-static RGX_TIMING_INFORMATION gsRGXTimingInfo =
+/* Dummy DVFS configuration used purely for testing purposes */
+
+static const IMG_OPP asOPPTable[] =
 {
-	/* Initialise to 0, real value will be set in PCIInitDev() */
-	.ui32CoreClockSpeed = 0,
-	.bEnableActivePM = IMG_FALSE,
-	.bEnableRDPowIsland = IMG_FALSE,
-	.ui32ActivePMLatencyms = SYS_RGX_ACTIVE_POWER_LATENCY_MS,
+	{ 8,  25000000},
+	{ 16, 50000000},
+	{ 32, 75000000},
+	{ 64, 100000000},
 };
 
-static RGX_DATA gsRGXData =
+#define LEVEL_COUNT (sizeof(asOPPTable) / sizeof(IMG_OPP))
+
+static void SetFrequency(IMG_UINT32 ui32Frequency)
 {
-	.psRGXTimingInfo = &gsRGXTimingInfo
-};
-static PVRSRV_DEVICE_CONFIG gsDevices[] =
+	PVR_DPF((PVR_DBG_ERROR, "SetFrequency %u", ui32Frequency));
+}
+
+static void SetVoltage(IMG_UINT32 ui32Voltage)
 {
-	{
-		.uiFlags = 0,
-		.pszName = "RGX",
-		.eDeviceType = PVRSRV_DEVICE_TYPE_RGX,
+	PVR_DPF((PVR_DBG_ERROR, "SetVoltage %u", ui32Voltage));
+}
 
-		/* Device setup information */
-		.sRegsCpuPBase = { 0 },
-		.ui32RegsSize = 0,
-
-		.ui32IRQ = APOLLO_INTERRUPT_ROGUE,
-		.bIRQIsShared = IMG_TRUE,
-		.eIRQActiveLevel = PVRSRV_DEVICE_IRQ_ACTIVE_SYSDEFAULT,
-
-		.hDevData = &gsRGXData,
-		.hSysData = IMG_NULL,
-
-		.aui32PhysHeapID = { 0, 0 },
-
-		.pfnPrePowerState = IMG_NULL,
-		.pfnPostPowerState = IMG_NULL,
-		.pfnClockFreqGet = IMG_NULL,
-		.pfnInterruptHandled = IMG_NULL,
-		.pfnCheckMemAllocSize = SysCheckMemAllocSize,
-
-		.eBPDM = RGXFWIF_DM_TA,
-		.bBPSet = IMG_FALSE
-	}
-};
+#endif
 
 static void TCLocalCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 				      IMG_UINT32 ui32NumOfAddr,
@@ -133,10 +115,15 @@ static void TCLocalDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 				      IMG_UINT32 ui32NumOfAddr,
 				      IMG_CPU_PHYADDR *psCpuPAddr,
 				      IMG_DEV_PHYADDR *psDevPAddr);
+
+static IMG_UINT32 TCLocalGetRegionId(IMG_HANDLE hPrivData,
+					  PVRSRV_MEMALLOCFLAGS_T uiAllocFlags);
+
 static PHYS_HEAP_FUNCTIONS gsLocalPhysHeapFuncs =
 {
 	.pfnCpuPAddrToDevPAddr = TCLocalCpuPAddrToDevPAddr,
 	.pfnDevPAddrToCpuPAddr = TCLocalDevPAddrToCpuPAddr,
+	.pfnGetRegionId = TCLocalGetRegionId,
 };
 
 static void TCIonCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
@@ -149,35 +136,20 @@ static void TCIonDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 				    IMG_CPU_PHYADDR *psCpuPAddr,
 				    IMG_DEV_PHYADDR *psDevPAddr);
 
+static IMG_UINT32 TCIonGetRegionId(IMG_HANDLE hPrivData,
+					  PVRSRV_MEMALLOCFLAGS_T uiAllocFlags);
+
 static PHYS_HEAP_FUNCTIONS gsIonPhysHeapFuncs =
 {
 	.pfnCpuPAddrToDevPAddr = TCIonCpuPAddrToDevPAddr,
 	.pfnDevPAddrToCpuPAddr = TCIonDevPAddrToCpuPAddr,
+	.pfnGetRegionId = TCIonGetRegionId,
 };
 
-static PHYS_HEAP_CONFIG	gsPhysHeapConfig[] =
-{
-	{
-		.ui32PhysHeapID = 0,
-		.eType = PHYS_HEAP_TYPE_LMA,
-		.sStartAddr = { 0 },
-		.uiSize = 0,
-		.pszPDumpMemspaceName = "LMA",
-		.psMemFuncs = &gsLocalPhysHeapFuncs,
-		.hPrivData = (IMG_HANDLE)&gsSysConfig,
-	},
-	{
-		.ui32PhysHeapID = 1,
-		.eType = PHYS_HEAP_TYPE_LMA,
-		.sStartAddr = { 0 },
-		.uiSize = 0,
-		.pszPDumpMemspaceName = "LMA",
-		.psMemFuncs = &gsIonPhysHeapFuncs,
-		.hPrivData = (IMG_HANDLE)&gsSysConfig,
-	}
-};
+/* BIF Tiling mode configuration */
+static RGXFWIF_BIFTILINGMODE geBIFTilingMode = RGXFWIF_BIFTILINGMODE_256x16;
 
-/* default BIF tiling heap x-stride configurations. */
+/* Default BIF tiling heap x-stride configurations. */
 static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
 {
 	0, /* BIF tiling heap 1 x-stride */
@@ -186,55 +158,24 @@ static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
 	3  /* BIF tiling heap 4 x-stride */
 };
 
-static PVRSRV_SYSTEM_CONFIG gsSysConfig =
-{
-	.uiSysFlags = 0,
-	.pszSystemName = TC_SYSTEM_NAME,
-	.uiDeviceCount = ARRAY_SIZE(gsDevices),
-	.pasDevices = &gsDevices[0],
-
-	.pfnSysPrePowerState = IMG_NULL,
-	.pfnSysPostPowerState = IMG_NULL,
-
-	.eCacheSnoopingMode = PVRSRV_SYSTEM_SNOOP_NONE,
-
-	.pasPhysHeaps = &gsPhysHeapConfig[0],
-	.ui32PhysHeapCount = ARRAY_SIZE(gsPhysHeapConfig),
-
-	.pui32BIFTilingHeapConfigs = &gauiBIFTilingHeapXStrides[0],
-	.ui32BIFTilingHeapCount = ARRAY_SIZE(gauiBIFTilingHeapXStrides),
-};
-
-
 typedef struct _SYS_DATA_ SYS_DATA;
-
-extern struct platform_device *gpsPVRLDMDev;
 
 struct _SYS_DATA_
 {
-	IMG_UINT32		uiRefCount;
-
-	struct pci_dev *pcidev;
-
 	struct platform_device *pdev;
 
 	struct apollo_rogue_platform_data *pdata;
 
-	IMG_CHAR		*pszSystemInfoString;
-
-	PVRSRV_SYS_POWER_STATE	ePowerState;
+	struct resource *registers;
 
 #if defined(SUPPORT_ION)
 	struct ion_client *ion_client;
 	struct ion_handle *ion_rogue_allocation;
 #endif
-
-	IMG_HANDLE		hFlashData;
-
 };
 
-#define SYSTEM_INFO_FORMAT_STRING	"%s\tFPGA Revision: %s\tTCF Core Revision: %s\tTCF Core Target Build ID: %s\tPCI Version: %s\tMacro Version: %s"
-static IMG_CHAR *GetSystemInfoString(SYS_DATA *psSysData)
+#define SYSTEM_INFO_FORMAT_STRING	"FPGA Revision: %s\tTCF Core Revision: %s\tTCF Core Target Build ID: %s\tPCI Version: %s\tMacro Version: %s"
+static IMG_CHAR *GetDeviceVersionString(SYS_DATA *psSysData)
 {
 	int err;
 	char str_fpga_rev[12];
@@ -243,12 +184,10 @@ static IMG_CHAR *GetSystemInfoString(SYS_DATA *psSysData)
 	char str_pci_ver[4];
 	char str_macro_ver[8];
 
-	IMG_CHAR *pszSystemInfoString;
+	IMG_CHAR *pszVersion;
 	IMG_UINT32 ui32StringLength;
 
-	struct apollo_rogue_platform_data *pdata = ((struct platform_device*)gpsPVRLDMDev)->dev.platform_data;
-
-	err = apollo_sys_strings(&pdata->pdev->dev, //&psSysData->pdev->dev,
+	err = apollo_sys_strings(psSysData->pdev->dev.parent,
 							 str_fpga_rev, sizeof(str_fpga_rev),
 							 str_tcf_core_rev, sizeof(str_tcf_core_rev),
 							 str_tcf_core_target_build_id, sizeof(str_tcf_core_target_build_id),
@@ -260,18 +199,18 @@ static IMG_CHAR *GetSystemInfoString(SYS_DATA *psSysData)
 	}
 
 	ui32StringLength = OSStringLength(SYSTEM_INFO_FORMAT_STRING);
-	ui32StringLength += OSStringLength(TC_SYSTEM_NAME);
 	ui32StringLength += OSStringLength(str_fpga_rev);
 	ui32StringLength += OSStringLength(str_tcf_core_rev);
 	ui32StringLength += OSStringLength(str_tcf_core_target_build_id);
 	ui32StringLength += OSStringLength(str_pci_ver);
 	ui32StringLength += OSStringLength(str_macro_ver);
 
-	/* Create the system info string */
-	pszSystemInfoString = OSAllocZMem(ui32StringLength * sizeof(IMG_CHAR));
-	if (pszSystemInfoString)
+	/* Create the version string */
+	pszVersion = OSAllocZMem(ui32StringLength * sizeof(IMG_CHAR));
+	if (pszVersion)
 	{
-		OSSNPrintf(&pszSystemInfoString[0], ui32StringLength, SYSTEM_INFO_FORMAT_STRING, TC_SYSTEM_NAME,
+		OSSNPrintf(&pszVersion[0], ui32StringLength,
+				   SYSTEM_INFO_FORMAT_STRING,
 				   str_fpga_rev,
 				   str_tcf_core_rev,
 				   str_tcf_core_target_build_id,
@@ -279,7 +218,7 @@ static IMG_CHAR *GetSystemInfoString(SYS_DATA *psSysData)
 				   str_macro_ver);
 	}
 
-	return pszSystemInfoString;
+	return pszVersion;
 }
 
 #if defined(SUPPORT_ION)
@@ -327,24 +266,6 @@ void IonDeinit(void)
 	psSysData->ion_client = NULL;
 }
 
-IMG_DEV_PHYADDR IonCPUPhysToDevPhys(IMG_CPU_PHYADDR sCPUPhysAddr,
-                                    IMG_UINT32 ui32Offset)
-{
-	IMG_DEV_PHYADDR sDevPAddr =
-	{
-			.uiAddr = sCPUPhysAddr.uiAddr + ui32Offset -
-					  gpsIonPrivateData->pdata->apollo_memory_base,
-	};
-
-	PVR_ASSERT(sCPUPhysAddr.uiAddr + ui32Offset
-		>= gpsIonPrivateData->pdata->pdp_heap_memory_base);
-	PVR_ASSERT(sCPUPhysAddr.uiAddr + ui32Offset
-		< gpsIonPrivateData->pdata->pdp_heap_memory_base
-			+ gpsIonPrivateData->pdata->pdp_heap_memory_size);
-
-	return sDevPAddr;
-}
-
 struct ion_device *IonDevAcquire(void)
 {
 	return gpsIonPrivateData->pdata->ion_device;
@@ -354,138 +275,23 @@ void IonDevRelease(struct ion_device *ion_device)
 {
 	PVR_ASSERT(ion_device == gpsIonPrivateData->pdata->ion_device);
 }
-
-IMG_UINT32 IonPhysHeapID(void)
-{
-	/* This seems to be the services heap that ION allocations should be mapped into
-	 * FIXME: This may depend on the allocation? Eg. if allocations can come
-	 * from more than one heap?*/
-	return 1;
-}
 #endif /* defined(SUPPORT_ION) */
-
-static PVRSRV_ERROR PCIInitDev(SYS_DATA *psSysData)
-{
-	PVRSRV_DEVICE_CONFIG *psDevice = &gsSysConfig.pasDevices[0];
-	PVRSRV_ERROR eError;
-	int err = 0;
-
-	err = pci_enable_device(psSysData->pcidev);
-	if (err)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to enable PCI device (%d)", __func__, err));
-		eError = PVRSRV_ERROR_PCI_CALL_FAILED;
-		goto err_out;
-	}
-
-#if defined(SUPPORT_ION)
-	eError = IonInit(psSysData);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to initialise ION", __func__));
-		goto ErrorPCIReleaseDevice;
-	}
-#endif
-
-	/* FIXME: Use ion_phys on the allocation? */
-	gsPhysHeapConfig[0].uiSize =
-		psSysData->pdata->rogue_heap_memory_size;
-
-	gsPhysHeapConfig[0].sStartAddr.uiAddr =
-		psSysData->pdata->rogue_heap_memory_base;
-
-
-
-	gsPhysHeapConfig[1].uiSize = psSysData->pdata->pdp_heap_memory_size;
-	gsPhysHeapConfig[1].sStartAddr.uiAddr = psSysData->pdata->pdp_heap_memory_base;
-
-	/* Setup Rogue register information */
-	psDevice->sRegsCpuPBase.uiAddr	= pci_resource_start(psSysData->pcidev, SYS_RGX_REG_PCI_BASENUM);
-	psDevice->ui32RegsSize		= pci_resource_len(psSysData->pcidev, SYS_RGX_REG_PCI_BASENUM);
-
-	/* Save data for this device */
-	psDevice->hSysData = (IMG_HANDLE)psSysData;
-
-	/* Check the address range is large enough. */
-	if (psDevice->ui32RegsSize < SYS_RGX_REG_REGION_SIZE)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-			 "%s: Rogue register region isn't big enough (was 0x%08x, required 0x%08x)",
-			 __FUNCTION__, psDevice->ui32RegsSize, SYS_RGX_REG_REGION_SIZE));
-
-		eError = PVRSRV_ERROR_PCI_REGION_TOO_SMALL;
-		goto ErrorDeInitION;
-	}
-
-	/* Reserve the address range */
-	err = pci_request_region(psSysData->pcidev, SYS_RGX_REG_PCI_BASENUM, SYS_RGX_DEV_NAME);
-	if (err)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Rogue register memory region not available", __FUNCTION__));
-		eError = PVRSRV_ERROR_PCI_CALL_FAILED;
-
-		goto ErrorDeInitION;
-	}
-
-	/* Override the system name if we can get the system info string */
-	psSysData->pszSystemInfoString = GetSystemInfoString(psSysData);
-	if (psSysData->pszSystemInfoString)
-	{
-		gsSysConfig.pszSystemName = psSysData->pszSystemInfoString;
-	}
-
-	/* Make the core clock speed value available to the driver */
-	((RGX_DATA *)psDevice->hDevData)->psRGXTimingInfo->ui32CoreClockSpeed = apollo_core_clock_speed(&psSysData->pdev->dev) * 6;
-
-	return PVRSRV_OK;
-
-ErrorDeInitION:
-#if defined(SUPPORT_ION)
-	IonDeinit();
-ErrorPCIReleaseDevice:
-#endif
-	pci_disable_device(psSysData->pcidev);
-err_out:
-	return eError;
-}
-
-static void PCIDeInitDev(SYS_DATA *psSysData)
-{
-	PVRSRV_DEVICE_CONFIG *psDevice = &gsSysConfig.pasDevices[0];
-
-	if (psSysData->pszSystemInfoString)
-	{
-		OSFreeMem(psSysData->pszSystemInfoString);
-		psSysData->pszSystemInfoString = NULL;
-	}
-
-#if defined(SUPPORT_ION)
-	IonDeinit();
-#endif
-
-	pci_release_region(psSysData->pcidev, SYS_RGX_REG_PCI_BASENUM);
-	psDevice->sRegsCpuPBase.uiAddr	= 0;
-	psDevice->ui32RegsSize		= 0;
-
-	pci_disable_device(psSysData->pcidev);
-	psSysData->pcidev = NULL;
-}
 
 static void TCLocalCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 				      IMG_UINT32 ui32NumOfAddr,
 				      IMG_DEV_PHYADDR *psDevPAddr,
 				      IMG_CPU_PHYADDR *psCpuPAddr)
 {
-	PVRSRV_SYSTEM_CONFIG *psSysConfig = (PVRSRV_SYSTEM_CONFIG *)hPrivData;
+	PVRSRV_DEVICE_CONFIG *psDevConfig = (PVRSRV_DEVICE_CONFIG *)hPrivData;
 
 	/* Optimise common case */
-	psDevPAddr[0].uiAddr = psCpuPAddr[0].uiAddr - psSysConfig->pasPhysHeaps[0].sStartAddr.uiAddr;
+	psDevPAddr[0].uiAddr = psCpuPAddr[0].uiAddr - psDevConfig->pasPhysHeaps[0].pasRegions[0].sStartAddr.uiAddr;
 	if (ui32NumOfAddr > 1)
 	{
 		IMG_UINT32 ui32Idx;
 		for (ui32Idx = 1; ui32Idx < ui32NumOfAddr; ++ui32Idx)
 		{
-			psDevPAddr[ui32Idx].uiAddr = psCpuPAddr[ui32Idx].uiAddr - psSysConfig->pasPhysHeaps[0].sStartAddr.uiAddr;
+			psDevPAddr[ui32Idx].uiAddr = psCpuPAddr[ui32Idx].uiAddr - psDevConfig->pasPhysHeaps[0].pasRegions[0].sStartAddr.uiAddr;
 		}
 	}
 }
@@ -495,28 +301,34 @@ static void TCLocalDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 				      IMG_CPU_PHYADDR *psCpuPAddr,
 				      IMG_DEV_PHYADDR *psDevPAddr)
 {
-	PVRSRV_SYSTEM_CONFIG *psSysConfig = (PVRSRV_SYSTEM_CONFIG *)hPrivData;
+	PVRSRV_DEVICE_CONFIG *psDevConfig = (PVRSRV_DEVICE_CONFIG *)hPrivData;
 	
 	/* Optimise common case */
-	psCpuPAddr[0].uiAddr = psDevPAddr[0].uiAddr + psSysConfig->pasPhysHeaps[0].sStartAddr.uiAddr;
+	psCpuPAddr[0].uiAddr = psDevPAddr[0].uiAddr + psDevConfig->pasPhysHeaps[0].pasRegions[0].sStartAddr.uiAddr;
 	if (ui32NumOfAddr > 1)
 	{
 		IMG_UINT32 ui32Idx;
 		for (ui32Idx = 1; ui32Idx < ui32NumOfAddr; ++ui32Idx)
 		{
-			psCpuPAddr[ui32Idx].uiAddr = psDevPAddr[ui32Idx].uiAddr + psSysConfig->pasPhysHeaps[0].sStartAddr.uiAddr;
+			psCpuPAddr[ui32Idx].uiAddr = psDevPAddr[ui32Idx].uiAddr + psDevConfig->pasPhysHeaps[0].pasRegions[0].sStartAddr.uiAddr;
 		}
 	}
 }
 
+static IMG_UINT32 TCLocalGetRegionId(IMG_HANDLE hPrivData,
+					  PVRSRV_MEMALLOCFLAGS_T uiAllocFlags)
+{
+	/* Return first region which is always valid */
+	return 0;
+}
 
 static void TCIonCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 				    IMG_UINT32 ui32NumOfAddr,
 				    IMG_DEV_PHYADDR *psDevPAddr,
 				    IMG_CPU_PHYADDR *psCpuPAddr)
 {
-	PVRSRV_SYSTEM_CONFIG *psSysConfig = (PVRSRV_SYSTEM_CONFIG *)hPrivData;
-	SYS_DATA *psSysData = psSysConfig->pasDevices[0].hSysData;
+	PVRSRV_DEVICE_CONFIG *psDevConfig = (PVRSRV_DEVICE_CONFIG *)hPrivData;
+	SYS_DATA *psSysData = psDevConfig->hSysData;
 	
 	/* Optimise common case */
 	psDevPAddr[0].uiAddr = psCpuPAddr[0].uiAddr - psSysData->pdata->apollo_memory_base;	
@@ -535,8 +347,8 @@ static void TCIonDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 				    IMG_CPU_PHYADDR *psCpuPAddr,
 				    IMG_DEV_PHYADDR *psDevPAddr)
 {
-	PVRSRV_SYSTEM_CONFIG *psSysConfig = (PVRSRV_SYSTEM_CONFIG *)hPrivData;
-	SYS_DATA *psSysData = psSysConfig->pasDevices[0].hSysData;
+	PVRSRV_DEVICE_CONFIG *psDevConfig = (PVRSRV_DEVICE_CONFIG *)hPrivData;
+	SYS_DATA *psSysData = psDevConfig->hSysData;
 
 	/* Optimise common case */
 	psCpuPAddr[0].uiAddr = psDevPAddr[0].uiAddr + psSysData->pdata->apollo_memory_base;
@@ -550,107 +362,338 @@ static void TCIonDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 	}
 }
 
-PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig, void *hDevice)
+static IMG_UINT32 TCIonGetRegionId(IMG_HANDLE hPrivData,
+					  PVRSRV_MEMALLOCFLAGS_T uiAllocFlags)
 {
-	SYS_DATA *psSysData;
+	/* Return first region which is always valid */
+	return 0;
+}
+
+static PVRSRV_ERROR PhysHeapsCreate(SYS_DATA *psSysData,
+									void *pvPrivData,
+									PHYS_HEAP_CONFIG **ppasPhysHeapsOut,
+									IMG_UINT32 *puiPhysHeapCountOut)
+{
+	static IMG_UINT32 uiHeapIDBase = 0;
+	PHYS_HEAP_CONFIG *pasPhysHeaps;
+	PHYS_HEAP_REGION *psRegion;
 	PVRSRV_ERROR eError;
 
-	PVR_UNREFERENCED_PARAMETER(hDevice);
-
-	psSysData = OSAllocZMem(sizeof(*psSysData));
-	if (psSysData == IMG_NULL)
+	pasPhysHeaps = OSAllocMem(sizeof(*pasPhysHeaps) * PHYS_HEAP_IDX_COUNT);
+	if (!pasPhysHeaps)
 	{
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
 
-	PVR_ASSERT(gpsPVRLDMDev != NULL);
-
-	psSysData->pdev = gpsPVRLDMDev;
-	psSysData->pdata = ((struct platform_device*)gpsPVRLDMDev)->dev.platform_data;
-	psSysData->pcidev = psSysData->pdata->pdev;
-
-	eError = PCIInitDev(psSysData);
-	if (eError != PVRSRV_OK)
+	psRegion = OSAllocMem(sizeof(*psRegion));
+	if (!psRegion)
 	{
-		goto ErrorFreeSysData;
+		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto ErrorFreePhysHeaps;
 	}
 
-	(void)SysAcquireSystemData((IMG_HANDLE)psSysData);
+	psRegion->sStartAddr.uiAddr = psSysData->pdata->rogue_heap_memory_base;
+	psRegion->sCardBase.uiAddr = 0;
+	psRegion->uiSize = psSysData->pdata->rogue_heap_memory_size;
 
-	*ppsSysConfig = &gsSysConfig;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].ui32PhysHeapID =
+		uiHeapIDBase + PHYS_HEAP_IDX_GENERAL;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].eType = PHYS_HEAP_TYPE_LMA;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].pszPDumpMemspaceName = "LMA";
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].psMemFuncs = &gsLocalPhysHeapFuncs;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].pasRegions = psRegion;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].ui32NumOfRegions = 1;
+	pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].hPrivData = pvPrivData;
+
+	psRegion = OSAllocMem(sizeof(*psRegion));
+	if (!psRegion)
+	{
+		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto ErrorGeneralPhysHeapDestroy;
+	}
+
+	psRegion->sStartAddr.uiAddr = psSysData->pdata->pdp_heap_memory_base;
+	psRegion->sCardBase.uiAddr = 0;
+	psRegion->uiSize = psSysData->pdata->pdp_heap_memory_size;
+
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].ui32PhysHeapID =
+		uiHeapIDBase + PHYS_HEAP_IDX_DMABUF;
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].eType = PHYS_HEAP_TYPE_LMA;
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].pszPDumpMemspaceName = "LMA";
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].psMemFuncs = &gsIonPhysHeapFuncs;
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].pasRegions = psRegion;
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].ui32NumOfRegions = 1;
+	pasPhysHeaps[PHYS_HEAP_IDX_DMABUF].hPrivData = pvPrivData;
+
+	uiHeapIDBase += PHYS_HEAP_IDX_COUNT;
+
+	*ppasPhysHeapsOut = pasPhysHeaps;
+	*puiPhysHeapCountOut = PHYS_HEAP_IDX_COUNT;
 
 	return PVRSRV_OK;
 
-ErrorFreeSysData:
-	OSFreeMem(psSysData);
+ErrorGeneralPhysHeapDestroy:
+	OSFreeMem(pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].pasRegions);
 
+ErrorFreePhysHeaps:
+	OSFreeMem(pasPhysHeaps);
 	return eError;
 }
 
-void SysDestroyConfigData(PVRSRV_SYSTEM_CONFIG *psSysConfig)
+static void PhysHeapsDestroy(PHYS_HEAP_CONFIG *pasPhysHeaps,
+							 IMG_UINT32 uiPhysHeapCount)
 {
-	SYS_DATA *psSysData = (SYS_DATA *)psSysConfig->pasDevices[0].hSysData;
+	IMG_UINT32 i;
 
-	PCIDeInitDev(psSysData);
-
-	(void)SysReleaseSystemData((IMG_HANDLE)psSysData);
-}
-
-PVRSRV_ERROR SysAcquireSystemData(IMG_HANDLE hSysData)
-{
-	SYS_DATA *psSysData = (SYS_DATA *)hSysData;
-
-	if (psSysData == IMG_NULL)
+	for (i = 0; i < uiPhysHeapCount; i++)
 	{
-		return PVRSRV_ERROR_INVALID_PARAMS;
+		if (pasPhysHeaps[i].pasRegions)
+		{
+			OSFreeMem(pasPhysHeaps[i].pasRegions);
+		}
 	}
 
-	psSysData->uiRefCount++;
+	OSFreeMem(pasPhysHeaps);
+}
+
+static PVRSRV_ERROR DeviceConfigCreate(SYS_DATA *psSysData,
+									   PVRSRV_DEVICE_CONFIG **ppsDevConfigOut)
+{
+	PVRSRV_DEVICE_CONFIG *psDevConfig;
+	RGX_DATA *psRGXData;
+	RGX_TIMING_INFORMATION *psRGXTimingInfo;
+	PHYS_HEAP_CONFIG *pasPhysHeaps;
+	IMG_UINT32 uiPhysHeapCount;
+	PVRSRV_ERROR eError;
+
+	psDevConfig = OSAllocZMem(sizeof(*psDevConfig) +
+							  sizeof(*psRGXData) +
+							  sizeof(*psRGXTimingInfo));
+	if (!psDevConfig)
+	{
+		return PVRSRV_ERROR_OUT_OF_MEMORY;
+	}
+
+	psRGXData = (RGX_DATA *)((IMG_CHAR *)psDevConfig + sizeof(*psDevConfig));
+	psRGXTimingInfo = (RGX_TIMING_INFORMATION *)((IMG_CHAR *)psRGXData + sizeof(*psRGXData));
+
+	eError = PhysHeapsCreate(psSysData, psDevConfig, &pasPhysHeaps, &uiPhysHeapCount);
+	if (eError != PVRSRV_OK)
+	{
+		goto ErrorFreeDevConfig;
+	}
+
+	/* Setup RGX specific timing data */
+	psRGXTimingInfo->ui32CoreClockSpeed = apollo_core_clock_speed(&psSysData->pdev->dev) * 6;
+	psRGXTimingInfo->bEnableActivePM = IMG_FALSE;
+	psRGXTimingInfo->bEnableRDPowIsland = IMG_FALSE;
+	psRGXTimingInfo->ui32ActivePMLatencyms = SYS_RGX_ACTIVE_POWER_LATENCY_MS;
+
+	/* Set up the RGX data */
+	psRGXData->psRGXTimingInfo = psRGXTimingInfo;
+
+	/* Setup the device config */
+	psDevConfig->pvOSDevice = &psSysData->pdev->dev;
+	psDevConfig->pszName = "apollo";
+	psDevConfig->pszVersion = GetDeviceVersionString(psSysData);
+
+	psDevConfig->sRegsCpuPBase.uiAddr = psSysData->registers->start;
+	psDevConfig->ui32RegsSize = resource_size(psSysData->registers);
+
+	psDevConfig->ui32IRQ = APOLLO_INTERRUPT_EXT;
+
+	psDevConfig->eCacheSnoopingMode = PVRSRV_DEVICE_SNOOP_NONE;
+
+	psDevConfig->pasPhysHeaps = pasPhysHeaps;
+	psDevConfig->ui32PhysHeapCount = uiPhysHeapCount;
+
+	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] =
+		pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].ui32PhysHeapID;
+	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] =
+		pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].ui32PhysHeapID;
+	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] =
+		pasPhysHeaps[PHYS_HEAP_IDX_GENERAL].ui32PhysHeapID;
+
+	psDevConfig->eBIFTilingMode = geBIFTilingMode;
+	psDevConfig->pui32BIFTilingHeapConfigs = &gauiBIFTilingHeapXStrides[0];
+	psDevConfig->ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
+
+	psDevConfig->hDevData = psRGXData;
+	psDevConfig->hSysData = psSysData;
+
+#if defined(PVR_DVFS) || defined(SUPPORT_PDVFS)
+	/* Dummy DVFS configuration used purely for testing purposes */
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pasOPPTable = asOPPTable;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.ui32OPPTableSize = LEVEL_COUNT;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pfnSetFrequency = SetFrequency;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pfnSetVoltage = SetVoltage;
+#endif
+#if defined(PVR_DVFS)
+	psDevConfig->sDVFS.sDVFSDeviceCfg.ui32PollMs = 1000;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.bIdleReq = IMG_TRUE;
+	psDevConfig->sDVFS.sDVFSGovernorCfg.ui32UpThreshold = 90;
+	psDevConfig->sDVFS.sDVFSGovernorCfg.ui32DownDifferential = 10;
+#endif
+
+	*ppsDevConfigOut = psDevConfig;
 
 	return PVRSRV_OK;
+
+ErrorFreeDevConfig:
+	OSFreeMem(psDevConfig);
+	return eError;
 }
 
-PVRSRV_ERROR SysReleaseSystemData(IMG_HANDLE hSysData)
+static void DeviceConfigDestroy(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
-	SYS_DATA *psSysData = (SYS_DATA *)hSysData;
-
-	if (psSysData == IMG_NULL)
+	if (psDevConfig->pszVersion)
 	{
-		return PVRSRV_ERROR_INVALID_PARAMS;
+		OSFreeMem(psDevConfig->pszVersion);
 	}
 
-	PVR_ASSERT(psSysData->uiRefCount != 0);
-	psSysData->uiRefCount--;
+	PhysHeapsDestroy(psDevConfig->pasPhysHeaps, psDevConfig->ui32PhysHeapCount);
 
-	if (psSysData->uiRefCount == 0)
+	OSFreeMem(psDevConfig);
+}
+
+PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
+{
+	PVRSRV_DEVICE_CONFIG *psDevConfig;
+	SYS_DATA *psSysData;
+	resource_size_t uiRegistersSize;
+	PVRSRV_ERROR eError;
+	int err = 0;
+
+	PVR_ASSERT(pvOSDevice);
+
+	psSysData = OSAllocZMem(sizeof(*psSysData));
+	if (psSysData == NULL)
 	{
-		OSFreeMem(psSysData);
+		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
+
+	psSysData->pdev = to_platform_device((struct device *)pvOSDevice);
+	psSysData->pdata = psSysData->pdev->dev.platform_data;
+
+	err = apollo_enable(psSysData->pdev->dev.parent);
+	if (err)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to enable PCI device (%d)", __func__, err));
+		eError = PVRSRV_ERROR_PCI_CALL_FAILED;
+		goto ErrFreeSysData;
+	}
+
+	psSysData->registers = platform_get_resource_byname(psSysData->pdev,
+														IORESOURCE_MEM,
+														"rogue-regs");
+	if (!psSysData->registers)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				 "%s: Failed to get Rogue register information",
+				 __func__));
+		eError = PVRSRV_ERROR_PCI_REGION_UNAVAILABLE;
+		goto ErrorDevDisable;
+	}
+
+	/* Check the address range is large enough. */
+	uiRegistersSize = resource_size(psSysData->registers);
+	if (uiRegistersSize < SYS_RGX_REG_REGION_SIZE)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				 "%s: Rogue register region isn't big enough (was %pa, required 0x%08x)",
+				 __FUNCTION__, &uiRegistersSize, SYS_RGX_REG_REGION_SIZE));
+
+		eError = PVRSRV_ERROR_PCI_REGION_TOO_SMALL;
+		goto ErrorDevDisable;
+	}
+
+	/* Reserve the address range */
+	if (!request_mem_region(psSysData->registers->start,
+							resource_size(psSysData->registers),
+							SYS_RGX_DEV_NAME))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Rogue register memory region not available", __FUNCTION__));
+		eError = PVRSRV_ERROR_PCI_CALL_FAILED;
+
+		goto ErrorDevDisable;
+	}
+
+	eError = DeviceConfigCreate(psSysData, &psDevConfig);
+	if (eError != PVRSRV_OK)
+	{
+		goto ErrorReleaseMemRegion;
+	}
+
+#if defined(SUPPORT_ION)
+	eError = IonInit(psSysData);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to initialise ION", __func__));
+		goto ErrorDeviceConfigDestroy;
+	}
+#endif
+
+	*ppsDevConfig = psDevConfig;
 
 	return PVRSRV_OK;
+
+#if defined(SUPPORT_ION)
+ErrorDeviceConfigDestroy:
+	DeviceConfigDestroy(psDevConfig);
+#endif
+ErrorReleaseMemRegion:
+	release_mem_region(psSysData->registers->start,
+					   resource_size(psSysData->registers));
+ErrorDevDisable:
+	apollo_disable(psSysData->pdev->dev.parent);
+ErrFreeSysData:
+	OSFreeMem(psSysData);
+	return eError;
 }
 
-PVRSRV_ERROR SysDebugInfo(PVRSRV_SYSTEM_CONFIG *psSysConfig, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
+	SYS_DATA *psSysData = (SYS_DATA *)psDevConfig->hSysData;
+
+#if defined(SUPPORT_ION)
+	IonDeinit();
+#endif
+
+	DeviceConfigDestroy(psDevConfig);
+
+	release_mem_region(psSysData->registers->start,
+					   resource_size(psSysData->registers));
+	apollo_disable(psSysData->pdev->dev.parent);
+
+	OSFreeMem(psSysData);
+}
+
+PVRSRV_ERROR SysDebugInfo(PVRSRV_DEVICE_CONFIG *psDevConfig,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile)
+{
+#if defined(TC_APOLLO_TCF5)
+	PVR_UNREFERENCED_PARAMETER(psDevConfig);
+	PVR_UNREFERENCED_PARAMETER(pfnDumpDebugPrintf);
+	return PVRSRV_OK;
+#else
+	SYS_DATA *psSysData = psDevConfig->hSysData;
 	PVRSRV_ERROR eError = PVRSRV_OK;
 	u32 tmp = 0;
 	u32 pll;
 
-	struct apollo_rogue_platform_data *pdata = ((struct platform_device*)gpsPVRLDMDev)->dev.platform_data;
+	PVR_DUMPDEBUG_LOG("------[ rgx_tc system debug ]------");
 
-	PVR_UNREFERENCED_PARAMETER(psSysConfig);
-
-	PVR_DUMPDEBUG_LOG(("------[ rgx_tc system debug ]------"));
-
-	if (apollo_sys_info(&pdata->pdev->dev, &tmp, &pll))
+	if (apollo_sys_info(psSysData->pdev->dev.parent, &tmp, &pll))
 		goto err_out;
 
 	if (tmp > 0)
-		PVR_DUMPDEBUG_LOG(("Chip temperature: %d degrees C", tmp));
-	PVR_DUMPDEBUG_LOG(("PLL status: %x", pll));
+		PVR_DUMPDEBUG_LOG("Chip temperature: %d degrees C", tmp);
+	PVR_DUMPDEBUG_LOG("PLL status: %x", pll);
 
 err_out:
 	return eError;
+#endif
 }
 
 typedef struct
@@ -667,28 +710,36 @@ static void ApolloInterruptHandler(void* pvData)
 	psLISRData->pfnLISR(psLISRData->pvData);
 }
 
-PVRSRV_ERROR SysInstallDeviceLISR(IMG_UINT32 ui32IRQ,
-				  IMG_CHAR *pszName,
+PVRSRV_ERROR SysInstallDeviceLISR(IMG_HANDLE hSysData,
+				  IMG_UINT32 ui32IRQ,
+				  const IMG_CHAR *pszName,
 				  PFN_LISR pfnLISR,
 				  void *pvData,
 				  IMG_HANDLE *phLISRData)
 {
+	SYS_DATA *psSysData = (SYS_DATA *)hSysData;
 	LISR_DATA *psLISRData;
 	PVRSRV_ERROR eError;
 	int err;
-	struct apollo_rogue_platform_data *pdata = ((struct platform_device*)gpsPVRLDMDev)->dev.platform_data;
 
-	PVR_DPF((PVR_DBG_ERROR, "%s: Trying to install LISR %p to irq %u", __func__, pfnLISR, ui32IRQ));
+	if (ui32IRQ != APOLLO_INTERRUPT_EXT)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: No device matching IRQ %d", __func__, ui32IRQ));
+		return PVRSRV_ERROR_UNABLE_TO_INSTALL_ISR;
+	}
+
 	psLISRData = OSAllocZMem(sizeof(*psLISRData));
 	if (!psLISRData)
 	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
 		goto err_out;
 	}
+
 	psLISRData->pfnLISR = pfnLISR;
 	psLISRData->pvData = pvData;
-	psLISRData->iInterruptID = APOLLO_INTERRUPT_ROGUE;
-	psLISRData->psDev = &pdata->pdev->dev;
+	psLISRData->iInterruptID = ui32IRQ;
+	psLISRData->psDev = psSysData->pdev->dev.parent;
+
 	err = apollo_set_interrupt_handler(psLISRData->psDev, psLISRData->iInterruptID, ApolloInterruptHandler, psLISRData);
 	if (err)
 	{
@@ -696,6 +747,7 @@ PVRSRV_ERROR SysInstallDeviceLISR(IMG_UINT32 ui32IRQ,
 		eError = PVRSRV_ERROR_UNABLE_TO_INSTALL_ISR;
 		goto err_free_data;
 	}
+
 	err = apollo_enable_interrupt(psLISRData->psDev, psLISRData->iInterruptID);
 	if (err)
 	{
@@ -706,6 +758,9 @@ PVRSRV_ERROR SysInstallDeviceLISR(IMG_UINT32 ui32IRQ,
 
 	*phLISRData = psLISRData;
 	eError = PVRSRV_OK;
+
+	PVR_TRACE(("Installed device LISR %pf to irq %u", pfnLISR, ui32IRQ));
+
 err_out:
 	return eError;
 err_unset_interrupt_handler:
@@ -718,16 +773,23 @@ err_free_data:
 PVRSRV_ERROR SysUninstallDeviceLISR(IMG_HANDLE hLISRData)
 {
 	LISR_DATA *psLISRData = (LISR_DATA *) hLISRData;
-	int err = apollo_disable_interrupt(psLISRData->psDev, psLISRData->iInterruptID);
+	int err;
+
+	err = apollo_disable_interrupt(psLISRData->psDev, psLISRData->iInterruptID);
 	if (err)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: apollo_enable_interrupt() failed (%d)", __func__, err));
 	}
+
 	err = apollo_set_interrupt_handler(psLISRData->psDev, psLISRData->iInterruptID, NULL, NULL);
 	if (err)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: apollo_set_interrupt_handler() failed (%d)", __func__, err));
 	}
+
+	PVR_TRACE(("Uninstalled device LISR %pf from irq %u", psLISRData->pfnLISR, psLISRData->iInterruptID));
+
 	OSFreeMem(psLISRData);
+
 	return PVRSRV_OK;
 }

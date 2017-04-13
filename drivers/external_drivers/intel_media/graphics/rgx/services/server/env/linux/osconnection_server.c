@@ -47,6 +47,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "allocmem.h"
 #include "pvr_debug.h"
 
+#include <linux/sched.h>
+
 #if defined (SUPPORT_ION)
 #include <linux/err.h>
 #include PVR_ANDROID_ION_HEADER
@@ -59,42 +61,45 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ion_sys.h"
 #endif
 
-PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, IMG_PVOID pvOSData)
+PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, void *pvOSData)
 {
+	ENV_CONNECTION_PRIVATE_DATA *psPrivData = pvOSData;
 	ENV_CONNECTION_DATA *psEnvConnection;
 #if defined(SUPPORT_ION)
 	ENV_ION_CONNECTION_DATA *psIonConnection;
 #endif
 
-	*phOsPrivateData = OSAllocMem(sizeof(ENV_CONNECTION_DATA));
+	*phOsPrivateData = OSAllocZMem(sizeof(ENV_CONNECTION_DATA));
 
-	if (*phOsPrivateData == IMG_NULL)
+	if (*phOsPrivateData == NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: OSAllocMem failed", __FUNCTION__));
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
 
 	psEnvConnection = (ENV_CONNECTION_DATA *)*phOsPrivateData;
-	OSMemSet(psEnvConnection, 0, sizeof(*psEnvConnection));
+
+	psEnvConnection->owner = current->tgid;
 
 	/* Save the pointer to our struct file */
-	psEnvConnection->psFile = pvOSData;
+	psEnvConnection->psFile = psPrivData->psFile;
+	psEnvConnection->psDevNode = psPrivData->psDevNode;
 
 #if defined(SUPPORT_ION)
-	psIonConnection = (ENV_ION_CONNECTION_DATA *)OSAllocMem(sizeof(ENV_ION_CONNECTION_DATA));
-	if (psIonConnection == IMG_NULL)
+	psIonConnection = (ENV_ION_CONNECTION_DATA *)OSAllocZMem(sizeof(ENV_ION_CONNECTION_DATA));
+	if (psIonConnection == NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: OSAllocMem failed", __FUNCTION__));
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
-	OSMemSet(psIonConnection, 0, sizeof(*psIonConnection));
+
 	psEnvConnection->psIonData = psIonConnection;
 	/*
 		We can have more then one connection per process so we need more then
 		the PID to have a unique name
 	*/
 	psEnvConnection->psIonData->psIonDev = IonDevAcquire();
-	OSSNPrintf(psEnvConnection->psIonData->azIonClientName, ION_CLIENT_NAME_SIZE, "pvr_ion_client-%p-%d", *phOsPrivateData, OSGetCurrentProcessID());
+	OSSNPrintf(psEnvConnection->psIonData->azIonClientName, ION_CLIENT_NAME_SIZE, "pvr_ion_client-%p-%d", *phOsPrivateData, OSGetCurrentClientProcessIDKM());
 	psEnvConnection->psIonData->psIonClient =
 		ion_client_create(psEnvConnection->psIonData->psIonDev,
 						  psEnvConnection->psIonData->azIonClientName);
@@ -114,7 +119,7 @@ PVRSRV_ERROR OSConnectionPrivateDataDeInit(IMG_HANDLE hOsPrivateData)
 {
 	ENV_CONNECTION_DATA *psEnvConnection; 
 
-	if (hOsPrivateData == IMG_NULL)
+	if (hOsPrivateData == NULL)
 	{
 		return PVRSRV_OK;
 	}
@@ -129,4 +134,15 @@ PVRSRV_ERROR OSConnectionPrivateDataDeInit(IMG_HANDLE hOsPrivateData)
 	/*not nulling pointer, copy on stack*/
 
 	return PVRSRV_OK;
+}
+
+
+PVRSRV_DEVICE_NODE *OSGetDevData(CONNECTION_DATA *psConnection)
+{
+	ENV_CONNECTION_DATA *psEnvConnection;
+
+	psEnvConnection = PVRSRVConnectionPrivateData(psConnection);
+	PVR_ASSERT(psEnvConnection);
+
+	return psEnvConnection->psDevNode;
 }

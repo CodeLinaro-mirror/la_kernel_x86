@@ -40,11 +40,8 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
-#include <linux/version.h>
+
 #include <linux/smp.h>
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0))
-#include <asm/system.h>
-#endif
 
 #include "pvrsrv_error.h"
 #include "img_types.h"
@@ -52,11 +49,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "osfunc.h"
 #include "pvr_debug.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27))
-#define ON_EACH_CPU(func, info, wait) on_each_cpu(func, info, wait)
-#else
-#define ON_EACH_CPU(func, info, wait) on_each_cpu(func, info, 0, wait)
-#endif
 
 static void per_cpu_cache_flush(void *arg)
 {
@@ -64,27 +56,32 @@ static void per_cpu_cache_flush(void *arg)
     wbinvd();
 }
 
-void OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
+PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
 {
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
 	switch(uiCacheOp)
 	{
 		/* Fall-through */
 		case PVRSRV_CACHE_OP_CLEAN:
 		case PVRSRV_CACHE_OP_FLUSH:
 		case PVRSRV_CACHE_OP_INVALIDATE:
-					on_each_cpu(per_cpu_cache_flush, NULL, 1);
-					break;
+			on_each_cpu(per_cpu_cache_flush, NULL, 1);
+			break;
 
 		case PVRSRV_CACHE_OP_NONE:
-					break;
+			break;
 
 		default:
-					PVR_DPF((PVR_DBG_ERROR,
-					"%s: Invalid cache operation type %d",
+			PVR_DPF((PVR_DBG_ERROR,
+					"%s: Global cache operation type %d is invalid",
 					__FUNCTION__, uiCacheOp));
-					PVR_ASSERT(0);
-					break;
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			PVR_ASSERT(0);
+			break;
 	}
+
+	return eError;
 }
 
 static void x86_flush_cache_range(const void *pvStart, const void *pvEnd)
@@ -93,8 +90,8 @@ static void x86_flush_cache_range(const void *pvStart, const void *pvEnd)
 	IMG_BYTE *pbEnd = (IMG_BYTE *)pvEnd;
 	IMG_BYTE *pbBase;
 
-	pbEnd = (IMG_BYTE *)PVR_ALIGN((IMG_UINTPTR_T)pbEnd,
-	                              (IMG_UINTPTR_T)boot_cpu_data.x86_clflush_size);
+	pbEnd = (IMG_BYTE *)PVR_ALIGN((uintptr_t)pbEnd,
+	                              (uintptr_t)boot_cpu_data.x86_clflush_size);
 
 	mb();
 	for(pbBase = pbStart; pbBase < pbEnd; pbBase += boot_cpu_data.x86_clflush_size)
@@ -104,11 +101,13 @@ static void x86_flush_cache_range(const void *pvStart, const void *pvEnd)
 	mb();
 }
 
-void OSFlushCPUCacheRangeKM(IMG_PVOID pvVirtStart,
-							IMG_PVOID pvVirtEnd,
-							IMG_CPU_PHYADDR sCPUPhysStart,
-							IMG_CPU_PHYADDR sCPUPhysEnd)
+void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+                            void *pvVirtStart,
+                            void *pvVirtEnd,
+                            IMG_CPU_PHYADDR sCPUPhysStart,
+                            IMG_CPU_PHYADDR sCPUPhysEnd)
 {
+	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
@@ -116,11 +115,13 @@ void OSFlushCPUCacheRangeKM(IMG_PVOID pvVirtStart,
 }
 
 
-void OSCleanCPUCacheRangeKM(IMG_PVOID pvVirtStart,
-							IMG_PVOID pvVirtEnd,
-							IMG_CPU_PHYADDR sCPUPhysStart,
-							IMG_CPU_PHYADDR sCPUPhysEnd)
+void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+                            void *pvVirtStart,
+                            void *pvVirtEnd,
+                            IMG_CPU_PHYADDR sCPUPhysStart,
+                            IMG_CPU_PHYADDR sCPUPhysEnd)
 {
+	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
@@ -128,14 +129,27 @@ void OSCleanCPUCacheRangeKM(IMG_PVOID pvVirtStart,
 	x86_flush_cache_range(pvVirtStart, pvVirtEnd);
 }
 
-void OSInvalidateCPUCacheRangeKM(IMG_PVOID pvVirtStart,
-								 IMG_PVOID pvVirtEnd,
-								 IMG_CPU_PHYADDR sCPUPhysStart,
-								 IMG_CPU_PHYADDR sCPUPhysEnd)
+void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+                                 void *pvVirtStart,
+                                 void *pvVirtEnd,
+                                 IMG_CPU_PHYADDR sCPUPhysStart,
+                                 IMG_CPU_PHYADDR sCPUPhysEnd)
 {
+	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
 	/* No invalidate-only support */
 	x86_flush_cache_range(pvVirtStart, pvVirtEnd);
+}
+
+PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(PVRSRV_CACHE_OP uiCacheOp)
+{
+	PVR_UNREFERENCED_PARAMETER(uiCacheOp);
+	return PVRSRV_CACHE_OP_ADDR_TYPE_VIRTUAL;
+}
+
+void OSUserModeAccessToPerfCountersEn(void)
+{
+	/* Not applicable to x86 architecture. */
 }

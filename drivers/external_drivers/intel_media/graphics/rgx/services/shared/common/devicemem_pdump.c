@@ -48,11 +48,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_types.h"
 #include "pvrsrv_error.h"
 #include "pdump.h"
+#include "devicemem.h"
 #include "devicemem_utils.h"
 #include "devicemem_pdump.h"
 #include "client_pdumpmm_bridge.h"
+#if defined(LINUX) && !defined(__KERNEL__)
+#include <stdio.h>
+#if defined(SUPPORT_ANDROID_PLATFORM)
+#include "android_utils.h"
+#endif
+#endif
 
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpLoadMem(DEVMEM_MEMDESC *psMemDesc,
                    IMG_DEVMEM_OFFSET_T uiOffset,
                    IMG_DEVMEM_SIZE_T uiSize,
@@ -62,7 +69,7 @@ DevmemPDumpLoadMem(DEVMEM_MEMDESC *psMemDesc,
 
     PVR_ASSERT(uiOffset + uiSize <= psMemDesc->psImport->uiSize);
 
-    eError = BridgePMRPDumpLoadMem(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpLoadMem(psMemDesc->psImport->hDevConnection,
                                    psMemDesc->psImport->hPMR,
                                    psMemDesc->uiOffset + uiOffset,
                                    uiSize,
@@ -78,7 +85,7 @@ DevmemPDumpLoadMem(DEVMEM_MEMDESC *psMemDesc,
     PVR_ASSERT(eError == PVRSRV_OK);
 }
 
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpLoadZeroMem(DEVMEM_MEMDESC *psMemDesc,
                    IMG_DEVMEM_OFFSET_T uiOffset,
                    IMG_DEVMEM_SIZE_T uiSize,
@@ -88,7 +95,7 @@ DevmemPDumpLoadZeroMem(DEVMEM_MEMDESC *psMemDesc,
 
     PVR_ASSERT(uiOffset + uiSize <= psMemDesc->psImport->uiSize);
 
-    eError = BridgePMRPDumpLoadMem(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpLoadMem(psMemDesc->psImport->hDevConnection,
                                    psMemDesc->psImport->hPMR,
                                    psMemDesc->uiOffset + uiOffset,
                                    uiSize,
@@ -104,7 +111,7 @@ DevmemPDumpLoadZeroMem(DEVMEM_MEMDESC *psMemDesc,
     PVR_ASSERT(eError == PVRSRV_OK);
 }
 
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpLoadMemValue32(DEVMEM_MEMDESC *psMemDesc,
                         IMG_DEVMEM_OFFSET_T uiOffset,
                         IMG_UINT32 ui32Value,
@@ -112,7 +119,7 @@ DevmemPDumpLoadMemValue32(DEVMEM_MEMDESC *psMemDesc,
 {
     PVRSRV_ERROR eError;
 
-    eError = BridgePMRPDumpLoadMemValue32(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpLoadMemValue32(psMemDesc->psImport->hDevConnection,
                                         psMemDesc->psImport->hPMR,
                                         psMemDesc->uiOffset + uiOffset,
                                         ui32Value,
@@ -127,7 +134,7 @@ DevmemPDumpLoadMemValue32(DEVMEM_MEMDESC *psMemDesc,
     PVR_ASSERT(eError == PVRSRV_OK);
 }
 
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpLoadMemValue64(DEVMEM_MEMDESC *psMemDesc,
                         IMG_DEVMEM_OFFSET_T uiOffset,
                         IMG_UINT64 ui64Value,
@@ -135,7 +142,7 @@ DevmemPDumpLoadMemValue64(DEVMEM_MEMDESC *psMemDesc,
 {
     PVRSRV_ERROR eError;
 
-    eError = BridgePMRPDumpLoadMemValue64(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpLoadMemValue64(psMemDesc->psImport->hDevConnection,
                                           psMemDesc->psImport->hPMR,
                                           psMemDesc->uiOffset + uiOffset,
                                           ui64Value,
@@ -163,7 +170,7 @@ DevmemPDumpPageCatBaseToSAddr(DEVMEM_MEMDESC		*psMemDesc,
 
 	*puiMemOffset += psMemDesc->uiOffset;
 
-    eError = BridgePMRPDumpSymbolicAddr(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpSymbolicAddr(psMemDesc->psImport->hDevConnection,
 										psMemDesc->psImport->hPMR,
 										*puiMemOffset,
 										sizeof(aszMemspaceName),
@@ -185,20 +192,22 @@ DevmemPDumpPageCatBaseToSAddr(DEVMEM_MEMDESC		*psMemDesc,
 	return eError;
 }
 
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpSaveToFile(DEVMEM_MEMDESC *psMemDesc,
                       IMG_DEVMEM_OFFSET_T uiOffset,
                       IMG_DEVMEM_SIZE_T uiSize,
-                      const IMG_CHAR *pszFilename)
+                      const IMG_CHAR *pszFilename,
+                      IMG_UINT32 uiFileOffset)
 {
     PVRSRV_ERROR eError;
 
-    eError = BridgePMRPDumpSaveToFile(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpSaveToFile(psMemDesc->psImport->hDevConnection,
 									  psMemDesc->psImport->hPMR,
 									  psMemDesc->uiOffset + uiOffset,
 									  uiSize,
 									  OSStringLength(pszFilename) + 1,
-									  pszFilename);
+									  pszFilename,
+									  uiFileOffset);
 
 	if (eError != PVRSRV_OK)
 	{
@@ -209,8 +218,10 @@ DevmemPDumpSaveToFile(DEVMEM_MEMDESC *psMemDesc,
     PVR_ASSERT(eError == PVRSRV_OK);
 }
 
+
+
 /* FIXME: Remove? */
-IMG_INTERNAL IMG_VOID
+IMG_INTERNAL void
 DevmemPDumpSaveToFileVirtual(DEVMEM_MEMDESC *psMemDesc,
                              IMG_DEVMEM_OFFSET_T uiOffset,
                              IMG_DEVMEM_SIZE_T uiSize,
@@ -225,7 +236,7 @@ DevmemPDumpSaveToFileVirtual(DEVMEM_MEMDESC *psMemDesc,
     sDevAddrStart.uiAddr += psMemDesc->uiOffset;
     sDevAddrStart.uiAddr += uiOffset;
 
-    eError = BridgeDevmemIntPDumpSaveToFileVirtual(psMemDesc->psImport->hBridge,
+    eError = BridgeDevmemIntPDumpSaveToFileVirtual(psMemDesc->psImport->hDevConnection,
                                                    psMemDesc->psImport->sDeviceImport.psHeap->psCtx->hDevMemServerContext,
                                                    sDevAddrStart,
                                                    uiSize,
@@ -263,7 +274,7 @@ DevmemPDumpDevmemPol32(const DEVMEM_MEMDESC *psMemDesc,
         goto e0;
     }
 
-    eError = BridgePMRPDumpPol32(psMemDesc->psImport->hBridge,
+    eError = BridgePMRPDumpPol32(psMemDesc->psImport->hDevConnection,
                                  psMemDesc->psImport->hPMR,
                                  psMemDesc->uiOffset + uiOffset,
                                  ui32Value,
@@ -301,7 +312,7 @@ DevmemPDumpCBP(const DEVMEM_MEMDESC *psMemDesc,
 		goto e0;
 	}
 
-	eError = BridgePMRPDumpCBP(psMemDesc->psImport->hBridge,
+	eError = BridgePMRPDumpCBP(psMemDesc->psImport->hDevConnection,
 							   psMemDesc->psImport->hPMR,
 							   psMemDesc->uiOffset + uiReadOffset,
 							   uiWriteOffset,

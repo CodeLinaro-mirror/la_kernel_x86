@@ -53,6 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_server.h"
 #include "connection_server.h"
 #include "rgxdebug.h"
+#include "pvr_notifier.h"
 
 typedef struct _RGX_SERVER_RENDER_CONTEXT_ RGX_SERVER_RENDER_CONTEXT;
 typedef struct _RGX_FREELIST_ RGX_FREELIST;
@@ -81,6 +82,7 @@ struct _RGX_FREELIST_ {
 	IMG_UINT32				ui32CurrentFLPages;
 	IMG_UINT32				ui32GrowFLPages;
 	IMG_UINT32				ui32FreelistID;
+	IMG_UINT32				ui32FreelistGlobalID;	/* related global freelist for this freelist */
 	IMG_UINT64				ui64FreelistChecksum;	/* checksum over freelist content */
 	IMG_BOOL				bCheckFreelist;			/* freelist check enabled */
 	IMG_UINT32				ui32RefCount;			/* freelist reference counting */
@@ -101,6 +103,10 @@ struct _RGX_FREELIST_ {
 	RGXFWIF_DEV_VIRTADDR	sFreeListFWDevVAddr;
 
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
+
+#if defined(SUPPORT_WORKLOAD_ESTIMATION)
+	HASH_TABLE*				psWorkloadHashTable;
+#endif
 } ;
 
 struct _RGX_PMR_NODE_ {
@@ -110,6 +116,9 @@ struct _RGX_PMR_NODE_ {
 	DLLIST_NODE				sMemoryBlock;
 	IMG_UINT32				ui32NumPages;
 	IMG_BOOL				bInternal;
+#if defined(PVR_RI_DEBUG)
+	RI_HANDLE				hRIHandle;
+#endif
 } ;
 
 typedef struct {
@@ -150,7 +159,8 @@ IMG_BOOL RGXDumpFreeListPageList(RGX_FREELIST *psFreeList);
 
 /* Create HWRTDataSet */
 IMG_EXPORT
-PVRSRV_ERROR RGXCreateHWRTData(PVRSRV_DEVICE_NODE	*psDeviceNode, 
+PVRSRV_ERROR RGXCreateHWRTData(CONNECTION_DATA      *psConnection,
+                               PVRSRV_DEVICE_NODE	*psDeviceNode, 
 							   IMG_UINT32			psRenderTarget,
 							   IMG_DEV_VIRTADDR		psPMMListDevVAddr,
 							   IMG_DEV_VIRTADDR		psVFPPageTableAddr,
@@ -184,7 +194,8 @@ PVRSRV_ERROR RGXDestroyHWRTData(RGX_RTDATA_CLEANUP_DATA *psCleanupData);
 
 /* Create Render Target */
 IMG_EXPORT
-PVRSRV_ERROR RGXCreateRenderTarget(PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR RGXCreateRenderTarget(CONNECTION_DATA      *psConnection,
+                                   PVRSRV_DEVICE_NODE	*psDeviceNode,
 								   IMG_DEV_VIRTADDR		psVHeapTableDevVAddr,
 								   RGX_RT_CLEANUP_DATA	**ppsCleanupData,
 								   IMG_UINT32			*sRenderTargetFWDevVAddr);
@@ -198,12 +209,13 @@ PVRSRV_ERROR RGXDestroyRenderTarget(RGX_RT_CLEANUP_DATA *psCleanupData);
 	RGXCreateZSBuffer
 */
 IMG_EXPORT
-PVRSRV_ERROR RGXCreateZSBufferKM(PVRSRV_DEVICE_NODE				*psDeviceNode,
-								DEVMEMINT_RESERVATION 	*psReservation,
-								PMR 					*psPMR,
-								PVRSRV_MEMALLOCFLAGS_T 	uiMapFlags,
-								RGX_ZSBUFFER_DATA		 	**ppsZSBuffer,
-								IMG_UINT32					*sRenderTargetFWDevVAddr);
+PVRSRV_ERROR RGXCreateZSBufferKM(CONNECTION_DATA * psConnection,
+                                 PVRSRV_DEVICE_NODE	* psDeviceNode,
+                                 DEVMEMINT_RESERVATION 	*psReservation,
+                                 PMR 					*psPMR,
+                                 PVRSRV_MEMALLOCFLAGS_T 	uiMapFlags,
+                                 RGX_ZSBUFFER_DATA		 	**ppsZSBuffer,
+                                 IMG_UINT32					*sRenderTargetFWDevVAddr);
 
 /*
 	RGXDestroyZSBuffer
@@ -249,14 +261,14 @@ PVRSRV_ERROR RGXUnpopulateZSBufferKM(RGX_POPULATION *psPopulation);
 	RGXProcessRequestZSBufferBacking
 */
 IMG_EXPORT
-IMG_VOID RGXProcessRequestZSBufferBacking(PVRSRV_RGXDEV_INFO *psDevInfo,
-										IMG_UINT32 ui32ZSBufferID);
+void RGXProcessRequestZSBufferBacking(PVRSRV_RGXDEV_INFO *psDevInfo,
+									  IMG_UINT32 ui32ZSBufferID);
 
 /*
 	RGXProcessRequestZSBufferUnbacking
 */
 IMG_EXPORT
-IMG_VOID RGXProcessRequestZSBufferUnbacking(PVRSRV_RGXDEV_INFO *psDevInfo,
+void RGXProcessRequestZSBufferUnbacking(PVRSRV_RGXDEV_INFO *psDevInfo,
 										IMG_UINT32 ui32ZSBufferID);
 
 /*
@@ -269,10 +281,12 @@ PVRSRV_ERROR RGXGrowFreeList(RGX_FREELIST *psFreeList,
 
 /* Create free list */
 IMG_EXPORT
-PVRSRV_ERROR RGXCreateFreeList(PVRSRV_DEVICE_NODE	*psDeviceNode, 
+PVRSRV_ERROR RGXCreateFreeList(CONNECTION_DATA      *psConnection,
+                               PVRSRV_DEVICE_NODE	*psDeviceNode, 
 							   IMG_UINT32			ui32MaxFLPages,
 							   IMG_UINT32			ui32InitFLPages,
 							   IMG_UINT32			ui32GrowFLPages,
+							   RGX_FREELIST			*psGlobalFreeList,
 							   IMG_BOOL				bCheckFreelist,
 							   IMG_DEV_VIRTADDR		sFreeListDevVAddr,
 							   PMR					*psFreeListPMR,
@@ -287,14 +301,14 @@ PVRSRV_ERROR RGXDestroyFreeList(RGX_FREELIST *psFreeList);
 	RGXProcessRequestGrow
 */
 IMG_EXPORT
-IMG_VOID RGXProcessRequestGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
-								IMG_UINT32 ui32FreelistID);
+void RGXProcessRequestGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
+						   IMG_UINT32 ui32FreelistID);
 
 
 /* Grow free list */
 IMG_EXPORT
 PVRSRV_ERROR RGXAddBlockToFreeListKM(RGX_FREELIST *psFreeList,
-										IMG_UINT32 ui32NumPages);
+                                     IMG_UINT32 ui32NumPages);
 
 /* Shrink free list */
 IMG_EXPORT
@@ -302,10 +316,9 @@ PVRSRV_ERROR RGXRemoveBlockFromFreeListKM(RGX_FREELIST *psFreeList);
 
 
 /* Reconstruct free list after Hardware Recovery */
-IMG_VOID RGXProcessRequestFreelistsReconstruction(PVRSRV_RGXDEV_INFO *psDevInfo,
-								RGXFWIF_DM eDM,
-								IMG_UINT32 ui32FreelistsCount,
-								IMG_UINT32 *paui32Freelists);
+void RGXProcessRequestFreelistsReconstruction(PVRSRV_RGXDEV_INFO *psDevInfo,
+											  IMG_UINT32 ui32FreelistsCount,
+											  IMG_UINT32 *paui32Freelists);
 
 /*!
 *******************************************************************************
@@ -379,6 +392,7 @@ PVRSRV_ERROR PVRSRVRGXDestroyRenderContextKM(RGX_SERVER_RENDER_CONTEXT *psRender
 ******************************************************************************/
 IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
+								 IMG_UINT32					ui32ClientCacheOpSeqNum,
 								 IMG_UINT32					ui32ClientTAFenceCount,
 								 SYNC_PRIMITIVE_BLOCK				**apsClientTAFenceSyncPrimBlock,
 								 IMG_UINT32					*paui32ClientTAFenceSyncOffset,
@@ -404,75 +418,58 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 								 SYNC_PRIMITIVE_BLOCK				*psPRSyncPrimBlock,
 								 IMG_UINT32					ui32PRSyncOffset,
 								 IMG_UINT32					ui32PRFenceValue,
-								 IMG_UINT32					ui32NumCheckFenceFDs,
-								 IMG_INT32					*pai32CheckFenceFDs,
-								 IMG_INT32                  i32UpdateFenceFD,
+								 IMG_INT32					i32CheckFenceFD,
+								 IMG_INT32					i32UpdateTimelineFD,
+								 IMG_INT32					*pi32UpdateFenceFD,
+								 IMG_CHAR					szFenceName[32],
 								 IMG_UINT32					ui32TACmdSize,
 								 IMG_PBYTE					pui8TADMCmd,
 								 IMG_UINT32					ui323DPRCmdSize,
 								 IMG_PBYTE					pui83DPRDMCmd,
 								 IMG_UINT32					ui323DCmdSize,
 								 IMG_PBYTE					pui83DDMCmd,
-								 IMG_UINT32					TAFrameNum,
-								 IMG_UINT32					TARTData,
+								 IMG_UINT32					ui32ExtJobRef,
 								 IMG_BOOL					bLastTAInScene,
 								 IMG_BOOL					bKickTA,
 								 IMG_BOOL					bKickPR,
 								 IMG_BOOL					bKick3D,
 								 IMG_BOOL					bAbort,
-								 IMG_BOOL					bPDumpContinuous,
+								 IMG_UINT32					ui32PDumpFlags,
 								 RGX_RTDATA_CLEANUP_DATA	*psRTDataCleanup,
-								 RGX_ZSBUFFER_DATA		*psZBuffer,
-								 RGX_ZSBUFFER_DATA		*psSBuffer,
-								 IMG_BOOL			bCommitRefCountsTA,
-								 IMG_BOOL			bCommitRefCounts3D,
-								 IMG_BOOL			*pbCommittedRefCountsTA,
-								 IMG_BOOL			*pbCommittedRefCounts3D);
+								 RGX_ZSBUFFER_DATA			*psZBuffer,
+								 RGX_ZSBUFFER_DATA			*psSBuffer,
+								 IMG_BOOL					bCommitRefCountsTA,
+								 IMG_BOOL					bCommitRefCounts3D,
+								 IMG_BOOL					*pbCommittedRefCountsTA,
+								 IMG_BOOL					*pbCommittedRefCounts3D,
+								 IMG_UINT32					ui32SyncPMRCount,
+								 IMG_UINT32					*paui32SyncPMRFlags,
+								 PMR						**ppsSyncPMRs,
+								 IMG_UINT32					ui32RenderTargetSize,
+								 IMG_UINT32					ui32NumberOfDrawCalls,
+								 IMG_UINT32					ui32NumberOfIndices,
+								 IMG_UINT32					ui32NumberOfMRTs,
+								 IMG_UINT64					ui64DeadlineInus);
+
 
 PVRSRV_ERROR PVRSRVRGXSetRenderContextPriorityKM(CONNECTION_DATA *psConnection,
+                                                 PVRSRV_DEVICE_NODE * psDevNode,
 												 RGX_SERVER_RENDER_CONTEXT *psRenderContext,
 												 IMG_UINT32 ui32Priority);
 
-PVRSRV_ERROR PVRSRVRGXGetLastRenderContextResetReasonKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
-                                                        IMG_UINT32 *peLastResetReason);
+PVRSRV_ERROR PVRSRVRGXGetLastRenderContextResetReasonKM(RGX_SERVER_RENDER_CONTEXT *psRenderContext,
+                                                        IMG_UINT32 *peLastResetReason,
+                                                        IMG_UINT32 *pui32LastResetJobRef);
 
 PVRSRV_ERROR PVRSRVRGXGetPartialRenderCountKM(DEVMEM_MEMDESC *psHWRTDataMemDesc,
 											  IMG_UINT32 *pui32NumPartialRenders);
 
 /* Debug - check if render context is waiting on a fence */
-IMG_VOID CheckForStalledRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-								   DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+void CheckForStalledRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile);
 
 /* Debug/Watchdog - check if client contexts are stalled */
-IMG_BOOL CheckForStalledClientRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo);
-
-IMG_EXPORT PVRSRV_ERROR
-PVRSRVRGXKickSyncTAKM(RGX_SERVER_RENDER_CONTEXT  *psRenderContext,
-                       IMG_UINT32                  ui32TAClientFenceCount,
-                       SYNC_PRIMITIVE_BLOCK				**apsClientTAFenceSyncPrimBlock,
-                       IMG_UINT32					*paui32ClientTAFenceSyncOffset,
-                       IMG_UINT32                  *paui32TAClientFenceValue,
-                       IMG_UINT32                  ui32TAClientUpdateCount,
-                       SYNC_PRIMITIVE_BLOCK				**apsClientTAUpdateSyncPrimBlock,
-                       IMG_UINT32					*paui32ClientTAUpdateSyncOffset,
-                       IMG_UINT32                  *paui32TAClientUpdateValue,
-                       IMG_UINT32                  ui32TAServerSyncPrimsCount,
-                       IMG_UINT32                  *paui32TAServerSyncFlags,
-                       SERVER_SYNC_PRIMITIVE       **pasTAServerSyncs,
-					   IMG_UINT32                  ui323DClientFenceCount,
-                       SYNC_PRIMITIVE_BLOCK				**apsClient3DFenceSyncPrimBlock,
-                       IMG_UINT32					*paui32Client3DFenceSyncOffset,
-					   IMG_UINT32                  *paui323DClientFenceValue,
-					   IMG_UINT32                  ui323DClientUpdateCount,
-                       SYNC_PRIMITIVE_BLOCK				**apsClient3DUpdateSyncPrimBlock,
-                       IMG_UINT32					*paui32Client3DUpdateSyncOffset,
-					   IMG_UINT32                  *paui323DClientUpdateValue,
-					   IMG_UINT32                  ui323DServerSyncPrims,
-					   IMG_UINT32                  *paui323DServerSyncFlags,
-					   SERVER_SYNC_PRIMITIVE       **pas3DServerSyncs,
-					   IMG_UINT32				   ui32NumFenceFDs,
-					   IMG_INT32				   *pai32FenceFDs,
-					   IMG_INT32                   i32UpdateFenceFD,
-                       IMG_BOOL                    bPDumpContinuous);
+IMG_UINT32 CheckForStalledClientRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo);
 
 #endif /* __RGXTA3D_H__ */

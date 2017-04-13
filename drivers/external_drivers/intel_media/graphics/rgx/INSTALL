@@ -32,7 +32,7 @@ If you intend on targeting a platform that is different from your build
 machine (e.g.,if you are compiling on an x86 but targeting ARM) you need
 to set the CROSS_COMPILE variable so that the build system uses the correct
 compiler. E.g., 
-$ export CROSS_COMPILE=arm-linux-gnueabi-
+$ export CROSS_COMPILE=arm-linux-gnueabihf-
 
 
 Build and Install Instructions

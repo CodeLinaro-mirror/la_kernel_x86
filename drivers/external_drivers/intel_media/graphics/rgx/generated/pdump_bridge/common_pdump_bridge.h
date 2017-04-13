@@ -2,8 +2,8 @@
 @File
 @Title          Common bridge header for pdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Declares common defines and structures that are used by both
-                the client and sever side of the bridge for pdump
+@Description    Declares common defines and structures used by both the client
+                and server side of the bridge for pdump
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,6 +45,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_PDUMP_BRIDGE_H
 #define COMMON_PDUMP_BRIDGE_H
 
+#include <powervr/mem_types.h>
+
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
@@ -66,7 +68,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for DevmemPDumpBitmap */
 typedef struct PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP_TAG
 {
-	IMG_HANDLE hDeviceNode;
 	IMG_CHAR * puiFileName;
 	IMG_UINT32 ui32FileOffset;
 	IMG_UINT32 ui32Width;
@@ -80,12 +81,12 @@ typedef struct PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP_TAG
 	IMG_UINT32 ui32PDumpFlags;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP;
 
-
 /* Bridge out structure for DevmemPDumpBitmap */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP;
+
 
 /*******************************************
             PVRSRVPDumpComment          
@@ -98,12 +99,12 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPCOMMENT_TAG
 	IMG_UINT32 ui32Flags;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPCOMMENT;
 
-
 /* Bridge out structure for PVRSRVPDumpComment */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT;
+
 
 /*******************************************
             PVRSRVPDumpSetFrame          
@@ -115,11 +116,11 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETFRAME_TAG
 	IMG_UINT32 ui32Frame;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETFRAME;
 
-
 /* Bridge out structure for PVRSRVPDumpSetFrame */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETFRAME_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETFRAME;
+
 
 #endif /* COMMON_PDUMP_BRIDGE_H */

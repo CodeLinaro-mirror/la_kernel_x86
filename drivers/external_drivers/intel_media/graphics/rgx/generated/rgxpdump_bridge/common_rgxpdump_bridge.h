@@ -2,8 +2,8 @@
 @File
 @Title          Common bridge header for rgxpdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Declares common defines and structures that are used by both
-                the client and sever side of the bridge for rgxpdump
+@Description    Declares common defines and structures used by both the client
+                and server side of the bridge for rgxpdump
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,6 +45,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_RGXPDUMP_BRIDGE_H
 #define COMMON_RGXPDUMP_BRIDGE_H
 
+#include <powervr/mem_types.h>
+
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
@@ -64,16 +66,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for PDumpTraceBuffer */
 typedef struct PVRSRV_BRIDGE_IN_PDUMPTRACEBUFFER_TAG
 {
-	IMG_HANDLE hDeviceNode;
 	IMG_UINT32 ui32PDumpFlags;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PDUMPTRACEBUFFER;
-
 
 /* Bridge out structure for PDumpTraceBuffer */
 typedef struct PVRSRV_BRIDGE_OUT_PDUMPTRACEBUFFER_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PDUMPTRACEBUFFER;
+
 
 /*******************************************
             PDumpSignatureBuffer          
@@ -82,15 +83,14 @@ typedef struct PVRSRV_BRIDGE_OUT_PDUMPTRACEBUFFER_TAG
 /* Bridge in structure for PDumpSignatureBuffer */
 typedef struct PVRSRV_BRIDGE_IN_PDUMPSIGNATUREBUFFER_TAG
 {
-	IMG_HANDLE hDeviceNode;
 	IMG_UINT32 ui32PDumpFlags;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PDUMPSIGNATUREBUFFER;
-
 
 /* Bridge out structure for PDumpSignatureBuffer */
 typedef struct PVRSRV_BRIDGE_OUT_PDUMPSIGNATUREBUFFER_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PDUMPSIGNATUREBUFFER;
+
 
 #endif /* COMMON_RGXPDUMP_BRIDGE_H */
