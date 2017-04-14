@@ -18,6 +18,7 @@ DISPINC=$(MEDIAINC)/display/tng
 ccflags-y += \
         -I$(MEDIAINC)/interface \
 	-I$(RGXINC)/include \
+	-I$(RGXINC)/include/public \
 	-I$(RGXINC)/generated/rgxcmp_bridge \
 	-I$(RGXINC)/generated/dmm_bridge \
 	-I$(RGXINC)/generated/pdumpmm_bridge \
@@ -41,6 +42,7 @@ ccflags-y += \
 	-I$(RGXINC)/generated/rgxta3d_bridge \
 	-I$(RGXINC)/generated/srvcore_bridge \
 	-I$(RGXINC)/generated/breakpoint_bridge \
+	-I$(RGXINC)/generated/cache_bridge \
 	-I$(RGXINC)/generated/pvrtl_bridge \
 	-I$(RGXINC)/generated/rgxhwperf_bridge \
 	-I$(RGXINC)/generated/regconfig_bridge \

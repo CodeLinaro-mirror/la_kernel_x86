@@ -5,6 +5,7 @@ INCLUDES_RGX += \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/services/include \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/services/include/shared \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/include \
+	-Idrivers/external_drivers/intel_media/graphics/rgx/include/public \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/hwdefs \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/hwdefs/km \
 	-Idrivers/external_drivers/intel_media/graphics/rgx/services/system/rgx_nohw \
