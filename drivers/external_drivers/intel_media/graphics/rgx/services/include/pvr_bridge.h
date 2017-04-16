@@ -84,9 +84,6 @@ extern "C" {
 #include "common_syncsexport_bridge.h"
 #endif
 #endif
-#if defined(SUPPORT_SECURE_EXPORT)
-#include "common_smm_bridge.h"
-#endif
 #if !defined(EXCLUDE_HTBUFFER_BRIDGE)
 #include "common_htbuffer_bridge.h"
 #endif

@@ -20,25 +20,25 @@ ccflags-y += \
 	-I$(RGXINC)/include \
 	-I$(RGXINC)/include/public \
 	-I$(RGXINC)/generated/rgxcmp_bridge \
-	-I$(RGXINC)/generated/dmm_bridge \
 	-I$(RGXINC)/generated/pdumpmm_bridge \
 	-I$(RGXINC)/generated/dc_bridge \
 	-I$(RGXINC)/generated/cachegeneric_bridge \
-	-I$(RGXINC)/generated/dpvrtl_bridge \
-	-I$(RGXINC)/generated/dri_bridge \
 	-I$(RGXINC)/generated/hostportio_bridge \
 	-I$(RGXINC)/generated/rgxtq_bridge \
+	-I$(RGXINC)/generated/rgxtq2_bridge \
 	-I$(RGXINC)/generated/mm_bridge \
 	-I$(RGXINC)/generated/cmm_bridge \
 	-I$(RGXINC)/generated/rgxpdump_bridge \
+	-I$(RGXINC)/generated/rgxray_bridge \
+	-I$(RGXINC)/generated/rgxsignals_bridge \
 	-I$(RGXINC)/generated/smm_bridge \
 	-I$(RGXINC)/generated/pdump_bridge \
 	-I$(RGXINC)/generated/syncsexport_bridge \
 	-I$(RGXINC)/generated/sync_bridge \
 	-I$(RGXINC)/generated/debugmisc_bridge \
-	-I$(RGXINC)/generated/syncexport_bridge \
-	-I$(RGXINC)/generated/dsync_bridge \
+	-I$(RGXINC)/generated/htbuffer_bridge \
 	-I$(RGXINC)/generated/rgxinit_bridge \
+	-I$(RGXINC)/generated/rgxkicksync_bridge \
 	-I$(RGXINC)/generated/rgxta3d_bridge \
 	-I$(RGXINC)/generated/srvcore_bridge \
 	-I$(RGXINC)/generated/breakpoint_bridge \
@@ -48,6 +48,7 @@ ccflags-y += \
 	-I$(RGXINC)/generated/regconfig_bridge \
 	-I$(RGXINC)/generated/ion_bridge \
 	-I$(RGXINC)/generated/ri_bridge \
+	-I$(RGXINC)/generated/synctracking_bridge \
 	-I$(RGXINC)/generated/timerquery_bridge \
 	-I$(RGXINC)/generated/devicememhistory_bridge \
 	-I$(RGXINC)/generated/pdumpctrl_bridge \
@@ -284,35 +285,41 @@ $(DRIVER_NAME)-y += \
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/cmm_bridge/server_cmm_bridge.o \
 	$(RGXDIR)/generated/dc_bridge/server_dc_bridge.o \
-	$(RGXDIR)/generated/dpvrtl_bridge/client_pvrtl_bridge.o \
 	$(RGXDIR)/generated/pdump_bridge/server_pdump_bridge.o \
 	$(RGXDIR)/generated/srvcore_bridge/server_srvcore_bridge.o \
-	$(RGXDIR)/generated/dsync_bridge/client_sync_bridge.o \
 	$(RGXDIR)/generated/rgxinit_bridge/server_rgxinit_bridge.o \
+	$(RGXDIR)/generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
 	$(RGXDIR)/generated/breakpoint_bridge/server_breakpoint_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/server_pdumpmm_bridge.o \
+	$(RGXDIR)/generated/pdumpmm_bridge/client_pdumpmm_direct_bridge.o \
 	$(RGXDIR)/generated/rgxcmp_bridge/server_rgxcmp_bridge.o \
 	$(RGXDIR)/generated/debugmisc_bridge/server_debugmisc_bridge.o \
 	$(RGXDIR)/generated/sync_bridge/server_sync_bridge.o \
+	$(RGXDIR)/generated/sync_bridge/client_sync_bridge.o \
 	$(RGXDIR)/generated/rgxtq_bridge/server_rgxtq_bridge.o \
-	$(RGXDIR)/generated/dmm_bridge/client_mm_bridge.o \
-	$(RGXDIR)/generated/dpdumpmm_bridge/client_pdumpmm_bridge.o \
+	$(RGXDIR)/generated/rgxtq2_bridge/server_rgxtq2_bridge.o \
 	$(RGXDIR)/generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
 	$(RGXDIR)/generated/rgxpdump_bridge/server_rgxpdump_bridge.o \
+	$(RGXDIR)/generated/rgxray_bridge/server_rgxray_bridge.o \
+	$(RGXDIR)/generated/rgxsignals_bridge/server_rgxsignals_bridge.o \
 	$(RGXDIR)/generated/pvrtl_bridge/server_pvrtl_bridge.o \
+	$(RGXDIR)/generated/pvrtl_bridge/client_pvrtl_direct_bridge.o \
 	$(RGXDIR)/generated/rgxhwperf_bridge/server_rgxhwperf_bridge.o \
 	$(RGXDIR)/generated/regconfig_bridge/server_regconfig_bridge.o \
+	$(RGXDIR)/generated/synctracking_bridge/server_synctracking_bridge.o \
+	$(RGXDIR)/generated/synctracking_bridge/client_synctracking_direct_bridge.o \
 	$(RGXDIR)/generated/timerquery_bridge/server_timerquery_bridge.o \
 	$(RGXDIR)/generated/devicememhistory_bridge/server_devicememhistory_bridge.o \
 	$(RGXDIR)/generated/pdumpctrl_bridge/server_pdumpctrl_bridge.o
 
 $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
-	$(RGXDIR)/generated/dri_bridge/client_ri_bridge.o \
 	$(RGXDIR)/generated/ri_bridge/server_ri_bridge.o \
+	$(RGXDIR)/generated/ri_bridge/client_ri_direct_bridge.o \
 
 # for SUPPORT_SECURE_EXPORT
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/mm_bridge/server_mm_bridge.o \
+	$(RGXDIR)/generated/mm_bridge/client_mm_bridge.o \
 	$(RGXDIR)/generated/smm_bridge/server_smm_bridge.o \
 	$(RGXDIR)/generated/syncsexport_bridge/server_syncsexport_bridge.o
 ccflags-y += \

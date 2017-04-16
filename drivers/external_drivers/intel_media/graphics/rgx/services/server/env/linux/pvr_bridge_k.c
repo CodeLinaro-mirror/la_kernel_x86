@@ -137,10 +137,6 @@ PVRSRV_ERROR DeinitSYNCBridge(void);
 PVRSRV_ERROR InitSYNCEXPORTBridge(void);
 PVRSRV_ERROR DeinitSYNCEXPORTBridge(void);
 #endif
-#if defined(SUPPORT_SECURE_EXPORT)
-PVRSRV_ERROR InitSYNCSEXPORTBridge(void);
-PVRSRV_ERROR DeinitSYNCSEXPORTBridge(void);
-#endif
 #endif /* defined(SUPPORT_SERVER_SYNC) */
 
 #if defined (SUPPORT_RGX)
@@ -179,10 +175,6 @@ PVRSRV_ERROR DeinitRGXSIGNALSBridge(void);
 #endif /* SUPPORT_RGX */
 PVRSRV_ERROR InitCACHEBridge(void);
 PVRSRV_ERROR DeinitCACHEBridge(void);
-#if defined(SUPPORT_SECURE_EXPORT)
-PVRSRV_ERROR InitSMMBridge(void);
-PVRSRV_ERROR DeinitSMMBridge(void);
-#endif
 #if !defined(EXCLUDE_HTBUFFER_BRIDGE)
 PVRSRV_ERROR InitHTBUFFERBridge(void);
 PVRSRV_ERROR DeinitHTBUFFERBridge(void);
@@ -352,13 +344,6 @@ LinuxBridgeInit(void)
 		return eError;
 	}
 #endif
-#if defined(SUPPORT_SECURE_EXPORT)
-	eError = InitSYNCSEXPORTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
 #endif /* defined(SUPPORT_SERVER_SYNC) */
 
 #if defined(PDUMP)
@@ -414,14 +399,6 @@ LinuxBridgeInit(void)
 	{
 		return eError;
 	}
-
-#if defined(SUPPORT_SECURE_EXPORT)
-	eError = InitSMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
 
 #if !defined(EXCLUDE_HTBUFFER_BRIDGE)
 	eError = InitHTBUFFERBridge();
@@ -594,13 +571,6 @@ LinuxBridgeDeInit(void)
 	}
 
 #if defined(SUPPORT_SERVER_SYNC)
-#if defined(SUPPORT_INSECURE_EXPORT)
-	eError = DeinitSYNCEXPORTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
 #if defined(SUPPORT_SECURE_EXPORT)
 	eError = DeinitSYNCSEXPORTBridge();
 	if (eError != PVRSRV_OK)
