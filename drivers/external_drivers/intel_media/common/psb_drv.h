@@ -39,7 +39,7 @@
 
 /*IMG headers*/
 #include "private_data.h"
-#include "pvr_drm.h"
+#include "pvr_drm_gem.h"
 
 #include "mdfld_hdmi_audio_if.h"
 #include <linux/pm_qos.h>

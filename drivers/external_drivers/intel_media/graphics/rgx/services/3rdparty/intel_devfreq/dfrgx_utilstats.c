@@ -68,93 +68,25 @@ static DFRGX_HWPERF_OBJ *pDFRGX_Obj = NULL;
 /******************************************************************************
  * Helper Functions(s)
  *****************************************************************************/
+extern PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void);
 
-static unsigned int gpu_rgx_acquire_device(void){
-
-	PVRSRV_DEVICE_TYPE *peDeviceTypeInt = NULL;
-	PVRSRV_DEVICE_CLASS *peDeviceClassInt = NULL;
-	IMG_UINT32 *pui32DeviceIndexInt = NULL;
-	IMG_HANDLE h_dev_cookie = NULL;
-	IMG_UINT32 num_devices = 0;
-	unsigned int error = DFRGX_HWPERF_OK;
-	IMG_UINT32 rgx_index = IMG_UINT32_MAX;
-	int i = 0;
-
+static unsigned int gpu_rgx_acquire_device(void)
+{
+	int error = DFRGX_HWPERF_OK;
 	if (pDFRGX_Obj) {
-		peDeviceTypeInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(PVRSRV_DEVICE_TYPE), GFP_KERNEL);
-		if (!peDeviceTypeInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto go_free;
-		}
-
-		peDeviceClassInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(PVRSRV_DEVICE_CLASS), GFP_KERNEL);
-		if (!peDeviceClassInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto go_free;
-		}
-
-		pui32DeviceIndexInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(IMG_UINT32), GFP_KERNEL);
-		if (!pui32DeviceIndexInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto go_free;
-		}
-
-		/* Enumerate active devices */
-		error = PVRSRVEnumerateDevicesKM(
-						&num_devices,
-						peDeviceTypeInt,
-						peDeviceClassInt,
-						pui32DeviceIndexInt);
-		if (error) {
-			DFRGX_DEBUG_MSG_1("%s: PVRSRVEnumarateDevicesKM failed %d\n", error);
-			goto go_free;
-		}
-
-		DFRGX_DEBUG_MSG_1("%s: Num Devices : %d \n", num_devices);
-
-		for (i = 0; i < num_devices; i++) {
-			DFRGX_DEBUG_MSG_2("%s: Index %d:  Device %d:\n",
-				i, peDeviceTypeInt[i]);
-
-			if (peDeviceTypeInt[i] == PVRSRV_DEVICE_TYPE_RGX) {
-				rgx_index = i;
-				break;
-			}
-		}
-
-		if (rgx_index == IMG_UINT32_MAX) {
-			error = PVRSRV_ERROR_INIT_FAILURE;
-			goto go_free;
-		}
-
-		/* Now we have to acquire the node to work with, RGX device required*/
-		error = PVRSRVAcquireDeviceDataKM(rgx_index, PVRSRV_DEVICE_TYPE_RGX, &h_dev_cookie);
-		if (error) {
-
-			DFRGX_DEBUG_MSG_1("%s: PVRSRVEnumarateDevicesKM failed %d \n", error);
-			goto go_free;
-		}
-
-		pDFRGX_Obj->pdev_node = (PVRSRV_DEVICE_NODE*)h_dev_cookie;
+			pDFRGX_Obj->pdev_node = RGXGetDeviceNode();
+			if (pDFRGX_Obj->pdev_node != NULL) {
 		DFRGX_DEBUG_MSG_2("%s: Acquired Device node name: %s, Device type: %d \n",
 			pDFRGX_Obj->pdev_node->szRAName, pDFRGX_Obj->pdev_node->sDevId.eDeviceType);
+			} else {
+				DFRGX_DEBUG_MSG("%s: acquiring rgx device failed\n");
+				error = DFRGX_HWPERF_OBJ_NOT_CREATED;
+			}
 	} else {
 
 		DFRGX_DEBUG_MSG_2("%s: Device node already acquired: %s, Device type: %d \n",
 			pDFRGX_Obj->pdev_node->szRAName, pDFRGX_Obj->pdev_node->sDevId.eDeviceType);
 	}
-
-go_free:
-	if (peDeviceTypeInt)
-		kfree(peDeviceTypeInt);
-	if (peDeviceClassInt)
-		kfree(peDeviceClassInt);
-	if (pui32DeviceIndexInt)
-		kfree(pui32DeviceIndexInt);
-
 	return error;
 }
 
