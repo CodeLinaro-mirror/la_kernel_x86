@@ -44,6 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_defs.h"
 #include "bufferclass_interface.h"
 #include "imgpixfmts_km.h"
+#include "mem_types.h"
 
 #if defined(__cplusplus)
 extern "C"

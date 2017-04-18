@@ -48,6 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 extern "C" {
 #endif
 
+#include <powervr/mem_types.h>
 #include "img_types.h"
 #include "pvrsrv_surface.h"
 #include "dc_external.h"

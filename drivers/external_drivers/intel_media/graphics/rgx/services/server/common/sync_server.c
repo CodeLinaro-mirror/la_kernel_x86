@@ -881,6 +881,13 @@ PVRSRVServerSyncFreeKM(SERVER_SYNC_PRIMITIVE *psSync)
 }
 
 PVRSRV_ERROR
+PVRSRVServerSyncGetKM(SERVER_SYNC_PRIMITIVE *psSync)
+{
+	_ServerSyncRef(psSync);
+	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR
 PVRSRVServerSyncGetStatusKM(IMG_UINT32 ui32SyncCount,
 			SERVER_SYNC_PRIMITIVE **papsSyncs,
 			IMG_UINT32 *pui32UID,

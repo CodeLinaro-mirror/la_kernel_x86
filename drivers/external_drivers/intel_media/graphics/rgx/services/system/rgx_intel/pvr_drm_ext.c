@@ -59,6 +59,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <linux/module.h>
 #include "pvrmodule.h"
+#include "pmr_impl.h"
+#include "handle.h"
+#include "connection_server.h"
+#include "pmr_os.h"
+#include "private_data.h"
 
 #define PVR_DRM_SRVKM_CMD       DRM_PVR_RESERVED1
 #define PVR_DRM_IS_MASTER_CMD   DRM_PVR_RESERVED4
@@ -344,5 +349,32 @@ int PVRSRVInterrupt(struct drm_device* dev)
 
 int PVRSRVMMap(struct file *pFile, struct vm_area_struct *ps_vma)
 {
-	return MMapPMR(pFile, ps_vma);
+    PVRSRV_ERROR eError = PVRSRV_ERROR_PMR_EMPTY;
+    IMG_HANDLE hSecurePMRHandle;
+    PMR *psPMR = NULL;
+	CONNECTION_DATA *psConnection = LinuxConnectionFromFile(pFile);
+
+    if(psConnection == NULL)
+    {   
+        PVR_DPF((PVR_DBG_ERROR, "Invalid connection data"));
+        return eError;
+    } 
+#if defined(SUPPORT_DRM_DC_MODULE)
+    psPMR = PVRSRVGEMMMapLookupPMR(pFile, ps_vma);
+    if (!psPMR)
+#endif
+    {   
+        hSecurePMRHandle = (IMG_HANDLE)((uintptr_t)ps_vma->vm_pgoff);
+
+        eError = PVRSRVLookupHandle(psConnection->psHandleBase,
+                        (void **)&psPMR,
+                        hSecurePMRHandle,
+                        PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
+                        IMG_TRUE);
+        if (eError != PVRSRV_OK)
+        {
+            return eError; 
+        }
+    }
+ 	return OSMMapPMRGeneric(psPMR, ps_vma);
 }

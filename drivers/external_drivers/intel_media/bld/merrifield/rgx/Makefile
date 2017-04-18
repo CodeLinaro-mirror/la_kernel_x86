@@ -145,6 +145,7 @@ ccflags-y += \
 		-DPVRSRV_APPHINT_FWPOISONONFREEVALUE=0xBD	\
 		-DPVRSRV_APPHINT_GENERAL_NON4K_HEAP_PAGE_SIZE=0x4000	\
 		-DPVRSRV_APPHINT_TIMECORRCLOCK=0	\
+		-DDMABUF_IMPORT_PHYSHEAP_ID=0		\
 	$(NULL)
 
 #	-DPVRSRV_ENABLE_FW_TRACE_DEBUGFS \
@@ -308,7 +309,7 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/rgxcmp_bridge/server_rgxcmp_bridge.o \
 	$(RGXDIR)/generated/debugmisc_bridge/server_debugmisc_bridge.o \
 	$(RGXDIR)/generated/sync_bridge/server_sync_bridge.o \
-	$(RGXDIR)/generated/sync_bridge/client_sync_bridge.o \
+	$(RGXDIR)/generated/sync_bridge/client_sync_direct_bridge.o \
 	$(RGXDIR)/generated/rgxtq_bridge/server_rgxtq_bridge.o \
 	$(RGXDIR)/generated/rgxtq2_bridge/server_rgxtq2_bridge.o \
 	$(RGXDIR)/generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
@@ -332,7 +333,7 @@ $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
 # for SUPPORT_SECURE_EXPORT
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/mm_bridge/server_mm_bridge.o \
-	$(RGXDIR)/generated/mm_bridge/client_mm_bridge.o \
+	$(RGXDIR)/generated/mm_bridge/client_mm_direct_bridge.o \
 	$(RGXDIR)/generated/smm_bridge/server_smm_bridge.o \
 	$(RGXDIR)/generated/syncsexport_bridge/server_syncsexport_bridge.o
 ccflags-y += \

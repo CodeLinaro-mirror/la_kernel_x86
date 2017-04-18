@@ -871,7 +871,7 @@ static DC_MRFLD_FLIP *_Next_Queued_Flip(int iPipe)
 
 	if (iPipe != DC_PIPE_A && iPipe != DC_PIPE_B) {
 		DRM_ERROR("%s: Invalid pipe %d\n", __func__, iPipe);
-		return IMG_NULL;
+		return NULL;
 	}
 
 	psFlipQueue = &gpsDevice->sFlipQueues[iPipe];
@@ -1485,7 +1485,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 			continue;
 		}
 		psBuffer = OSAllocMem(sizeof(DC_MRFLD_BUFFER));
-		if (psBuffer == IMG_NULL) {
+		if (psBuffer == NULL) {
 			for (j = 0; j < i; j++) {
 				if (ahBuffers[j]) {
 					OSFreeMem(ahBuffers[j]);
@@ -1493,7 +1493,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 			}
 			return PVRSRV_ERROR_OUT_OF_MEMORY;
 		}
-		OSMemCopy(psBuffer, ahBuffers[i], sizeof(DC_MRFLD_BUFFER));
+		OSDeviceMemCopy(psBuffer, ahBuffers[i], sizeof(DC_MRFLD_BUFFER));
 		psBuffer->ui32ContextCount = 0;
 		ahBuffers[i] = psBuffer;
 	}
@@ -1847,9 +1847,9 @@ static DC_DEVICE_FUNCTIONS sDCFunctions = {
 	.pfnPanelQuery			= DC_MRFLD_PanelQuery,
 	.pfnFormatQuery			= DC_MRFLD_FormatQuery,
 	.pfnDimQuery			= DC_MRFLD_DimQuery,
-	.pfnSetBlank			= IMG_NULL,
-	.pfnSetVSyncReporting		= IMG_NULL,
-	.pfnLastVSyncQuery		= IMG_NULL,
+	.pfnSetBlank			= NULL,
+	.pfnSetVSyncReporting		= NULL,
+	.pfnLastVSyncQuery		= NULL,
 	.pfnContextCreate		= DC_MRFLD_ContextCreate,
 	.pfnContextDestroy		= DC_MRFLD_ContextDestroy,
 	.pfnContextConfigure		= DC_MRFLD_ContextConfigure,
