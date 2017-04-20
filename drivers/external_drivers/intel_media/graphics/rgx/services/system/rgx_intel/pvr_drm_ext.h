@@ -41,8 +41,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(__PVR_DRM_EXT_H__)
 #define __PVR_DRM_EXT_H__
 
-int PVRCore_Init(void);
-void PVRCore_Cleanup(void);
+int PVRSRVCommonDriverInit(void);
+void PVRSRVCommonDriverDeinit(void);
 void PVRSRVRelease(struct drm_device *dev, struct drm_file *pDRMFile);
 
 int PVRSRV_BridgeDispatchKM(struct drm_device *dev, void *arg, struct drm_file *pFile);

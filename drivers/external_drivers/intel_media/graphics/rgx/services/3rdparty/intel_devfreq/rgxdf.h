@@ -43,6 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifndef _RGXDF_H_
 #define _RGXDF_H_
+
 /*!
 ******************************************************************************
 

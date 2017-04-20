@@ -1267,7 +1267,7 @@ PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 			pui8CmdPtr += sizeof(RGXFWIF_CCB_CMD_HEADER);
 
 			/* The buffer is write-combine, so no special device memory treatment required. */
-			OSCachedMemCopy(pui8CmdPtr, psCmdHelperData->pui8DMCmd, psCmdHelperData->ui32CmdSize);
+			OSDeviceMemCopy(pui8CmdPtr, psCmdHelperData->pui8DMCmd, psCmdHelperData->ui32CmdSize);
 			pui8CmdPtr += psCmdHelperData->ui32CmdSize;
 		}
 

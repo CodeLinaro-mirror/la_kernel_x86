@@ -42,7 +42,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/version.h>
 #include <drm/drmP.h>
 #include <drm/drm.h>
-
 #include "img_defs.h"
 #include "lock.h"
 #include "pvr_drm_ext.h"
@@ -131,8 +130,8 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 		goto exit;
 	}
 #endif
-	
-	iRes = PVRCore_Init();
+
+	iRes = PVRSRVCommonDriverInit();
 	if (iRes != 0)
 	{
 		goto exit_dbgdrv_cleanup;
@@ -147,8 +146,7 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	goto exit;
 
 exit_pvrcore_cleanup:
-	PVRCore_Cleanup();
-
+	PVRSRVCommonDriverDeinit();
 exit_dbgdrv_cleanup:
 #if defined(PDUMP)
 	dbgdrv_cleanup();
@@ -174,8 +172,7 @@ int PVRSRVDrmUnload(struct drm_device *dev)
 		DRM_ERROR("%s: can't deinit display class\n", __FUNCTION__);
 	}
 
-	PVRCore_Cleanup();
-
+	PVRSRVCommonDriverDeinit();
 #if defined(PDUMP)
 	dbgdrv_cleanup();
 #endif
@@ -218,7 +215,6 @@ int PVRSRVDrmOpen(struct drm_device *dev, struct drm_file *file)
 void PVRSRVDrmPostClose(struct drm_device *dev, struct drm_file *file)
 {
 	PVRSRVRelease(dev, file);
-
 	file->driver_priv = NULL;
 }
 

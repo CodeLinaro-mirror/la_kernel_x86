@@ -24,7 +24,6 @@ ccflags-y += \
 	-I$(RGXINC)/generated/rgxcmp_bridge \
 	-I$(RGXINC)/generated/pdumpmm_bridge \
 	-I$(RGXINC)/generated/dc_bridge \
-	-I$(RGXINC)/generated/cachegeneric_bridge \
 	-I$(RGXINC)/generated/hostportio_bridge \
 	-I$(RGXINC)/generated/rgxtq_bridge \
 	-I$(RGXINC)/generated/rgxtq2_bridge \
@@ -35,7 +34,6 @@ ccflags-y += \
 	-I$(RGXINC)/generated/rgxsignals_bridge \
 	-I$(RGXINC)/generated/smm_bridge \
 	-I$(RGXINC)/generated/pdump_bridge \
-	-I$(RGXINC)/generated/syncsexport_bridge \
 	-I$(RGXINC)/generated/sync_bridge \
 	-I$(RGXINC)/generated/debugmisc_bridge \
 	-I$(RGXINC)/generated/htbuffer_bridge \
@@ -69,6 +67,9 @@ ccflags-y += \
 	-I$(RGXINC)/services/system/common/env/linux \
 	-I$(RGXINC)/services/shared/devices/rgx \
 	-I$(RGXINC)/services/shared/include \
+	-I$(RGXINC)/services/srvinit/devices \
+	-I$(RGXINC)/services/srvinit/devices/rgx \
+	-I$(RGXINC)/services/srvinit/include \
 	-I$(RGXINC)/services/server/env/linux \
 	-I$(RGXINC)/services/server/include \
 	-I$(RGXINC)/services/server/devices/rgx \
@@ -146,6 +147,44 @@ ccflags-y += \
 		-DPVRSRV_APPHINT_GENERAL_NON4K_HEAP_PAGE_SIZE=0x4000	\
 		-DPVRSRV_APPHINT_TIMECORRCLOCK=0	\
 		-DDMABUF_IMPORT_PHYSHEAP_ID=0		\
+		-DPVRSRV_GPUVIRT_NUM_OSID=2			\
+		-DSUPPORT_KERNEL_SRVINIT			\
+		-DPVRSRV_APPHINT_HWRDEBUGDUMPLIMIT			\
+		-DPVRSRV_APPHINT_ENABLETRUSTEDDEVICEACECONFIG	\
+		-DPVRSRV_APPHINT_HTBUFFERSIZE=0x1000		\
+		-DPVRSRV_APPHINT_ENABLESIGNATURECHECKS		\
+		-DPVRSRV_APPHINT_SIGNATURECHECKSBUFSIZE		\
+		-DPVRSRV_APPHINT_DISABLECLOCKGATING=0		\
+		-DPVRSRV_APPHINT_DISABLEDMOVERLAP=0			\
+		-DPVRSRV_APPHINT_ENABLECDMKILLINGRANDMODE=0	\
+		-DPVRSRV_APPHINT_ENABLEFWCONTEXTSWITCH		\
+		-DPVRSRV_APPHINT_ENABLERDPOWERISLAND		\
+		-DPVRSRV_APPHINT_FIRMWAREPERF				\
+		-DPVRSRV_APPHINT_FWCONTEXTSWITCHPROFILE		\
+		-DPVRSRV_APPHINT_HWPERFDISABLECUSTOMCOUNTERFILTER=0	\
+		-DPVRSRV_APPHINT_HWPERFFWBUFSIZEINKB				\
+		-DPVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB		\
+		-DPVRSRV_APPHINT_JONESDISABLEMASK=0			\
+		-DPVRSRV_APPHINT_NEWFILTERINGMODE=1			\
+		-DPVRSRV_APPHINT_TRUNCATEMODE=0				\
+		-DPVRSRV_APPHINT_USEMETAT1					\
+		-DPVRSRV_APPHINT_RGXBVNC="\"BVNC_INTEL\""		\
+		-DPVRSRV_APPHINT_ENABLEHTBLOGGROUP=0		\
+		-DPVRSRV_APPHINT_HTBOPERATIONMODE			\
+		-DPVRSRV_APPHINT_HWPERFFWFILTER=0			\
+		-DPVRSRV_APPHINT_HWPERFHOSTFILTER=0			\
+		-DPVRSRV_APPHINT_ASSERTONHWRTRIGGER=IMG_FALSE	\
+		-DPVRSRV_APPHINT_ASSERTOUTOFMEMORY=IMG_FALSE	\
+		-DPVRSRV_APPHINT_CHECKMLIST						\
+		-DPVRSRV_APPHINT_ENABLELOGGROUP=0	\
+		-DPVRSRV_APPHINT_FIRMWARELOGTYPE=0	\
+		-DPVRSRV_APPHINT_ENABLEAPM			\
+		-DPVRSRV_APPHINT_DISABLEFEDLOGGING=IMG_FALSE	\
+		-DPVRSRV_APPHINT_ZEROFREELIST=IMG_FALSE			\
+		-DPVRSRV_APPHINT_DUSTREQUESTINJECT=IMG_FALSE	\
+		-DPVRSRV_APPHINT_DISABLEPDUMPPANIC=IMG_FALSE	\
+		-DPVRSRV_APPHINT_DISABLEPDUMPPANIC=IMG_FALSE	\
+		-DRGX_FW_FILENAME="\"rgx.fw.signed\""		\
 	$(NULL)
 
 #	-DPVRSRV_ENABLE_FW_TRACE_DEBUGFS \
@@ -204,7 +243,6 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/common/physmem_lma.o \
 	$(RGXDIR)/services/server/common/power.o \
 	$(RGXDIR)/services/server/common/physheap.o \
-	$(RGXDIR)/services/server/common/cache_generic.o \
 	$(RGXDIR)/services/server/common/scp.o \
 	$(RGXDIR)/services/server/common/mmu_common.o \
 	$(RGXDIR)/services/server/common/srvcore.o \
@@ -212,25 +250,28 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/common/handle.o \
 	$(RGXDIR)/services/server/common/physmem.o \
 	$(RGXDIR)/services/server/common/process_stats.o \
+	$(RGXDIR)/services/server/common/cache_km.o \
+	$(RGXDIR)/services/server/common/htbserver.o \
+	$(RGXDIR)/services/server/common/physmem_tdsecbuf.o \
+	$(RGXDIR)/services/server/common/pvr_notifier.o \
+	$(RGXDIR)/services/server/common/sync_checkpoint.o \
 	$(RGXDIR)/services/server/env/linux/allocmem.o \
-	$(RGXDIR)/services/server/env/linux/mm.o \
 	$(RGXDIR)/services/server/env/linux/physmem_osmem_linux.o \
-	$(RGXDIR)/services/server/env/linux/physmem_tdsecbuf_linux.o \
 	$(RGXDIR)/services/server/env/linux/osfunc_x86.o \
 	$(RGXDIR)/services/server/env/linux/osfunc.o \
 	$(RGXDIR)/services/server/env/linux/event.o \
 	$(RGXDIR)/services/server/env/linux/pvr_bridge_k.o \
 	$(RGXDIR)/services/server/env/linux/pvr_debug.o \
 	$(RGXDIR)/services/server/env/linux/osconnection_server.o \
-	$(RGXDIR)/services/server/env/linux/devicemem_mmap_stub.o \
-	$(RGXDIR)/services/server/env/linux/module.o \
-	$(RGXDIR)/services/server/env/linux/ossecure_export.o \
 	$(RGXDIR)/services/server/env/linux/pdump.o \
 	$(RGXDIR)/services/server/env/linux/pvr_debugfs.o \
 	$(RGXDIR)/services/server/env/linux/pvr_gputrace.o \
 	$(RGXDIR)/services/server/env/linux/trace_events.o \
 	$(RGXDIR)/services/server/env/linux/handle_idr.o \
-	$(RGXDIR)/services/shared/common/dllist.o \
+	$(RGXDIR)/services/server/env/linux/module_common.o \
+	$(RGXDIR)/services/server/env/linux/pmr_os.o \
+	$(RGXDIR)/services/server/env/linux/km_apphint.o \
+	$(RGXDIR)/services/server/env/linux/osmmap_stub.o \
 	$(RGXDIR)/services/shared/common/devicemem.o \
 	$(RGXDIR)/services/shared/common/hash.o \
 	$(RGXDIR)/services/shared/common/devicemem_utils.o \
@@ -238,10 +279,12 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/shared/common/ra.o \
 	$(RGXDIR)/services/shared/common/uniq_key_splay_tree.o \
 	$(RGXDIR)/services/shared/devices/rgx/rgx_compat_bvnc.o \
+	$(RGXDIR)/services/shared/devices/rgx/rgx_hwperf_table.o \
 	$(RGXDIR)/services/server/common/tlintern.o \
 	$(RGXDIR)/services/server/common/tlstream.o \
 	$(RGXDIR)/services/server/common/tlserver.o \
-        $(RGXDIR)/services/shared/common/tlclient.o \
+    $(RGXDIR)/services/shared/common/tlclient.o	\
+	$(RGXDIR)/services/shared/common/htbuffer.o
 
 # SUPPORT_NATIVE_FENCE_SYNC
 $(DRIVER_NAME)-y += \
@@ -259,10 +302,11 @@ $(DRIVER_NAME)-$(CONFIG_PDUMP) += \
 	$(RGXDIR)/tools/intern/debug/dbgdriv/linux/hostfunc.o \
 	$(RGXDIR)/tools/intern/debug/dbgdriv/common/ioctl.o \
 	$(RGXDIR)/tools/intern/debug/dbgdriv/common/dbgdriv.o \
+	$(RGXDIR)/tools/intern/debug/dbgdriv/common/dbgdriv_handle.o \
 	$(RGXDIR)/tools/intern/debug/dbgdriv/common/hotkey.o \
-	$(RGXDIR)/tools/intern/debug/dbgdriv/common/handle.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxpdump.o \
-	$(RGXDIR)/services/shared/common/devicemem_pdump.o
+	$(RGXDIR)/services/shared/common/devicemem_pdump.o	\
+    $(RGXDIR)/services/shared/common/devicememx_pdump.o \
 
 # For SUPPORT_RGX
 $(DRIVER_NAME)-y += \
@@ -278,13 +322,18 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/devices/rgx/debugmisc_server.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxmem.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxccb.o \
-	$(RGXDIR)/services/server/devices/rgx/rgxsync.o \
-	$(RGXDIR)/services/server/env/linux/mmap.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxtimerquery.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxdebug.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxbreakpoint.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxhwperf.o \
-	$(RGXDIR)/services/server/devices/rgx/rgxtimecorr.o
+	$(RGXDIR)/services/server/devices/rgx/rgxtimecorr.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxkicksync.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxlayer_km_impl.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxmipsmmuinit.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxray.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxsignals.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxstartstop.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxtdmtransfer.o	\
 
 # For devfreq
 $(DRIVER_NAME)-y += \
@@ -297,13 +346,16 @@ $(DRIVER_NAME)-y += \
 #	$(RGXDIR)/services/server/devices/rgx/rgxpowermon.o
 
 $(DRIVER_NAME)-y += \
+	$(RGXDIR)/generated/breakpoint_bridge/server_breakpoint_bridge.o \
+	$(RGXDIR)/generated/cache_bridge/client_cache_direct_bridge.o \
+	$(RGXDIR)/generated/cache_bridge/server_cache_bridge.o \
 	$(RGXDIR)/generated/cmm_bridge/server_cmm_bridge.o \
 	$(RGXDIR)/generated/dc_bridge/server_dc_bridge.o \
 	$(RGXDIR)/generated/pdump_bridge/server_pdump_bridge.o \
+	$(RGXDIR)/generated/pdump_bridge/client_pdump_direct_bridge.o \
 	$(RGXDIR)/generated/srvcore_bridge/server_srvcore_bridge.o \
-	$(RGXDIR)/generated/rgxinit_bridge/server_rgxinit_bridge.o \
+	$(RGXDIR)/generated/rgxinit_bridge/client_rgxinit_direct_bridge.o \
 	$(RGXDIR)/generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
-	$(RGXDIR)/generated/breakpoint_bridge/server_breakpoint_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/server_pdumpmm_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/client_pdumpmm_direct_bridge.o \
 	$(RGXDIR)/generated/rgxcmp_bridge/server_rgxcmp_bridge.o \
@@ -314,6 +366,7 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/rgxtq2_bridge/server_rgxtq2_bridge.o \
 	$(RGXDIR)/generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
 	$(RGXDIR)/generated/rgxpdump_bridge/server_rgxpdump_bridge.o \
+	$(RGXDIR)/generated/rgxpdump_bridge/client_rgxpdump_direct_bridge.o \
 	$(RGXDIR)/generated/rgxray_bridge/server_rgxray_bridge.o \
 	$(RGXDIR)/generated/rgxsignals_bridge/server_rgxsignals_bridge.o \
 	$(RGXDIR)/generated/pvrtl_bridge/server_pvrtl_bridge.o \
@@ -324,7 +377,12 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/synctracking_bridge/client_synctracking_direct_bridge.o \
 	$(RGXDIR)/generated/timerquery_bridge/server_timerquery_bridge.o \
 	$(RGXDIR)/generated/devicememhistory_bridge/server_devicememhistory_bridge.o \
-	$(RGXDIR)/generated/pdumpctrl_bridge/server_pdumpctrl_bridge.o
+	$(RGXDIR)/generated/devicememhistory_bridge/client_devicememhistory_direct_bridge.o \
+	$(RGXDIR)/generated/pdumpctrl_bridge/server_pdumpctrl_bridge.o	\
+	$(RGXDIR)/generated/pdumpctrl_bridge/client_pdumpctrl_direct_bridge.o	\
+	$(RGXDIR)/generated/htbuffer_bridge/server_htbuffer_bridge.o	\
+	$(RGXDIR)/generated/htbuffer_bridge/client_htbuffer_direct_bridge.o	\
+
 
 $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
 	$(RGXDIR)/generated/ri_bridge/server_ri_bridge.o \
@@ -334,10 +392,6 @@ $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/mm_bridge/server_mm_bridge.o \
 	$(RGXDIR)/generated/mm_bridge/client_mm_direct_bridge.o \
-	$(RGXDIR)/generated/smm_bridge/server_smm_bridge.o \
-	$(RGXDIR)/generated/syncsexport_bridge/server_syncsexport_bridge.o
-ccflags-y += \
-	-I$(RGXINC)/generated/smm_bridge
 
 ccflags-y += \
        -DPVR_ANDROID_ION_HEADER="\"../../drivers/staging/android/ion/ion.h\"" \
@@ -365,5 +419,42 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/system/rgx_intel/sysconfig.o \
 	$(RGXDIR)/services/system/rgx_intel/pvr_drm_ext.o \
 	$(RGXDIR)/services/3rdparty/intel_drm/dc_mrfld.o \
-	$(RGXDIR)/services/system/common/env/linux/pci_support.o
+	$(RGXDIR)/services/system/common/env/linux/pci_support.o	\
+	$(RGXDIR)/services/system/common/env/linux/dma_support.o	\
+	$(RGXDIR)/services/system/common/env/linux/interrupt_support.o	\
+
+# server initialization
+$(DRIVER_NAME)-y += \
+	$(RGXDIR)/services/srvinit/common/srvinit_pdump.o	\
+	$(RGXDIR)/services/srvinit/devices/rgx/rgxfwimageutils.o	\
+	$(RGXDIR)/services/srvinit/devices/rgx/rgxlayer_impl.o	\
+	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit.o	\
+	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit_script.o	\
+	$(RGXDIR)/services/srvinit/devices/rgx/env/linux/km/rgxfwload.o	
+
+# for SUPPORT_PVRSRV_GPUVIRT
+$(DRIVER_NAME)-$(SUPPORT_PVRSRV_GPUVIRT) += \
+	$(RGXDIR)/services/server/common/pvrsrv_vz_common.o \
+	$(RGXDIR)/services/server/devices/rgx/rgxfwutils_vz_guest.o \
+	$(RGXDIR)/services/system/common/vmm_pvz_client.o	\
+	$(RGXDIR)/services/system/common/vmm_type_l4linux.o	\
+	$(RGXDIR)/services/system/common/vz_generic_guest.o	\
+	$(RGXDIR)/services/system/common/vz_physheap_common.o	\
+	$(RGXDIR)/services/system/common/vz_physheap_generic.o	\
+	$(RGXDIR)/services/system/common/vz_physheap_guest.o	\
+	$(RGXDIR)/services/system/common/vz_vmm_pvz.o
+# for PVR_DVFS
+$(DRIVER_NAME)-$(PVR_DVFS) += \
+	$(RGXDIR)/services/server/devices/rgx/rgxpdvfs.o	\
+
+# for SUPPORT_WORKLOAD_ESTIMATION
+$(DRIVER_NAME)-$(SUPPORT_WORKLOADE_ESTIMATION) += \
+	$(RGXDIR)/services/server/devices/rgx/rgxworkest.o	\
+
+# for SUPPORT_VIRTUALIZATION
+$(DRIVER_NAME)-$(SUPPORT_VIRTUALIZATION) += \
+	$(RGXDIR)/services/server/devices/rgx/rgxpower_vz_guest.o \
+	$(RGXDIR)/services/server/devices/rgx/rgxhwperf_vz_guest.o \
+	$(RGXDIR)/services/server/devices/rgx/rgxinit_vz_common.o \
+	$(RGXDIR)/services/server/devices/rgx/rgxinit_vz_guest.o \
 

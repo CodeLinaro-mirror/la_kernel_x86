@@ -463,7 +463,6 @@ LinuxBridgeInit(void)
 	{
 		return eError;
 	}
-
 #if !defined(SUPPORT_KERNEL_SRVINIT)
 	eError = InitRGXINITBridge();
 	if (eError != PVRSRV_OK)
@@ -471,7 +470,6 @@ LinuxBridgeInit(void)
 		return eError;
 	}
 #endif
-
 	eError = InitRGXTA3DBridge();
 	if (eError != PVRSRV_OK)
 	{
@@ -698,13 +696,14 @@ LinuxBridgeDeInit(void)
 		return eError;
 	}
 
-
+#if 0  //TODO
 #if !defined(SUPPORT_KERNEL_SRVINIT)
 	eError = DeinitRGXINITBridge();
 	if (eError != PVRSRV_OK)
 	{
 		return eError;
 	}
+#endif
 #endif
 
 	eError = DeinitRGXTA3DBridge();

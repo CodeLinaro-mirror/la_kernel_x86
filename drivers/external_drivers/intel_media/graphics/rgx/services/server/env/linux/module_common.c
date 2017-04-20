@@ -349,14 +349,6 @@ int PVRSRVCommonDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 			 "%s: failed to initialise device AppHints (%d)",
 			 __func__, error));
 	}
-#else
-	error = PVRSRVHWperfCreateDebugFs();
-	if (error != 0)
-	{
-		PVR_DPF((PVR_DBG_WARNING,
-			 "%s: failed to initialise HWPerf debugfs (%d)",
-			  __func__, error));
-	}
 #endif
 
 	/*Initialize the device dependent bridges */
@@ -386,8 +378,6 @@ void PVRSRVCommonDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 #if defined(SUPPORT_KERNEL_SRVINIT)
 	pvr_apphint_device_unregister(psDeviceNode);
-#else
-	PVRSRVHWperfDestroyDebugFs();
 #endif
 
 #if defined(SUPPORT_GPUTRACE_EVENTS)

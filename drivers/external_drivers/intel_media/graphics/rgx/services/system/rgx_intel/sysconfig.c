@@ -75,6 +75,15 @@ extern struct drm_device *gpsPVRDRMDev;
 IMG_BOOL gbSystemActivePMEnabled;
 IMG_BOOL gbSystemActivePMInit;
 
+PVRSRV_ERROR SysDebugInfo(PVRSRV_DEVICE_CONFIG *psDevConfig, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile)
+{
+	PVR_UNREFERENCED_PARAMETER(psDevConfig);
+	PVR_UNREFERENCED_PARAMETER(pfnDumpDebugPrintf);
+	PVR_UNREFERENCED_PARAMETER(pvDumpDebugFile);
+
+	return PVRSRV_OK;
+}
+
 static void SysCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 										IMG_UINT32 ui32NumOfAddr,
 										IMG_DEV_PHYADDR *psDevPAddr,
@@ -149,6 +158,19 @@ static PVRSRV_ERROR SysDevicePostPowerState(
 	}
 
 	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
+{
+	PVR_UNREFERENCED_PARAMETER(pvOSDevice);
+	PVR_UNREFERENCED_PARAMETER(ppsDevConfig);
+
+	return PVRSRV_OK;
+}
+
+void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
+{
+	PVR_UNREFERENCED_PARAMETER(psDevConfig);
 }
 
 typedef int (*psb_irq_handler_t)(void *data);

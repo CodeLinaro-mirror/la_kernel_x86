@@ -116,6 +116,7 @@ static RGX_INIT_COMMAND asDbgCommands[RGX_MAX_DEBUG_COMMANDS];
 #include "os_srvinit_param.h"
 #else
 #include "srvinit_param.h"
+
 /*!
 *******************************************************************************
  * AppHint mnemonic data type helper tables

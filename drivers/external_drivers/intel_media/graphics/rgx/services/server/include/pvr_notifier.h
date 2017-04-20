@@ -135,13 +135,10 @@ Debug Notifier Interface
  * required as a local variable to serve as a file identifier for the printf
  * function if required.
  */
-#define PVR_DUMPDEBUG_LOG(...)                                            \
-	do                                                                \
-	{                                                                 \
-		if (pfnDumpDebugPrintf)                                   \
-			pfnDumpDebugPrintf(pvDumpDebugFile, __VA_ARGS__); \
-		else                                                      \
-			PVR_LOG((__VA_ARGS__));                           \
+#define PVR_DUMPDEBUG_LOG(...)             \
+	do                                          \
+	{                                           \
+			PVR_LOG((__VA_ARGS__));      \
 	} while(0)
 
 struct _PVRSRV_DEVICE_NODE_;

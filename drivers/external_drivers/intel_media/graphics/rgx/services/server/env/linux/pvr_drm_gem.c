@@ -53,6 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_drm_display.h"
 #include "sync_server.h"
 #include "allocmem.h"
+#include "module_common.h"
 
 #if defined(PVR_DRM_USE_PRIME)
 #include "physmem_dmabuf.h"
@@ -984,6 +985,16 @@ ExitUnlock:
 	mutex_unlock(&psDev->struct_mutex);
 
 	return psPMR;
+}
+
+int PVRSRVOpen(struct drm_device *dev, struct drm_file *file)
+{
+	return PVRSRVCommonDeviceOpen(dev->dev_private, file);
+}
+
+void PVRSRVRelease(struct drm_device *dev, struct drm_file *file)
+{
+	PVRSRVCommonDeviceRelease(dev->dev_private, file);
 }
 
 #endif /* defined(SUPPORT_DRM) */

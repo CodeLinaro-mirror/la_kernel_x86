@@ -234,7 +234,6 @@ PVRSRV_ERROR SysVzCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
  ******************************************************************************/
 PVRSRV_ERROR SysVzDestroyDevPhysHeaps(IMG_UINT32 ui32OSID,
 									  IMG_UINT32 ui32DevID);
-
 /*!
 ******************************************************************************
  @Function			SysVzRegisterFwPhysHeap
@@ -249,7 +248,6 @@ PVRSRV_ERROR SysVzRegisterFwPhysHeap(IMG_UINT32 ui32OSID,
 									 IMG_UINT32 ui32DevID,
 									 IMG_UINT64 ui64Size,
 									 IMG_UINT64 ui64Addr);
-
 /*!
 ******************************************************************************
  @Function			SysVzUnregisterFwPhysHeap

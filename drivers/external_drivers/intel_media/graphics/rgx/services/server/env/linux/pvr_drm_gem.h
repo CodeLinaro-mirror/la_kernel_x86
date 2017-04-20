@@ -153,9 +153,6 @@ struct pvr_drm_gem_object
 
 extern struct drm_driver sPVRDRMDriver;
 
-int PVRSRVSystemInit(struct drm_device *pDrmDevice);
-void PVRSRVSystemDeInit(LDM_DEV *pDevice);
-
 int PVRSRVOpen(struct drm_device *dev, struct drm_file *file);
 void PVRSRVRelease(struct drm_device *dev, struct drm_file *file);
 

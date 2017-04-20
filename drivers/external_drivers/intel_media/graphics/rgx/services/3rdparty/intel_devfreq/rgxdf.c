@@ -84,6 +84,7 @@ PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void)
 
 	return pDevNode;
 }
+EXPORT_SYMBOL(RGXGetDeviceNode);
 
 unsigned int RGXGetDRMDeviceID(void)
 {
