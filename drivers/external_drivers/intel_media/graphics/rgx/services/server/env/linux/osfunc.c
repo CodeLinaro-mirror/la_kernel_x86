@@ -103,14 +103,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* Use a pool for PhysContigPages on x86 32bit so we avoid virtual address space fragmentation by vm_map_ram.
  * ARM does not have the function to invalidate TLB entries so they have to use the kernel functions directly. */
-//XXX: hack, gen_pool_alloc() failures in OSMMUPxMap when running in 32bit 4.4
-#if 0
 #if defined(CONFIG_GENERIC_ALLOCATOR) \
         && defined(CONFIG_X86) \
         && !defined(CONFIG_64BIT) \
         && (LINUX_VERSION_CODE > KERNEL_VERSION(3,0,0))
 #define OSFUNC_USE_PHYS_CONTIG_PAGES_MAP_POOL 1
-#endif
 #endif
 
 static void *g_pvBridgeBuffers = IMG_NULL;
@@ -326,16 +323,14 @@ PVRSRV_ERROR OSMMUPxMap(PVRSRV_DEVICE_NODE *psDevNode, Px_HANDLE *psMemHandle,
 	if (uiCPUVAddr == 0)
 #endif	/* #if defined(OSFUNC_USE_PHYS_CONTIG_PAGES_MAP_POOL) */
 	{
-#if 0
 #if !defined(CONFIG_64BIT) || defined(PVRSRV_FORCE_SLOWER_VMAP_ON_64BIT_BUILDS)
 		uiCPUVAddr = (IMG_UINTPTR_T) vmap(ppsPage, 1, VM_READ | VM_WRITE, prot);
 #else
-#endif
-#endif
 		uiCPUVAddr = (IMG_UINTPTR_T) vm_map_ram(ppsPage,
 												1,
 												-1,
 												prot);
+#endif
 	}
 
 	/* Check that one of the above methods got us an address */
@@ -399,13 +394,11 @@ void OSMMUPxUnmap(PVRSRV_DEVICE_NODE *psDevNode, Px_HANDLE *psMemHandle, void *p
 	else
 #endif	/*#if defined(OSFUNC_USE_PHYS_CONTIG_PAGES_MAP_POOL) */
 	{
-#if 0
 #if !defined(CONFIG_64BIT) || defined(PVRSRV_FORCE_SLOWER_VMAP_ON_64BIT_BUILDS)
 		vunmap(pvPtr);
 #else
-#endif
-#endif
 		vm_unmap_ram(pvPtr, 1);
+#endif
 	}
 }
 

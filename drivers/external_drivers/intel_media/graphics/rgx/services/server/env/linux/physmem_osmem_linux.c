@@ -1835,19 +1835,17 @@ PMRAcquireKernelMappingDataOSMem(PMR_IMPL_PRIVDATA pvPriv,
 		goto e0;
 	}
 	
-#if 0
 #if !defined(CONFIG_64BIT) || defined(PVRSRV_FORCE_SLOWER_VMAP_ON_64BIT_BUILDS)
 	pvAddress = vmap(&psOSPageArrayData->pagearray[ui32PageOffset],
 	                 ui32PageCount,
 	                 VM_READ | VM_WRITE,
 	                 prot);
 #else
-#endif
-#endif
 	pvAddress = vm_map_ram(&psOSPageArrayData->pagearray[ui32PageOffset],
 						   ui32PageCount,
 						   -1,
 						   prot);
+#endif
 	if (pvAddress == IMG_NULL)
 	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
@@ -1878,13 +1876,11 @@ static void PMRReleaseKernelMappingDataOSMem(PMR_IMPL_PRIVDATA pvPriv,
 
     psOSPageArrayData = pvPriv;
     psData = hHandle;
-#if 0
 #if !defined(CONFIG_64BIT) || defined(PVRSRV_FORCE_SLOWER_VMAP_ON_64BIT_BUILDS)
     vunmap(psData->pvBase);
 #else
-#endif
-#endif
     vm_unmap_ram(psData->pvBase, psData->ui32PageCount);
+#endif
     OSFreeMem(psData);
 }
 
