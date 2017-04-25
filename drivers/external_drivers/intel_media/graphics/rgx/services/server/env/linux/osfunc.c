@@ -301,9 +301,9 @@ PVRSRV_ERROR OSMMUPxMap(PVRSRV_DEVICE_NODE *psDevNode, Px_HANDLE *psMemHandle,
 		int ret = 0;
 		struct vm_struct tmp_area;
 
-		/* vmalloc and friends expect a guard page so we need to take that into account */
 		tmp_area.addr = (void *)uiCPUVAddr;
-		tmp_area.size =  2 * PAGE_SIZE;
+		tmp_area.size = PAGE_SIZE;
+		tmp_area.flags = VM_NO_GUARD;
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3,17,0))
 		ret = map_vm_area(&tmp_area, prot, ppsPage);
 #else
