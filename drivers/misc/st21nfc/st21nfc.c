@@ -3,20 +3,17 @@
  * Copyright (C) 2010 Stollmann E+V GmbH
  * Copyright (C) 2010 Trusted Logic S.A.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <linux/kernel.h>
@@ -43,7 +40,7 @@
 
 #define MAX_BUFFER_SIZE 260
 
-#define DRIVER_VERSION "1.0.6"
+#define DRIVER_VERSION "1.2.1.2"
 
 /* define the active state of the WAKEUP pin */
 #define ST21_IRQ_ACTIVE_HIGH 1
@@ -66,14 +63,15 @@ struct st21nfc_platform {
 	struct i2c_client *client;
 	u8 irq_gpio;
 	u8 reset_gpio;
-	u8 ena_gpio;
 	u8 polarity_mode;
 	u8 active_polarity;	/* either 0 (low-active) or 1 (high-active)  */
 };
 
-static bool irq_is_attached;
 
-static bool device_open;	/* Is device open? */
+static bool irqIsAttached;
+
+static bool device_open; /* Is device open? */
+
 struct st21nfc_dev {
 	wait_queue_head_t read_wq;
 	struct miscdevice st21nfc_device;
@@ -114,9 +112,9 @@ static int st21nfc_loc_set_polaritymode(struct st21nfc_dev *st21nfc_dev,
 		st21nfc_dev->platform_data.active_polarity = 0;
 		break;
 	}
-	if (irq_is_attached) {
+	if (irqIsAttached) {
 		free_irq(client->irq, st21nfc_dev);
-		irq_is_attached = false;
+		irqIsAttached = false;
 	}
 	ret = irq_set_irq_type(client->irq, irq_type);
 	if (ret) {
@@ -133,7 +131,7 @@ static int st21nfc_loc_set_polaritymode(struct st21nfc_dev *st21nfc_dev,
 			  st21nfc_dev->platform_data.polarity_mode,
 			  client->name, st21nfc_dev);
 	if (!ret)
-		irq_is_attached = true;
+		irqIsAttached = true;
 
 	return ret;
 }
@@ -558,12 +556,11 @@ static int st21nfc_probe(struct i2c_client *client,
 
 	/* store for later use */
 	st21nfc_dev->platform_data.irq_gpio = platform_data->irq_gpio;
-	st21nfc_dev->platform_data.ena_gpio = platform_data->ena_gpio;
 	st21nfc_dev->platform_data.reset_gpio = platform_data->reset_gpio;
 	st21nfc_dev->platform_data.polarity_mode = platform_data->polarity_mode;
 	st21nfc_dev->platform_data.client = client;
 
-	ret = gpio_request(platform_data->irq_gpio, "st21nfc");
+	ret = gpio_request(platform_data->irq_gpio, "NFC-intr");
 	if (ret) {
 		pr_err("%s : gpio_request failed\n", __FILE__);
 		ret = -ENODEV;
@@ -577,15 +574,15 @@ static int st21nfc_probe(struct i2c_client *client,
 		goto err_free_buffer;
 	}
 
-	/* initialize irq_is_attached variable */
-	irq_is_attached = false;
+	/* initialize irqIsAttached variable */
+	irqIsAttached = false;
 
 	/* initialize device_open variable */
 	device_open = 0;
 
 	/* handle optional RESET */
 	if (platform_data->reset_gpio != 0) {
-		ret = gpio_request(platform_data->reset_gpio, "st21nfc_reset");
+		ret = gpio_request(platform_data->reset_gpio, "NFC-reset");
 		if (ret) {
 			pr_err("%s : reset gpio_request failed\n", __FILE__);
 			ret = -ENODEV;
@@ -602,22 +599,6 @@ static int st21nfc_probe(struct i2c_client *client,
 		gpio_set_value(st21nfc_dev->platform_data.reset_gpio, 1);
 	}
 
-	/* set up optional ENA gpio */
-	if (platform_data->ena_gpio != 0) {
-		ret = gpio_request(platform_data->ena_gpio, "st21nfc_ena");
-		if (ret) {
-			pr_err("%s : ena gpio_request failed\n", __FILE__);
-			ret = -ENODEV;
-			goto err_free_buffer;
-		}
-		ret = gpio_direction_output(platform_data->ena_gpio, 1);
-		if (ret) {
-			pr_err("%s : ena gpio_direction_output failed\n",
-			       __FILE__);
-			ret = -ENODEV;
-			goto err_free_buffer;
-		}
-	}
 	client->irq = gpio_to_irq(platform_data->irq_gpio);
 
 	enable_irq_wake(client->irq);
@@ -653,8 +634,6 @@ static int st21nfc_probe(struct i2c_client *client,
 	kfree(st21nfc_dev);
  err_exit:
 	gpio_free(platform_data->irq_gpio);
-	if (platform_data->ena_gpio != 0)
-		gpio_free(platform_data->ena_gpio);
 	return ret;
 }
 
@@ -667,8 +646,6 @@ static int st21nfc_remove(struct i2c_client *client)
 	misc_deregister(&st21nfc_dev->st21nfc_device);
 	mutex_destroy(&st21nfc_dev->platform_data.read_mutex);
 	gpio_free(st21nfc_dev->platform_data.irq_gpio);
-	if (st21nfc_dev->platform_data.ena_gpio != 0)
-		gpio_free(st21nfc_dev->platform_data.ena_gpio);
 	kfree(st21nfc_dev);
 
 	return 0;
@@ -679,39 +656,7 @@ static const struct i2c_device_id st21nfc_id[] = {
 	{}
 };
 
-static int st21nfc_suspend(struct i2c_client *client, pm_message_t mesg)
-{
-	struct st21nfc_dev *st21nfc_dev;
-	if (client) {
-		st21nfc_dev = i2c_get_clientdata(client);
-		if (st21nfc_dev && st21nfc_dev->platform_data.ena_gpio != 0) {
-			/* ON */
-			gpio_set_value(st21nfc_dev->platform_data.ena_gpio, 1);
-			return 0;
-		}
-		pr_debug("%s : failing no st21 context %p !!!\n", __func__,
-			 st21nfc_dev);
-	}
-	pr_debug("%s : failing no client context  %p!!!\n", __func__, client);
-	return 0;		/* silent fail */
-}
 
-static int st21nfc_resume(struct i2c_client *client)
-{
-	struct st21nfc_dev *st21nfc_dev;
-	if (client) {
-		st21nfc_dev = i2c_get_clientdata(client);
-		if (st21nfc_dev && st21nfc_dev->platform_data.ena_gpio != 0) {
-			/* ON */
-			gpio_set_value(st21nfc_dev->platform_data.ena_gpio, 1);
-			return 0;
-		}
-		pr_debug("%s : failing no st21 context %p !!!\n", __func__,
-			 st21nfc_dev);
-	}
-	pr_debug("%s : failing no context %p!!!\n", __func__, client);
-	return 0;		/* silent fail */
-}
 
 static struct i2c_driver st21nfc_driver = {
 	.id_table = st21nfc_id,
@@ -720,8 +665,6 @@ static struct i2c_driver st21nfc_driver = {
 	.driver = {
 		   .owner = THIS_MODULE,
 		   .name = "st21nfc",
-       .suspend = st21nfc_suspend,
-       .resume = st21nfc_resume,
 		   },
 };
 

@@ -19,60 +19,7 @@
 
 
 
-static unsigned int nfc_host_int_gpio, nfc_enable_gpio, nfc_fw_reset_gpio;
-
-
-static int st21nfc_nfc_request_resources(struct i2c_client *client)
-{
-	int ret;
-
-	ret = gpio_request(nfc_host_int_gpio, NFC_HOST_INT_GPIO);
-	if (ret) {
-		dev_err(&client->dev, "Request NFC INT GPIO fails %d\n", ret);
-		return -1;
-	}
-
-	ret = gpio_direction_input(nfc_host_int_gpio);
-	if (ret) {
-		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
-		goto err_int;
-	}
-
-	ret = gpio_request(nfc_fw_reset_gpio, NFC_ENABLE_GPIO);
-	if (ret) {
-		dev_err(&client->dev,
-			"Request for NFC Enable GPIO fails %d\n", ret);
-		goto err_int;
-	}
-
-	ret = gpio_direction_output(nfc_enable_gpio, 1);
-	if (ret) {
-		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
-		goto err_enable;
-	}
-
-	ret = gpio_request(nfc_enable_gpio, NFC_FW_RESET_GPIO);
-	if (ret) {
-		dev_err(&client->dev,
-			"Request for NFC FW Reset GPIO fails %d\n", ret);
-		goto err_enable;
-	}
-
-	ret = gpio_direction_output(nfc_fw_reset_gpio, 0);
-	if (ret) {
-		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
-		goto err_fw;
-	}
-
-	return 0;
-err_fw:
-	gpio_free(nfc_fw_reset_gpio);
-err_enable:
-	gpio_free(nfc_enable_gpio);
-err_int:
-	gpio_free(nfc_host_int_gpio);
-	return -1;
-}
+static unsigned int nfc_host_int_gpio, nfc_reset_gpio;
 
 void *st21nfc_platform_data(void *info)
 {
@@ -85,23 +32,18 @@ void *st21nfc_platform_data(void *info)
 	nfc_host_int_gpio = get_gpio_by_name(NFC_HOST_INT_GPIO);
 	if (nfc_host_int_gpio == -1)
 		return NULL;
-	nfc_enable_gpio = get_gpio_by_name(NFC_FW_RESET_GPIO);
-	if (nfc_enable_gpio  == -1)
-		return NULL;
-	nfc_fw_reset_gpio = get_gpio_by_name(NFC_ENABLE_GPIO);
-	if (nfc_fw_reset_gpio == -1)
+
+	nfc_reset_gpio = get_gpio_by_name(NFC_RESET_GPIO);
+	if (nfc_reset_gpio == -1)
 		return NULL;
 
 	st21nfc_nfc_platform_data.irq_gpio = nfc_host_int_gpio;
-	st21nfc_nfc_platform_data.ena_gpio = nfc_enable_gpio;
-	st21nfc_nfc_platform_data.reset_gpio = nfc_fw_reset_gpio;
+	st21nfc_nfc_platform_data.reset_gpio = nfc_reset_gpio;
 
 	st21nfc_nfc_platform_data.polarity_mode = IRQF_TRIGGER_FALLING;
 
 	i2c_info->irq = nfc_host_int_gpio + INTEL_MID_IRQ_OFFSET;
 	i2c_info->addr = 0x08;
-	st21nfc_nfc_platform_data.request_resources =
-		st21nfc_nfc_request_resources;
 
 	return &st21nfc_nfc_platform_data;
 }

@@ -38,14 +38,11 @@
 
 /* MFLD NFC controller (ST21NFC) platform init */
 #define NFC_HOST_INT_GPIO               "NFC-intr"
-#define NFC_ENABLE_GPIO                 "NFC-enable"
-#define NFC_FW_RESET_GPIO               "NFC-reset"
+#define NFC_RESET_GPIO                  "NFC-reset"
 
 
 struct st21nfc_i2c_platform_data {
-	int (*request_resources) (struct i2c_client *client);
 	unsigned int irq_gpio;
-	unsigned int ena_gpio;
 	unsigned int reset_gpio;
 	unsigned int polarity_mode;
 };
