@@ -2462,6 +2462,7 @@ static int max17042_suspend(struct device *dev)
 		disable_irq(chip->client->irq);
 		enable_irq_wake(chip->client->irq);
 	}
+	cancel_work_sync(&chip->evt_worker);
 	if (fg_conf_data->cfg & CONFIG_TEX_BIT_ENBL)
 		cancel_delayed_work_sync(&chip->temp_worker);
 
