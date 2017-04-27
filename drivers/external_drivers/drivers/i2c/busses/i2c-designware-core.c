@@ -43,6 +43,7 @@
 #include "i2c-designware-core.h"
 #include <linux/intel_mid_pm.h>
 
+#define CPT_HANG_THRESHOLD 10000
 
 int i2c_dw_init(struct dw_i2c_dev *dev);
 int i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num);
@@ -1354,6 +1355,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	dev->status = STATUS_IDLE;
 	dev->abort_source = 0;
 	dev->rx_outstanding = 0;
+	dev->cpt_hang = 0;
 
 	/* if the host is shared between other units on the SoC */
 	if (dev->shared_host && dev->acquire_ownership) {
@@ -1549,6 +1551,15 @@ tx_aborted:
 			i2c_dw_read(dev);
 
 		complete(&dev->cmd_complete);
+		dev->cpt_hang = 0;
+	} else if (++dev->cpt_hang > CPT_HANG_THRESHOLD) {
+		/*
+		 * w/a for end of tx never coming : reset the controller
+		 * after a huge number of messages without abort or stop
+		 */
+		WARN(1, "i2c hang detected, reset the controller\n");
+		i2c_dw_disable_int(dev);
+		dev->cpt_hang = 0;
 	}
 
 	pm_runtime_put_autosuspend(dev->dev);

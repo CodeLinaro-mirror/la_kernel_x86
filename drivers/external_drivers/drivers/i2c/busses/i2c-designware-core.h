@@ -276,6 +276,7 @@ struct dw_i2c_dev {
 	u32			lock_flag;
 	u32			freq;
 	u32			fast_plus;
+	u32			cpt_hang;
 };
 
 struct dw_controller {
