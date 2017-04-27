@@ -72,6 +72,7 @@
 #include "mrfld_s3d.h"
 
 #include "pvr_bridge.h"
+#include "pvr_drm_ext.h"
 
 /* SH DPST */
 #include "psb_dpst_func.h"
@@ -3277,7 +3278,7 @@ static unsigned int psb_poll(struct file *filp, struct poll_table_struct *wait)
 static int psb_driver_open(struct drm_device *dev, struct drm_file *priv)
 {
 	DRM_DEBUG("\n");
-	return PVRSRVOpen(dev, priv);
+	return PVRSRVDrmOpen(dev, priv);
 }
 
 static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
