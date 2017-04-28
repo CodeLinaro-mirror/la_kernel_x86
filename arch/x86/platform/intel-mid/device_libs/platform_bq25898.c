@@ -29,6 +29,7 @@
 #define BQ25898_REG05_RESTORE_VALUE	0x00		/* PRECHARGE_CUR = 64mA, TERM_CUR = 64mA */
 #define BQ25898_REG06_RESTORE_VALUE	0x83		/* VREG = 4.352V, BATLOWV = 3.0V, VRECHG = 200mV*/
 #define BQ25898_REG0D_RESTORE_VALUE	0x94		/* FORCE_VINDPM = 1, VINDPM = 4.6V */
+#define BQ25898_REG0D_RESTORE_VALUE_SHA	0x8f		/* FORCE_VINDPM = 1, VINDPM = 4.1V */
 
 /*
  * Extract of the documentation:
@@ -89,6 +90,11 @@ void __initdata *bq25898_platform_data(void *info)
 		bq25898_pdata.is_pmic_notifier = 1;
 	}
 	bq25898_pdata.enable_postcharge = true;
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG))
+		bq25898_pdata.use_vindpm_min_value = true;
+	else
+		bq25898_pdata.use_vindpm_min_value = false;
 	bq25898_pdata.reg_config.reg00 = BQ25898_REG00_RESTORE_VALUE;
 	if (INTEL_MID_BOARD(2, PHONE, MRFL, SPL, PRO) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, SPL, ENG))
@@ -97,7 +103,11 @@ void __initdata *bq25898_platform_data(void *info)
 		bq25898_pdata.reg_config.reg04 = BQ25898_REG04_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg05 = BQ25898_REG05_RESTORE_VALUE;
 	bq25898_pdata.reg_config.reg06 = BQ25898_REG06_RESTORE_VALUE;
-	bq25898_pdata.reg_config.reg0d = BQ25898_REG0D_RESTORE_VALUE;
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, SHA, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, SHA, ENG))
+		bq25898_pdata.reg_config.reg0d = BQ25898_REG0D_RESTORE_VALUE_SHA;
+	else
+		bq25898_pdata.reg_config.reg0d = BQ25898_REG0D_RESTORE_VALUE;
 
 	return &bq25898_pdata;
 }

@@ -36,6 +36,7 @@ struct bq25898_plat_data {
 	int gpio_charger_int_n;
 	int is_pmic_notifier;
 	bool enable_postcharge;
+	bool use_vindpm_min_value;
 	struct restore_reg_config reg_config;
 
 	int (*enable_charging) (bool val);

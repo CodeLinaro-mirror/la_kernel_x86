@@ -79,6 +79,7 @@
 #define BQ25898_I2C_SLAVE_ADDR			0x6B
 
 #define BQ25898_VINDPM_ADDED_VALUE		400
+#define BQ25898_VINDPM_MIN_VALUE		4100
 #define BQ25898_VINDPM_REG_OFFSET		2600
 #define BQ25898_VINDPM_REG_RATIO		100
 #define BQ25898_VINDPM_TO_REG(x)		(((x) - BQ25898_VINDPM_REG_OFFSET) / BQ25898_VINDPM_REG_RATIO)
@@ -2422,8 +2423,12 @@ static void bq25898_sw_batmon_worker(struct work_struct *work)
 	val = bq25898_rege_convert_uv(ret)/1000;
 
 	/* Set VINDPM */
-	/* VBAT + 400mV */
+	/* val is VBAT + 400mV */
 	val += BQ25898_VINDPM_ADDED_VALUE;
+	/* use of vindpm min value: set VINDPM to max of val and 4100 */
+	if (chip->pdata->use_vindpm_min_value && (val < BQ25898_VINDPM_MIN_VALUE))
+		val = BQ25898_VINDPM_MIN_VALUE;
+
 	/* Write in register (Absolute + Threshold) */
 	/* if val < 3.9V then it is clamped to 3.9V (done at HW level) */
 	dev_dbg(&chip->client->dev, "writing VINDPM reg0D : 0x%02x\n", BQ25898_VINDPM_TO_REG(val) | FORCE_VINDPM);
