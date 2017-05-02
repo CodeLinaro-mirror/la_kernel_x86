@@ -1420,7 +1420,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 			atomic64_read(&sender->te_seq)) {
 			mutex_unlock(&sender->lock);
 			if (dev_priv->b_async_flip_enable)
-				DRM_INFO("reject write_mem_start last_screen_update[%ld], te_seq[%ld]\n",
+				DRM_INFO("reject write_mem_start last_screen_update[%lld], te_seq[%lld]\n",
 						atomic64_read(&sender->last_screen_update), atomic64_read(&sender->te_seq));
 			return -EAGAIN;
 		}

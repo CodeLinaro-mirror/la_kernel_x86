@@ -76,41 +76,11 @@ int auo4x4_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (err)
 		goto ic_init_err;
 
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x05, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x07, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0x07, 0x4f, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x0A, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-			0x1c, 0x1b, 1,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
-
-	err = mdfld_dsi_send_mcs_short_lp(sender,
-		0xfe, 0x00, 1,
-		MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		goto ic_init_err;
+	/*
+	 * Sleep Out command can not be sent for 120msec after releasing RESX pin.
+	 * Since after relasing RESX pin, we have 5msec delay ahead. Here 115msec is enough.
+	 */
+	msleep(115);
 
 	/* set sleep-out */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
@@ -121,8 +91,6 @@ int auo4x4_cmd_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		__func__, __LINE__);
 		goto ic_init_err;
 	}
-
-	msleep(130);
 
 	return 0;
 
@@ -216,8 +184,6 @@ int auo4x4_cmd_power_on(
 
 	PSB_DEBUG_ENTRY("\n");
 
-	msleep(10);
-
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		write_mode_page, 0x00, 1,
 		MDFLD_DSI_SEND_PACKAGE);
@@ -276,8 +242,6 @@ static int auo4x4_cmd_power_off(
 		return -EINVAL;
 	}
 
-	msleep(10);
-
 	/* set TE off */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		set_tear_off, 0x00, 0,
@@ -297,6 +261,13 @@ static int auo4x4_cmd_power_off(
 		goto power_off_err;
 	}
 
+	/*
+	 * Host processor must wait 120msec after sending a Sleep Out command
+	 * beforing sending a Sleep-In command. Here we can reduce the delay,
+	 * since when cpu is here, Sleep Out command has been sent out for a long time.
+	 */
+	msleep(120);
+
 	/* set sleep-in */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 		enter_sleep_mode, 0x00, 0,
@@ -307,11 +278,10 @@ static int auo4x4_cmd_power_off(
 		goto power_off_err;
 	}
 
-	msleep(120);
+	msleep(5);
 
 	if (mipi_reset_gpio > 0) {
 		gpio_set_value(mipi_reset_gpio, 0);
-		msleep(1);
 	}
 	/* ensure VCI is low 10ms earlier than VDDIO */
 	if (disp0_enable > 0) {
@@ -360,11 +330,14 @@ int auo4x4_cmd_panel_reset(
 
 	gpio_direction_output(mipi_reset_gpio, 0);
 
-	usleep_range(11000, 12000);
+	/* reset low pulse width must be greater than 10us */
+	usleep_range(100, 200);
 
 	gpio_set_value(mipi_reset_gpio, 1);
-
-	usleep_range(21000, 22000);
+	/*
+	 * After releasing RESX, it's necessary to wait 5msec before sending commands.
+	 */
+	usleep_range(5000, 6000);
 
 	return 0;
 }
@@ -384,10 +357,13 @@ int auo4x4_cmd_exit_deep_standby(
 		gpio_set_value(disp0_enable, 1);
 	}
 
-	usleep_range(11000, 12000);
+	usleep_range(31000, 32000);
 
 	gpio_set_value(mipi_reset_gpio, 1);
-	usleep_range(21000, 22000);
+	/*
+	 * After releasing RESX, it's necessary to wait 5msec before sending commands.
+	 */
+	usleep_range(5000, 6000);
 
 	return 0;
 }
