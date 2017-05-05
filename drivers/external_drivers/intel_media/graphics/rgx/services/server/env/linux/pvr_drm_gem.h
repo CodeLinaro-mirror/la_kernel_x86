@@ -156,6 +156,9 @@ extern struct drm_driver sPVRDRMDriver;
 int PVRSRVOpen(struct drm_device *dev, struct drm_file *file);
 void PVRSRVRelease(struct drm_device *dev, struct drm_file *file);
 
+int pvr_init(void);
+void pvr_exit(void);
+
 #if defined(PDUMP)
 int dbgdrv_init(void);
 void dbgdrv_cleanup(void);

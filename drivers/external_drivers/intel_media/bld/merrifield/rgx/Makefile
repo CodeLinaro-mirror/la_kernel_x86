@@ -288,7 +288,9 @@ $(DRIVER_NAME)-y += \
 
 # SUPPORT_NATIVE_FENCE_SYNC
 $(DRIVER_NAME)-y += \
-	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync.o
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_drm.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_platform_drv.o	\
 
 $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
 	$(RGXDIR)/services/server/common/ri_server.o

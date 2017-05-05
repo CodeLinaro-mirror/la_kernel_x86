@@ -74,8 +74,9 @@ PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void)
 {
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
-	if (gpsPVRDRMDev == NULL || psPVRSRVData)
+	if (gpsPVRDRMDev == NULL || psPVRSRVData == NULL) {
 		return NULL;
+	}
 
 	if (pDevNode == NULL) {
 		pDevNode = List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,

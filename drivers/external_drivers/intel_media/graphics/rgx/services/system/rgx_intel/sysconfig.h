@@ -90,28 +90,6 @@ static PHYS_HEAP_FUNCTIONS gsPhysHeapFuncs = {
 	.pfnDevPAddrToCpuPAddr	= SysDevPAddrToCpuPAddr,
 };
 
-static PVRSRV_DEVICE_CONFIG sDevices[] =
-{
-       /* RGX device */
-       {
-               .pszName                = "RGX",
-
-               /* Device setup information */
-               .sRegsCpuPBase          = { 0 },
-               .ui32RegsSize           = 0,
-               .ui32IRQ                = 0,
-
-               /* No power management on no HW system */
-               .pfnPrePowerState       = SysDevicePrePowerState,
-               .pfnPostPowerState      = SysDevicePostPowerState,
-
-               .hDevData               = &sRGXData,
-               .hSysData               = NULL,
-
-               .aui32PhysHeapID = { 0, 0 },
-       }
-};
-
 #if defined(TDMETACODE)
 #error "TDMETACODE Need to be implemented or not supported in services/3rdparty/intel_drm/sysconfig.h"
 #else
@@ -133,6 +111,39 @@ static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
     1, /* BIF tiling heap 2 x-stride */
     2, /* BIF tiling heap 3 x-stride */
     3  /* BIF tiling heap 4 x-stride */
+};
+
+static PVRSRV_DEVICE_CONFIG sDevices[] =
+{
+       /* RGX device */
+       {
+               .pszName                = "RGX",
+
+               /* Device setup information */
+               .sRegsCpuPBase          = { 0 },
+               .ui32RegsSize           = 0,
+               .ui32IRQ                = 0,
+
+               /* No power management on no HW system */
+               .pfnPrePowerState       = SysDevicePrePowerState,
+               .pfnPostPowerState      = SysDevicePostPowerState,
+
+               .hDevData               = &sRGXData,
+               .pfnClockFreqGet        = NULL,
+               .pfnSysDevFeatureDepInit = NULL,
+               .hSysData               = NULL,
+               .pvOSDevice             = NULL,
+               .psDevNode              = NULL,
+               .aui32PhysHeapID = { 0, 0 },
+               .pasPhysHeaps = gsPhysHeapConfig,
+               .ui32PhysHeapCount = IMG_ARR_NUM_ELEMS(gsPhysHeapConfig),
+			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = 0,
+			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] = 0,
+			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = 0,
+	           .eBIFTilingMode = RGXFWIF_BIFTILINGMODE_NONE,
+	           .pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides,
+	           .ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides)
+       }
 };
 
 #define VENDOR_ID_MERRIFIELD        0x8086

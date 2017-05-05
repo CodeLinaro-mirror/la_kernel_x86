@@ -61,14 +61,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ion_support.h"
 #endif
 
-typedef struct _PLAT_DATA_
-{
-	IMG_HANDLE	hRGXPCI;
-
-	struct drm_device *psDRMDev;
-} PLAT_DATA;
-
-PLAT_DATA *gpsPlatData = NULL;
+IMG_HANDLE	hRGXPCI;
 extern struct drm_device *gpsPVRDRMDev;
 
 /* Unused globals to keep link with 3rdparty components happy */
@@ -162,15 +155,69 @@ static PVRSRV_ERROR SysDevicePostPowerState(
 
 PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 {
-	PVR_UNREFERENCED_PARAMETER(pvOSDevice);
-	PVR_UNREFERENCED_PARAMETER(ppsDevConfig);
+	IMG_UINT32 ui32MaxOffset;
+	IMG_UINT32 ui32BaseAddr = 0;
+	PVRSRV_ERROR eError = PVRSRV_OK;
 
-	return PVRSRV_OK;
+	if (sDevices[0].pvOSDevice || !gpsPVRDRMDev)
+		return PVRSRV_ERROR_INVALID_DEVICE;
+
+	sDevices[0].pvOSDevice = pvOSDevice;
+
+	hRGXPCI = OSPCISetDev((void *)gpsPVRDRMDev->pdev, 0);
+	if (!hRGXPCI)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Failed to acquire PCI device"));
+		eError = PVRSRV_ERROR_PCI_DEVICE_NOT_FOUND;
+		goto e1;
+	}
+
+	ui32MaxOffset = OSPCIAddrRangeLen(hRGXPCI, 0);
+	if (ui32MaxOffset < (RGX_REG_OFFSET + RGX_REG_SIZE))
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device memory region 0x%08x isn't big enough", ui32MaxOffset));
+		eError = PVRSRV_ERROR_PCI_REGION_TOO_SMALL;
+		goto e1;
+	}
+	PVR_DPF((PVR_DBG_WARNING,"PCIInitDev: Device memory region len 0x%08x", ui32MaxOffset));
+
+	/* Reserve the address range */
+	if (OSPCIRequestAddrRange(hRGXPCI, 0) != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device memory region not available"));
+		eError =  PVRSRV_ERROR_PCI_REGION_UNAVAILABLE;
+		goto e1;
+	}
+
+	ui32BaseAddr = OSPCIAddrRangeStart(hRGXPCI, 0);
+
+	if (OSPCIIRQ(hRGXPCI, &sDevices[0].ui32IRQ) != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Couldn't get IRQ"));
+		eError = PVRSRV_ERROR_INVALID_DEVICE;
+		goto e0;
+	}
+	PVR_DPF((PVR_DBG_WARNING, "PCIInitDev: BaseAddr 0x%08x, EndAddr 0x%llx, IRQ %d",
+			ui32BaseAddr, OSPCIAddrRangeEnd(hRGXPCI, 0), sDevices[0].ui32IRQ));
+
+	sDevices[0].sRegsCpuPBase.uiAddr = ui32BaseAddr + RGX_REG_OFFSET;
+	sDevices[0].ui32RegsSize = RGX_REG_SIZE;
+	PVR_DPF((PVR_DBG_WARNING, "PCIInitDev: sRegsCpuPBase 0x%llx, size 0x%x",
+			sDevice[0].sRegsCpuPBase.uiAddr, sDevice[0].ui32RegsSize));
+	*ppsDevConfig = &sDevices[0];
+	goto e1;
+e0:
+	OSPCIReleaseAddrRange(hRGXPCI, 0);
+	OSPCIReleaseDev(hRGXPCI);
+e1:
+	return eError;
 }
 
 void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
-	PVR_UNREFERENCED_PARAMETER(psDevConfig);
+	OSPCIReleaseAddrRange(hRGXPCI, 0);
+	OSPCIReleaseDev(hRGXPCI);
+	psDevConfig->pvOSDevice = NULL;
 }
 
 typedef int (*psb_irq_handler_t)(void *data);

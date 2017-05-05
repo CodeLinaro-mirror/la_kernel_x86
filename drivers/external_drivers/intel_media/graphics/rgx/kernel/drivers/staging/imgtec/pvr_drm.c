@@ -68,6 +68,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVR_DRM_DRIVER_DESC "Imagination Technologies PVR DRM"
 #define	PVR_DRM_DRIVER_DATE "20110701"
 
+static struct _PVRSRV_DEVICE_NODE_ *gpsdev_node;
 
 static int pvr_pm_suspend(struct device *dev)
 {
@@ -75,7 +76,7 @@ static int pvr_pm_suspend(struct device *dev)
 
 	DRM_DEBUG_DRIVER("device %p\n", dev);
 
-	return PVRSRVCommonDeviceSuspend(ddev->dev_private);
+	return PVRSRVCommonDeviceSuspend(gpsdev_node);
 }
 
 static int pvr_pm_resume(struct device *dev)
@@ -84,7 +85,7 @@ static int pvr_pm_resume(struct device *dev)
 
 	DRM_DEBUG_DRIVER("device %p\n", dev);
 
-	return PVRSRVCommonDeviceResume(ddev->dev_private);
+	return PVRSRVCommonDeviceResume(gpsdev_node);
 }
 
 const struct dev_pm_ops pvr_pm_ops = {
@@ -92,10 +93,9 @@ const struct dev_pm_ops pvr_pm_ops = {
 	.resume = pvr_pm_resume,
 };
 
-
-static int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
+ int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
 {
-	struct _PVRSRV_DEVICE_NODE_ *dev_node;
+	struct _PVRSRV_DEVICE_NODE_ *dev_node = NULL;
 	enum PVRSRV_ERROR srv_err;
 	int err;
 
@@ -126,8 +126,7 @@ static int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
 		goto err_device_destroy;
 	}
 
-	drm_mode_config_init(ddev);
-	ddev->dev_private = dev_node;
+	gpsdev_node = dev_node;
 
 	return 0;
 
@@ -141,11 +140,10 @@ static int pvr_drm_unload(struct drm_device *ddev)
 {
 	DRM_DEBUG_DRIVER("device %p\n", ddev->dev);
 
-	PVRSRVCommonDeviceDeinit(ddev->dev_private);
+	PVRSRVCommonDeviceDeinit(gpsdev_node);
 
-	PVRSRVDeviceDestroy(ddev->dev_private);
-	ddev->dev_private = NULL;
-
+	PVRSRVDeviceDestroy(gpsdev_node);
+	gpsdev_node = NULL;
 	return 0;
 }
 
@@ -158,7 +156,7 @@ static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 		return -ENOENT;
 	}
 
-	err = PVRSRVCommonDeviceOpen(ddev->dev_private, dfile);
+	err = PVRSRVCommonDeviceOpen(gpsdev_node, dfile);
 	if (err)
 		module_put(THIS_MODULE);
 
@@ -167,7 +165,7 @@ static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 
 static void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
 {
-	PVRSRVCommonDeviceRelease(ddev->dev_private, dfile);
+	PVRSRVCommonDeviceRelease(gpsdev_node, dfile);
 
 	module_put(THIS_MODULE);
 }

@@ -45,7 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_defs.h"
 #include "lock.h"
 #include "pvr_drm_ext.h"
-#include "pvrsrv_interface.h"
+#include "pvr_drm_gem.h"
 #include "pvr_bridge.h"
 #include "srvkm.h"
 #include "dc_mrfld.h"
@@ -63,6 +63,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "connection_server.h"
 #include "pmr_os.h"
 #include "private_data.h"
+#include "module_common.h"
 
 #define PVR_DRM_SRVKM_CMD       DRM_PVR_RESERVED1
 #define PVR_DRM_IS_MASTER_CMD   DRM_PVR_RESERVED4
@@ -113,6 +114,17 @@ struct pci_dev *gpsPVRLDMDev;
 struct drm_device *gpsPVRDRMDev;
 
 #define PVR_DRM_FILE struct drm_file *
+int pvr_drm_load(struct drm_device *dev, unsigned long flags);
+
+int __pvr_init(struct drm_device *dev, unsigned long flags)
+{
+	int err;
+
+	err = PVRSRVCommonDriverInit();
+	if (err)
+		return err;
+	return pvr_drm_load(dev, flags);
+}
 
 int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 {
@@ -131,7 +143,7 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	}
 #endif
 
-	iRes = PVRSRVCommonDriverInit();
+	iRes = __pvr_init(dev, flags);
 	if (iRes != 0)
 	{
 		goto exit_dbgdrv_cleanup;
@@ -144,9 +156,8 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	}
 
 	goto exit;
-
 exit_pvrcore_cleanup:
-	PVRSRVCommonDriverDeinit();
+	pvr_exit();
 exit_dbgdrv_cleanup:
 #if defined(PDUMP)
 	dbgdrv_cleanup();
@@ -172,7 +183,7 @@ int PVRSRVDrmUnload(struct drm_device *dev)
 		DRM_ERROR("%s: can't deinit display class\n", __FUNCTION__);
 	}
 
-	PVRSRVCommonDriverDeinit();
+	pvr_exit();
 #if defined(PDUMP)
 	dbgdrv_cleanup();
 #endif

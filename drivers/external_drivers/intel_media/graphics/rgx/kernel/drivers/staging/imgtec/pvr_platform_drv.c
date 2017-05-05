@@ -207,7 +207,11 @@ static struct platform_driver pvr_platform_driver = {
 	.shutdown		= pvr_shutdown,
 };
 
+#if defined(SUPPORT_DRM)
+int pvr_init(void)
+#else
 static int __init pvr_init(void)
+#endif
 {
 	int err;
 
@@ -230,7 +234,11 @@ static int __init pvr_init(void)
 	return pvr_devices_register();
 }
 
+#if defined(SUPPORT_DRM)
+void pvr_exit(void)
+#else
 static void __exit pvr_exit(void)
+#endif
 {
 	DRM_DEBUG_DRIVER("\n");
 
@@ -241,5 +249,7 @@ static void __exit pvr_exit(void)
 	DRM_DEBUG_DRIVER("done\n");
 }
 
+#if !defined(SUPPORT_DRM)
 late_initcall(pvr_init);
 module_exit(pvr_exit);
+#endif
