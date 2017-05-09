@@ -203,6 +203,7 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define ST_LSM6DS3H_SELFTEST_GYRO_MIN			2142
 #define ST_LSM6DS3H_SELFTEST_GYRO_MAX			10000
 #define CALIBRATE_ODR_SET_VALUE					0X1C
+#define ACCEL_CONFIG_SET_VALUE					0x3c
 /* CUSTOM VALUES FOR SIGNIFICANT MOTION SENSOR */
 #define ST_LSM6DS3H_SIGN_MOTION_EN_ADDR			0x19
 #define ST_LSM6DS3H_SIGN_MOTION_EN_MASK			0x01
@@ -296,7 +297,15 @@ DECLARE_BUILTIN_FIRMWARE(ST_LSM6DS3H_DATA_FW, st_lsm6ds3h_fw);
 #define SIGN_X_G			1
 #define SIGN_Y_G			1
 #define SIGN_Z_G			1
-#define ACCEL_SCOPE_SCALE	4
+#define ACCEL_FS_2G			1
+#define ACCEL_FS_4G			2
+#define ACCEL_FS_8G			4
+#define ACCEL_FS_16G		8
+#define ACCEL_FS_MASK_BIT_2G		0x00
+#define ACCEL_FS_MASK_BIT_4G		0x08
+#define ACCEL_FS_MASK_BIT_8G		0x0c
+#define ACCEL_FS_MASK_BIT_16G		0x04
+#define ACCEL_FS_XL					0x0c
 #define ST_LSM6DS3H_ACCEL_FS_2G_SENSITIVITY		61      /*  ug/LSB */
 #define ST_LSM6DS3H_DEV_ATTR_SAMP_FREQ() \
 		IIO_DEV_ATTR_SAMP_FREQ(S_IWUSR | S_IRUGO, \
@@ -3385,6 +3394,8 @@ ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
 	int err;
 	s32 no_cali[3] = {0};
 	u8 calibrate_odr_reg = CALIBRATE_ODR_SET_VALUE;
+	u8 accel_config_reg_value = 0x00;
+	u8 ACCEL_SCOPE_SCALE;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
@@ -3392,6 +3403,21 @@ ssize_t st_lsm6ds3h_sysfs_do_calibrate(struct device *dev,
 	if (err < 0) {
 		dev_err(sdata->cdata,"failed to write ST_LSM6DS3H_GYRO_ODR_ADDR\n");
 	}
+
+	err = sdata->cdata->tf->read(sdata->cdata, ST_LSM6DS3H_ACCEL_ODR_ADDR, 1, &accel_config_reg_value, true);
+	if (err < 0) {
+		dev_err(sdata->cdata, "failed to read ST_LSM6DS3H_ACCEL_ODR_ADDR register.\n");
+	}
+
+	if (ACCEL_FS_MASK_BIT_2G == (accel_config_reg_value & ACCEL_FS_XL))
+		ACCEL_SCOPE_SCALE = ACCEL_FS_2G;
+	else if (ACCEL_FS_MASK_BIT_4G == (accel_config_reg_value & ACCEL_FS_XL))
+		ACCEL_SCOPE_SCALE = ACCEL_FS_4G;
+	else if (ACCEL_FS_MASK_BIT_8G == (accel_config_reg_value & ACCEL_FS_XL))
+		ACCEL_SCOPE_SCALE = ACCEL_FS_8G;
+	else if (ACCEL_FS_MASK_BIT_16G == (accel_config_reg_value & ACCEL_FS_XL))
+		ACCEL_SCOPE_SCALE = ACCEL_FS_16G;
+
 	err = st_lsm6ds3h_average_sample(sdata, no_cali, CALIBRATE_SAMPLE_COUNT);
 	if (err < 0)
 		return err;
