@@ -162,6 +162,14 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	if (sDevices[0].pvOSDevice || !gpsPVRDRMDev)
 		return PVRSRV_ERROR_INVALID_DEVICE;
 
+#if defined(SUPPORT_ION)
+	eError = IonInit(NULL);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to initialise ION", __func__));
+		goto e1;
+	}
+#endif
 	sDevices[0].pvOSDevice = pvOSDevice;
 
 	hRGXPCI = OSPCISetDev((void *)gpsPVRDRMDev->pdev, 0);
