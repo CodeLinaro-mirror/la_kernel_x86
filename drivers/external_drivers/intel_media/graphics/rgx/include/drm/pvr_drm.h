@@ -55,6 +55,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #else
 #include <libdrm/drm.h>
 #endif
+#include "drm_shared.h"
 
 /*
  * IMPORTANT:
@@ -91,12 +92,10 @@ struct drm_pvr_dbgdrv_cmd {
  * DRM command numbers, relative to DRM_COMMAND_BASE.
  * These defines must be prefixed with "DRM_".
  */
-#define DRM_PVR_SRVKM_CMD		0 /* Used for PVR Services ioctls */
-#define DRM_PVR_DBGDRV_CMD		1 /* Debug driver (PDUMP) ioctls */
+#define DRM_PVR_SRVKM_CMD		DRM_PVR_RESERVED1 /* Used for PVR Services ioctls */
 
 
 /* These defines must be prefixed with "DRM_IOCTL_". */
 #define	DRM_IOCTL_PVR_SRVKM_CMD		DRM_IOWR(DRM_COMMAND_BASE + DRM_PVR_SRVKM_CMD, struct drm_pvr_srvkm_cmd)
-#define	DRM_IOCTL_PVR_DBGDRV_CMD	DRM_IOWR(DRM_COMMAND_BASE + DRM_PVR_DBGDRV_CMD, struct drm_pvr_dbgdrv_cmd)
 
 #endif /* defined(__PVR_DRM_H__) */

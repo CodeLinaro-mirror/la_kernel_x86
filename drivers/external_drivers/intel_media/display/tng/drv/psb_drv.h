@@ -90,7 +90,7 @@ enum enum_ports {
 #define FIX_TG_2D_CLOCKGATE
 #define OSPM_STAT
 
-#define DRIVER_NAME "pvrsrvkm"
+#define DRIVER_NAME PVR_DRM_NAME
 #define DRIVER_DESC "drm driver for the Intel GMA500"
 #define DRIVER_AUTHOR "Intel Corporation"
 #define OSPM_PROC_ENTRY "ospm"

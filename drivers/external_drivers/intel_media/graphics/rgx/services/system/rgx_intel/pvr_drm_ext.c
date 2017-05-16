@@ -64,13 +64,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr_os.h"
 #include "private_data.h"
 #include "module_common.h"
+#include "pvr_drm.h"
 
-#define PVR_DRM_SRVKM_CMD       DRM_PVR_RESERVED1
 #define PVR_DRM_IS_MASTER_CMD   DRM_PVR_RESERVED4
 #define PVR_DRM_DBGDRV_CMD      DRM_PVR_RESERVED6
 
-#define PVR_DRM_SRVKM_IOCTL \
-	DRM_IOW(DRM_COMMAND_BASE + PVR_DRM_SRVKM_CMD, PVRSRV_BRIDGE_PACKAGE)
 
 #define PVR_DRM_IS_MASTER_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_IS_MASTER_CMD)
@@ -96,7 +94,8 @@ static struct drm_ioctl_desc pvr_ioctls[] = {
 };
 #else
 static struct drm_ioctl_desc pvr_ioctls[] = {
-	{PVR_DRM_SRVKM_IOCTL, DRM_UNLOCKED, PVRSRV_BridgeDispatchKM, "PVR_DRM_SRVKM_IOCTL"},
+	{DRM_IOCTL_PVR_SRVKM_CMD, DRM_RENDER_ALLOW | DRM_UNLOCKED, PVRSRV_BridgeDispatchKM,
+	"DRM_IOCTL_PVR_SRVKM_CMD"},
 	{PVR_DRM_IS_MASTER_IOCTL, DRM_MASTER, PVRDRMIsMaster, "PVR_DRM_IS_MASTER_IOCTL"},
 #if defined(PDUMP)
 	{PVR_DRM_DBGDRV_IOCTL, 0, dbgdrv_ioctl. "PVR_DRM_DBGDRV_IOCTL"}

@@ -4386,12 +4386,8 @@ static void __exit psb_exit(void)
 
 #ifdef CONFIG_COMPAT
 
-#define PVR_DRM_SRVKM_CMD       DRM_PVR_RESERVED1
 #define PVR_DRM_IS_MASTER_CMD   DRM_PVR_RESERVED4
 #define PVR_DRM_DBGDRV_CMD      DRM_PVR_RESERVED6
-
-#define PVR_DRM_SRVKM_IOCTL \
-	DRM_IOW(DRM_COMMAND_BASE + PVR_DRM_SRVKM_CMD, PVRSRV_BRIDGE_PACKAGE)
 
 #define PVR_DRM_IS_MASTER_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_IS_MASTER_CMD)
@@ -4420,38 +4416,6 @@ typedef struct pvrsrv_bridge_package_32
 	u32	pvParamOut;			/*!< output data buffer */
 	u32	ui32OutBufferSize;		/*!< size of output data buf */
 } pvrsrv_bridge_package_32_t;
-
-int compat_PVRSRV_BridgeDispatchKM2(struct file *filp, unsigned int cmd,
-					unsigned long arg)
-{
-	int retval;
-	pvrsrv_bridge_package_32_t req32;
-	PVRSRV_BRIDGE_PACKAGE __user *request;
-
-	if (copy_from_user(&req32, (void __user *)arg, sizeof(req32))) {
-		printk(KERN_ERR "%s: copy_from_user failed\n", __func__);
-		return -EFAULT;
-	}
-	request = compat_alloc_user_space(sizeof(*request));
-	if (!access_ok(VERIFY_WRITE, request, sizeof(*request))
-		|| __put_user(req32.ui32BridgeID, &request->ui32BridgeID)
-		|| __put_user(req32.ui32FunctionID, &request->ui32FunctionID)
-		|| __put_user(req32.ui32Size, &request->ui32Size)
-		|| __put_user((void __user *)(unsigned long)req32.pvParamIn, &request->pvParamIn)
-		|| __put_user(req32.ui32InBufferSize, &request->ui32InBufferSize)
-		|| __put_user((void __user *)(unsigned long)req32.pvParamOut, &request->pvParamOut)
-		|| __put_user(req32.ui32OutBufferSize, &request->ui32OutBufferSize)) {
-		printk(KERN_ERR "%s: __put_user failed\n", __func__);
-		return -EFAULT;
-	}
-
-	/* Correct cmd with the proper size */
-	cmd &= ~(_IOC_SIZEMASK << _IOC_SIZESHIFT);
-	cmd |= (sizeof(*request) << _IOC_SIZESHIFT);
-
-	retval = drm_ioctl(filp, cmd, (unsigned long)request);
-	return retval;
-}
 
 struct drm_psb_register_rw_arg_32 {
 	uint32_t b_force_hw_on;
@@ -4824,7 +4788,6 @@ int compat_PVRSRV_BridgeDispatchKM5(struct file *filp, unsigned int cmd, unsigne
 }
 
 static drm_ioctl_compat_t *psb_compat_ioctls[] = {
-	[PVR_DRM_SRVKM_CMD] = compat_PVRSRV_BridgeDispatchKM2,
 	[DRM_PSB_REGISTER_RW] = compat_PVRSRV_BridgeDispatchKM3,
 	[DRM_PSB_VSYNC_SET] = compat_PVRSRV_BridgeDispatchKM4,
 	[DRM_PSB_GTT_MAP] = compat_PVRSRV_BridgeDispatchKM5,
