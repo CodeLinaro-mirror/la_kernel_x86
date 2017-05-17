@@ -70,6 +70,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 static struct _PVRSRV_DEVICE_NODE_ *gpsdev_node;
 
+void *pvr_device_acquire(void)
+{
+	return (void *)gpsdev_node;
+}
+
 static int pvr_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);

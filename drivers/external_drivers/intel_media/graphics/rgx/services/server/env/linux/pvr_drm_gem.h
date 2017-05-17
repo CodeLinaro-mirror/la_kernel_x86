@@ -158,6 +158,7 @@ void PVRSRVRelease(struct drm_device *dev, struct drm_file *file);
 
 int pvr_init(void);
 void pvr_exit(void);
+void *pvr_device_acquire(void);
 
 #if defined(PDUMP)
 int dbgdrv_init(void);
