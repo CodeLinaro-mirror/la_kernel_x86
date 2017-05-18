@@ -766,6 +766,11 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 		return DWC_STATE_B_PERIPHERAL;
 	}
 
+	if (user_events & USER_REBOOT_EVENT) {
+		otg_dbg(otg, "USER_REBOOT_EVENT\n");
+		return DWC_STATE_EXIT;
+	}
+
 	return DWC_STATE_INVALID;
 }
 
@@ -1408,6 +1413,12 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 static void dwc_otg_shutdown(struct pci_dev *pdev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	/* Notify the reboot */
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->user_events |= USER_REBOOT_EVENT;
+	spin_unlock_irqrestore(&otg->lock, flags);
 
 	/* stop main thread, ignore notification events */
 	stop_main_thread(otg);
