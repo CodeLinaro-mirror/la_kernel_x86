@@ -142,6 +142,12 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	}
 #endif
 
+#ifdef	CONFIG_PCI
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)) && \
+	(LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+	dev->driver->set_busid = drm_pci_set_busid;
+#endif
+#endif
 	iRes = __pvr_init(dev, flags);
 	if (iRes != 0)
 	{
