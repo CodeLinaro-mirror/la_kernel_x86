@@ -746,7 +746,7 @@ static PVRSRV_ERROR _DCCreatePMR(IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
 	PHYS_HEAP *psPhysHeap;
 	IMG_DEVMEM_SIZE_T uiBufferSize;
 	PVRSRV_ERROR eError;
-	IMG_UINT32 MappingTable;
+	IMG_UINT32 MappingTable = 0;
 	PVRSRV_DEVICE_NODE* pDeviceNode;
 
 	/*
