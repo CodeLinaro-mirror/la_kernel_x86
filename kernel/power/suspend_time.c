@@ -21,6 +21,7 @@
 #include <linux/seq_file.h>
 #include <linux/syscore_ops.h>
 #include <linux/time.h>
+#include <linux/module.h>
 
 static struct timespec suspend_time_before;
 static unsigned int time_in_suspend_bins[32];
@@ -57,7 +58,7 @@ static int __init suspend_time_debug_init(void)
 {
 	struct dentry *d;
 
-	d = debugfs_create_file("suspend_time", 0755, NULL, NULL,
+	d = debugfs_create_file("suspend_time", 0444, NULL, NULL,
 		&suspend_time_debug_fops);
 	if (!d) {
 		pr_err("Failed to create suspend_time debug file\n");
