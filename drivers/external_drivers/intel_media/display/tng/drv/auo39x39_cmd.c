@@ -371,12 +371,40 @@ static int auo39x39_cmd_enter_low_power(struct mdfld_dsi_config *dsi_config)
 
 	PSB_DEBUG_ENTRY("\n");
 
+
+	/* enter page mode 01 */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			write_mode_page, 0x01, 1, MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: enter page mode 01\n", __func__, __LINE__);
+		goto low_power_err;
+	}
+
+	/* enter low frame rate 15HZ */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+		0x30, 0x43, 1, MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: enter low frame rate 15HZ\n", __func__, __LINE__);
+		goto low_power_err;
+	}
+
+	/* enter page mode 00 */
+	err = mdfld_dsi_send_mcs_short_lp(sender,
+			write_mode_page, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s: %d: enter page mode 00\n", __func__, __LINE__);
+		goto low_power_err;
+	}
+
+	/* enter idle mode */
 	err = mdfld_dsi_send_mcs_short_lp(sender,
 			idle_mode_on, 0x00, 1, MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("%s: %d: idle_mode_on\n", __func__, __LINE__);
+		goto low_power_err;
 	}
 
+low_power_err:
 	return err;
 }
 
