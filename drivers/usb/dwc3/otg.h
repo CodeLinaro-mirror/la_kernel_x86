@@ -423,6 +423,7 @@ struct dwc3_otg_hw_ops {
 #define OTG_USB3_150MA                          0xfff2
 #define OTG_USB2_500MA                          0xfff3
 #define OTG_USB3_900MA                          0xfff4
+#define OTG_USB2_2MA                            0xfff5
 #define OTG_DEVICE_SUSPEND                      0xfffe
 #define OTG_DEVICE_RESUME                       0xffff
 

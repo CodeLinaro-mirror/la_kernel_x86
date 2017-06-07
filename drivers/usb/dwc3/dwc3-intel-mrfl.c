@@ -419,12 +419,11 @@ static int dwc3_intel_set_power(struct usb_phy *_otg,
 
 	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
 
-	if (otg->charging_cap.chrg_type ==
-			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
-		return 0;
-	else if (otg->charging_cap.chrg_type !=
-			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) {
-		otg_err(otg, "%s: currently, chrg type is not SDP!\n",
+	if ((otg->charging_cap.chrg_type !=
+		POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
+		(otg->charging_cap.chrg_type !=
+		POWER_SUPPLY_CHARGER_TYPE_USB_CDP)) {
+		otg_err(otg, "%s: currently, chrg type is neither SDP nor CDP!\n",
 				__func__);
 		return -EINVAL;
 	}
@@ -442,14 +441,19 @@ static int dwc3_intel_set_power(struct usb_phy *_otg,
 		*/
 		if (!cap.ma) {
 			if (data->charging_compliance) {
-				cap.ma = 500;
+				if (otg->charging_cap.chrg_type ==
+					POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
+					cap.ma = 500;
+				else if (otg->charging_cap.chrg_type ==
+					POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
+					cap.ma = 1500;
 				cap.chrg_evt =
 					POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 			}
 		/* For standard SDP, if SMIP set, then ignore suspend */
 		} else if (data->charging_compliance)
 			return 0;
-		/* Stander SDP(cap.mA != 0) and SMIP not set.
+		/* Standard SDP(cap.mA != 0) and SMIP not set.
 		 * Should send 0mA with SUSPEND event
 		 */
 		else
@@ -479,6 +483,9 @@ static int dwc3_intel_set_power(struct usb_phy *_otg,
 
 	/* Covert macro to integer number*/
 	switch (ma) {
+	case OTG_USB2_2MA:
+		ma = 2;
+		break;
 	case OTG_USB2_100MA:
 		ma = 100;
 		break;
@@ -486,7 +493,12 @@ static int dwc3_intel_set_power(struct usb_phy *_otg,
 		ma = 150;
 		break;
 	case OTG_USB2_500MA:
-		ma = 500;
+		if (otg->charging_cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
+			ma = 500;
+		else if (otg->charging_cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
+			ma = 1500;
 		break;
 	case OTG_USB3_900MA:
 		ma = 900;

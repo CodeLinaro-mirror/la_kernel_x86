@@ -2101,6 +2101,9 @@ static int dwc3_vbus_draw(struct usb_gadget *g, unsigned ma)
 	case USB2_I_UNIT_OTG:
 		ma_otg = OTG_USB2_100MA;
 		break;
+	case USB2_I_MIN_OTG:
+		ma_otg = OTG_USB2_2MA;
+		break;
 	default:
 		dev_err(dwc->dev,
 			"wrong charging current reported: %dmA\n", ma);
