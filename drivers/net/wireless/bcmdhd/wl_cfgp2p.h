@@ -207,10 +207,6 @@ enum wl_cfgp2p_status {
 	or kernel version is 3.8.0 or above
 #endif /* WL_ENABLE_P2P_IF && (WL_CFG80211_P2P_DEV_IF || (LINUX_VERSION >= VERSION(3, 8, 0))) */
 
-#if !defined(WLP2P) && (defined(WL_ENABLE_P2P_IF) || defined(WL_CFG80211_P2P_DEV_IF))
-#error WLP2P not defined
-#endif /* !WLP2P && (WL_ENABLE_P2P_IF || WL_CFG80211_P2P_DEV_IF) */
-
 #if defined(WL_CFG80211_P2P_DEV_IF)
 #define bcm_struct_cfgdev	struct wireless_dev
 #else

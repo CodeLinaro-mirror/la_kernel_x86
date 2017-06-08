@@ -1652,26 +1652,7 @@ wl_cfgp2p_bss(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 bsscfg_idx,
 s32
 wl_cfgp2p_supported(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 {
-	s32 ret = BCME_OK;
-	s32 p2p_supported = 0;
-	ret = wldev_iovar_getint(ndev, "p2p",
-	               &p2p_supported);
-	if (ret < 0) {
-		if (ret == BCME_UNSUPPORTED) {
-			CFGP2P_INFO(("p2p is unsupported\n"));
-			return 0;
-		} else {
-			CFGP2P_ERR(("cfg p2p error %d\n", ret));
-			return ret;
-		}
-	}
-	if (p2p_supported == 1) {
-		CFGP2P_INFO(("p2p is supported\n"));
-	} else {
-		CFGP2P_INFO(("p2p is unsupported\n"));
-		p2p_supported = 0;
-	}
-	return p2p_supported;
+	return 0;
 }
 /* Cleanup P2P resources */
 s32

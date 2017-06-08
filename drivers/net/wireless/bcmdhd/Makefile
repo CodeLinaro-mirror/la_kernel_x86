@@ -5,7 +5,7 @@
 
 DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
 	-DBCMDONGLEHOST -DUNRELEASEDCHIP -DBCMDMA32 -DBCMFILEIMAGE            \
-	-DDHDTHREAD -DSHOW_EVENTS -DBCMDBG -DWLP2P                            \
+	-DDHDTHREAD -DSHOW_EVENTS -DBCMDBG                                    \
 	-DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT                                \
 	-DKEEP_ALIVE -DCSCAN -DPKT_FILTER_SUPPORT                             \
 	-DEMBEDDED_PLATFORM -DPNO_SUPPORT                                     \
