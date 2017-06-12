@@ -302,9 +302,9 @@ static void _SCPDumpFence(const char *psczName, struct sync_fence *psFence)
 	char szVal2[64]  = { '\0' };
 	char szVal3[132] = { '\0' };
 
-	PVR_DUMPDEBUG_LOG(("\t  %s: [%p] %s: %s", psczName, psFence, psFence->name,
+	PVR_DUMPDEBUG_LOG("\t  %s: [%p] %s: %s", psczName, psFence, psFence->name,
 			 (atomic_read(&psFence->status) >  0 ? "signaled" :
-			  atomic_read(&psFence->status) == 0 ? "active" : "error")));
+			  atomic_read(&psFence->status) == 0 ? "active" : "error"));
 	/* pt_list_head removed, use num_fences to trace all sync_pt within */
 	for (i=0; i<psFence->num_fences; i++)
 	{
@@ -319,11 +319,11 @@ static void _SCPDumpFence(const char *psczName, struct sync_fence *psFence)
 			stl->ops->timeline_value_str(stl, szVal2, sizeof(szVal2));
 			snprintf(szVal3, sizeof(szVal3), ": %s / %s", szVal1, szVal2);
 		}
-		PVR_DUMPDEBUG_LOG(("\t    %s %s%s%s", stl->name,
+		PVR_DUMPDEBUG_LOG("\t    %s %s%s%s", stl->name,
 				 (psPt->base.status >  0 ? "signaled" :
 				  psPt->base.status == 0 ? "active" : "error"),
 				 (psPt->base.status >  0 ? szTime : ""),
-				 szVal3));
+				 szVal3);
 	}
 
 }
@@ -443,7 +443,7 @@ static void _SCPDumpCommand(SCP_COMMAND *psCommand)
 	IMG_UINT32 i;
 	IMG_UINT32 ui32SyncAddr;
 
-    PVR_DUMPDEBUG_LOG(("\tCommand type = %d (@%p)", psCommand->ui32CmdType, psCommand));
+    PVR_DUMPDEBUG_LOG("\tCommand type = %d (@%p)", psCommand->ui32CmdType, psCommand);
 
 	if (psCommand->ui32CmdType == SCP_COMMAND_CALLBACK)
 	{
@@ -462,10 +462,10 @@ static void _SCPDumpCommand(SCP_COMMAND *psCommand)
 
 			{
                                 PVR_ASSERT(psSCPSyncData->psSync != NULL);
-                                PVR_DUMPDEBUG_LOG(("\t\tFenced on 0x%08x = 0x%08x (?= 0x%08x)",
+                                PVR_DUMPDEBUG_LOG("\t\tFenced on 0x%08x = 0x%08x (?= 0x%08x)",
 						ui32SyncAddr,
 						psSCPSyncData->ui32Fence,
-						ServerSyncGetValue(psSCPSyncData->psSync)));
+						ServerSyncGetValue(psSCPSyncData->psSync));
 			}
 		}
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
@@ -870,7 +870,7 @@ void IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext)
 	PVR_DUMPDEBUG_LOG("Pending command:");
 	if (psContext->ui32DepOffset == psContext->ui32WriteOffset)
 	{
-		PVR_DUMPDEBUG_LOG(("\tNone"));
+		PVR_DUMPDEBUG_LOG("\tNone");
 	}
 	else
 	{

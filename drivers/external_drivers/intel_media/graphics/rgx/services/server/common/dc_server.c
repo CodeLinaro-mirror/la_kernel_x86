@@ -837,11 +837,11 @@ static IMG_VOID _DCDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UI
 	switch(ui32VerbLevel)
 	{
 		case DEBUG_REQUEST_VERBOSITY_LOW:
-			PVR_DUMPDEBUG_LOG(("Configs in-flight = %d", psDisplayContext->ui32ConfigsInFlight));
+			PVR_DUMPDEBUG_LOG("Configs in-flight = %d", psDisplayContext->ui32ConfigsInFlight);
 			break;
 
 		case DEBUG_REQUEST_VERBOSITY_MEDIUM:
-			PVR_DUMPDEBUG_LOG(("------[ Display context SCP status ]------"));
+			PVR_DUMPDEBUG_LOG("------[ Display context SCP status ]------");
 			SCPDumpStatus(psDisplayContext->psSCPContext);
 			break;
 
