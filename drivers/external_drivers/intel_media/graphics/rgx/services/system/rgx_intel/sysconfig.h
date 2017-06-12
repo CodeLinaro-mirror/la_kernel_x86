@@ -142,7 +142,8 @@ static PVRSRV_DEVICE_CONFIG sDevices[] =
 			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = 0,
 	           .eBIFTilingMode = RGXFWIF_BIFTILINGMODE_NONE,
 	           .pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides,
-	           .ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides)
+	           .ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
+			   .eCacheSnoopingMode = PVRSRV_DEVICE_SNOOP_CPU_ONLY
        }
 };
 
