@@ -98,8 +98,6 @@
 #define ALS_TIME_TO_COUNT(ms)		((((ms) * 100 + 135) / 270) ? (((ms) * 100 + 135) / 270) : 1)
 #define ALS_COUNT_TO_TIME(count)	(((count) * 27 + 5) / 10)
 
-#define GAIN_RATIO		16
-
 /*******************************************************************
 start TSL2584TSV lux equation defines
 The lux equation is of the form:
@@ -132,31 +130,11 @@ since atime * again is an integer
 /* set the coefficients the TSL2584TSV equation will use */
 #define TSL2584TSV_CH0_COFF	CH0_COFF_NO_GLASS
 #define TSL2584TSV_CH1_COFF	CH1_COFF_NO_GLASS
-
 /* end TSL2584TSV lux equation defines */
-
-/******************************************************************
- start TSL2584TSV lux equation defines on Marvin
- The lux equation is of the form:
- Lux1 = 1000*((Ch0-(2.16*Ch1))/(Atime*Again))
- Lux2 = 1000*((0.95*Ch0)-(1.11*Ch1)/(Atime*Again))
- Lux = MAX(Lux1,Lux2)
-
- in other form:
- lux1 = (1000*ch0 - 2160*ch1) / (Atime*Again)
- lux2 = (950*ch0 - 1110*ch1) / (Atime*Again)
- Lux = MAX(Lux1,Lux2)
-******************************************************************/
 
 /* set the coefficients the TSL2584TSV equation will use on Marvin */
 #define TSL2584_CH0_COFF0	52300
 #define TSL2584_CH1_COFF0	60200
-#define TSL2584TSV_CH0_COFF0	1000
-#define TSL2584TSV_CH1_COFF0	2160
-#define TSL2584TSV_CH0_COFF1	950
-#define TSL2584TSV_CH1_COFF1	1110
-#define FORMULA_NUM		1
-/* end TSL2584TSV lux equation defines on Marvin */
 
 /* For als_status */
 enum {
@@ -398,7 +376,6 @@ static int taos_set_enable(struct tsl258x_chip *chip, int en)
 	return ret;
 }
 
-
 static int taos_set_als_time(struct tsl258x_chip *chip, int ms)
 {
 	int ret = 0;
@@ -413,7 +390,7 @@ static int taos_set_als_time(struct tsl258x_chip *chip, int ms)
 	else if (als_time < ALS_TIME_MIN)
 		als_time = ALS_TIME_MIN;
 
-	/* determine als integration regster, at least one cycle */
+	/* determine als integration register, at least one cycle */
 	als_count = ALS_TIME_TO_COUNT(als_time);
 	/* convert back to time (encompasses overrides) */
 	als_time = ALS_COUNT_TO_TIME(als_count);
@@ -542,8 +519,6 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 	u32 ch0lux = 0;
 	u32 ch1lux = 0;
 	int gain;
-	int lux1;
-	int lux2;
 
 	if (chip->als_status != TSL258X_STATUS_ENABLED) {
 		/* device is not enabled */
@@ -589,18 +564,20 @@ static int taos_get_lux(struct tsl258x_chip *chip)
 	if (chip->id == ID_TSL2584TSV) {
 		gain = chip->taos_settings.als_time *
 			tsl2584_als_gain_tbl[chip->taos_settings.als_gain_idex].gain_val;
-		if (FORMULA_NUM == chip->pdata->als_def_product_formula_num) {
-			lux1 = (TSL2584TSV_CH0_COFF0 * ch0 - TSL2584TSV_CH1_COFF0 * ch1) / gain;
-			lux2 = (TSL2584TSV_CH0_COFF1 * ch0 - TSL2584TSV_CH1_COFF1 * ch1) / gain;
-			if ((lux1 < 0) && (lux2 < 0))
-				return -ERANGE;
-			lux = (lux1 >= lux2) ? lux1 : lux2;
-			lux /= GAIN_RATIO;
-		} else {
+
+		dev_dbg(&chip->client->dev, "ch0: %d, ch1: %d, gain: %d\n", ch0, ch1, gain);
+
+		/* Use platform-specific conversion algorithm if available */
+		if (chip->pdata->convert_lux)
+			lux = chip->pdata->convert_lux(&chip->client->dev, ch0, ch1, gain,
+						       chip->pdata->lux_coefficients);
+		else
 			lux = (TSL2584_CH0_COFF0 * ch0 - TSL2584_CH1_COFF0 * ch1) / gain;
-			if (lux < 0)
-				return -ERANGE;
-		}
+
+		if (lux < 0)
+			return -ERANGE;
+
+		dev_dbg(&chip->client->dev, "lux: %d\n", lux);
 	} else {
 		/* calculate ratio */
 		ratio = (ch1 << 15) / ch0;

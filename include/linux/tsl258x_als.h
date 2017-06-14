@@ -29,13 +29,24 @@ enum tsl2584_gain_idex {
 #define TSL258X_ALS_DEF_GAIN		111
 #define TSL258X_ALS_DEF_GAIN_TRIM	1000
 #define TSL258X_ALS_DEF_CAL_TARGET	130
+
+struct lux_coefficients {
+	int ch0_coeff0;
+	int ch1_coeff0;
+	int ch0_coeff1;
+	int ch1_coeff1;
+	int gain_ratio;
+};
+
 struct tsl258x_platform_data {
 	int als_def_odr;
 	int als_def_als_time;
 	int als_def_gain;
 	int als_def_gain_trim;
 	int als_def_cal_target;
-	int als_def_product_formula_num;
+	struct lux_coefficients *lux_coefficients;
+	int (*convert_lux)(struct device *dev, int ch0, int ch1, int gain,
+			   struct lux_coefficents *lux_coefficents);
 	int (*gpio_conf)(void);
 };
 
