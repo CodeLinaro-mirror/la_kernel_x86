@@ -75,9 +75,7 @@ static RGX_TIMING_INFORMATION sRGXTimingInfo =
 	.ui32CoreClockSpeed		= RGX_CORE_CLOCK_SPEED_DEFAULT,
 	.bEnableActivePM		= IMG_TRUE,
 	.bEnableRDPowIsland		= IMG_FALSE,
-
-	/* ui32ActivePMLatencyms */
-	.ui32ActivePMLatencyms		= RGX_APM_LATENCY_DEFAULT
+	.ui32ActivePMLatencyms		= 15,
 };
 
 static RGX_DATA sRGXData =
@@ -90,8 +88,8 @@ static PHYS_HEAP_FUNCTIONS gsPhysHeapFuncs = {
 	.pfnDevPAddrToCpuPAddr	= SysDevPAddrToCpuPAddr,
 };
 
-#if defined(TDMETACODE)
-#error "TDMETACODE Need to be implemented or not supported in services/3rdparty/intel_drm/sysconfig.h"
+#if defined(SUPPORT_TRUSTED_DEVICE)
+#error "SUPPORT_TRUSTED_DEVICE Need to be implemented or not supported in services/3rdparty/rgx_intel/sysconfig.h"
 #else
 static PHYS_HEAP_CONFIG	gsPhysHeapConfig[1] = {
 	{
@@ -115,36 +113,38 @@ static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
 
 static PVRSRV_DEVICE_CONFIG sDevices[] =
 {
-       /* RGX device */
-       {
-               .pszName                = "RGX",
+	{
+		.pszName		= "RGX",
+		.pszVersion		= NULL,
 
-               /* Device setup information */
-               .sRegsCpuPBase          = { 0 },
-               .ui32RegsSize           = 0,
-               .ui32IRQ                = 0,
+		/* Device setup information */
+		.sRegsCpuPBase		= { 0 },
+		.ui32RegsSize		= 0,
+		.ui32IRQ		= 0,
+		.eCacheSnoopingMode	= PVRSRV_DEVICE_SNOOP_CPU_ONLY,
 
-               /* No power management on no HW system */
-               .pfnPrePowerState       = SysDevicePrePowerState,
-               .pfnPostPowerState      = SysDevicePostPowerState,
+		/* No power management on no HW system */
+		.pfnPrePowerState	= SysDevicePrePowerState,
+		.pfnPostPowerState	= SysDevicePostPowerState,
 
-               .hDevData               = &sRGXData,
-               .pfnClockFreqGet        = NULL,
-               .pfnSysDevFeatureDepInit = NULL,
-               .hSysData               = NULL,
-               .pvOSDevice             = NULL,
-               .psDevNode              = NULL,
-               .aui32PhysHeapID = { 0, 0 },
-               .pasPhysHeaps = gsPhysHeapConfig,
-               .ui32PhysHeapCount = IMG_ARR_NUM_ELEMS(gsPhysHeapConfig),
-			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = 0,
-			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] = 0,
-			   .aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = 0,
-	           .eBIFTilingMode = RGXFWIF_BIFTILINGMODE_NONE,
-	           .pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides,
-	           .ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
-			   .eCacheSnoopingMode = PVRSRV_DEVICE_SNOOP_CPU_ONLY
-       }
+		.hDevData		= &sRGXData,
+		.hSysData		= NULL,
+
+		/* Physical memory heaps */
+		.ui32PhysHeapCount	= sizeof(gsPhysHeapConfig) /
+					  sizeof(PHYS_HEAP_CONFIG),
+		.pasPhysHeaps		= &gsPhysHeapConfig[0],
+
+		.aui32PhysHeapID	= { 0, 0, 0 },
+
+		/* BIF Tiling mode configuration */
+		.eBIFTilingMode		= RGXFWIF_BIFTILINGMODE_256x16,
+		.pui32BIFTilingHeapConfigs =
+			&gauiBIFTilingHeapXStrides[0],
+		.ui32BIFTilingHeapCount	=
+			IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
+		.pfnSysDevFeatureDepInit = NULL
+	}
 };
 
 #define VENDOR_ID_MERRIFIELD        0x8086
@@ -155,8 +155,7 @@ static PVRSRV_DEVICE_CONFIG sDevices[] =
 #define RGX_REG_SIZE                0x10000
 
 #define IS_MRFLD(dev) ((((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MERRIFIELD) || \
-			(((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MOOREFIELD))
-
+					(((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MOOREFIELD))
 /*****************************************************************************
  * system specific data structures
  *****************************************************************************/

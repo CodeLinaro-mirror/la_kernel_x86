@@ -45,12 +45,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_DC_BRIDGE_H
 #define COMMON_DC_BRIDGE_H
 
+#include <powervr/mem_types.h>
 #include "img_types.h"
 #include "pvrsrv_error.h"
-
 #include "pvrsrv_surface.h"
 #include "dc_external.h"
-#include "dc_common.h"
 
 
 #define PVRSRV_BRIDGE_DC_CMD_FIRST			0

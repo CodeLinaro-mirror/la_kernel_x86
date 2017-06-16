@@ -50,10 +50,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "dc_server.h"
 #include "kerneldisplay.h"
 #include "pvr_debug.h"
+#include "pvr_notifier.h"
 #include "pmr.h"
-#include "pdump_physmem.h"
 #include "sync_server.h"
 #include "pvrsrv.h"
+#include "process_stats.h"
 
 #if defined(PVR_RI_DEBUG)
 #include "ri_server.h"
@@ -76,7 +77,7 @@ struct _DC_DISPLAY_CONTEXT_
 	IMG_BOOL		bIssuedNullFlip;
 	IMG_HANDLE		hMISR;
 	IMG_HANDLE		hDebugNotify;
-	IMG_HANDLE		hTimer;
+	void			*hTimer;
 	
 	IMG_BOOL		bPauseMISR;
 	DLLIST_NODE		sListNode;
@@ -84,6 +85,7 @@ struct _DC_DISPLAY_CONTEXT_
 
 struct _DC_DEVICE_
 {
+	PVRSRV_DEVICE_NODE			*psDevNode;
 	const DC_DEVICE_FUNCTIONS	*psFuncTable;
 	IMG_UINT32					ui32MaxConfigsInFlight;
 	IMG_HANDLE					hDeviceData;
@@ -160,18 +162,15 @@ typedef struct _DC_BUFFER_PMR_DATA_
 	IMG_DEVMEM_LOG2ALIGN_T	uiLog2PageSize;		/*!< Log 2 of the buffers pagesize */
 	IMG_UINT32				ui32PageCount;		/*!< Number of pages in this buffer */
 	PHYS_HEAP				*psPhysHeap;		/*!< The physical heap the memory resides on */
-	IMG_DEV_PHYADDR			*pasDevPAddr;		/*!< Pointer to an array of device physcial addresses */
-	void *				pvLinAddr;			/*!< CPU virtual pointer or NULL if the DC driver didn't have one */
-
-	IMG_HANDLE				hPDumpAllocInfo;	/*!< Handle to PDump alloc data */
-	IMG_BOOL				bPDumpMalloced;		/*!< Did we get as far as PDump alloc? */
+	IMG_DEV_PHYADDR			*pasDevPAddr;		/*!< Pointer to an array of device physical addresses */
+	void					*pvLinAddr;			/*!< CPU virtual pointer or NULL if the DC driver didn't have one */
 } DC_BUFFER_PMR_DATA;
 
-POS_LOCK g_hDCListLock;
+static POS_LOCK g_hDCListLock;
 
-DC_DEVICE *g_psDCDeviceList;
-IMG_UINT32 g_ui32DCDeviceCount;
-IMG_UINT32 g_ui32DCNextIndex;
+static DC_DEVICE *g_psDCDeviceList;
+static IMG_UINT32 g_ui32DCDeviceCount;
+static IMG_UINT32 g_ui32DCNextIndex;
 static DLLIST_NODE g_sDisplayContextsList;
 
 
@@ -197,13 +196,11 @@ static DLLIST_NODE g_sDisplayContextsList;
 #define DC_DEBUG_PRINT(fmt, ...)
 #endif
 
-PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void);
-
 /*****************************************************************************
  *                             Private functions                             *
  *****************************************************************************/
 
-static IMG_VOID _DCDeviceAcquireRef(DC_DEVICE *psDevice)
+static void _DCDeviceAcquireRef(DC_DEVICE *psDevice)
 {
 	OSLockAcquire(psDevice->hLock);
 	psDevice->ui32RefCount++;
@@ -212,7 +209,7 @@ static IMG_VOID _DCDeviceAcquireRef(DC_DEVICE *psDevice)
 	OSLockRelease(psDevice->hLock);
 }
 
-static IMG_VOID _DCDeviceReleaseRef(DC_DEVICE *psDevice)
+static void _DCDeviceReleaseRef(DC_DEVICE *psDevice)
 {
 	IMG_UINT32 ui32RefCount;
 
@@ -235,7 +232,7 @@ static IMG_VOID _DCDeviceReleaseRef(DC_DEVICE *psDevice)
 			{
 				psTmp = psTmp->psNext;
 			}
-			psTmp->psNext = g_psDCDeviceList->psNext;
+			psTmp->psNext = psDevice->psNext;
 		}
 	
 		g_ui32DCDeviceCount--;
@@ -250,7 +247,7 @@ static IMG_VOID _DCDeviceReleaseRef(DC_DEVICE *psDevice)
 					  __FUNCTION__, psDevice, ui32RefCount);
 }
 
-static IMG_VOID _DCDisplayContextAcquireRef(DC_DISPLAY_CONTEXT *psDisplayContext)
+static void _DCDisplayContextAcquireRef(DC_DISPLAY_CONTEXT *psDisplayContext)
 {
 	OSLockAcquire(psDisplayContext->hLock);
 	psDisplayContext->ui32RefCount++;
@@ -259,7 +256,7 @@ static IMG_VOID _DCDisplayContextAcquireRef(DC_DISPLAY_CONTEXT *psDisplayContext
 	OSLockRelease(psDisplayContext->hLock);
 }
 
-static IMG_VOID _DCDisplayContextReleaseRef(DC_DISPLAY_CONTEXT *psDisplayContext)
+static void _DCDisplayContextReleaseRef(DC_DISPLAY_CONTEXT *psDisplayContext)
 {
 	IMG_UINT32 ui32RefCount;
 
@@ -292,7 +289,7 @@ static IMG_VOID _DCDisplayContextReleaseRef(DC_DISPLAY_CONTEXT *psDisplayContext
 					  __FUNCTION__, psDisplayContext, ui32RefCount);
 }
 
-static IMG_VOID _DCBufferAcquireRef(DC_BUFFER *psBuffer)
+static void _DCBufferAcquireRef(DC_BUFFER *psBuffer)
 {
 	OSLockAcquire(psBuffer->hLock);
 	psBuffer->ui32RefCount++;
@@ -302,7 +299,7 @@ static IMG_VOID _DCBufferAcquireRef(DC_BUFFER *psBuffer)
 }
 
 
-static IMG_VOID _DCFreeAllocedBuffer(DC_BUFFER *psBuffer)
+static void _DCFreeAllocedBuffer(DC_BUFFER *psBuffer)
 {
 	DC_DISPLAY_CONTEXT *psDisplayContext = psBuffer->psDisplayContext;
 	DC_DEVICE *psDevice = psDisplayContext->psDevice;
@@ -311,7 +308,7 @@ static IMG_VOID _DCFreeAllocedBuffer(DC_BUFFER *psBuffer)
 	_DCDisplayContextReleaseRef(psDisplayContext);
 }
 
-static IMG_VOID _DCFreeImportedBuffer(DC_BUFFER *psBuffer)
+static void _DCFreeImportedBuffer(DC_BUFFER *psBuffer)
 {
 	DC_DISPLAY_CONTEXT *psDisplayContext = psBuffer->psDisplayContext;
 	DC_DEVICE *psDevice = psDisplayContext->psDevice;
@@ -325,7 +322,7 @@ static IMG_VOID _DCFreeImportedBuffer(DC_BUFFER *psBuffer)
 	_DCDisplayContextReleaseRef(psDisplayContext);
 }
 
-static IMG_VOID _DCFreeSystemBuffer(DC_BUFFER *psBuffer)
+static void _DCFreeSystemBuffer(DC_BUFFER *psBuffer)
 {
 	DC_DISPLAY_CONTEXT *psDisplayContext = psBuffer->psDisplayContext;
 	DC_DEVICE *psDevice = psDisplayContext->psDevice;
@@ -337,7 +334,7 @@ static IMG_VOID _DCFreeSystemBuffer(DC_BUFFER *psBuffer)
 /*
 	Drop a reference on the buffer. Last person gets to free it
 */
-static IMG_VOID _DCBufferReleaseRef(DC_BUFFER *psBuffer)
+static void _DCBufferReleaseRef(DC_BUFFER *psBuffer)
 {
 	IMG_UINT32 ui32RefCount;
 
@@ -398,7 +395,7 @@ out_unlock:
 	return eError;
 }
 
-static IMG_VOID _DCBufferUnmap(DC_BUFFER *psBuffer)
+static void _DCBufferUnmap(DC_BUFFER *psBuffer)
 {
 	DC_DEVICE *psDevice = psBuffer->psDisplayContext->psDevice;
 	IMG_UINT32 ui32MapCount;
@@ -444,7 +441,7 @@ static PVRSRV_ERROR _DCDeviceBufferArrayCreate(IMG_UINT32 ui32BufferCount,
 	return PVRSRV_OK;
 }
 
-static IMG_VOID _DCDeviceBufferArrayDestroy(IMG_HANDLE ahDeviceBuffers)
+static void _DCDeviceBufferArrayDestroy(IMG_HANDLE ahDeviceBuffers)
 {
 	OSFreeMem(ahDeviceBuffers);
 }
@@ -468,13 +465,13 @@ static IMG_BOOL _DCDisplayContextReady(void * hReadyData)
 }
 
 #if defined SUPPORT_DC_COMPLETE_TIMEOUT_DEBUG
-static IMG_VOID _RetireTimeout(void * pvData)
+static void _RetireTimeout(void *pvData)
 {
 	DC_CMD_COMP_DATA *psCompleteData = pvData;
 	DC_DISPLAY_CONTEXT *psDisplayContext = psCompleteData->psDisplayContext;
 
 	PVR_DPF((PVR_DBG_ERROR, "Timeout fired for operation %d", psCompleteData->ui32Token));
-	SCPDumpStatus(psDisplayContext->psSCPContext);
+	SCPDumpStatus(psDisplayContext->psSCPContext, NULL);
 
 	OSDisableTimer(psDisplayContext->hTimer);
 	OSRemoveTimer(psDisplayContext->hTimer);
@@ -482,8 +479,8 @@ static IMG_VOID _RetireTimeout(void * pvData)
 }
 #endif	/* SUPPORT_DC_COMPLETE_TIMEOUT_DEBUG */
 
-static IMG_VOID _DCDisplayContextConfigure(void * hReadyData,
-										   void * hCompleteData)
+static void _DCDisplayContextConfigure(void *hReadyData,
+									   void *hCompleteData)
 {
 	DC_CMD_RDY_DATA *psReadyData = (DC_CMD_RDY_DATA *) hReadyData;
 	DC_DISPLAY_CONTEXT *psDisplayContext = psReadyData->psDisplayContext;
@@ -541,7 +538,7 @@ static IMG_VOID _DCDisplayContextConfigure(void * hReadyData,
 
 	Kick the MISR which will check for any commands which can be processed
 */
-static INLINE IMG_VOID _DCDisplayContextRun(DC_DISPLAY_CONTEXT *psDisplayContext)
+static INLINE void _DCDisplayContextRun(DC_DISPLAY_CONTEXT *psDisplayContext)
 {
 	OSScheduleMISR(psDisplayContext->hMISR);
 }
@@ -551,7 +548,7 @@ static INLINE IMG_VOID _DCDisplayContextRun(DC_DISPLAY_CONTEXT *psDisplayContext
 
 	This gets called when this MISR is fired
 */
-static IMG_VOID _DCDisplayContextMISR(IMG_VOID *pvData)
+static void _DCDisplayContextMISR(void *pvData)
 {
 	DC_DISPLAY_CONTEXT *psDisplayContext = pvData;
 
@@ -593,6 +590,41 @@ static PVRSRV_ERROR _DCPMRLockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 		goto fail_query;
 	}
 
+#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+#if defined(PVRSRV_ENABLE_MEMORY_STATS)
+	{
+		IMG_UINT32 i;
+		for (i = 0; i < psPMRPriv->ui32PageCount; i++)
+		{
+			IMG_CPU_PHYADDR sCPUPhysAddr;
+			PVRSRV_MEM_ALLOC_TYPE eAllocType;
+#if defined(LMA)
+			eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_LMA_PAGES;
+#else
+			eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
+#endif
+			sCPUPhysAddr.uiAddr = ((uintptr_t)psPMRPriv->pvLinAddr) + i * (1 << psPMRPriv->uiLog2PageSize);
+			PVRSRVStatsAddMemAllocRecord(eAllocType,
+			                             NULL,
+			                             sCPUPhysAddr,
+			                             1 << psPMRPriv->uiLog2PageSize,
+			                             NULL);
+		}
+	}
+#else
+	{
+		PVRSRV_MEM_ALLOC_TYPE eAllocType;
+#if defined(LMA)
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_LMA_PAGES;
+#else
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
+#endif
+		PVRSRVStatsIncrMemAllocStat(eAllocType,
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+	}
+#endif
+#endif
+
 	return PVRSRV_OK;
 
 fail_query:
@@ -606,6 +638,41 @@ static PVRSRV_ERROR _DCPMRUnlockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 	DC_BUFFER_PMR_DATA *psPMRPriv = pvPriv;
 	DC_BUFFER *psBuffer = psPMRPriv->psBuffer;
 	DC_DEVICE *psDevice = psBuffer->psDisplayContext->psDevice;
+
+#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
+	{
+		PVRSRV_MEM_ALLOC_TYPE eAllocType;
+#if defined(LMA)
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_LMA_PAGES;
+#else
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
+#endif
+		PVRSRVStatsDecrMemAllocStat(eAllocType,
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+	}
+#else
+	{
+		PVRSRV_MEM_ALLOC_TYPE eAllocType;
+		IMG_UINT32 i;
+
+#if defined(LMA)
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_LMA_PAGES;
+#else
+		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
+#endif
+
+		for(i = 0; i < psPMRPriv->ui32PageCount; i++)
+		{
+			IMG_CPU_PHYADDR sCPUPhysAddr;
+
+			sCPUPhysAddr.uiAddr = ((uintptr_t)psPMRPriv->pvLinAddr) + i * (1 << psPMRPriv->uiLog2PageSize);
+			PVRSRVStatsRemoveMemAllocRecord(eAllocType,
+			                                sCPUPhysAddr.uiAddr);
+		}
+	}
+#endif
+#endif
 
 	psDevice->psFuncTable->pfnBufferRelease(psBuffer->hBuffer);
 	OSFreeMem(psPMRPriv->pasDevPAddr);
@@ -628,9 +695,9 @@ static PVRSRV_ERROR _DCPMRDevPhysAddr(PMR_IMPL_PRIVDATA pvPriv,
     IMG_DEV_PHYADDR sDevAddr;
     IMG_UINT32 idx;
 
-	if (ui32Log2PageSize != psPMRPriv->uiLog2PageSize)
+	if (psPMRPriv->uiLog2PageSize != ui32Log2PageSize)
 	{
-		return PVRSRV_ERROR_PMR_INCOMPATIBLE_CONTIGUITY;
+		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
 	for (idx=0; idx < ui32NumOfPages; idx++)
@@ -658,6 +725,112 @@ static PVRSRV_ERROR _DCPMRDevPhysAddr(PMR_IMPL_PRIVDATA pvPriv,
     return PVRSRV_OK;
 }
 
+#if defined(INTEGRITY_OS)
+static PVRSRV_ERROR _DCPMRAcquireKernelMappingData(PMR_IMPL_PRIVDATA pvPriv,
+												   size_t uiOffset,
+												   size_t uiSize,
+												   void **ppvKernelAddressOut,
+												   IMG_HANDLE *phHandleOut,
+												   PMR_FLAGS_T ulFlags)
+{
+	DC_BUFFER_PMR_DATA *psPMRPriv = (DC_BUFFER_PMR_DATA *)pvPriv;
+	DC_BUFFER          *psBuffer = NULL;
+	DC_DEVICE          *psDevice = NULL;
+	IMG_HANDLE          hMapping = NULL;
+	void	           *pvKernelAddr = NULL;
+	PVRSRV_ERROR        eError = PVRSRV_OK;
+
+	if (psPMRPriv == NULL)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "_DCPMRAcquireKernelMappingData: Invalid parameters."));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+	}
+	else
+	{
+		psBuffer = psPMRPriv->psBuffer;
+		psDevice = psBuffer->psDisplayContext->psDevice;
+
+		eError = psDevice->psFuncTable->pfnAcquireKernelMappingData(psBuffer->hBuffer, &hMapping, &pvKernelAddr);
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "_DCPMRAcquireKernelMappingData: AcquireKernelMappingData failed."));
+		}
+		else
+		{
+			*phHandleOut = (IMG_HANDLE)psPMRPriv;
+			*ppvKernelAddressOut = pvKernelAddr;
+		}
+	}
+
+	return eError;
+}
+
+static void _DCPMRReleaseKernelMappingData(PMR_IMPL_PRIVDATA pvPriv,
+										   IMG_HANDLE hHandle)
+{
+	PVR_UNREFERENCED_PARAMETER(pvPriv);
+	PVR_UNREFERENCED_PARAMETER(hHandle);
+}
+
+static PVRSRV_ERROR _DCPMRMapMemoryObject(PMR_IMPL_PRIVDATA pvPriv, IMG_HANDLE *phMemObj)
+{
+	DC_BUFFER_PMR_DATA *psPMRPriv = (DC_BUFFER_PMR_DATA *)pvPriv;
+	DC_BUFFER          *psBuffer = NULL;
+	DC_DEVICE          *psDevice = NULL;
+	PVRSRV_ERROR        eError = PVRSRV_OK;
+
+	if ((psPMRPriv == NULL) || (phMemObj == NULL))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "_DCPMRMapMemoryObject: Invalid parameters."));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+	}
+	else
+	{
+		psBuffer = psPMRPriv->psBuffer;
+		psDevice = psBuffer->psDisplayContext->psDevice;
+		eError = psDevice->psFuncTable->pfnMapMemoryObject(psBuffer->hBuffer, phMemObj);
+	}
+
+	return eError;
+}
+
+static PVRSRV_ERROR _DCPMRUnmapMemoryObject(PMR_IMPL_PRIVDATA pvPriv)
+{
+	DC_BUFFER_PMR_DATA *psPMRPriv = (DC_BUFFER_PMR_DATA *)pvPriv;
+	DC_BUFFER          *psBuffer = NULL;
+	DC_DEVICE          *psDevice = NULL;
+	PVRSRV_ERROR        eError = PVRSRV_OK;
+
+	if (psPMRPriv == NULL)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "_DCPMRUnmapMemoryObject: Invalid parameters."));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+	}
+	else
+	{
+		psBuffer = psPMRPriv->psBuffer;
+		psDevice = psBuffer->psDisplayContext->psDevice;
+		eError = psDevice->psFuncTable->pfnUnmapMemoryObject(psBuffer->hBuffer);
+	}
+
+	return eError;
+}
+
+#if defined(USING_HYPERVISOR)
+static IMG_HANDLE _DCPMRGetPmr(PMR_IMPL_PRIVDATA pvPriv, size_t ulOffset)
+{
+	DC_BUFFER_PMR_DATA *psPMRPriv = pvPriv;
+	DC_BUFFER          *psBuffer = NULL;
+	DC_DEVICE          *psDevice = NULL;
+
+	psBuffer = psPMRPriv->psBuffer;
+	psDevice = psBuffer->psDisplayContext->psDevice;
+
+	return psDevice->psFuncTable->pfnGetPmr(psBuffer->hBuffer, ulOffset);
+}
+#endif
+#endif
+
 static PVRSRV_ERROR _DCPMRFinalize(PMR_IMPL_PRIVDATA pvPriv)
 {
 	DC_BUFFER_PMR_DATA *psPMRPriv = pvPriv;
@@ -680,7 +853,7 @@ static PVRSRV_ERROR _DCPMRReadBytes(PMR_IMPL_PRIVDATA pvPriv,
     size_t uiBytesCopied = 0;
     size_t uiBytesToCopy = uiBufSz;
     size_t uiBytesCopyableFromPage;
-    IMG_VOID *pvMapping;
+    void *pvMapping;
     IMG_UINT8 *pcKernelPointer;
     size_t uiBufferOffset = 0;
     size_t uiPageIndex;
@@ -712,11 +885,12 @@ static PVRSRV_ERROR _DCPMRReadBytes(PMR_IMPL_PRIVDATA pvPriv,
 
         pvMapping = OSMapPhysToLin(sCpuPAddr,
 								   1 << psPMRPriv->uiLog2PageSize,
-								   0);
+								   PVRSRV_MEMALLOCFLAG_CPU_UNCACHED);
         PVR_ASSERT(pvMapping != NULL);
         pcKernelPointer = pvMapping;
         OSDeviceMemCopy(&pcBuffer[uiBufferOffset], &pcKernelPointer[uiInPageOffset], uiBytesCopyableFromPage);
-        OSUnMapPhysToLin(pvMapping, 1 << psPMRPriv->uiLog2PageSize, 0);
+        OSUnMapPhysToLin(pvMapping, 1 << psPMRPriv->uiLog2PageSize,
+						 PVRSRV_MEMALLOCFLAG_CPU_UNCACHED);
 
         uiBufferOffset += uiBytesCopyableFromPage;
         uiBytesToCopy -= uiBytesCopyableFromPage;
@@ -729,14 +903,33 @@ static PVRSRV_ERROR _DCPMRReadBytes(PMR_IMPL_PRIVDATA pvPriv,
 }
 
 static PMR_IMPL_FUNCTAB sDCPMRFuncTab = {
-	.pfnLockPhysAddresses = _DCPMRLockPhysAddresses,	/* .pfnLockPhysAddresses */
-	.pfnUnlockPhysAddresses = _DCPMRUnlockPhysAddresses,	/* .pfnUnlockPhysAddresses */
-	.pfnDevPhysAddr = _DCPMRDevPhysAddr,			/* .pfnDevPhysAddr */
-	.pfnReadBytes = _DCPMRReadBytes,			/* .pfnReadBytes */
-	.pfnFinalize = _DCPMRFinalize				/* .pfnFinalize */
+	_DCPMRLockPhysAddresses,	/* .pfnLockPhysAddresses */
+	_DCPMRUnlockPhysAddresses,	/* .pfnUnlockPhysAddresses */
+	_DCPMRDevPhysAddr,			/* .pfnDevPhysAddr */
+#if !defined(INTEGRITY_OS)
+	NULL,					/* .pfnAcquireKernelMappingData	*/
+	NULL,					/* .pfnReleaseKernelMappingData */
+#else
+	_DCPMRAcquireKernelMappingData,	/* .pfnAcquireKernelMappingData	*/
+	_DCPMRReleaseKernelMappingData,	/* .pfnReleaseKernelMappingData */
+	_DCPMRMapMemoryObject,			/* .pfnMapMemoryObject */
+	_DCPMRUnmapMemoryObject,		/* .pfnUnmapMemoryObject */
+#if defined(USING_HYPERVISOR)
+	_DCPMRGetPmr,				/* .pfnGetPmr */
+#endif
+#endif
+	_DCPMRReadBytes,			/* .pfnReadBytes */
+	NULL,					/* .pfnWriteBytes */
+	NULL,					/* .pfnUnpinMem */
+	NULL,					/* .pfnPinMem */
+	NULL,					/* .pfnChangeSparseMem */
+	NULL,					/* .pfnChangeSparseMemCPUMap */
+	NULL,					/* .pfnMMap */
+	_DCPMRFinalize				/* .pfnFinalize */
 };
 
-static PVRSRV_ERROR _DCCreatePMR(IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
+static PVRSRV_ERROR _DCCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
+								 IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
 								 IMG_UINT32 ui32PageCount,
 								 IMG_UINT32 ui32PhysHeapID,
 								 DC_BUFFER *psBuffer,
@@ -746,8 +939,7 @@ static PVRSRV_ERROR _DCCreatePMR(IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
 	PHYS_HEAP *psPhysHeap;
 	IMG_DEVMEM_SIZE_T uiBufferSize;
 	PVRSRV_ERROR eError;
-	IMG_UINT32 MappingTable = 0;
-	PVRSRV_DEVICE_NODE* pDeviceNode;
+	IMG_UINT32 uiMappingTable = 0;
 
 	/*
 		Create the PMR for this buffer.
@@ -782,22 +974,17 @@ static PVRSRV_ERROR _DCCreatePMR(IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
 
 	uiBufferSize = (1 << uiLog2PageSize) * ui32PageCount;
 
-	pDeviceNode = RGXGetDeviceNode();
-	if (pDeviceNode == NULL) {
-		goto fail_pmrcreate;
-	}
-
 	/* Create the PMR for the MM layer */
-	eError = PMRCreatePMR(pDeviceNode,
+	eError = PMRCreatePMR(psDevNode,
 						  psPhysHeap,
 						  uiBufferSize,
 						  uiBufferSize,
 						  1,
 						  1,
-						  &MappingTable,
+						  &uiMappingTable,
 						  uiLog2PageSize,
 						  PVRSRV_MEMALLOCFLAG_WRITE_COMBINE,
-						  "DISPLAY",
+				          "DC_BUFFER",
 						  &sDCPMRFuncTab,
 						  psPMRPriv,
 						  PMR_TYPE_DC,
@@ -819,20 +1006,19 @@ fail_privalloc:
 	return eError;
 }
 
-static IMG_VOID _DCDisplayContextNotify(PVRSRV_CMDCOMP_HANDLE hCmdCompHandle)
+static void _DCDisplayContextNotify(PVRSRV_CMDCOMP_HANDLE hCmdCompHandle)
 {
 	DC_DISPLAY_CONTEXT	*psDisplayContext = (DC_DISPLAY_CONTEXT*) hCmdCompHandle;
 
 	_DCDisplayContextRun(psDisplayContext);
 }
 
-static IMG_VOID _DCDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UINT32 ui32VerbLevel,
-								DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile)
+static void _DCDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle,
+					IMG_UINT32 ui32VerbLevel,
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile)
 {
 	DC_DISPLAY_CONTEXT	*psDisplayContext = (DC_DISPLAY_CONTEXT*) hDebugRequestHandle;
-
-	PVR_UNREFERENCED_PARAMETER(pfnDumpDebugPrintf);
-	PVR_UNREFERENCED_PARAMETER(pvDumpDebugFile);
 
 	switch(ui32VerbLevel)
 	{
@@ -842,7 +1028,7 @@ static IMG_VOID _DCDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UI
 
 		case DEBUG_REQUEST_VERBOSITY_MEDIUM:
 			PVR_DUMPDEBUG_LOG("------[ Display context SCP status ]------");
-			SCPDumpStatus(psDisplayContext->psSCPContext);
+			SCPDumpStatus(psDisplayContext->psSCPContext, pfnDumpDebugPrintf, pvDumpDebugFile);
 			break;
 
 		default:
@@ -860,39 +1046,38 @@ PVRSRV_ERROR DCDevicesQueryCount(IMG_UINT32 *pui32DeviceCount)
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR DCDevicesEnumerate(IMG_UINT32 ui32DeviceArraySize,
+PVRSRV_ERROR DCDevicesEnumerate(CONNECTION_DATA *psConnection,
+								PVRSRV_DEVICE_NODE *psDevNode,
+								IMG_UINT32 ui32DeviceArraySize,
 								IMG_UINT32 *pui32DeviceCount,
 								IMG_UINT32 *paui32DeviceIndex)
 {
-	IMG_UINT32 i;
-	IMG_UINT32 ui32LoopCount;
-	DC_DEVICE *psTmp = g_psDCDeviceList;
+	DC_DEVICE *psTmp;
+	IMG_UINT32 ui32DeviceCount;
+
+	PVR_UNREFERENCED_PARAMETER(psConnection);
 
 	OSLockAcquire(g_hDCListLock);
 
-	if (g_ui32DCDeviceCount > ui32DeviceArraySize)
+	for (psTmp = g_psDCDeviceList, ui32DeviceCount = 0;
+		 psTmp && ui32DeviceCount < ui32DeviceArraySize;
+		 psTmp = psTmp->psNext)
 	{
-		ui32LoopCount = ui32DeviceArraySize;
-	}
-	else
-	{
-		ui32LoopCount = g_ui32DCDeviceCount;
-	}
-	
-	for (i=0;i<ui32LoopCount;i++)
-	{
-		PVR_ASSERT(psTmp != NULL);
-		paui32DeviceIndex[i] = psTmp->ui32Index;
-		psTmp = psTmp->psNext;
+		if (psTmp->psDevNode == psDevNode)
+		{
+			paui32DeviceIndex[ui32DeviceCount++] = psTmp->ui32Index;
+		}
 	}
 
-	*pui32DeviceCount = ui32LoopCount;
+	*pui32DeviceCount = ui32DeviceCount;
 	OSLockRelease(g_hDCListLock);
 
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR DCDeviceAcquire(IMG_UINT32 ui32DeviceIndex,
+PVRSRV_ERROR DCDeviceAcquire(CONNECTION_DATA *psConnection,
+							 PVRSRV_DEVICE_NODE *psDevNode,
+							 IMG_UINT32 ui32DeviceIndex,
 							 DC_DEVICE **ppsDevice)
 {
 	DC_DEVICE *psDevice = g_psDCDeviceList;
@@ -905,7 +1090,7 @@ PVRSRV_ERROR DCDeviceAcquire(IMG_UINT32 ui32DeviceIndex,
 	while(psDevice->ui32Index != ui32DeviceIndex)
 	{
 		psDevice = psDevice->psNext;
-		if (psDevice == NULL)
+		if (psDevice == NULL || psDevice->psDevNode != psDevNode)
 		{
 			return PVRSRV_ERROR_NO_DC_DEVICES_FOUND;
 		}
@@ -1103,7 +1288,8 @@ PVRSRV_ERROR DCSystemBufferAcquire(DC_DEVICE *psDevice,
 			PMRUnrefPMR(psDevice->psSystemBufferPMR);
 		}
 
-		eError = _DCCreatePMR(uiLog2PageSize,
+		eError = _DCCreatePMR(psDevice->psDevNode,
+							  uiLog2PageSize,
 							  ui32PageCount,
 							  ui32PhysHeapID,
 							  psNew,
@@ -1193,7 +1379,6 @@ PVRSRV_ERROR DCDisplayContextCreate(DC_DEVICE *psDevice,
 {
 	DC_DISPLAY_CONTEXT *psDisplayContext;
 	PVRSRV_ERROR eError;
-	PVRSRV_DEVICE_NODE* pDeviceNode;
 
 	psDisplayContext = OSAllocMem(sizeof(DC_DISPLAY_CONTEXT));
 	if (psDisplayContext == NULL)
@@ -1263,14 +1448,9 @@ PVRSRV_ERROR DCDisplayContextCreate(DC_DEVICE *psDevice,
 		goto FailRegisterCmdComplete;
 	}
 
-	pDeviceNode = RGXGetDeviceNode();
-	if (pDeviceNode == NULL) {
-		goto FailRegisterCmdComplete;
-	}
-
 	/* Register our debug request notify callback */
 	eError = PVRSRVRegisterDbgRequestNotify(&psDisplayContext->hDebugNotify,
-											pDeviceNode,
+											psDevice->psDevNode,
 											_DCDebugRequest,
 											DEBUG_REQUEST_DC,
 											psDisplayContext);
@@ -1352,18 +1532,16 @@ FailBufferArrayCreate:
 }
 
 
-static IMG_BOOL _DCDisplayContextFlush( PDLLIST_NODE psNode, void * pvCallbackData )
+static void _DCDisplayContextFlush(PDLLIST_NODE psNode)
 {
 	DC_CMD_RDY_DATA sReadyData;
 	DC_CMD_COMP_DATA sCompleteData;
 
 	PVRSRV_ERROR eError = PVRSRV_OK;
-	PVRSRV_DATA *psData;
+	PVRSRV_DATA *psData = PVRSRVGetPVRSRVData();
 	IMG_UINT32 ui32NumConfigsInSCP, ui32GoodRuns, ui32LoopCount;
 
 	DC_DISPLAY_CONTEXT * psDisplayContext = IMG_CONTAINER_OF(psNode, DC_DISPLAY_CONTEXT, sListNode);
-
-	PVR_UNREFERENCED_PARAMETER(pvCallbackData);
 
 	/* Make the NULL flip command data */
 	sReadyData.psDisplayContext = psDisplayContext;
@@ -1427,9 +1605,16 @@ static IMG_BOOL _DCDisplayContextFlush( PDLLIST_NODE psNode, void * pvCallbackDa
 			PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting NULL flip"));
 
 			/* Check if we need to do any CPU cache operations before sending the NULL flip */
-			psData = PVRSRVGetPVRSRVData();
-			OSCPUOperation(psData->uiCacheOp);
-			psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+			if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
+			{
+				psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+			}
+			else
+			{
+				PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
+				PVR_ASSERT(0);
+			}
+
 
 			/* The next Config may be dependent on the single Config currently in the DC */
 			/* Issue a NULL flip to free it */
@@ -1450,9 +1635,15 @@ static IMG_BOOL _DCDisplayContextFlush( PDLLIST_NODE psNode, void * pvCallbackDa
 	PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting final NULL flip"));
 
 	/* Check if we need to do any CPU cache operations before sending the NULL flip */
-	psData = PVRSRVGetPVRSRVData();
-	OSCPUOperation(psData->uiCacheOp);
-	psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
+	{
+		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
+		PVR_ASSERT(0);
+	}
 
 	/* The next Config may be dependent on the single Config currently in the DC */
 	/* Issue a NULL flip to free it */
@@ -1461,20 +1652,19 @@ static IMG_BOOL _DCDisplayContextFlush( PDLLIST_NODE psNode, void * pvCallbackDa
 
 	/* re-enable the MISR/SCP */
 	psDisplayContext->bPauseMISR = IMG_FALSE;
-
-	return IMG_TRUE;
 }
 
 
-PVRSRV_ERROR DCDisplayContextFlush( IMG_VOID )
+PVRSRV_ERROR DCDisplayContextFlush(void)
 {	
 	PVRSRV_ERROR eError = PVRSRV_OK;
-	PDLLIST_NODE pListNode, pListNext;
 
 	if ( !dllist_is_empty(&g_sDisplayContextsList) )
 	{
-		dllist_foreach_node(&g_sDisplayContextsList, pListNode, pListNext) {
-			_DCDisplayContextFlush(pListNode, NULL);
+		DLLIST_NODE *psNode, *psNext;
+		dllist_foreach_node(&g_sDisplayContextsList, psNode, psNext)
+		{
+			_DCDisplayContextFlush(psNode);
 		}
 	}
 	else
@@ -1508,7 +1698,7 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 	IMG_UINT32 ui32CmdCompSize;
 	IMG_UINT32 ui32CopySize;
 	IMG_PUINT8 pui8ReadyData;
-	void * pvCompleteData;
+	void *pvCompleteData;
 	DC_CMD_RDY_DATA *psReadyData;
 	DC_CMD_COMP_DATA *psCompleteData;
 	PVRSRV_DATA *psData = PVRSRVGetPVRSRVData();
@@ -1571,7 +1761,7 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 			}
 			ui32BuffersMapped++;
 		}
-	}
+    }
 
 	ui32CmdRdySize = sizeof(DC_CMD_RDY_DATA) +  
 					 ((sizeof(IMG_HANDLE) + sizeof(PVRSRV_SURFACE_CONFIG_INFO))
@@ -1613,7 +1803,7 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 	{
 		psReadyData->pasSurfAttrib = (PVRSRV_SURFACE_CONFIG_INFO *)pui8ReadyData;
 		ui32CopySize = sizeof(PVRSRV_SURFACE_CONFIG_INFO) * ui32PipeCount;
-		OSDeviceMemCopy(psReadyData->pasSurfAttrib, pasSurfAttrib, ui32CopySize);
+		OSCachedMemCopy(psReadyData->pasSurfAttrib, pasSurfAttrib, ui32CopySize);
 		pui8ReadyData = pui8ReadyData + ui32CopySize;
 	}
 	else
@@ -1626,7 +1816,7 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 	{
 		psReadyData->pahBuffer = (IMG_HANDLE)pui8ReadyData;
 		ui32CopySize = sizeof(IMG_HANDLE) * ui32PipeCount;
-		OSDeviceMemCopy(psReadyData->pahBuffer, ahBuffers, ui32CopySize);
+		OSCachedMemCopy(psReadyData->pahBuffer, ahBuffers, ui32CopySize);
 	}
 	else
 	{
@@ -1655,8 +1845,15 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 	}
 
 	/* Check if we need to do any CPU cache operations before sending the config */
-	OSCPUOperation(psData->uiCacheOp);
-	psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
+	{
+		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextConfigure: OSCPUOperation failed"));
+		PVR_ASSERT(0);
+	}
 
 	/* Submit the command */
 	eError = SCPSubmitCommand(psDisplayContext->psSCPContext);
@@ -1681,12 +1878,6 @@ FailMapBuffer:
 		for (i=0;i<ui32BuffersMapped;i++)
 		{
 			_DCBufferUnmap(papsBuffers[i]);
-
-			/*
-			 * ahBuffers points to new buffers allocated in
-			 * pfnContextConfigureCheck, need to free them here.
-			 */
-			OSFreeMem(ahBuffers[i]);
 		}
 	}
 FailConfigCheck:
@@ -1800,7 +1991,8 @@ PVRSRV_ERROR DCBufferAlloc(DC_DISPLAY_CONTEXT *psDisplayContext,
 	psNew->ui32MapCount = 0;
 	psNew->ui32RefCount = 1;
 
-	eError = _DCCreatePMR(uiLog2PageSize,
+	eError = _DCCreatePMR(psDevice->psDevNode,
+						  uiLog2PageSize,
 						  ui32PageCount,
 						  ui32PhysHeapID,
 						  psNew,
@@ -2008,8 +2200,14 @@ PVRSRV_ERROR DCRegisterDevice(DC_DEVICE_FUNCTIONS *psFuncTable,
 							  IMG_HANDLE hDeviceData,
 							  IMG_HANDLE *phSrvHandle)
 {
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 	DC_DEVICE *psNew;
 	PVRSRV_ERROR eError;
+
+	if (!psPVRSRVData || !psPVRSRVData->psDeviceNodeList)
+	{
+		return PVRSRV_ERROR_RETRY;
+	}
 
 	psNew = OSAllocMem(sizeof(DC_DEVICE));
 	if (psNew == NULL)
@@ -2024,11 +2222,12 @@ PVRSRV_ERROR DCRegisterDevice(DC_DEVICE_FUNCTIONS *psFuncTable,
 		goto FailLockCreate;
 	}
 
+	/* Associate display devices to the first device node */
+	psNew->psDevNode = psPVRSRVData->psDeviceNodeList;
 	psNew->psFuncTable = psFuncTable;
 	psNew->ui32MaxConfigsInFlight = ui32MaxConfigsInFlight;
 	psNew->hDeviceData = hDeviceData;
 	psNew->ui32RefCount = 1;
-	psNew->hSystemBuffer = NULL;
 	psNew->ui32Index = g_ui32DCNextIndex++;
 	eError = OSEventObjectCreate("DC_EVENT_OBJ", &psNew->psEventList);
 	if (eError != PVRSRV_OK)
@@ -2062,7 +2261,7 @@ FailAlloc:
 	return eError;
 }
 
-IMG_VOID DCUnregisterDevice(IMG_HANDLE hSrvHandle)
+void DCUnregisterDevice(IMG_HANDLE hSrvHandle)
 {
 	DC_DEVICE *psDevice = (DC_DEVICE *) hSrvHandle;
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
@@ -2131,7 +2330,7 @@ IMG_VOID DCUnregisterDevice(IMG_HANDLE hSrvHandle)
 	OSFreeMem(psDevice);
 }
 
-IMG_VOID DCDisplayConfigurationRetired(IMG_HANDLE hConfigData)
+void DCDisplayConfigurationRetired(IMG_HANDLE hConfigData)
 {
 	DC_CMD_COMP_DATA *psData = hConfigData;
 	DC_DISPLAY_CONTEXT *psDisplayContext = psData->psDisplayContext;
@@ -2180,7 +2379,7 @@ IMG_VOID DCDisplayConfigurationRetired(IMG_HANDLE hConfigData)
 		we can't destroy the display context from the MISR which we
 		can be called from.
 	*/
-	SCPCommandComplete(psDisplayContext->psSCPContext);
+	SCPCommandComplete(psDisplayContext->psSCPContext, psData->bDirectNullFlip);
 
 	/* Notify devices (including ourself) in case some item has been unblocked */
 	PVRSRVCheckStatus(NULL);
@@ -2276,8 +2475,8 @@ e0:
 	return eError;
 }
 
-IMG_VOID DCImportBufferRelease(IMG_HANDLE hImport,
-							   IMG_DEV_PHYADDR *pasDevPAddr)
+void DCImportBufferRelease(IMG_HANDLE hImport,
+						   IMG_DEV_PHYADDR *pasDevPAddr)
 {
 	PMR *psPMR = hImport;
 
@@ -2285,6 +2484,51 @@ IMG_VOID DCImportBufferRelease(IMG_HANDLE hImport,
 	PMRUnlockSysPhysAddresses(psPMR);
 	OSFreeMem(pasDevPAddr);
 }
+
+#if defined(INTEGRITY_OS)
+IMG_HANDLE DCDisplayContextGetHandle(DC_DISPLAY_CONTEXT *psDisplayContext)
+{
+	PVR_ASSERT(psDisplayContext);
+	return psDisplayContext->hDisplayContext;
+}
+
+IMG_UINT32 DCDeviceGetIndex(IMG_HANDLE hDeviceData)
+{
+	DC_DEVICE *psDevice = g_psDCDeviceList;
+	IMG_UINT32 ui32Index = 0;
+
+	while (psDevice != NULL)
+	{
+		if (psDevice->hDeviceData == hDeviceData)
+		{
+			ui32Index = psDevice->ui32Index;
+			break;
+		}
+		psDevice = psDevice->psNext;
+	}
+
+	return ui32Index;
+}
+
+IMG_HANDLE DCDeviceGetDeviceAtIndex(IMG_UINT32 ui32DeviceIndex)
+{
+	IMG_HANDLE hDeviceData = NULL;
+	DC_DEVICE *psDevice = g_psDCDeviceList;
+
+	while (psDevice != NULL)
+	{
+		if (psDevice->ui32Index == ui32DeviceIndex)
+		{
+			hDeviceData = psDevice->hDeviceData;
+			break;
+		}
+		psDevice = psDevice->psNext;
+	}
+
+	return hDeviceData;
+}
+
+#endif
 
 /*****************************************************************************
  *                Public interface functions for services                    *

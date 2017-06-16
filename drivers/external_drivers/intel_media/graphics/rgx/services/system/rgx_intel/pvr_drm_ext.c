@@ -103,26 +103,78 @@ static struct drm_ioctl_desc pvr_ioctls[] = {
 };
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)) */
 
+typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
+
 DECLARE_WAIT_QUEUE_HEAD(sWaitForInit);
 
 static bool bInitComplete;
 static bool bInitFailed;
 
-struct pci_dev *gpsPVRLDMDev;
+static struct pci_dev *gpsPVRLDMDev;
 
 struct drm_device *gpsPVRDRMDev;
+static PVRSRV_DEVICE_NODE *gpsDeviceNode;
 
 #define PVR_DRM_FILE struct drm_file *
-int pvr_drm_load(struct drm_device *dev, unsigned long flags);
 
-int __pvr_init(struct drm_device *dev, unsigned long flags)
+int PVRCore_Init(void)
+{
+	int error = 0;
+
+	if ((error = PVRSRVCommonDriverInit()) != 0)
+	{
+		return error;
+	}
+
+	error = PVRSRVDeviceCreate(&gpsPVRLDMDev->dev, &gpsDeviceNode);
+	if (error != 0)
+	{
+		DRM_DEBUG("%s: unable to init PVR service (%d)", __FUNCTION__, error);
+		return error;
+	}
+
+	error = PVRSRVCommonDeviceInit(gpsDeviceNode);
+	if (error != 0)
+	{
+		return error;
+	}
+
+	return 0;
+}
+
+void PVRCore_Cleanup(void)
+{
+	PVRSRVCommonDeviceDeinit(gpsDeviceNode);
+	PVRSRVDeviceDestroy(gpsDeviceNode);
+	gpsDeviceNode = NULL;
+
+	PVRSRVCommonDriverDeinit();
+}
+
+int PVRSRVOpen(struct drm_device __maybe_unused *dev, struct drm_file *pDRMFile)
 {
 	int err;
 
-	err = PVRSRVCommonDriverInit();
+	if (!try_module_get(THIS_MODULE))
+	{
+		DRM_DEBUG("%s: Failed to get module", __FUNCTION__);
+		return -ENOENT;
+	}
+
+	err = PVRSRVCommonDeviceOpen(gpsDeviceNode, pDRMFile);
 	if (err)
-		return err;
-	return pvr_drm_load(dev, flags);
+	{
+		module_put(THIS_MODULE);
+	}
+
+	return err;
+}
+
+void PVRSRVRelease(struct drm_device __maybe_unused *dev, struct drm_file *pDRMFile)
+{
+	PVRSRVCommonDeviceRelease(gpsDeviceNode, pDRMFile);
+
+	module_put(THIS_MODULE);
 }
 
 int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
@@ -134,25 +186,18 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	gpsPVRDRMDev = dev;
 	gpsPVRLDMDev = dev->pdev;
 
-#if defined(PDUMP)
-	iRes = dbgdrv_init();
+	iRes = PVRCore_Init();
 	if (iRes != 0)
 	{
 		goto exit;
 	}
-#endif
 
-#ifdef	CONFIG_PCI
+#ifdef CONFIG_PCI
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)) && \
-	(LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
-	dev->driver->set_busid = drm_pci_set_busid;
+      (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+      dev->driver->set_busid = drm_pci_set_busid;
 #endif
 #endif
-	iRes = __pvr_init(dev, flags);
-	if (iRes != 0)
-	{
-		goto exit_dbgdrv_cleanup;
-	}
 
 	if (MerrifieldDCInit(dev) != PVRSRV_OK)
 	{
@@ -162,11 +207,7 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 
 	goto exit;
 exit_pvrcore_cleanup:
-	pvr_exit();
-exit_dbgdrv_cleanup:
-#if defined(PDUMP)
-	dbgdrv_cleanup();
-#endif
+	PVRCore_Cleanup();
 exit:
 	if (iRes != 0)
 	{
@@ -188,10 +229,7 @@ int PVRSRVDrmUnload(struct drm_device *dev)
 		DRM_ERROR("%s: can't deinit display class\n", __FUNCTION__);
 	}
 
-	pvr_exit();
-#if defined(PDUMP)
-	dbgdrv_cleanup();
-#endif
+	PVRCore_Cleanup();
 
 	return 0;
 }
@@ -361,32 +399,5 @@ int PVRSRVInterrupt(struct drm_device* dev)
 
 int PVRSRVMMap(struct file *pFile, struct vm_area_struct *ps_vma)
 {
-    PVRSRV_ERROR eError = PVRSRV_ERROR_PMR_EMPTY;
-    IMG_HANDLE hSecurePMRHandle;
-    PMR *psPMR = NULL;
-	CONNECTION_DATA *psConnection = LinuxConnectionFromFile(pFile);
-
-    if(psConnection == NULL)
-    {   
-        PVR_DPF((PVR_DBG_ERROR, "Invalid connection data"));
-        return eError;
-    } 
-#if defined(SUPPORT_DRM_DC_MODULE)
-    psPMR = PVRSRVGEMMMapLookupPMR(pFile, ps_vma);
-    if (!psPMR)
-#endif
-    {   
-        hSecurePMRHandle = (IMG_HANDLE)((uintptr_t)ps_vma->vm_pgoff);
-
-        eError = PVRSRVLookupHandle(psConnection->psHandleBase,
-                        (void **)&psPMR,
-                        hSecurePMRHandle,
-                        PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
-                        IMG_TRUE);
-        if (eError != PVRSRV_OK)
-        {
-            return eError; 
-        }
-    }
- 	return OSMMapPMRGeneric(psPMR, ps_vma);
+	return PVRSRV_MMap(pFile, ps_vma);
 }

@@ -168,7 +168,8 @@ PVRSRV_ERROR SCPRun(SCP_CONTEXT *psContext);
 */
 /*****************************************************************************/
 IMG_IMPORT
-void SCPCommandComplete(SCP_CONTEXT *psContext);
+void SCPCommandComplete(SCP_CONTEXT *psContext,
+                        IMG_BOOL bIgnoreFences);
 
 /*************************************************************************/ /*!
 @Function       SCPFlush
@@ -209,7 +210,9 @@ IMG_BOOL SCPHasPendingCommand(SCP_CONTEXT *psContext);
 */
 /*****************************************************************************/
 IMG_EXPORT
-void IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext);
+void IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile);
 
 /*************************************************************************/ /*!
 @Function       SCPDestroy

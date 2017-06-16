@@ -986,21 +986,4 @@ ExitUnlock:
 
 	return psPMR;
 }
-
-int PVRSRVOpen(struct drm_device *dev, struct drm_file *file)
-{
-	PVRSRV_DEVICE_NODE *ppvrdev = pvr_device_acquire();
-
-	PVR_UNREFERENCED_PARAMETER(dev);
-	if (ppvrdev == NULL) {
-		return -EXDEV;
-	}
-	return PVRSRVCommonDeviceOpen(ppvrdev, file);
-}
-
-void PVRSRVRelease(struct drm_device *dev, struct drm_file *file)
-{
-	PVRSRVCommonDeviceRelease(dev->dev_private, file);
-}
-
 #endif /* defined(SUPPORT_DRM) */
