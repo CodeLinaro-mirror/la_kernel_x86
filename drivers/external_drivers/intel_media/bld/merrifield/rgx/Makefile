@@ -405,7 +405,7 @@ $(DRIVER_NAME)-y += \
 
 ifeq ($(CONFIG_ION),y)
 $(DRIVER_NAME)-y += \
-       $(RGXDIR)/services/system/common/env/linux/ion_support_generic.o
+       $(RGXDIR)/services/system/rgx_intel/ion_support_intel.o
 endif
 
 # buffer class video
