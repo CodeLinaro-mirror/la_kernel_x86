@@ -362,7 +362,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	if (is_dual_dsi(dev))
 		power_island |= OSPM_DISPLAY_C;
 
-	if (!power_island_get(power_island))
+	if (!power_island_get_safe(power_island, PMKEY_DPIPANEL))
 		return -EAGAIN;
 	if (android_hdmi_is_connected(dev) && first_boot)
 			otm_hdmi_power_islands_on();
@@ -539,7 +539,7 @@ reset_recovery:
 	return err;
 
 power_on_err:
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_DPIPANEL);
 	return err;
 }
 
@@ -678,7 +678,7 @@ power_off_err:
 	if (is_dual_dsi(dev))
 		power_island |= OSPM_DISPLAY_C;
 
-	if (!power_island_put(power_island))
+	if (!power_island_put_safe(power_island, PMKEY_DPIPANEL))
 		return -EINVAL;
 
 	return err;

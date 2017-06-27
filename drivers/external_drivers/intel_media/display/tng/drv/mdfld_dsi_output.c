@@ -288,7 +288,7 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
 
-	if (!power_island_get(power_island)) {
+	if (!power_island_get_safe(power_island, PMKEY_BRIGHTCTRL)) {
 		mutex_unlock(&dsi_config->context_lock);
 		return;
 	}
@@ -304,7 +304,7 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 set_brightness_out:
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	mutex_unlock(&dsi_config->context_lock);
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_BRIGHTCTRL);
 }
 
 int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
@@ -1148,7 +1148,7 @@ int mdfld_dsi_set_cabc_mode(struct drm_device *dev, struct mdfld_dsi_config *dsi
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
 
-	if (!power_island_get(power_island))
+	if (!power_island_get_safe(power_island, PMKEY_SETCABCMODE))
 		return -EIO;
 
 	mutex_lock(&dsi_config->context_lock);
@@ -1161,7 +1161,7 @@ int mdfld_dsi_set_cabc_mode(struct drm_device *dev, struct mdfld_dsi_config *dsi
 
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	mutex_unlock(&dsi_config->context_lock);
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_SETCABCMODE);
 
 	return err;
 }
@@ -1215,7 +1215,7 @@ int mdfld_dsi_get_cabc_mode(struct drm_device *dev, struct mdfld_dsi_config *dsi
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
 
-	if (!power_island_get(power_island)) {
+	if (!power_island_get_safe(power_island, PMKEY_GETCABCMODE)) {
 		DRM_ERROR("%s:%u: power_island_get failed\n", __func__, __LINE__);
 		return -EIO;
 	}
@@ -1229,7 +1229,7 @@ int mdfld_dsi_get_cabc_mode(struct drm_device *dev, struct mdfld_dsi_config *dsi
 
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	mutex_unlock(&dsi_config->context_lock);
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_GETCABCMODE);
 
 	return ret;
 }

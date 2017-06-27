@@ -83,6 +83,21 @@ enum POWER_ISLAND_STATE {
 				OSPM_VIDEO_ISLAND |\
 				OSPM_DISPLAY_ISLAND)
 
+/* PM keys for power_island_get/put */
+#define PMKEY_BRIGHTCTRL	0x1
+#define PMKEY_SETCABCMODE	0x2
+#define PMKEY_GETCABCMODE	0x3
+#define PMKEY_3939R		0x4
+#define PMKEY_3939W		0x5
+#define PMKEY_DBI_POWER		0x6
+#define PMKEY_DBI_DPMS		0x7
+#define PMKEY_DBI_SAVE		0x8
+#define PMKEY_DPIPANEL		0x9
+#define PMKEY_SYSDEVICEPS	0xa
+#define PMKEY_EXTRAPOWERISLAND	0xb
+#define PMKEY_UIPOWERISLANDS	0xc
+#define PMKEY_USINGHW		0xd
+
 struct power_ops;
 
 /* Generic defination of a power island */
@@ -129,10 +144,13 @@ void ospm_power_uninit(void);
 
 /* Power up */
 bool power_island_get(u32 hw_island);
+bool power_island_get_safe(u32 hw_island, u8 key);
 /* Power down */
 bool power_island_put(u32 hw_island);
+bool power_island_put_safe(u32 hw_island, u8 key);
 
 /* Check the state of the island */
+void log_power_island_active_requests(void);
 bool is_island_on(u32 hw_island);
 
 /* Get Display island from the pipe */

@@ -84,6 +84,11 @@ struct ospm_power_island island_list[] = {
 };
 #endif
 
+#define KEY_TABLE_SIZE 32
+#define KEY_MASK 0x1F
+static u32 key_table[KEY_TABLE_SIZE];
+static struct mutex islands_safe;
+
 /**
  * in_atomic_or_interrupt() - Return non-zero if in atomic context.
  * Problems with this code:
@@ -390,6 +395,28 @@ static bool any_island_on(void)
 }
 
 /**
+ * power_island_get_safe
+ *
+ * Description: Notify PowerMgmt module that you will be accessing the
+ * specified island's hw so don't power it off.  If the island is not
+ * powered up, it will power it on. Will detect unbalanced calls
+ *
+ */
+bool power_island_get_safe(u32 hw_island, u8 key)
+{
+	bool ret = true; // make the caller happy if already locked
+	mutex_lock(&islands_safe);
+	if (key_table[key & KEY_MASK] == 0) {
+		ret = power_island_get(hw_island);
+		key_table[key & KEY_MASK] = hw_island;
+	} else {
+		DRM_ERROR("tried to get island before put %x, do nothing", key);
+	}
+	mutex_unlock(&islands_safe);
+	return ret;
+}
+
+/**
  * power_island_get
  *
  * Description: Notify PowerMgmt module that you will be accessing the
@@ -445,6 +472,28 @@ out_err:
 }
 
 /**
+ * power_island_put_safe
+ *
+ * Description: Notify PowerMgmt module that you are done accessing the
+ * specified island's hw so feel free to power it off.  Note that this
+ * function doesn't actually power off the islands.
+ */
+bool power_island_put_safe(u32 hw_island, u8 key)
+{
+	bool ret = true; // make the caller happy if already unlocked
+	mutex_lock(&islands_safe);
+	if (key_table[key & KEY_MASK] & hw_island) {
+		ret = power_island_put(hw_island);
+		key_table[key & KEY_MASK] = 0;
+        } else {
+		DRM_ERROR("tried to put island without get %x, do nothing", key);
+        }
+	mutex_unlock(&islands_safe);
+	return ret;
+}
+
+
+/**
  * power_island_put
  *
  * Description: Notify PowerMgmt module that you are done accessing the
@@ -487,6 +536,23 @@ bool power_island_put(u32 hw_island)
 
 	return ret;
 }
+
+/**
+ * log_power_island_active_requests
+ *
+ * Description: logs active safe island active requests
+ */
+void log_power_island_active_requests(void)
+{
+	int i;
+	mutex_lock(&islands_safe);
+        for (i = 0; i < KEY_TABLE_SIZE; i++)
+		if (key_table[i & KEY_MASK])
+			DRM_INFO("Request active for key %x on islands %x",
+				i, key_table[i & KEY_MASK]);
+	mutex_unlock(&islands_safe);
+}
+
 
 /**
  * is_island_on
@@ -549,6 +615,7 @@ void ospm_power_init(struct drm_device *dev)
 		goto out_err;
 
 	mutex_init(&g_ospm_data->ospm_lock);
+	mutex_init(&islands_safe);
 	g_ospm_data->dev = dev;
 	gpDrmDevice = dev;
 
@@ -647,7 +714,7 @@ bool ospm_power_using_hw_begin(int hw_island, u32 usage)
 	if (hw_island == OSPM_DISPLAY_ISLAND)
 		hw_island = OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI;
 
-	ret = power_island_get(hw_island);
+	ret = power_island_get_safe(hw_island, PMKEY_USINGHW);
 
 	return ret;
 }
@@ -670,7 +737,7 @@ void ospm_power_using_hw_end(int hw_island)
 	if (hw_island == OSPM_DISPLAY_ISLAND)
 		hw_island = OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI;
 
-	power_island_put(hw_island);
+	power_island_put_safe(hw_island, PMKEY_USINGHW);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
 

@@ -618,7 +618,7 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 			power_island |= OSPM_DISPLAY_MIO;
 
-		if (!power_island_get(power_island)) {
+		if (!power_island_get_safe(power_island, PMKEY_3939R)) {
 			DRM_ERROR("%s:%d:Can't get power island\n", __func__, __LINE__);
 			kfree(str);
 			return -EIO;
@@ -646,7 +646,7 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 			len = snprintf(str + len, count, "addr = 0x%x, value = 0x%x\n", (u8)dbgfs.addr, data);
 		}
 		mdfld_dsi_dsr_allow(dbgfs_dsi_config);
-		power_island_put(power_island);
+		power_island_put_safe(power_island, PMKEY_3939R);
 	}
 
 	if (len < 0)
@@ -725,7 +725,7 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 			power_island |= OSPM_DISPLAY_MIO;
 
-		if (!power_island_get(power_island)) {
+		if (!power_island_get_safe(power_island, PMKEY_3939W)) {
 			DRM_ERROR("%s:%d:Can't get power island\n", __func__, __LINE__);
 			ret = -EIO;
 			goto exit_dbgfs_write;
@@ -764,7 +764,7 @@ exit_power_restore:
 	/* releasing display and MIPI bus */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
 		mdfld_dsi_dsr_allow_locked(dbgfs_dsi_config);
-		power_island_put(power_island);
+		power_island_put_safe(power_island, PMKEY_3939W);
 	}
 
 exit_dbgfs_write:

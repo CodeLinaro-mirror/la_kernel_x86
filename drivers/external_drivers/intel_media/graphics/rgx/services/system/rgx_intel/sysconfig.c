@@ -271,7 +271,7 @@ static PVRSRV_ERROR SysDevicePrePowerState(
 	{
 		PVR_DPF((PVR_DBG_MESSAGE, "Remove SGX power"));
 
-		if (!power_island_put(OSPM_GRAPHICS_ISLAND))
+		if (!power_island_put_safe(OSPM_GRAPHICS_ISLAND, PMKEY_SYSDEVICEPS))
 			return PVRSRV_ERROR_DEVICE_POWER_CHANGE_FAILURE;
 
 		/*Report dfrgx We have the device OFF*/
@@ -291,7 +291,7 @@ static PVRSRV_ERROR SysDevicePostPowerState(
 	{
 		PVR_DPF((PVR_DBG_MESSAGE, "Restore SGX power"));
 
-		if (!power_island_get(OSPM_GRAPHICS_ISLAND))
+		if (!power_island_get_safe(OSPM_GRAPHICS_ISLAND, PMKEY_SYSDEVICEPS))
 			return PVRSRV_ERROR_DEVICE_POWER_CHANGE_FAILURE;
 
 		/*Report dfrgx We have the device ON*/

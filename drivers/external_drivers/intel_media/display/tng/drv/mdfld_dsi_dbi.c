@@ -428,7 +428,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config, bool from_dsr)
 	if (is_dual_dsi(dev))
 	power_island |= OSPM_DISPLAY_C;
 
-	if (!power_island_get(power_island))
+	if (!power_island_get_safe(power_island, PMKEY_DBI_POWER))
 		return -EAGAIN;
 
 	/*
@@ -611,7 +611,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config, bool from_dsr)
 	return err;
 
 power_on_err:
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_DBI_POWER);
 	return err;
 }
 
@@ -740,6 +740,7 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config, bool from_dsr)
 	int retry,i;
 	int offset = 0;
         u32 val;
+	static bool first_boot = true;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -835,9 +836,14 @@ power_off_err:
 	if (is_dual_dsi(dev))
 		power_island |= OSPM_DISPLAY_C;
 
-	if (!power_island_put(power_island))
-		return -EINVAL;
-
+	if (first_boot) {
+		if (!power_island_put(power_island))
+			return -EINVAL;
+		first_boot = false;
+	} else {
+		if (!power_island_put_safe(power_island, PMKEY_DBI_POWER))
+			return -EINVAL;
+	}
 	return err;
 }
 
@@ -1102,7 +1108,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 
 	power_island = pipe_to_island(dsi_config->pipe);
 
-	if (!power_island_get(power_island))
+	if (!power_island_get_safe(power_island, PMKEY_DBI_DPMS))
 		return;
 
 	mutex_lock(&dev_priv->dpms_mutex);
@@ -1148,7 +1154,7 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	DCUnLockMutex();
 	mutex_unlock(&dev_priv->dpms_mutex);
 
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_DBI_DPMS);
 }
 
 static
@@ -1171,7 +1177,7 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 	power_island = pipe_to_island(pipe);
 
-	if (!power_island_get(power_island))
+	if (!power_island_get_safe(power_island, PMKEY_DBI_SAVE))
 		return;
 
 	DCLockMutex();
@@ -1187,7 +1193,7 @@ void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	mdfld_generic_dsi_dbi_set_power(encoder, DRM_MODE_DPMS_OFF);
 
 	DCUnLockMutex();
-	power_island_put(power_island);
+	power_island_put_safe(power_island, PMKEY_DBI_SAVE);
 }
 
 static
@@ -1481,6 +1487,7 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 				power_island |= OSPM_DISPLAY_MIO;
 
+		log_power_island_active_requests();
 		if (is_island_on(power_island)) {
 			power_island_put(power_island);
 		}

@@ -338,7 +338,7 @@ void display_power_work(struct work_struct *work)
 			DRM_DEBUG("power off island %#x for plane (%d %d)\n",
 				 pstate->extra_power_island,
 				 pstate->type, pstate->index);
-			power_island_put(pstate->extra_power_island);
+			power_island_put_safe(pstate->extra_power_island, PMKEY_EXTRAPOWERISLAND);
 			pstate->powered_off = true;
 		}
 		pstate->disabled = true;
@@ -484,7 +484,7 @@ static IMG_BOOL enable_plane(struct flip_plane *plane)
 		DRM_DEBUG("power on island %#x for plane (%d %d)\n",
 			  pstate->extra_power_island, type, index);
 
-		if (!power_island_get(pstate->extra_power_island)) {
+		if (!power_island_get_safe(pstate->extra_power_island, PMKEY_EXTRAPOWERISLAND)) {
 			DRM_ERROR("fail to power on island %#x"
 				  " for plane (%d %d)\n",
 				  pstate->extra_power_island, type, index);
@@ -749,7 +749,7 @@ static IMG_BOOL _Do_Flip(DC_MRFLD_FLIP *psFlip, int iPipe)
 	}
 
 	/*turn on required power islands*/
-	if (!power_island_get(psFlip->uiPowerIslands))
+	if (!power_island_get_safe(psFlip->uiPowerIslands, PMKEY_UIPOWERISLANDS))
 		return IMG_FALSE;
 
 	/* start update display controller hardware */
@@ -859,7 +859,7 @@ static IMG_BOOL _Do_Flip(DC_MRFLD_FLIP *psFlip, int iPipe)
 		maxfifo_timer_start(gpsDevice->psDrmDevice);
 
 err_out:
-	power_island_put(psFlip->uiPowerIslands);
+	power_island_put_safe(psFlip->uiPowerIslands, PMKEY_UIPOWERISLANDS);
 	return bUpdated;
 }
 
@@ -2194,7 +2194,7 @@ void DC_MRFLD_onPowerOff(uint32_t iPipe)
 			/* turn off extra power island here */
 			if (!pstate->powered_off &&
 			    pstate->extra_power_island) {
-				power_island_put(pstate->extra_power_island);
+				power_island_put_safe(pstate->extra_power_island, PMKEY_EXTRAPOWERISLAND);
 				pstate->powered_off = true;
 			}
 
