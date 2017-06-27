@@ -32,5 +32,8 @@ struct proximity_sensor_platform_data {
 	void (*exit)(void);
 	/* gpio ports for interrupt pads */
 	int gpio_int;
+	/* threshold initial values */
+	int ps_threshold;
+	int ps_hysteresis_threshold;
 };
 #endif  /* __TMD_26723_H__ */

@@ -17,6 +17,10 @@
 static struct regulator *vprog2_reg;
 #define VPROG2_VAL 2850000
 
+#define TMD26723_PS_DETECTION_THRESHOLD_DEFAULT		0x100
+#define TMD26723_PS_HYSTERESIS_THRESHOLD_DEFAULT	0x100
+#define TMD26723_PS_DETECTION_THRESHOLD_SPL		0x91
+#define TMD26723_PS_HYSTERESIS_THRESHOLD_SPL		0x91
 /*
  * PMIC regulator vprog2 init
  */
@@ -88,6 +92,17 @@ void *tmd26723_ps_platform_data(void *info)
 		proximity_sensor_pdata.exit = tmd26723_platform_exit;
 		proximity_sensor_pdata.power_on = tmd26723_power_on;
 		proximity_sensor_pdata.power_off = tmd26723_power_off;
+	}
+
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, SPL, PRO) ||
+				INTEL_MID_BOARD(2, PHONE, MRFL, SPL, ENG)) {
+		proximity_sensor_pdata.ps_threshold = TMD26723_PS_DETECTION_THRESHOLD_SPL;
+		proximity_sensor_pdata.ps_hysteresis_threshold =
+				TMD26723_PS_HYSTERESIS_THRESHOLD_SPL;
+	} else {
+		proximity_sensor_pdata.ps_threshold = TMD26723_PS_DETECTION_THRESHOLD_DEFAULT;
+		proximity_sensor_pdata.ps_hysteresis_threshold =
+				TMD26723_PS_HYSTERESIS_THRESHOLD_DEFAULT;
 	}
 
 	return &proximity_sensor_pdata;

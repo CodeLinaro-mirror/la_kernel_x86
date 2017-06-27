@@ -38,8 +38,6 @@
 #define TMD26723_INT		IRQ_EINT20
 
 #define TMD_STARTUP_DELAY		5 /* ms */
-#define TMD26723_PS_DETECTION_THRESHOLD		0x100
-#define TMD26723_PS_HYSTERESIS_THRESHOLD	0x100
 
 /*
  * Defines
@@ -819,8 +817,8 @@ static int tmd26723_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, data);
 
 	data->enable = 0;
-        data->ps_threshold = TMD26723_PS_DETECTION_THRESHOLD;
-        data->ps_hysteresis_threshold = TMD26723_PS_HYSTERESIS_THRESHOLD;
+        data->ps_threshold = data->pdata->ps_threshold;
+        data->ps_hysteresis_threshold = data->pdata->ps_hysteresis_threshold;
 	data->ps_detection = 0;	/* default to no detection */
 	data->enable_proximity_sensor = 0;	/* default to 0 */
 	data->irq_enabled = 0;
