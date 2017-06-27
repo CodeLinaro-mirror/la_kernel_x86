@@ -42,6 +42,8 @@
 #define CREATE_TRACE_POINTS
 #include "mfd.h"
 
+#define HSU_DMA_RX_BUSY_LIMIT	3
+
 static int hsu_dma_enable = 0xff;
 module_param(hsu_dma_enable, int, 0);
 MODULE_PARM_DESC(hsu_dma_enable,
@@ -1906,8 +1908,10 @@ int serial_hsu_do_suspend(struct uart_hsu_port *up)
 	if (up->use_dma) {
 		if (up->hw_type == hsu_intel) {
 			if (chan_readl(up->rxc, HSU_CH_D0SAR) >
-					up->rxbuf.dma_addr)
+					up->rxbuf.dma_addr) {
+				dev_info(up->dev, "busy suspend at HSU_CH_D0SAR\n");
 				goto busy;
+			}
 		}
 	}
 
@@ -1961,6 +1965,8 @@ int serial_hsu_do_suspend(struct uart_hsu_port *up)
 			goto err;
 	}
 
+	if (up->use_dma && up->hw_type == hsu_intel)
+		up->dma_rx_busy_num = 0;
 	if (cfg->hw_suspend)
 		cfg->hw_suspend(up->index, up->dev, wakeup_irq);
 	if (cfg->hw_context_save)
@@ -1987,6 +1993,12 @@ err:
 	spin_unlock_irqrestore(&up->port.lock, flags);
 	serial_sched_sync(up);
 busy:
+	if (up->use_dma && up->hw_type == hsu_intel) {
+		if (++up->dma_rx_busy_num > HSU_DMA_RX_BUSY_LIMIT) {
+			dev_info(up->dev, "DMA RX BUSY recovery\n");
+			intel_dma_do_rx(up, 0);
+		}
+	}
 	pm_schedule_suspend(up->dev, cfg->idle);
 	trace_hsu_func_end(up->index, __func__, "busy");
 	return -EBUSY;

@@ -197,6 +197,7 @@ struct uart_hsu_port {
 	unsigned int		dma_tx_irq_cmddone;
 	unsigned int		dma_rx_irq_cmddone;
 	unsigned int		dma_rx_tmt_irq_cmddone;
+	unsigned int		dma_rx_busy_num;
 	unsigned int		tasklet_done;
 	unsigned int		workq_done;
 	unsigned int		in_workq;
