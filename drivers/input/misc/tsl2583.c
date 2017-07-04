@@ -352,15 +352,17 @@ static int taos_set_power(struct tsl258x_chip *chip, int on)
 	}
 	ret = taos_i2c_smbus_write_data(chip->client,
 					TSL258X_CMD_REG | TSL258X_CNTRL, cntrl);
-	if (!ret && on)
+	if (!ret && on) {
 		/* Transition from powered off to disabled */
 		chip->als_status = TSL258X_STATUS_SUSPENDED;
-	else if (!ret && !on)
+		mdelay(3);
+	} else if (!ret && !on) {
 		/* Transition from enabled/disabled to powered off */
 		chip->als_status = TSL258X_STATUS_POWERED_OFF;
-	else
+	} else {
 		dev_err(&chip->client->dev, "failed to power %s the sensor\n",
 			(on == 1) ? "up" : "down");
+	}
 
 	return ret;
 }
@@ -374,7 +376,6 @@ static int taos_set_enable(struct tsl258x_chip *chip, int en)
 		cntrl = TSL258X_CNTL_PWR_ON;
 		dev_info(&chip->client->dev, "disabling sensor\n");
 	} else {
-		mdelay(3);
 		cntrl = TSL258X_CNTL_PWR_ON | TSL258X_CNTL_ADC_ENBL;
 		dev_info(&chip->client->dev, "enabling sensor\n");
 
@@ -1291,11 +1292,22 @@ static int taos_suspend(struct device *dev)
 static int taos_resume(struct device *dev)
 {
 	struct tsl258x_chip *chip = dev_get_drvdata(dev);
+	int gain;
 	int ret = 0;
 
 	mutex_lock(&chip->als_mutex);
-	if (chip->als_status == TSL258X_STATUS_POWERED_OFF)
+	if (chip->als_status == TSL258X_STATUS_POWERED_OFF) {
 		ret = taos_set_power(chip, true);
+		if (ret)
+			goto error;
+		ret = taos_set_als_time(chip, chip->taos_settings.als_time);
+		if (ret)
+			goto error;
+		gain = tsl2584_als_gain_tbl[chip->taos_settings.als_gain_idex].gain_val;
+		ret = taos_set_gain(chip, gain);
+	}
+
+error:
 	mutex_unlock(&chip->als_mutex);
 	return ret;
 }
