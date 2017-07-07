@@ -26,6 +26,11 @@
 #include <linux/workqueue.h>
 #include <linux/freezer.h>
 
+/* Parameters for wakelock workqueue */
+#define WAKELOCK_LIMIT		(3 * MSEC_PER_SEC)
+#define WAKELOCK_WQ_FREQ	(HZ/2)
+#define WAKELOCK_WQ_FIRST	(HZ/4)
+
 /**
  * struct alarm_base - Alarm timer bases
  * @lock:		Lock for syncrhonized access to the base
@@ -45,6 +50,7 @@ static struct alarm_base {
 static ktime_t freezer_delta;
 static DEFINE_SPINLOCK(freezer_delta_lock);
 
+static struct delayed_work wakelock_work;
 static struct wakeup_source *ws;
 
 #ifdef CONFIG_RTC_CLASS
@@ -208,6 +214,48 @@ EXPORT_SYMBOL_GPL(alarm_expires_remaining);
 
 #ifdef CONFIG_RTC_CLASS
 /**
+ * alarmtimer_wakelock_task - avoid going to suspend if an alarm will fire
+ * @work: unused
+ *
+ * Suspend failures due to an alarm firing in the next 2s
+ * or even suspend and then wakeup after 3s can waste power.
+ * To improve power consumption, use this workqueue to acquire
+ * a wakelock before the alarm fires.
+ */
+static void alarmtimer_wakelock_task(struct work_struct *work)
+{
+	ktime_t min;
+	unsigned long flags;
+	int i;
+	long next_task = 0;
+
+	min = ktime_set(0, 0);
+
+	/* Find the soonest timer to expire */
+	for (i = 0; i < ALARM_NUMTYPE; i++) {
+		struct alarm_base *base = &alarm_bases[i];
+		struct timerqueue_node *next;
+		ktime_t delta;
+
+		spin_lock_irqsave(&base->lock, flags);
+		next = timerqueue_getnext(&base->timerqueue);
+		spin_unlock_irqrestore(&base->lock, flags);
+		if (!next)
+			continue;
+		delta = ktime_sub(next->expires, base->gettime());
+		if (!min.tv64 || (delta.tv64 < min.tv64))
+			min = delta;
+	}
+	if (min.tv64 == 0)
+		return;
+
+	if (ktime_to_ms(min) < WAKELOCK_LIMIT)
+		__pm_wakeup_event(ws, ktime_to_ms(min) + 1);
+
+	schedule_delayed_work(&wakelock_work, WAKELOCK_WQ_FREQ);
+}
+
+/**
  * alarmtimer_suspend - Suspend time callback
  * @dev: unused
  * @state: unused
@@ -235,6 +283,9 @@ static int alarmtimer_suspend(struct device *dev)
 	/* If we have no rtcdev, just return */
 	if (!rtc)
 		return 0;
+
+	/* Cancel the wakelock task now */
+	cancel_delayed_work(&wakelock_work);
 
 	/* Find the soonest timer to expire*/
 	for (i = 0; i < ALARM_NUMTYPE; i++) {
@@ -290,6 +341,9 @@ static int alarmtimer_resume(struct device *dev)
 
 	/* cancel rtc timer if pending */
 	rtc_timer_cancel(rtc, &rtctimer);
+
+	/* Schedule the wakelock task */
+	schedule_delayed_work(&wakelock_work, WAKELOCK_WQ_FIRST);
 
 	return 0;
 }
@@ -887,6 +941,9 @@ static int __init alarmtimer_init(void)
 		goto out_drv;
 	}
 	ws = wakeup_source_register("alarmtimer");
+#ifdef CONFIG_RTC_CLASS
+	INIT_DEFERRABLE_WORK(&wakelock_work, alarmtimer_wakelock_task);
+#endif
 	return 0;
 
 out_drv:
