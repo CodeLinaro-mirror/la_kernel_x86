@@ -1075,6 +1075,12 @@ static int max17042_get_property(struct power_supply *psy,
 			val->intval = voltage_capacity_lookup(ret);
 		}
 
+		/* if the reported capacity is 100% and the battery full charge is
+		 * not yet complete then report 99% capacity
+		 */
+		if ((val->intval == 100) && (chip->status == POWER_SUPPLY_STATUS_CHARGING))
+			val->intval = 99;
+
 		if (val->intval > 100)
 			val->intval = 100;
 
