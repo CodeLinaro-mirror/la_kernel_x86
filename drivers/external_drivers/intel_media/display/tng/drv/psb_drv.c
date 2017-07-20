@@ -4044,6 +4044,7 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.runtime_idle = rtpm_idle,
 	.suspend_noirq = rtpm_suspend,
 	.resume_noirq = rtpm_resume,
+	.resume = rtpm_resume_end,
 };
 
 static struct vm_operations_struct psb_ttm_vm_ops;

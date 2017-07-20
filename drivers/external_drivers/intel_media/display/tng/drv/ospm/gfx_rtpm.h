@@ -39,6 +39,7 @@ void rtpm_uninit(struct drm_device *dev);
 */
 int rtpm_suspend(struct device *dev);
 int rtpm_resume(struct device *dev);
+int rtpm_resume_end(struct device *dev);
 int rtpm_idle(struct device *dev);
 int rtpm_allow(struct drm_device *dev);
 void rtpm_forbid(struct drm_device *dev);

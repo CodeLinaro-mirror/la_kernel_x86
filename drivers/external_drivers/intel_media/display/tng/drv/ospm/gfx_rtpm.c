@@ -33,6 +33,8 @@
 #include "psb_drv.h"
 #include "pwr_mgmt.h"
 
+#define DISPLAY_RESUME_TO	(HZ/4)
+static struct delayed_work resume_work;
 extern struct ospm_power_island island_list[9];
 extern struct drm_device *gpDrmDevice;
 
@@ -42,9 +44,9 @@ int rtpm_suspend(struct device *dev)
 	PSB_DEBUG_PM("%s\n", __func__);
 
 	rtpm_suspend_pci();
+	cancel_delayed_work(&resume_work);
 	if (pm_qos_request_active(&dev_priv->s0ix_qos))
 		pm_qos_remove_request(&dev_priv->s0ix_qos);
-
 	return 0;
 }
 
@@ -57,6 +59,19 @@ int rtpm_resume(struct device *dev)
 	/* No OPs of GFX/VED/VEC/VSP/DISP */
 	rtpm_resume_pci();
 
+	return 0;
+}
+
+static void resume_work_task(struct work_struct *work)
+{
+	/* w/a: force a display power transition after resume to unblock s0ix */
+	if (power_island_get(OSPM_DISPLAY_A))
+		power_island_put(OSPM_DISPLAY_A);
+}
+
+int rtpm_resume_end(struct device *dev)
+{
+	schedule_delayed_work(&resume_work, DISPLAY_RESUME_TO);
 	return 0;
 }
 
@@ -94,6 +109,7 @@ void rtpm_forbid(struct drm_device *dev)
 void rtpm_init(struct drm_device *dev)
 {
 	rtpm_allow(dev);
+	INIT_DEFERRABLE_WORK(&resume_work, resume_work_task);
 }
 
 void rtpm_uninit(struct drm_device *dev)
