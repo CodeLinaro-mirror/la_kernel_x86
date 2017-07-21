@@ -164,6 +164,7 @@ struct tsl258x_chip {
 	int als_time_scale;
 	int als_saturation;
 	int als_status;
+	bool als_adc_enabled;
 	int id;
 };
 
@@ -760,6 +761,7 @@ static ssize_t taos_enable_store(struct device *dev,
 				len = err;
 				goto enable_als_err;
 			} else {
+				chip->als_adc_enabled = true;
 				mod_timer(&chip->timer,
 					jiffies + msecs_to_jiffies(chip->taos_settings.als_odr));
 			}
@@ -772,6 +774,7 @@ static ssize_t taos_enable_store(struct device *dev,
 			len = err;
 			goto enable_als_err;
 		}
+		chip->als_adc_enabled = false;
 	}
 
 enable_als_err:
@@ -1184,6 +1187,7 @@ static int taos_probe(struct i2c_client *clientp,
 
 	mutex_init(&chip->als_mutex);
 	chip->als_status = TSL258X_STATUS_UNKNOWN;
+	chip->als_adc_enabled = false;
 
 	if (((struct tsl258x_platform_data *)chip->pdata)->gpio_conf)
 		((struct tsl258x_platform_data *)chip->pdata)->gpio_conf();
@@ -1275,6 +1279,10 @@ static int taos_resume(struct device *dev)
 	mutex_lock(&chip->als_mutex);
 	if (chip->als_status == TSL258X_STATUS_POWERED_OFF) {
 		ret = taos_set_power(chip, true);
+		if (ret)
+			goto error;
+		/* restore ADC previous state (enabled/disabled) */
+		ret = taos_set_enable(chip, chip->als_adc_enabled);
 		if (ret)
 			goto error;
 		ret = taos_set_als_time(chip, chip->taos_settings.als_time);
