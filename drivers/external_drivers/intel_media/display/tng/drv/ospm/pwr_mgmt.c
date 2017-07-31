@@ -483,6 +483,9 @@ bool power_island_put_safe(u32 hw_island, u8 key)
 	bool ret = true; // make the caller happy if already unlocked
 	mutex_lock(&islands_safe);
 	if (key_table[key & KEY_MASK] & hw_island) {
+		if (unlikely(key_table[key & KEY_MASK] != hw_island))
+			DRM_ERROR("unmatched put for key %x: get %x, put %x\n",
+					key, key_table[key & KEY_MASK], hw_island);
 		ret = power_island_put(hw_island);
 		key_table[key & KEY_MASK] = 0;
         } else {

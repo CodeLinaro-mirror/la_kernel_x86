@@ -1447,6 +1447,7 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	struct panel_funcs *p_funcs  = NULL;
 	struct drm_device *dev;
 	u32 power_island = 0;
+	bool was_on;
 
 	dbi_output = dev_priv->dbi_output;
 	dsi_config = dev_priv->dsi_configs[0];
@@ -1488,7 +1489,8 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 				power_island |= OSPM_DISPLAY_MIO;
 
 		log_power_island_active_requests();
-		if (is_island_on(power_island)) {
+		was_on = is_island_on(power_island);
+		if (was_on) {
 			power_island_put(power_island);
 		}
 		power_island_get(power_island);
@@ -1507,6 +1509,10 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 			if (p_funcs && p_funcs->reset)
 				p_funcs->reset(dsi_config);
 			break;
+		}
+
+		if (!was_on) {
+			power_island_put(power_island);
 		}
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {

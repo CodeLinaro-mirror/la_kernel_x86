@@ -3147,6 +3147,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				break;
 			default:
 				DRM_ERROR("Invalid overlay index %d\n", index);
+				power_island_put(power_island);
 				return -EINVAL;
 			}
 

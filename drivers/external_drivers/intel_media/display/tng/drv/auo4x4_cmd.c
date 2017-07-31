@@ -585,6 +585,10 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 		return -EINVAL;
 	}
 
+	str = kzalloc(count, GFP_KERNEL);
+	if (!str)
+		return -ENOMEM;
+
 	/* setting display and MIPI bus in correct state for reading */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
 		power_island = pipe_to_island(dbgfs_dsi_config->pipe);
@@ -592,15 +596,13 @@ static ssize_t dbgfs_read(char __user *buff, size_t count, loff_t *ppos, enum db
 		if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 			power_island |= OSPM_DISPLAY_MIO;
 
-		if (!power_island_get(power_island))
+		if (!power_island_get(power_island)) {
+			kfree(str);
 			return -EIO;
+		}
 
 		mdfld_dsi_dsr_forbid(dbgfs_dsi_config);
 	}
-
-	str = kzalloc(count, GFP_KERNEL);
-	if (!str)
-		return -ENOMEM;
 
 	switch (type) {
 	case ADDR:
@@ -717,7 +719,7 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 
 		if (kstrtouint(start, 16, &arg)) {
 			ret = -EINVAL;
-			goto exit_dbgfs_write;
+			goto exit_bad_arg;
 		}
 	}
 
@@ -744,6 +746,7 @@ static int dbgfs_write(const char __user *buff, size_t count, enum dbgfs_type ty
 		ret = -1;
 	}
 
+exit_bad_arg:
 	/* releasing display and MIPI bus */
 	if ((type == HIGH_SPEED) || (type == LOW_POWER)) {
 		mdfld_dsi_dsr_allow_locked(dbgfs_dsi_config);
