@@ -254,8 +254,8 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 				/* Store the PID in the final additional 4 bytes allocated */
 				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
 				*puiTemp = OSGetCurrentProcessID();
+				PVRSRVStatsIncrMemAllocStat_Ext(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet), *puiTemp);
 			}
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -315,8 +315,8 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 				/* Store the PID in the final additional 4 bytes allocated */
 				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
 				*puiTemp = OSGetCurrentProcessID();
+				PVRSRVStatsIncrMemAllocStat_Ext(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet), *puiTemp);
 			}
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -365,7 +365,8 @@ IMG_INTERNAL void (OSFreeMem)(void *pvMem)
 		{
 #if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvMem));
+			IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvMem) + (ksize(pvMem) - ALLOCMEM_MEMSTATS_PADDING));
+			PVRSRVStatsDecrMemAllocStat_Ext(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvMem), *puiTemp);
 #else
 			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
 			                                (IMG_UINT64)(uintptr_t) pvMem);
