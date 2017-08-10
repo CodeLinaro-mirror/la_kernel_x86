@@ -2447,11 +2447,29 @@ PVRSRVStatsDecrMemKAllocStat(size_t uiBytes,
 
 	if (psProcessStats != NULL)
 	{
+		OSLockAcquireNested(psProcessStats->hLock, PROCESS_LOCK_SUBCLASS_CURRENT);
+		/*Release the list lock as soon as we acquire the process lock,
+		 * this ensures if the process is in deadlist the entry cannot be deleted or modified */
+		OSLockRelease(g_psLinkedListLock);
 		/* Decrement the kmalloc memory stat... */
-		DECREASE_STAT_VALUE(psProcessStats, PVRSRV_PROCESS_STAT_TYPE_KMALLOC, uiBytes);
-	}
+		_DecreaseProcStatValue(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, psProcessStats, uiBytes);
+		OSLockRelease(psProcessStats->hLock);
+#if defined(PVRSRV_DEBUG_LINUX_MEMORY_STATS)
+		/* If all stats are now zero, remove the entry for this thread */
+		if (psProcessStats->ui32StatAllocFlags == 0)
+		{
+			OSLockAcquire(g_psLinkedListLock);
+			_MoveProcessToDeadList(psProcessStats);
+			OSLockRelease(g_psLinkedListLock);
+			_MoveProcessToDeadListDebugFS(psProcessStats);
 
-	OSLockRelease(g_psLinkedListLock);
+			/* Check if the dead list needs to be reduced */
+			_CompressMemoryUsage();
+		}
+#endif
+	} else {
+		OSLockRelease(g_psLinkedListLock);
+	}
 #endif
 }
 
@@ -2476,9 +2494,11 @@ _StatsDecrMemTrackedStat(_PVR_STATS_TRACKING_HASH_ENTRY *psTrackingHashEntry,
 	if (psProcessStats != NULL)
 	{
 		/* Decrement the memory stat... */
+		OSLockAcquireNested(psProcessStats->hLock, PROCESS_LOCK_SUBCLASS_CURRENT);
 		_DecreaseProcStatValue(eAllocType,
 		                       psProcessStats,
 		                       psTrackingHashEntry->uiSizeInBytes);
+		OSLockRelease(psProcessStats->hLock);
 	}
 
 	OSLockRelease(g_psLinkedListLock);
