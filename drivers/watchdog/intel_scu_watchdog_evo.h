@@ -65,8 +65,6 @@ struct intel_scu_watchdog_dev {
 	struct dentry *dfs_kwd_reset_type;
 	struct dentry *dfs_kwd_panic_reboot;
 #endif /* CONFIG_DEBUG_FS */
-	struct timespec last_kick;
-	u32 user_timeout;
 };
 
 #endif /* __INTEL_SCU_WATCHDOG_H */

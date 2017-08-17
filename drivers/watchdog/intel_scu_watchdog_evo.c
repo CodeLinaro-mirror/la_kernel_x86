@@ -310,7 +310,6 @@ static int watchdog_config_and_start(u32 newtimeout, u32 newpretimeout)
 	}
 
 	watchdog_device.started = true;
-	ktime_get_ts(&watchdog_device.last_kick);
 
 	return 0;
 }
@@ -389,8 +388,6 @@ static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 	if (watchdog_device.started) {
 		/* Watchdog already started, keep it alive */
 		watchdog_keepalive();
-		/* Register the last kick time */
-		ktime_get_ts(&watchdog_device.last_kick);
 	}
 
 	return len;
@@ -454,9 +451,6 @@ static long intel_scu_ioctl(struct file *file, unsigned int cmd,
 		}
 		if (watchdog_config_and_start(timeout, pre_timeout))
 			return -EINVAL;
-
-		/* register the timeout to check if userspace is alive */
-		watchdog_device.user_timeout = timeout;
 
 		return 0;
 	case WDIOC_GETTIMEOUT:
@@ -1437,55 +1431,9 @@ static struct rpmsg_device_id watchdog_rpmsg_id_table[] = {
 };
 MODULE_DEVICE_TABLE(rpmsg, watchdog_rpmsg_id_table);
 
-static bool has_been_kicked(void)
-{
-	bool ret = true;
-	struct timespec curtime;
-	struct timespec lastkick = watchdog_device.last_kick;
-	ktime_get_ts(&curtime);
-
-	if (lastkick.tv_sec + watchdog_device.user_timeout + 1 < curtime.tv_sec) {
-		pr_warn("watchdog has not been kicked by userspace for a long\n");
-		ret = false;
-	}
-	return ret;
-}
-
-static int watchdog_resume(struct device *dev)
-{
-	pr_debug("%s\n", __func__);
-
-	if (watchdog_device.shutdown_flag == true)
-		return 0; /* do nothing if shutting down */
-
-	if (watchdog_device.started && has_been_kicked()) {
-		watchdog_keepalive();
-	}
-	return 0;
-}
-
-static int watchdog_suspend(struct device *dev)
-{
-	pr_debug("%s\n", __func__);
-
-	if (watchdog_device.shutdown_flag == true)
-		return 0; /* do nothing if shutting down */
-
-	if (watchdog_device.started && has_been_kicked()) {
-		watchdog_keepalive();
-	}
-	return 0;
-}
-
-const static struct dev_pm_ops watchdog_pm_ops = {
-	.resume		= watchdog_resume,
-	.suspend	= watchdog_suspend,
-};
-
 static struct rpmsg_driver watchdog_rpmsg = {
 	.drv.name	= KBUILD_MODNAME,
 	.drv.owner	= THIS_MODULE,
-	.drv.pm		= &watchdog_pm_ops,
 	.id_table	= watchdog_rpmsg_id_table,
 	.probe		= watchdog_rpmsg_probe,
 	.callback	= watchdog_rpmsg_cb,
