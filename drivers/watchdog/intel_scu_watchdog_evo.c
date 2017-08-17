@@ -33,8 +33,6 @@
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 #include <linux/rpmsg.h>
-#include <linux/rtc.h>
-#include <linux/alarmtimer.h>
 #include <linux/nmi.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_rpmsg.h>
@@ -1468,11 +1466,6 @@ static int watchdog_resume(struct device *dev)
 
 static int watchdog_suspend(struct device *dev)
 {
-	struct rtc_wkalrm next, to_prog;
-	struct rtc_time curtime;
-	ktime_t diff_time, prog_alarm;
-	struct rtc_device *rtc_dev;
-
 	pr_debug("%s\n", __func__);
 
 	if (watchdog_device.shutdown_flag == true)
@@ -1480,24 +1473,7 @@ static int watchdog_suspend(struct device *dev)
 
 	if (watchdog_device.started && has_been_kicked()) {
 		watchdog_keepalive();
-
-		rtc_dev = alarmtimer_get_rtcdev();
-		if (unlikely(!rtc_dev))
-			return 0;
-
-		/* WA: set an alarm in 60s if there is none */
-		rtc_read_alarm(rtc_dev, &next);
-		rtc_read_time(rtc_dev, &curtime);
-		diff_time = ktime_sub(rtc_tm_to_ktime(next.time), rtc_tm_to_ktime(curtime));
-		if (ktime_to_ns(diff_time) > 60 * NSEC_PER_SEC || ktime_to_ns(diff_time) <= 0) {
-			pr_info("No alarm set in the next 60s, add a new one\n");
-			prog_alarm = ktime_add_ns(rtc_tm_to_ktime(curtime), 60 * NSEC_PER_SEC);
-			to_prog.enabled = 1;
-			to_prog.time = rtc_ktime_to_tm(prog_alarm);
-			rtc_set_alarm(rtc_dev, &to_prog);
-		}
 	}
-
 	return 0;
 }
 
