@@ -27,7 +27,7 @@
 #define BQ25898_REG04_RESTORE_VALUE_SPL	0x04		/* ICHG = 256mA (specific for Spectralite) */
 #define BQ25898_REG05_RESTORE_VALUE		0x00		/* PRECHARGE_CUR = 64mA, TERM_CUR = 64mA */
 #define BQ25898_REG06_RESTORE_VALUE		0x83		/* VREG = 4.352V, BATLOWV = 3.0V, VRECHG = 200mV*/
-#define BQ25898_REG0D_RESTORE_VALUE		0x8f		/* FORCE_VINDPM = 1, VINDPM = 4.1V */
+#define BQ25898_REG0D_RESTORE_VALUE		0x94		/* FORCE_VINDPM = 1, VINDPM = 4.6V */
 
 /*
  * Extract of the documentation:
