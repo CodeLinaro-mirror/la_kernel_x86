@@ -3758,7 +3758,12 @@ static int synaptics_rmi4_resume(struct device *dev)
 
 	rmi4_data->current_page = MASK_8BIT;
 
-	synaptics_rmi4_sensor_wake(rmi4_data);
+	/*
+	 * WORKAROUND: call to this function has been removed to avoid waking up
+	 * the touchscreen for no reason when the board go out from suspend
+	 * state.
+	 */
+	//synaptics_rmi4_sensor_wake(rmi4_data);
 	synaptics_rmi4_irq_enable(rmi4_data, true, false);
 
         if (device_may_wakeup(&i2c_client->dev))
