@@ -48,22 +48,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(__SYSCCONFIG_H__)
 #define __SYSCCONFIG_H__
 
-static IMG_VOID SysCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
+static void SysCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 										IMG_UINT32 ui32NumOfAddr,
 										IMG_DEV_PHYADDR *psDevPAddr,
 										IMG_CPU_PHYADDR *psCpuPAddr);
 
-static IMG_VOID SysDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
+static void SysDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 										IMG_UINT32 ui32NumOfAddr,
 										IMG_CPU_PHYADDR *psCpuPAddr,
 										IMG_DEV_PHYADDR *psDevPAddr);
 
 static PVRSRV_ERROR SysDevicePostPowerState(
+		IMG_HANDLE hSysData,
 		PVRSRV_DEV_POWER_STATE eNewPowerState,
 		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
 		IMG_BOOL bForced);
 
 static PVRSRV_ERROR SysDevicePrePowerState(
+		IMG_HANDLE hSysData,
 		PVRSRV_DEV_POWER_STATE eNewPowerState,
 		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
 		IMG_BOOL bForced);
@@ -73,9 +75,7 @@ static RGX_TIMING_INFORMATION sRGXTimingInfo =
 	.ui32CoreClockSpeed		= RGX_CORE_CLOCK_SPEED_DEFAULT,
 	.bEnableActivePM		= IMG_TRUE,
 	.bEnableRDPowIsland		= IMG_FALSE,
-
-	/* ui32ActivePMLatencyms */
-	.ui32ActivePMLatencyms		= RGX_APM_LATENCY_DEFAULT
+	.ui32ActivePMLatencyms		= 15,
 };
 
 static RGX_DATA sRGXData =
@@ -83,36 +83,13 @@ static RGX_DATA sRGXData =
 	.psRGXTimingInfo = &sRGXTimingInfo,
 };
 
-static PVRSRV_DEVICE_CONFIG sDevices[] =
-{
-	/* RGX device */
-	{
-		.eDeviceType            = PVRSRV_DEVICE_TYPE_RGX,
-		.pszName                = "RGX",
-
-		/* Device setup information */
-		.sRegsCpuPBase          = { 0 },
-		.ui32RegsSize           = 0,
-		.ui32IRQ                = 0,
-
-		/* No power management on no HW system */
-		.pfnPrePowerState       = SysDevicePrePowerState,
-		.pfnPostPowerState      = SysDevicePostPowerState,
-
-		.hDevData               = &sRGXData,
-		.hSysData               = IMG_NULL,
-
-		.aui32PhysHeapID = { 0, 0 },
-	}
-};
-
 static PHYS_HEAP_FUNCTIONS gsPhysHeapFuncs = {
 	.pfnCpuPAddrToDevPAddr	= SysCpuPAddrToDevPAddr,
 	.pfnDevPAddrToCpuPAddr	= SysDevPAddrToCpuPAddr,
 };
 
-#if defined(TDMETACODE)
-#error "TDMETACODE Need to be implemented or not supported in services/3rdparty/intel_drm/sysconfig.h"
+#if defined(SUPPORT_TRUSTED_DEVICE)
+#error "SUPPORT_TRUSTED_DEVICE Need to be implemented or not supported in services/3rdparty/rgx_intel/sysconfig.h"
 #else
 static PHYS_HEAP_CONFIG	gsPhysHeapConfig[1] = {
 	{
@@ -120,7 +97,7 @@ static PHYS_HEAP_CONFIG	gsPhysHeapConfig[1] = {
 	.eType					= PHYS_HEAP_TYPE_UMA,
 	.pszPDumpMemspaceName	= "SYSMEM",
 	.psMemFuncs				= &gsPhysHeapFuncs,
-	.hPrivData				= IMG_NULL,
+	.hPrivData				= NULL,
 	}
 };
 #endif
@@ -134,25 +111,40 @@ static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
     3  /* BIF tiling heap 4 x-stride */
 };
 
+static PVRSRV_DEVICE_CONFIG sDevices[] =
+{
+	{
+		.pszName		= "RGX",
+		.pszVersion		= NULL,
 
-static PVRSRV_SYSTEM_CONFIG sSysConfig = {
-	.pszSystemName = "Merrifield with Rogue",
-	.uiDeviceCount = sizeof(sDevices)/sizeof(PVRSRV_DEVICE_CONFIG),
-	.pasDevices = &sDevices[0],
+		/* Device setup information */
+		.sRegsCpuPBase		= { 0 },
+		.ui32RegsSize		= 0,
+		.ui32IRQ		= 0,
+		.eCacheSnoopingMode	= PVRSRV_DEVICE_SNOOP_CPU_ONLY,
 
-	/* Physcial memory heaps */
-	.ui32PhysHeapCount = sizeof(gsPhysHeapConfig) / sizeof(PHYS_HEAP_CONFIG),
-	.pasPhysHeaps = &(gsPhysHeapConfig[0]),
+		/* No power management on no HW system */
+		.pfnPrePowerState	= SysDevicePrePowerState,
+		.pfnPostPowerState	= SysDevicePostPowerState,
 
-	/* No power management on no HW system */
-	.pfnSysPrePowerState = NULL,
-	.pfnSysPostPowerState = NULL,
+		.hDevData		= &sRGXData,
+		.hSysData		= NULL,
 
-	.pui32BIFTilingHeapConfigs = &gauiBIFTilingHeapXStrides[0],
-	.ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
+		/* Physical memory heaps */
+		.ui32PhysHeapCount	= sizeof(gsPhysHeapConfig) /
+					  sizeof(PHYS_HEAP_CONFIG),
+		.pasPhysHeaps		= &gsPhysHeapConfig[0],
 
-	/* no cache snooping */
-	.eCacheSnoopingMode = PVRSRV_SYSTEM_SNOOP_CPU_ONLY,
+		.aui32PhysHeapID	= { 0, 0, 0 },
+
+		/* BIF Tiling mode configuration */
+		.eBIFTilingMode		= RGXFWIF_BIFTILINGMODE_256x16,
+		.pui32BIFTilingHeapConfigs =
+			&gauiBIFTilingHeapXStrides[0],
+		.ui32BIFTilingHeapCount	=
+			IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
+		.pfnSysDevFeatureDepInit = NULL
+	}
 };
 
 #define VENDOR_ID_MERRIFIELD        0x8086
@@ -163,8 +155,7 @@ static PVRSRV_SYSTEM_CONFIG sSysConfig = {
 #define RGX_REG_SIZE                0x10000
 
 #define IS_MRFLD(dev) ((((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MERRIFIELD) || \
-			(((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MOOREFIELD))
-
+					(((dev)->pdev->device & 0xFFF8) == DEVICE_ID_MOOREFIELD))
 /*****************************************************************************
  * system specific data structures
  *****************************************************************************/

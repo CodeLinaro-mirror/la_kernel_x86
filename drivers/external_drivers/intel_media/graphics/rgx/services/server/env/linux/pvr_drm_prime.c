@@ -176,7 +176,7 @@ static void PrimeRelease(struct dma_buf *psDmaBuf)
 static int PrimeBeginCpuAccess(struct dma_buf *psDmaBuf,
 			       size_t uiStart,
 			       size_t uiLen,
-			       enum dma_data_direction unref__ eDir)
+			       enum dma_data_direction __maybe_unused eDir)
 {
 	struct drm_gem_object *psObj = psDmaBuf->priv;
 	struct pvr_drm_gem_object *psPVRObj = to_pvr_drm_gem_object(psObj);
@@ -201,9 +201,9 @@ static int PrimeBeginCpuAccess(struct dma_buf *psDmaBuf,
 }
 
 static void PrimeEndCpuAccess(struct dma_buf *psDmaBuf,
-			      size_t unref__ uiStart,
-			      size_t unref__ uiLen,
-			      enum dma_data_direction unref__ eDir)
+			      size_t __maybe_unused uiStart,
+			      size_t __maybe_unused uiLen,
+			      enum dma_data_direction __maybe_unused eDir)
 {
 	struct drm_gem_object *psObj = psDmaBuf->priv;
 	struct pvr_drm_gem_object *psPVRObj = to_pvr_drm_gem_object(psObj);
@@ -218,20 +218,20 @@ static void PrimeEndCpuAccess(struct dma_buf *psDmaBuf,
 	}
 }
 
-static void *PrimeKMap(struct dma_buf unref__ *psDmaBuf,
-		       unsigned long unref__ ulPageNum)
+static void *PrimeKMap(struct dma_buf __maybe_unused *psDmaBuf,
+		       unsigned long __maybe_unused ulPageNum)
 {
 	return NULL;
 }
 
-static void *PrimeKMapAtomic(struct dma_buf unref__ *psDmaBuf,
-			     unsigned long unref__ ulPageNum)
+static void *PrimeKMapAtomic(struct dma_buf __maybe_unused *psDmaBuf,
+			     unsigned long __maybe_unused ulPageNum)
 {
 	return NULL;
 }
 
-static int PrimeMMap(struct dma_buf unref__ *psDmaBuf,
-		     struct vm_area_struct unref__ *psVMA)
+static int PrimeMMap(struct dma_buf __maybe_unused *psDmaBuf,
+		     struct vm_area_struct __maybe_unused *psVMA)
 {
 	return -EINVAL;
 }
@@ -297,7 +297,7 @@ static const struct dma_buf_ops gsPrimeOps =
 	.vunmap			= PrimeVUnmap,
 };
 
-struct dma_buf *PVRSRVPrimeExport(struct drm_device unref__ *dev,
+struct dma_buf *PVRSRVPrimeExport(struct drm_device __maybe_unused *dev,
 				  struct drm_gem_object *obj,
 				  int flags)
 {

@@ -2,8 +2,8 @@
 @File
 @Title          Common bridge header for pdumpctrl
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Declares common defines and structures that are used by both
-                the client and sever side of the bridge for pdumpctrl
+@Description    Declares common defines and structures used by both the client
+                and server side of the bridge for pdumpctrl
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,10 +45,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_PDUMPCTRL_BRIDGE_H
 #define COMMON_PDUMPCTRL_BRIDGE_H
 
+#include <powervr/mem_types.h>
+
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
-#include "services.h"
 
 
 #define PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST			0
@@ -56,9 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_PDUMPCTRL_PVRSRVPDUMPGETFRAME			PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+1
 #define PVRSRV_BRIDGE_PDUMPCTRL_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS			PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+2
 #define PVRSRV_BRIDGE_PDUMPCTRL_PVRSRVPDUMPISLASTCAPTUREFRAME			PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+3
-#define PVRSRV_BRIDGE_PDUMPCTRL_PVRSRVPDUMPSTARTINITPHASE			PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+4
-#define PVRSRV_BRIDGE_PDUMPCTRL_PVRSRVPDUMPSTOPINITPHASE			PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+5
-#define PVRSRV_BRIDGE_PDUMPCTRL_CMD_LAST			(PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+5)
+#define PVRSRV_BRIDGE_PDUMPCTRL_CMD_LAST			(PVRSRV_BRIDGE_PDUMPCTRL_CMD_FIRST+3)
 
 
 /*******************************************
@@ -71,13 +70,13 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPISCAPTURING_TAG
 	 IMG_UINT32 ui32EmptyStructPlaceholder;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPISCAPTURING;
 
-
 /* Bridge out structure for PVRSRVPDumpIsCapturing */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISCAPTURING_TAG
 {
 	IMG_BOOL bIsCapturing;
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISCAPTURING;
+
 
 /*******************************************
             PVRSRVPDumpGetFrame          
@@ -89,13 +88,13 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPGETFRAME_TAG
 	 IMG_UINT32 ui32EmptyStructPlaceholder;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPGETFRAME;
 
-
 /* Bridge out structure for PVRSRVPDumpGetFrame */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPGETFRAME_TAG
 {
 	IMG_UINT32 ui32Frame;
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPGETFRAME;
+
 
 /*******************************************
             PVRSRVPDumpSetDefaultCaptureParams          
@@ -111,12 +110,12 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS_TAG
 	IMG_UINT32 ui32MaxParamFileSize;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS;
 
-
 /* Bridge out structure for PVRSRVPDumpSetDefaultCaptureParams */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETDEFAULTCAPTUREPARAMS;
+
 
 /*******************************************
             PVRSRVPDumpIsLastCaptureFrame          
@@ -128,45 +127,12 @@ typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPISLASTCAPTUREFRAME_TAG
 	 IMG_UINT32 ui32EmptyStructPlaceholder;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPISLASTCAPTUREFRAME;
 
-
 /* Bridge out structure for PVRSRVPDumpIsLastCaptureFrame */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISLASTCAPTUREFRAME_TAG
 {
+	IMG_BOOL bpbIsLastCaptureFrame;
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPISLASTCAPTUREFRAME;
 
-/*******************************************
-            PVRSRVPDumpStartInitPhase          
- *******************************************/
-
-/* Bridge in structure for PVRSRVPDumpStartInitPhase */
-typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSTARTINITPHASE_TAG
-{
-	 IMG_UINT32 ui32EmptyStructPlaceholder;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSTARTINITPHASE;
-
-
-/* Bridge out structure for PVRSRVPDumpStartInitPhase */
-typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSTARTINITPHASE_TAG
-{
-	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSTARTINITPHASE;
-
-/*******************************************
-            PVRSRVPDumpStopInitPhase          
- *******************************************/
-
-/* Bridge in structure for PVRSRVPDumpStopInitPhase */
-typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSTOPINITPHASE_TAG
-{
-	IMG_MODULE_ID eModuleID;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSTOPINITPHASE;
-
-
-/* Bridge out structure for PVRSRVPDumpStopInitPhase */
-typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSTOPINITPHASE_TAG
-{
-	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSTOPINITPHASE;
 
 #endif /* COMMON_PDUMPCTRL_BRIDGE_H */

@@ -59,10 +59,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "srvcore.h"
 #include "handle.h"
 
-#if defined (SUPPORT_AUTH)
-#include "osauth.h"
-#endif
-
 #include <linux/slab.h>
 
 
@@ -104,48 +100,92 @@ PVRSRVBridgeDCDevicesEnumerate(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDEVICESENUMERATE *psDCDevicesEnumerateOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	IMG_UINT32 *pui32DeviceIndexInt = IMG_NULL;
+	IMG_UINT32 *pui32DeviceIndexInt = NULL;
 
-	PVR_UNREFERENCED_PARAMETER(psConnection);
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize =
+			(psDCDevicesEnumerateIN->ui32DeviceArraySize * sizeof(IMG_UINT32)) +
+			0;
+
+
 
 	psDCDevicesEnumerateOUT->pui32DeviceIndex = psDCDevicesEnumerateIN->pui32DeviceIndex;
 
 
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCDevicesEnumerateIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCDevicesEnumerateIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCDevicesEnumerateOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCDevicesEnumerate_exit;
+			}
+		}
+	}
+
 	if (psDCDevicesEnumerateIN->ui32DeviceArraySize != 0)
 	{
-		pui32DeviceIndexInt = OSAllocMem(psDCDevicesEnumerateIN->ui32DeviceArraySize * sizeof(IMG_UINT32));
-		if (!pui32DeviceIndexInt)
-		{
-			psDCDevicesEnumerateOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDevicesEnumerate_exit;
-		}
+		pui32DeviceIndexInt = (IMG_UINT32*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDevicesEnumerateIN->ui32DeviceArraySize * sizeof(IMG_UINT32);
 	}
 
 
 
-
 	psDCDevicesEnumerateOUT->eError =
-		DCDevicesEnumerate(
+		DCDevicesEnumerate(psConnection, OSGetDevData(psConnection),
 					psDCDevicesEnumerateIN->ui32DeviceArraySize,
 					&psDCDevicesEnumerateOUT->ui32DeviceCount,
 					pui32DeviceIndexInt);
 
 
 
-	if ( !OSAccessOK(PVR_VERIFY_WRITE, (IMG_VOID*) psDCDevicesEnumerateOUT->pui32DeviceIndex, (psDCDevicesEnumerateOUT->ui32DeviceCount * sizeof(IMG_UINT32))) 
-		|| (OSCopyToUser(NULL, psDCDevicesEnumerateOUT->pui32DeviceIndex, pui32DeviceIndexInt,
-		(psDCDevicesEnumerateOUT->ui32DeviceCount * sizeof(IMG_UINT32))) != PVRSRV_OK) )
+	if ((psDCDevicesEnumerateOUT->ui32DeviceCount * sizeof(IMG_UINT32)) > 0)
 	{
-		psDCDevicesEnumerateOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+		if ( OSCopyToUser(NULL, psDCDevicesEnumerateOUT->pui32DeviceIndex, pui32DeviceIndexInt,
+			(psDCDevicesEnumerateOUT->ui32DeviceCount * sizeof(IMG_UINT32))) != PVRSRV_OK )
+		{
+			psDCDevicesEnumerateOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-		goto DCDevicesEnumerate_exit;
+			goto DCDevicesEnumerate_exit;
+		}
 	}
 
 
 DCDevicesEnumerate_exit:
-	if (pui32DeviceIndexInt)
-		OSFreeMem(pui32DeviceIndexInt);
+
+
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
+
 
 	return 0;
 }
@@ -156,7 +196,7 @@ PVRSRVBridgeDCDeviceAcquire(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDEVICEACQUIRE *psDCDeviceAcquireOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	DC_DEVICE * psDeviceInt = NULL;
 
 
 
@@ -165,7 +205,7 @@ PVRSRVBridgeDCDeviceAcquire(IMG_UINT32 ui32DispatchTableEntry,
 
 
 	psDCDeviceAcquireOUT->eError =
-		DCDeviceAcquire(
+		DCDeviceAcquire(psConnection, OSGetDevData(psConnection),
 					psDCDeviceAcquireIN->ui32DeviceIndex,
 					&psDeviceInt);
 	/* Exit early if bridged call fails */
@@ -174,18 +214,24 @@ PVRSRVBridgeDCDeviceAcquire(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCDeviceAcquire_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCDeviceAcquireOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCDeviceAcquireOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCDeviceAcquireOUT->hDevice,
-							(IMG_VOID *) psDeviceInt,
+							(void *) psDeviceInt,
 							PVRSRV_HANDLE_TYPE_DC_DEVICE,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCDeviceRelease);
 	if (psDCDeviceAcquireOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCDeviceAcquire_exit;
 	}
 
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 
 
@@ -209,25 +255,26 @@ PVRSRVBridgeDCDeviceRelease(IMG_UINT32 ui32DispatchTableEntry,
 					 CONNECTION_DATA *psConnection)
 {
 
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCDeviceReleaseOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCDeviceReleaseIN->hDevice,
 					PVRSRV_HANDLE_TYPE_DC_DEVICE);
-	if ((psDCDeviceReleaseOUT->eError != PVRSRV_OK) && (psDCDeviceReleaseOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCDeviceReleaseOUT->eError != PVRSRV_OK) &&
+	    (psDCDeviceReleaseOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCDeviceRelease: %s",
+		        PVRSRVGetErrorStringKM(psDCDeviceReleaseOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCDeviceRelease_exit;
 	}
 
-
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 DCDeviceRelease_exit:
 
@@ -240,37 +287,50 @@ PVRSRVBridgeDCGetInfo(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCGETINFO *psDCGetInfoOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCGetInfoIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCGetInfoOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCGetInfoIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCGetInfoOUT->eError != PVRSRV_OK)
-					{
-						goto DCGetInfo_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCGetInfoOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCGetInfoOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCGetInfo_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCGetInfoOUT->eError =
 		DCGetInfo(
 					psDeviceInt,
 					&psDCGetInfoOUT->sDisplayInfo);
 
-
-
-
 DCGetInfo_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
 
 	return 0;
 }
@@ -281,37 +341,50 @@ PVRSRVBridgeDCPanelQueryCount(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCPANELQUERYCOUNT *psDCPanelQueryCountOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCPanelQueryCountIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCPanelQueryCountOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCPanelQueryCountIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCPanelQueryCountOUT->eError != PVRSRV_OK)
-					{
-						goto DCPanelQueryCount_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCPanelQueryCountOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCPanelQueryCountOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCPanelQueryCount_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCPanelQueryCountOUT->eError =
 		DCPanelQueryCount(
 					psDeviceInt,
 					&psDCPanelQueryCountOUT->ui32NumPanels);
 
-
-
-
 DCPanelQueryCount_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
 
 	return 0;
 }
@@ -322,40 +395,75 @@ PVRSRVBridgeDCPanelQuery(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCPANELQUERY *psDCPanelQueryOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
-	PVRSRV_PANEL_INFO *psPanelInfoInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCPanelQueryIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	PVRSRV_PANEL_INFO *psPanelInfoInt = NULL;
 
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize =
+			(psDCPanelQueryIN->ui32PanelsArraySize * sizeof(PVRSRV_PANEL_INFO)) +
+			0;
 
 	psDCPanelQueryOUT->psPanelInfo = psDCPanelQueryIN->psPanelInfo;
 
-
-	if (psDCPanelQueryIN->ui32PanelsArraySize != 0)
+	if (ui32BufferSize != 0)
 	{
-		psPanelInfoInt = OSAllocMem(psDCPanelQueryIN->ui32PanelsArraySize * sizeof(PVRSRV_PANEL_INFO));
-		if (!psPanelInfoInt)
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCPanelQueryIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
 		{
-			psDCPanelQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCPanelQuery_exit;
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCPanelQueryIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCPanelQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCPanelQuery_exit;
+			}
 		}
 	}
 
+	if (psDCPanelQueryIN->ui32PanelsArraySize != 0)
+	{
+		psPanelInfoInt = (PVRSRV_PANEL_INFO*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCPanelQueryIN->ui32PanelsArraySize * sizeof(PVRSRV_PANEL_INFO);
+	}
 
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-				{
-					/* Look up the address from the handle */
-					psDCPanelQueryOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCPanelQueryIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCPanelQueryOUT->eError != PVRSRV_OK)
-					{
-						goto DCPanelQuery_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCPanelQueryOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCPanelQueryOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCPanelQuery_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCPanelQueryOUT->eError =
 		DCPanelQuery(
@@ -363,22 +471,49 @@ PVRSRVBridgeDCPanelQuery(IMG_UINT32 ui32DispatchTableEntry,
 					psDCPanelQueryIN->ui32PanelsArraySize,
 					&psDCPanelQueryOUT->ui32NumPanels,
 					psPanelInfoInt);
-
-
-
-	if ( !OSAccessOK(PVR_VERIFY_WRITE, (IMG_VOID*) psDCPanelQueryOUT->psPanelInfo, (psDCPanelQueryOUT->ui32NumPanels * sizeof(PVRSRV_PANEL_INFO))) 
-		|| (OSCopyToUser(NULL, psDCPanelQueryOUT->psPanelInfo, psPanelInfoInt,
-		(psDCPanelQueryOUT->ui32NumPanels * sizeof(PVRSRV_PANEL_INFO))) != PVRSRV_OK) )
+	if ((psDCPanelQueryOUT->ui32NumPanels * sizeof(PVRSRV_PANEL_INFO)) > 0)
 	{
-		psDCPanelQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+		if ( OSCopyToUser(NULL, psDCPanelQueryOUT->psPanelInfo, psPanelInfoInt,
+			(psDCPanelQueryOUT->ui32NumPanels * sizeof(PVRSRV_PANEL_INFO))) != PVRSRV_OK )
+		{
+			psDCPanelQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-		goto DCPanelQuery_exit;
+			goto DCPanelQuery_exit;
+		}
 	}
 
 
 DCPanelQuery_exit:
-	if (psPanelInfoInt)
-		OSFreeMem(psPanelInfoInt);
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+
+
+
+
+
+				{
+					/* Unreference the previously looked up handle */
+						if(psDeviceInt)
+						{
+							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+											hDevice,
+											PVRSRV_HANDLE_TYPE_DC_DEVICE);
+						}
+				}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
 }
@@ -389,61 +524,96 @@ PVRSRVBridgeDCFormatQuery(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCFORMATQUERY *psDCFormatQueryOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
-	PVRSRV_SURFACE_FORMAT *psFormatInt = IMG_NULL;
-	IMG_UINT32 *pui32SupportedInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCFormatQueryIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	PVRSRV_SURFACE_FORMAT *psFormatInt = NULL;
+	IMG_UINT32 *pui32SupportedInt = NULL;
+
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize =
+			(psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT)) +
+			(psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32)) +
+			0;
+
 
 
 	psDCFormatQueryOUT->pui32Supported = psDCFormatQueryIN->pui32Supported;
 
 
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCFormatQueryIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCFormatQueryIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCFormatQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCFormatQuery_exit;
+			}
+		}
+	}
+
 	if (psDCFormatQueryIN->ui32NumFormats != 0)
 	{
-		psFormatInt = OSAllocMem(psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT));
-		if (!psFormatInt)
-		{
-			psDCFormatQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCFormatQuery_exit;
-		}
+		psFormatInt = (PVRSRV_SURFACE_FORMAT*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT);
 	}
 
 			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCFormatQueryIN->psFormat, psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT))
-				|| (OSCopyFromUser(NULL, psFormatInt, psDCFormatQueryIN->psFormat,
-				psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT)) != PVRSRV_OK) )
+			if (psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT) > 0)
 			{
-				psDCFormatQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+				if ( OSCopyFromUser(NULL, psFormatInt, psDCFormatQueryIN->psFormat, psDCFormatQueryIN->ui32NumFormats * sizeof(PVRSRV_SURFACE_FORMAT)) != PVRSRV_OK )
+				{
+					psDCFormatQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-				goto DCFormatQuery_exit;
+					goto DCFormatQuery_exit;
+				}
 			}
 	if (psDCFormatQueryIN->ui32NumFormats != 0)
 	{
-		pui32SupportedInt = OSAllocMem(psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32));
-		if (!pui32SupportedInt)
-		{
-			psDCFormatQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCFormatQuery_exit;
-		}
+		pui32SupportedInt = (IMG_UINT32*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32);
 	}
 
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-				{
-					/* Look up the address from the handle */
-					psDCFormatQueryOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCFormatQueryIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCFormatQueryOUT->eError != PVRSRV_OK)
-					{
-						goto DCFormatQuery_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCFormatQueryOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCFormatQueryOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCFormatQuery_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCFormatQueryOUT->eError =
 		DCFormatQuery(
@@ -454,21 +624,45 @@ PVRSRVBridgeDCFormatQuery(IMG_UINT32 ui32DispatchTableEntry,
 
 
 
-	if ( !OSAccessOK(PVR_VERIFY_WRITE, (IMG_VOID*) psDCFormatQueryOUT->pui32Supported, (psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32))) 
-		|| (OSCopyToUser(NULL, psDCFormatQueryOUT->pui32Supported, pui32SupportedInt,
-		(psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32))) != PVRSRV_OK) )
+	if ((psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32)) > 0)
 	{
-		psDCFormatQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+		if ( OSCopyToUser(NULL, psDCFormatQueryOUT->pui32Supported, pui32SupportedInt,
+			(psDCFormatQueryIN->ui32NumFormats * sizeof(IMG_UINT32))) != PVRSRV_OK )
+		{
+			psDCFormatQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-		goto DCFormatQuery_exit;
+			goto DCFormatQuery_exit;
+		}
 	}
 
 
 DCFormatQuery_exit:
-	if (psFormatInt)
-		OSFreeMem(psFormatInt);
-	if (pui32SupportedInt)
-		OSFreeMem(pui32SupportedInt);
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
+
 
 	return 0;
 }
@@ -479,61 +673,96 @@ PVRSRVBridgeDCDimQuery(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDIMQUERY *psDCDimQueryOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
-	PVRSRV_SURFACE_DIMS *psDimInt = IMG_NULL;
-	IMG_UINT32 *pui32SupportedInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCDimQueryIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	PVRSRV_SURFACE_DIMS *psDimInt = NULL;
+	IMG_UINT32 *pui32SupportedInt = NULL;
+
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize =
+			(psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS)) +
+			(psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32)) +
+			0;
+
 
 
 	psDCDimQueryOUT->pui32Supported = psDCDimQueryIN->pui32Supported;
 
 
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCDimQueryIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCDimQueryIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCDimQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCDimQuery_exit;
+			}
+		}
+	}
+
 	if (psDCDimQueryIN->ui32NumDims != 0)
 	{
-		psDimInt = OSAllocMem(psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS));
-		if (!psDimInt)
-		{
-			psDCDimQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDimQuery_exit;
-		}
+		psDimInt = (PVRSRV_SURFACE_DIMS*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS);
 	}
 
 			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDimQueryIN->psDim, psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS))
-				|| (OSCopyFromUser(NULL, psDimInt, psDCDimQueryIN->psDim,
-				psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS)) != PVRSRV_OK) )
+			if (psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS) > 0)
 			{
-				psDCDimQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+				if ( OSCopyFromUser(NULL, psDimInt, psDCDimQueryIN->psDim, psDCDimQueryIN->ui32NumDims * sizeof(PVRSRV_SURFACE_DIMS)) != PVRSRV_OK )
+				{
+					psDCDimQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-				goto DCDimQuery_exit;
+					goto DCDimQuery_exit;
+				}
 			}
 	if (psDCDimQueryIN->ui32NumDims != 0)
 	{
-		pui32SupportedInt = OSAllocMem(psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32));
-		if (!pui32SupportedInt)
-		{
-			psDCDimQueryOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDimQuery_exit;
-		}
+		pui32SupportedInt = (IMG_UINT32*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32);
 	}
 
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-				{
-					/* Look up the address from the handle */
-					psDCDimQueryOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCDimQueryIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCDimQueryOUT->eError != PVRSRV_OK)
-					{
-						goto DCDimQuery_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCDimQueryOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCDimQueryOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCDimQuery_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCDimQueryOUT->eError =
 		DCDimQuery(
@@ -544,21 +773,44 @@ PVRSRVBridgeDCDimQuery(IMG_UINT32 ui32DispatchTableEntry,
 
 
 
-	if ( !OSAccessOK(PVR_VERIFY_WRITE, (IMG_VOID*) psDCDimQueryOUT->pui32Supported, (psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32))) 
-		|| (OSCopyToUser(NULL, psDCDimQueryOUT->pui32Supported, pui32SupportedInt,
-		(psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32))) != PVRSRV_OK) )
+	if ((psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32)) > 0)
 	{
-		psDCDimQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+		if ( OSCopyToUser(NULL, psDCDimQueryOUT->pui32Supported, pui32SupportedInt,
+			(psDCDimQueryIN->ui32NumDims * sizeof(IMG_UINT32))) != PVRSRV_OK )
+		{
+			psDCDimQueryOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-		goto DCDimQuery_exit;
+			goto DCDimQuery_exit;
+		}
 	}
 
 
 DCDimQuery_exit:
-	if (psDimInt)
-		OSFreeMem(psDimInt);
-	if (pui32SupportedInt)
-		OSFreeMem(pui32SupportedInt);
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
 }
@@ -569,27 +821,27 @@ PVRSRVBridgeDCSetBlank(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCSETBLANK *psDCSetBlankOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCSetBlankIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCSetBlankOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCSetBlankIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCSetBlankOUT->eError != PVRSRV_OK)
-					{
-						goto DCSetBlank_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCSetBlankOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCSetBlankOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCSetBlank_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCSetBlankOUT->eError =
 		DCSetBlank(
@@ -601,6 +853,22 @@ PVRSRVBridgeDCSetBlank(IMG_UINT32 ui32DispatchTableEntry,
 
 DCSetBlank_exit:
 
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+
 	return 0;
 }
 
@@ -610,27 +878,28 @@ PVRSRVBridgeDCSetVSyncReporting(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCSETVSYNCREPORTING *psDCSetVSyncReportingOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCSetVSyncReportingIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCSetVSyncReportingOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCSetVSyncReportingIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCSetVSyncReportingOUT->eError != PVRSRV_OK)
-					{
-						goto DCSetVSyncReporting_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCSetVSyncReportingOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCSetVSyncReportingOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCSetVSyncReporting_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCSetVSyncReportingOUT->eError =
 		DCSetVSyncReporting(
@@ -642,6 +911,21 @@ PVRSRVBridgeDCSetVSyncReporting(IMG_UINT32 ui32DispatchTableEntry,
 
 DCSetVSyncReporting_exit:
 
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	return 0;
 }
 
@@ -651,27 +935,27 @@ PVRSRVBridgeDCLastVSyncQuery(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCLASTVSYNCQUERY *psDCLastVSyncQueryOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCLastVSyncQueryIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCLastVSyncQueryOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCLastVSyncQueryIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCLastVSyncQueryOUT->eError != PVRSRV_OK)
-					{
-						goto DCLastVSyncQuery_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCLastVSyncQueryOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCLastVSyncQueryOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCLastVSyncQuery_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCLastVSyncQueryOUT->eError =
 		DCLastVSyncQuery(
@@ -683,6 +967,22 @@ PVRSRVBridgeDCLastVSyncQuery(IMG_UINT32 ui32DispatchTableEntry,
 
 DCLastVSyncQuery_exit:
 
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+
 	return 0;
 }
 
@@ -692,28 +992,29 @@ PVRSRVBridgeDCSystemBufferAcquire(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCSYSTEMBUFFERACQUIRE *psDCSystemBufferAcquireOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
-	DC_BUFFER * psBufferInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCSystemBufferAcquireIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	DC_BUFFER * psBufferInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCSystemBufferAcquireOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCSystemBufferAcquireIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCSystemBufferAcquireOUT->eError != PVRSRV_OK)
-					{
-						goto DCSystemBufferAcquire_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCSystemBufferAcquireOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCSystemBufferAcquireOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCSystemBufferAcquire_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCSystemBufferAcquireOUT->eError =
 		DCSystemBufferAcquire(
@@ -726,22 +1027,44 @@ PVRSRVBridgeDCSystemBufferAcquire(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCSystemBufferAcquire_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCSystemBufferAcquireOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCSystemBufferAcquireOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCSystemBufferAcquireOUT->hBuffer,
-							(IMG_VOID *) psBufferInt,
+							(void *) psBufferInt,
 							PVRSRV_HANDLE_TYPE_DC_BUFFER,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCSystemBufferRelease);
 	if (psDCSystemBufferAcquireOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCSystemBufferAcquire_exit;
 	}
 
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 
 
 DCSystemBufferAcquire_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCSystemBufferAcquireOUT->eError != PVRSRV_OK)
 	{
 		if (psBufferInt)
@@ -760,26 +1083,26 @@ PVRSRVBridgeDCSystemBufferRelease(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCSYSTEMBUFFERRELEASE *psDCSystemBufferReleaseOUT,
 					 CONNECTION_DATA *psConnection)
 {
-
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCSystemBufferReleaseOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCSystemBufferReleaseIN->hBuffer,
 					PVRSRV_HANDLE_TYPE_DC_BUFFER);
-	if ((psDCSystemBufferReleaseOUT->eError != PVRSRV_OK) && (psDCSystemBufferReleaseOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCSystemBufferReleaseOUT->eError != PVRSRV_OK) &&
+	    (psDCSystemBufferReleaseOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCSystemBufferRelease: %s",
+		        PVRSRVGetErrorStringKM(psDCSystemBufferReleaseOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCSystemBufferRelease_exit;
 	}
 
-
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 DCSystemBufferRelease_exit:
 
@@ -792,28 +1115,28 @@ PVRSRVBridgeDCDisplayContextCreate(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDISPLAYCONTEXTCREATE *psDCDisplayContextCreateOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DEVICE * psDeviceInt = IMG_NULL;
-	DC_DISPLAY_CONTEXT * psDisplayContextInt = IMG_NULL;
+	IMG_HANDLE hDevice = psDCDisplayContextCreateIN->hDevice;
+	DC_DEVICE * psDeviceInt = NULL;
+	DC_DISPLAY_CONTEXT * psDisplayContextInt = NULL;
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCDisplayContextCreateOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDeviceInt,
-											psDCDisplayContextCreateIN->hDevice,
-											PVRSRV_HANDLE_TYPE_DC_DEVICE);
-					if(psDCDisplayContextCreateOUT->eError != PVRSRV_OK)
-					{
-						goto DCDisplayContextCreate_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCDisplayContextCreateOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDeviceInt,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE,
+									IMG_TRUE);
+			if(psDCDisplayContextCreateOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCDisplayContextCreate_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCDisplayContextCreateOUT->eError =
 		DCDisplayContextCreate(
@@ -825,22 +1148,42 @@ PVRSRVBridgeDCDisplayContextCreate(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCDisplayContextCreate_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCDisplayContextCreateOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCDisplayContextCreateOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCDisplayContextCreateOUT->hDisplayContext,
-							(IMG_VOID *) psDisplayContextInt,
+							(void *) psDisplayContextInt,
 							PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCDisplayContextDestroy);
 	if (psDCDisplayContextCreateOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCDisplayContextCreate_exit;
 	}
 
-
-
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 DCDisplayContextCreate_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDeviceInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDevice,
+									PVRSRV_HANDLE_TYPE_DC_DEVICE);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCDisplayContextCreateOUT->eError != PVRSRV_OK)
 	{
 		if (psDisplayContextInt)
@@ -859,76 +1202,104 @@ PVRSRVBridgeDCDisplayContextConfigureCheck(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDISPLAYCONTEXTCONFIGURECHECK *psDCDisplayContextConfigureCheckOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DISPLAY_CONTEXT * psDisplayContextInt = IMG_NULL;
-	PVRSRV_SURFACE_CONFIG_INFO *psSurfInfoInt = IMG_NULL;
-	DC_BUFFER * *psBuffersInt = IMG_NULL;
-	IMG_HANDLE *hBuffersInt2 = IMG_NULL;
+	IMG_HANDLE hDisplayContext = psDCDisplayContextConfigureCheckIN->hDisplayContext;
+	DC_DISPLAY_CONTEXT * psDisplayContextInt = NULL;
+	PVRSRV_SURFACE_CONFIG_INFO *psSurfInfoInt = NULL;
+	DC_BUFFER * *psBuffersInt = NULL;
+	IMG_HANDLE *hBuffersInt2 = NULL;
 
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
+	IMG_UINT32 ui32BufferSize =
+			(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) +
+			(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(DC_BUFFER *)) +
+			(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE)) +
+			0;
 
-
-	if (psDCDisplayContextConfigureCheckIN->ui32PipeCount != 0)
+	if (ui32BufferSize != 0)
 	{
-		psSurfInfoInt = OSAllocMem(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO));
-		if (!psSurfInfoInt)
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCDisplayContextConfigureCheckIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
 		{
-			psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigureCheck_exit;
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCDisplayContextConfigureCheckIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCDisplayContextConfigureCheck_exit;
+			}
 		}
 	}
 
-			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureCheckIN->psSurfInfo, psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO))
-				|| (OSCopyFromUser(NULL, psSurfInfoInt, psDCDisplayContextConfigureCheckIN->psSurfInfo,
-				psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) != PVRSRV_OK) )
-			{
-				psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigureCheck_exit;
-			}
 	if (psDCDisplayContextConfigureCheckIN->ui32PipeCount != 0)
 	{
-		psBuffersInt = OSAllocMem(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(DC_BUFFER *));
-		if (!psBuffersInt)
-		{
-			psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigureCheck_exit;
-		}
-		hBuffersInt2 = OSAllocMem(psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE));
-		if (!hBuffersInt2)
-		{
-			psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigureCheck_exit;
-		}
+		psSurfInfoInt = (PVRSRV_SURFACE_CONFIG_INFO*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO);
 	}
 
 			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureCheckIN->phBuffers, psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE))
-				|| (OSCopyFromUser(NULL, hBuffersInt2, psDCDisplayContextConfigureCheckIN->phBuffers,
-				psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE)) != PVRSRV_OK) )
+			if (psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO) > 0)
 			{
-				psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigureCheck_exit;
-			}
-
-
-
+				if ( OSCopyFromUser(NULL, psSurfInfoInt, psDCDisplayContextConfigureCheckIN->psSurfInfo, psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) != PVRSRV_OK )
 				{
-					/* Look up the address from the handle */
-					psDCDisplayContextConfigureCheckOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDisplayContextInt,
-											psDCDisplayContextConfigureCheckIN->hDisplayContext,
-											PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
-					if(psDCDisplayContextConfigureCheckOUT->eError != PVRSRV_OK)
-					{
-						goto DCDisplayContextConfigureCheck_exit;
-					}
+					psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+					goto DCDisplayContextConfigureCheck_exit;
 				}
+			}
+	if (psDCDisplayContextConfigureCheckIN->ui32PipeCount != 0)
+	{
+		psBuffersInt = (DC_BUFFER **)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(DC_BUFFER *);
+		hBuffersInt2 = (IMG_HANDLE *)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset); 
+		ui32NextOffset += psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE);
+	}
+
+			/* Copy the data over */
+			if (psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE) > 0)
+			{
+				if ( OSCopyFromUser(NULL, hBuffersInt2, psDCDisplayContextConfigureCheckIN->phBuffers, psDCDisplayContextConfigureCheckIN->ui32PipeCount * sizeof(IMG_HANDLE)) != PVRSRV_OK )
+				{
+					psDCDisplayContextConfigureCheckOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+					goto DCDisplayContextConfigureCheck_exit;
+				}
+			}
+
+	/* Lock over handle lookup. */
+	LockHandle();
+
+
+	{
+			/* Look up the address from the handle */
+			psDCDisplayContextConfigureCheckOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDisplayContextInt,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
+									IMG_TRUE);
+			if(psDCDisplayContextConfigureCheckOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCDisplayContextConfigureCheck_exit;
+			}
+	}
 
 
 	{
@@ -939,18 +1310,21 @@ PVRSRVBridgeDCDisplayContextConfigureCheck(IMG_UINT32 ui32DispatchTableEntry,
 				{
 					/* Look up the address from the handle */
 					psDCDisplayContextConfigureCheckOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psBuffersInt[i],
+						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+											(void **) &psBuffersInt[i],
 											hBuffersInt2[i],
-											PVRSRV_HANDLE_TYPE_DC_BUFFER);
+											PVRSRV_HANDLE_TYPE_DC_BUFFER,
+											IMG_TRUE);
 					if(psDCDisplayContextConfigureCheckOUT->eError != PVRSRV_OK)
 					{
+						UnlockHandle();
 						goto DCDisplayContextConfigureCheck_exit;
 					}
 				}
-
 		}
 	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCDisplayContextConfigureCheckOUT->eError =
 		DCDisplayContextConfigureCheck(
@@ -959,16 +1333,48 @@ PVRSRVBridgeDCDisplayContextConfigureCheck(IMG_UINT32 ui32DispatchTableEntry,
 					psSurfInfoInt,
 					psBuffersInt);
 
-
-
-
 DCDisplayContextConfigureCheck_exit:
-	if (psSurfInfoInt)
-		OSFreeMem(psSurfInfoInt);
-	if (psBuffersInt)
-		OSFreeMem(psBuffersInt);
-	if (hBuffersInt2)
-		OSFreeMem(hBuffersInt2);
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+	{
+			/* Unreference the previously looked up handle */
+			if(psDisplayContextInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
+			}
+	}
+
+	{
+		IMG_UINT32 i;
+
+		for (i=0;i<psDCDisplayContextConfigureCheckIN->ui32PipeCount;i++)
+		{
+				{
+					/* Unreference the previously looked up handle */
+						if(psBuffersInt[i])
+						{
+							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+											hBuffersInt2[i],
+											PVRSRV_HANDLE_TYPE_DC_BUFFER);
+						}
+				}
+		}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
 }
@@ -979,127 +1385,143 @@ PVRSRVBridgeDCDisplayContextConfigure(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDISPLAYCONTEXTCONFIGURE *psDCDisplayContextConfigureOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DISPLAY_CONTEXT * psDisplayContextInt = IMG_NULL;
-	PVRSRV_SURFACE_CONFIG_INFO *psSurfInfoInt = IMG_NULL;
-	DC_BUFFER * *psBuffersInt = IMG_NULL;
-	IMG_HANDLE *hBuffersInt2 = IMG_NULL;
-	SERVER_SYNC_PRIMITIVE * *psSyncInt = IMG_NULL;
-	IMG_HANDLE *hSyncInt2 = IMG_NULL;
-	IMG_BOOL *bUpdateInt = IMG_NULL;
+	IMG_HANDLE hDisplayContext = psDCDisplayContextConfigureIN->hDisplayContext;
+	DC_DISPLAY_CONTEXT * psDisplayContextInt = NULL;
+	PVRSRV_SURFACE_CONFIG_INFO *psSurfInfoInt = NULL;
+	DC_BUFFER * *psBuffersInt = NULL;
+	IMG_HANDLE *hBuffersInt2 = NULL;
+	SERVER_SYNC_PRIMITIVE * *psSyncInt = NULL;
+	IMG_HANDLE *hSyncInt2 = NULL;
+	IMG_BOOL *bUpdateInt = NULL;
 
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
+	IMG_UINT32 ui32BufferSize =
+			(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) +
+			(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(DC_BUFFER *)) +
+			(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE)) +
+			(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(SERVER_SYNC_PRIMITIVE *)) +
+			(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE)) +
+			(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL)) +
+			0;
 
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCDisplayContextConfigureIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCDisplayContextConfigureIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCDisplayContextConfigure_exit;
+			}
+		}
+	}
 
 	if (psDCDisplayContextConfigureIN->ui32PipeCount != 0)
 	{
-		psSurfInfoInt = OSAllocMem(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO));
-		if (!psSurfInfoInt)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
+		psSurfInfoInt = (PVRSRV_SURFACE_CONFIG_INFO*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO);
 	}
 
 			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureIN->psSurfInfo, psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO))
-				|| (OSCopyFromUser(NULL, psSurfInfoInt, psDCDisplayContextConfigureIN->psSurfInfo,
-				psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) != PVRSRV_OK) )
+			if (psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO) > 0)
 			{
-				psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigure_exit;
-			}
-	if (psDCDisplayContextConfigureIN->ui32PipeCount != 0)
-	{
-		psBuffersInt = OSAllocMem(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(DC_BUFFER *));
-		if (!psBuffersInt)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
-		hBuffersInt2 = OSAllocMem(psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE));
-		if (!hBuffersInt2)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
-	}
-
-			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureIN->phBuffers, psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE))
-				|| (OSCopyFromUser(NULL, hBuffersInt2, psDCDisplayContextConfigureIN->phBuffers,
-				psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE)) != PVRSRV_OK) )
-			{
-				psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigure_exit;
-			}
-	if (psDCDisplayContextConfigureIN->ui32SyncCount != 0)
-	{
-		psSyncInt = OSAllocMem(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(SERVER_SYNC_PRIMITIVE *));
-		if (!psSyncInt)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
-		hSyncInt2 = OSAllocMem(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE));
-		if (!hSyncInt2)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
-	}
-
-			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureIN->phSync, psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE))
-				|| (OSCopyFromUser(NULL, hSyncInt2, psDCDisplayContextConfigureIN->phSync,
-				psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE)) != PVRSRV_OK) )
-			{
-				psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigure_exit;
-			}
-	if (psDCDisplayContextConfigureIN->ui32SyncCount != 0)
-	{
-		bUpdateInt = OSAllocMem(psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL));
-		if (!bUpdateInt)
-		{
-			psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCDisplayContextConfigure_exit;
-		}
-	}
-
-			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCDisplayContextConfigureIN->pbUpdate, psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL))
-				|| (OSCopyFromUser(NULL, bUpdateInt, psDCDisplayContextConfigureIN->pbUpdate,
-				psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL)) != PVRSRV_OK) )
-			{
-				psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-				goto DCDisplayContextConfigure_exit;
-			}
-
-
-
+				if ( OSCopyFromUser(NULL, psSurfInfoInt, psDCDisplayContextConfigureIN->psSurfInfo, psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(PVRSRV_SURFACE_CONFIG_INFO)) != PVRSRV_OK )
 				{
-					/* Look up the address from the handle */
-					psDCDisplayContextConfigureOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDisplayContextInt,
-											psDCDisplayContextConfigureIN->hDisplayContext,
-											PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
-					if(psDCDisplayContextConfigureOUT->eError != PVRSRV_OK)
-					{
-						goto DCDisplayContextConfigure_exit;
-					}
-				}
+					psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
+					goto DCDisplayContextConfigure_exit;
+				}
+			}
+	if (psDCDisplayContextConfigureIN->ui32PipeCount != 0)
+	{
+		psBuffersInt = (DC_BUFFER **)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(DC_BUFFER *);
+		hBuffersInt2 = (IMG_HANDLE *)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset); 
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE);
+	}
+
+			/* Copy the data over */
+			if (psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE) > 0)
+			{
+				if ( OSCopyFromUser(NULL, hBuffersInt2, psDCDisplayContextConfigureIN->phBuffers, psDCDisplayContextConfigureIN->ui32PipeCount * sizeof(IMG_HANDLE)) != PVRSRV_OK )
+				{
+					psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+					goto DCDisplayContextConfigure_exit;
+				}
+			}
+	if (psDCDisplayContextConfigureIN->ui32SyncCount != 0)
+	{
+		psSyncInt = (SERVER_SYNC_PRIMITIVE **)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(SERVER_SYNC_PRIMITIVE *);
+		hSyncInt2 = (IMG_HANDLE *)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset); 
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE);
+	}
+
+			/* Copy the data over */
+			if (psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE) > 0)
+			{
+				if ( OSCopyFromUser(NULL, hSyncInt2, psDCDisplayContextConfigureIN->phSync, psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_HANDLE)) != PVRSRV_OK )
+				{
+					psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+					goto DCDisplayContextConfigure_exit;
+				}
+			}
+	if (psDCDisplayContextConfigureIN->ui32SyncCount != 0)
+	{
+		bUpdateInt = (IMG_BOOL*)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL);
+	}
+
+			/* Copy the data over */
+			if (psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL) > 0)
+			{
+				if ( OSCopyFromUser(NULL, bUpdateInt, psDCDisplayContextConfigureIN->pbUpdate, psDCDisplayContextConfigureIN->ui32SyncCount * sizeof(IMG_BOOL)) != PVRSRV_OK )
+				{
+					psDCDisplayContextConfigureOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+					goto DCDisplayContextConfigure_exit;
+				}
+			}
+
+	/* Lock over handle lookup. */
+	LockHandle();
+
+	{
+			/* Look up the address from the handle */
+			psDCDisplayContextConfigureOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDisplayContextInt,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
+									IMG_TRUE);
+			if(psDCDisplayContextConfigureOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCDisplayContextConfigure_exit;
+			}
+	}
 
 	{
 		IMG_UINT32 i;
@@ -1109,16 +1531,17 @@ PVRSRVBridgeDCDisplayContextConfigure(IMG_UINT32 ui32DispatchTableEntry,
 				{
 					/* Look up the address from the handle */
 					psDCDisplayContextConfigureOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psBuffersInt[i],
+						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+											(void **) &psBuffersInt[i],
 											hBuffersInt2[i],
-											PVRSRV_HANDLE_TYPE_DC_BUFFER);
+											PVRSRV_HANDLE_TYPE_DC_BUFFER,
+											IMG_TRUE);
 					if(psDCDisplayContextConfigureOUT->eError != PVRSRV_OK)
 					{
+						UnlockHandle();
 						goto DCDisplayContextConfigure_exit;
 					}
 				}
-
 		}
 	}
 
@@ -1130,18 +1553,21 @@ PVRSRVBridgeDCDisplayContextConfigure(IMG_UINT32 ui32DispatchTableEntry,
 				{
 					/* Look up the address from the handle */
 					psDCDisplayContextConfigureOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psSyncInt[i],
+						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+											(void **) &psSyncInt[i],
 											hSyncInt2[i],
-											PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE);
+											PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE,
+											IMG_TRUE);
 					if(psDCDisplayContextConfigureOUT->eError != PVRSRV_OK)
 					{
+						UnlockHandle();
 						goto DCDisplayContextConfigure_exit;
 					}
 				}
-
 		}
 	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCDisplayContextConfigureOUT->eError =
 		DCDisplayContextConfigure(
@@ -1161,18 +1587,65 @@ PVRSRVBridgeDCDisplayContextConfigure(IMG_UINT32 ui32DispatchTableEntry,
 
 
 DCDisplayContextConfigure_exit:
-	if (psSurfInfoInt)
-		OSFreeMem(psSurfInfoInt);
-	if (psBuffersInt)
-		OSFreeMem(psBuffersInt);
-	if (hBuffersInt2)
-		OSFreeMem(hBuffersInt2);
-	if (psSyncInt)
-		OSFreeMem(psSyncInt);
-	if (hSyncInt2)
-		OSFreeMem(hSyncInt2);
-	if (bUpdateInt)
-		OSFreeMem(bUpdateInt);
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDisplayContextInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
+			}
+	}
+
+	{
+		IMG_UINT32 i;
+
+		for (i=0;i<psDCDisplayContextConfigureIN->ui32PipeCount;i++)
+		{
+				{
+					/* Unreference the previously looked up handle */
+						if(psBuffersInt[i])
+						{
+							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+											hBuffersInt2[i],
+											PVRSRV_HANDLE_TYPE_DC_BUFFER);
+						}
+				}
+		}
+	}
+
+	{
+		IMG_UINT32 i;
+
+		for (i=0;i<psDCDisplayContextConfigureIN->ui32SyncCount;i++)
+		{
+				{
+					/* Unreference the previously looked up handle */
+						if(psSyncInt[i])
+						{
+							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+											hSyncInt2[i],
+											PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE);
+						}
+				}
+		}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
 
 	return 0;
 }
@@ -1183,25 +1656,26 @@ PVRSRVBridgeDCDisplayContextDestroy(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCDISPLAYCONTEXTDESTROY *psDCDisplayContextDestroyOUT,
 					 CONNECTION_DATA *psConnection)
 {
-
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCDisplayContextDestroyOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCDisplayContextDestroyIN->hDisplayContext,
 					PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
-	if ((psDCDisplayContextDestroyOUT->eError != PVRSRV_OK) && (psDCDisplayContextDestroyOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCDisplayContextDestroyOUT->eError != PVRSRV_OK) &&
+	    (psDCDisplayContextDestroyOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCDisplayContextDestroy: %s",
+		        PVRSRVGetErrorStringKM(psDCDisplayContextDestroyOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCDisplayContextDestroy_exit;
 	}
 
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 
 DCDisplayContextDestroy_exit:
@@ -1215,28 +1689,29 @@ PVRSRVBridgeDCBufferAlloc(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERALLOC *psDCBufferAllocOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DISPLAY_CONTEXT * psDisplayContextInt = IMG_NULL;
-	DC_BUFFER * psBufferInt = IMG_NULL;
+	IMG_HANDLE hDisplayContext = psDCBufferAllocIN->hDisplayContext;
+	DC_DISPLAY_CONTEXT * psDisplayContextInt = NULL;
+	DC_BUFFER * psBufferInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCBufferAllocOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDisplayContextInt,
-											psDCBufferAllocIN->hDisplayContext,
-											PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
-					if(psDCBufferAllocOUT->eError != PVRSRV_OK)
-					{
-						goto DCBufferAlloc_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCBufferAllocOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDisplayContextInt,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
+									IMG_TRUE);
+			if(psDCBufferAllocOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCBufferAlloc_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCBufferAllocOUT->eError =
 		DCBufferAlloc(
@@ -1250,22 +1725,42 @@ PVRSRVBridgeDCBufferAlloc(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCBufferAlloc_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCBufferAllocOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCBufferAllocOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCBufferAllocOUT->hBuffer,
-							(IMG_VOID *) psBufferInt,
+							(void *) psBufferInt,
 							PVRSRV_HANDLE_TYPE_DC_BUFFER,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCBufferFree);
 	if (psDCBufferAllocOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCBufferAlloc_exit;
 	}
 
-
-
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 DCBufferAlloc_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDisplayContextInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCBufferAllocOUT->eError != PVRSRV_OK)
 	{
 		if (psBufferInt)
@@ -1284,56 +1779,86 @@ PVRSRVBridgeDCBufferImport(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERIMPORT *psDCBufferImportOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_DISPLAY_CONTEXT * psDisplayContextInt = IMG_NULL;
-	PMR * *psImportInt = IMG_NULL;
-	IMG_HANDLE *hImportInt2 = IMG_NULL;
-	DC_BUFFER * psBufferInt = IMG_NULL;
+	IMG_HANDLE hDisplayContext = psDCBufferImportIN->hDisplayContext;
+	DC_DISPLAY_CONTEXT * psDisplayContextInt = NULL;
+	PMR * *psImportInt = NULL;
+	IMG_HANDLE *hImportInt2 = NULL;
+	DC_BUFFER * psBufferInt = NULL;
 
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE   *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
 
+	IMG_UINT32 ui32BufferSize =
+			(psDCBufferImportIN->ui32NumPlanes * sizeof(PMR *)) +
+			(psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE)) +
+			0;
 
-
-	if (psDCBufferImportIN->ui32NumPlanes != 0)
+	if (ui32BufferSize != 0)
 	{
-		psImportInt = OSAllocMem(psDCBufferImportIN->ui32NumPlanes * sizeof(PMR *));
-		if (!psImportInt)
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset = PVR_ALIGN(sizeof(*psDCBufferImportIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize = ui32InBufferOffset >= PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 :
+			PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
 		{
-			psDCBufferImportOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCBufferImport_exit;
-		}
-		hImportInt2 = OSAllocMem(psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE));
-		if (!hImportInt2)
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *)psDCBufferImportIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];		}
+		else
+#endif
 		{
-			psDCBufferImportOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-	
-			goto DCBufferImport_exit;
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if(!pArrayArgsBuffer)
+			{
+				psDCBufferImportOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto DCBufferImport_exit;
+			}
 		}
 	}
 
-			/* Copy the data over */
-			if ( !OSAccessOK(PVR_VERIFY_READ, (IMG_VOID*) psDCBufferImportIN->phImport, psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE))
-				|| (OSCopyFromUser(NULL, hImportInt2, psDCBufferImportIN->phImport,
-				psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE)) != PVRSRV_OK) )
+	if (psDCBufferImportIN->ui32NumPlanes != 0)
+	{
+		psImportInt = (PMR **)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset);
+		ui32NextOffset += psDCBufferImportIN->ui32NumPlanes * sizeof(PMR *);
+		hImportInt2 = (IMG_HANDLE *)(((IMG_UINT8 *)pArrayArgsBuffer) + ui32NextOffset); 
+		ui32NextOffset += psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE);
+	}
+
+	/* Copy the data over */
+	if (psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE) > 0)
+	{
+			if ( OSCopyFromUser(NULL, hImportInt2, psDCBufferImportIN->phImport, psDCBufferImportIN->ui32NumPlanes * sizeof(IMG_HANDLE)) != PVRSRV_OK )
 			{
-				psDCBufferImportOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+					psDCBufferImportOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-				goto DCBufferImport_exit;
+					goto DCBufferImport_exit;
 			}
+	}
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-				{
-					/* Look up the address from the handle */
-					psDCBufferImportOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psDisplayContextInt,
-											psDCBufferImportIN->hDisplayContext,
-											PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
-					if(psDCBufferImportOUT->eError != PVRSRV_OK)
-					{
-						goto DCBufferImport_exit;
-					}
-				}
+	{
+			/* Look up the address from the handle */
+			psDCBufferImportOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psDisplayContextInt,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
+									IMG_TRUE);
+			if(psDCBufferImportOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCBufferImport_exit;
+			}
+	}
 
 
 	{
@@ -1344,18 +1869,22 @@ PVRSRVBridgeDCBufferImport(IMG_UINT32 ui32DispatchTableEntry,
 				{
 					/* Look up the address from the handle */
 					psDCBufferImportOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psImportInt[i],
+						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+											(void **) &psImportInt[i],
 											hImportInt2[i],
-											PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+											PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
+											IMG_TRUE);
 					if(psDCBufferImportOUT->eError != PVRSRV_OK)
 					{
+						UnlockHandle();
 						goto DCBufferImport_exit;
 					}
 				}
 
 		}
 	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCBufferImportOUT->eError =
 		DCBufferImport(
@@ -1370,22 +1899,58 @@ PVRSRVBridgeDCBufferImport(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCBufferImport_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCBufferImportOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCBufferImportOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCBufferImportOUT->hBuffer,
-							(IMG_VOID *) psBufferInt,
+							(void *) psBufferInt,
 							PVRSRV_HANDLE_TYPE_DC_BUFFER,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCBufferFree);
 	if (psDCBufferImportOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCBufferImport_exit;
 	}
 
-
-
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 DCBufferImport_exit:
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psDisplayContextInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hDisplayContext,
+									PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT);
+			}
+	}
+
+	{
+		IMG_UINT32 i;
+
+		for (i=0;i<psDCBufferImportIN->ui32NumPlanes;i++)
+		{
+				{
+					/* Unreference the previously looked up handle */
+						if(psImportInt[i])
+						{
+							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+											hImportInt2[i],
+											PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+						}
+				}
+		}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCBufferImportOUT->eError != PVRSRV_OK)
 	{
 		if (psBufferInt)
@@ -1394,10 +1959,16 @@ DCBufferImport_exit:
 		}
 	}
 
-	if (psImportInt)
-		OSFreeMem(psImportInt);
-	if (hImportInt2)
-		OSFreeMem(hImportInt2);
+	/* Allocated space should be equal to the last updated offset */
+	PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+
+#if defined(INTEGRITY_OS)
+	if(pArrayArgsBuffer)
+#else
+	if(!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
+
 
 	return 0;
 }
@@ -1408,26 +1979,26 @@ PVRSRVBridgeDCBufferFree(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERFREE *psDCBufferFreeOUT,
 					 CONNECTION_DATA *psConnection)
 {
-
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCBufferFreeOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCBufferFreeIN->hBuffer,
 					PVRSRV_HANDLE_TYPE_DC_BUFFER);
-	if ((psDCBufferFreeOUT->eError != PVRSRV_OK) && (psDCBufferFreeOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCBufferFreeOUT->eError != PVRSRV_OK) &&
+	    (psDCBufferFreeOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCBufferFree: %s",
+		        PVRSRVGetErrorStringKM(psDCBufferFreeOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCBufferFree_exit;
 	}
 
-
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 DCBufferFree_exit:
 
@@ -1440,26 +2011,25 @@ PVRSRVBridgeDCBufferUnimport(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERUNIMPORT *psDCBufferUnimportOUT,
 					 CONNECTION_DATA *psConnection)
 {
-
-
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 	psDCBufferUnimportOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCBufferUnimportIN->hBuffer,
 					PVRSRV_HANDLE_TYPE_DC_BUFFER);
-	if ((psDCBufferUnimportOUT->eError != PVRSRV_OK) && (psDCBufferUnimportOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCBufferUnimportOUT->eError != PVRSRV_OK) &&
+	    (psDCBufferUnimportOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCBufferUnimport: %s",
+		        PVRSRVGetErrorStringKM(psDCBufferUnimportOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCBufferUnimport_exit;
 	}
 
-
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 DCBufferUnimport_exit:
 
@@ -1472,28 +2042,29 @@ PVRSRVBridgeDCBufferPin(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERPIN *psDCBufferPinOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_BUFFER * psBufferInt = IMG_NULL;
-	DC_PIN_HANDLE hPinHandleInt = IMG_NULL;
+	IMG_HANDLE hBuffer = psDCBufferPinIN->hBuffer;
+	DC_BUFFER * psBufferInt = NULL;
+	DC_PIN_HANDLE hPinHandleInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCBufferPinOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psBufferInt,
-											psDCBufferPinIN->hBuffer,
-											PVRSRV_HANDLE_TYPE_DC_BUFFER);
-					if(psDCBufferPinOUT->eError != PVRSRV_OK)
-					{
-						goto DCBufferPin_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCBufferPinOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psBufferInt,
+									hBuffer,
+									PVRSRV_HANDLE_TYPE_DC_BUFFER,
+									IMG_TRUE);
+			if(psDCBufferPinOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCBufferPin_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCBufferPinOUT->eError =
 		DCBufferPin(
@@ -1505,22 +2076,42 @@ PVRSRVBridgeDCBufferPin(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCBufferPin_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCBufferPinOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCBufferPinOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCBufferPinOUT->hPinHandle,
-							(IMG_VOID *) hPinHandleInt,
+							(void *) hPinHandleInt,
 							PVRSRV_HANDLE_TYPE_DC_PIN_HANDLE,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCBufferUnpin);
 	if (psDCBufferPinOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCBufferPin_exit;
 	}
 
-
-
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 DCBufferPin_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psBufferInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hBuffer,
+									PVRSRV_HANDLE_TYPE_DC_BUFFER);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCBufferPinOUT->eError != PVRSRV_OK)
 	{
 		if (hPinHandleInt)
@@ -1540,24 +2131,26 @@ PVRSRVBridgeDCBufferUnpin(IMG_UINT32 ui32DispatchTableEntry,
 					 CONNECTION_DATA *psConnection)
 {
 
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCBufferUnpinOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCBufferUnpinIN->hPinHandle,
 					PVRSRV_HANDLE_TYPE_DC_PIN_HANDLE);
-	if ((psDCBufferUnpinOUT->eError != PVRSRV_OK) && (psDCBufferUnpinOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCBufferUnpinOUT->eError != PVRSRV_OK) &&
+	    (psDCBufferUnpinOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCBufferUnpin: %s",
+		        PVRSRVGetErrorStringKM(psDCBufferUnpinOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCBufferUnpin_exit;
 	}
 
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 
 DCBufferUnpin_exit:
@@ -1571,28 +2164,29 @@ PVRSRVBridgeDCBufferAcquire(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERACQUIRE *psDCBufferAcquireOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	DC_BUFFER * psBufferInt = IMG_NULL;
-	PMR * psExtMemInt = IMG_NULL;
+	IMG_HANDLE hBuffer = psDCBufferAcquireIN->hBuffer;
+	DC_BUFFER * psBufferInt = NULL;
+	PMR * psExtMemInt = NULL;
 
+	/* Lock over handle lookup. */
+	LockHandle();
 
-
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psDCBufferAcquireOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &psBufferInt,
-											psDCBufferAcquireIN->hBuffer,
-											PVRSRV_HANDLE_TYPE_DC_BUFFER);
-					if(psDCBufferAcquireOUT->eError != PVRSRV_OK)
-					{
-						goto DCBufferAcquire_exit;
-					}
-				}
-
+	{
+			/* Look up the address from the handle */
+			psDCBufferAcquireOUT->eError =
+					PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+									(void **) &psBufferInt,
+									hBuffer,
+									PVRSRV_HANDLE_TYPE_DC_BUFFER,
+									IMG_TRUE);
+			if(psDCBufferAcquireOUT->eError != PVRSRV_OK)
+			{
+					UnlockHandle();
+					goto DCBufferAcquire_exit;
+			}
+	}
+	/* Release now we have looked up handles. */
+	UnlockHandle();
 
 	psDCBufferAcquireOUT->eError =
 		DCBufferAcquire(
@@ -1604,22 +2198,43 @@ PVRSRVBridgeDCBufferAcquire(IMG_UINT32 ui32DispatchTableEntry,
 		goto DCBufferAcquire_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psDCBufferAcquireOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+	psDCBufferAcquireOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psDCBufferAcquireOUT->hExtMem,
-							(IMG_VOID *) psExtMemInt,
+							(void *) psExtMemInt,
 							PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&DCBufferRelease);
 	if (psDCBufferAcquireOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto DCBufferAcquire_exit;
 	}
 
-
-
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 DCBufferAcquire_exit:
+
+	/* Lock over handle lookup cleanup. */
+	LockHandle();
+
+
+	{
+			/* Unreference the previously looked up handle */
+			if(psBufferInt)
+			{
+					PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+									hBuffer,
+									PVRSRV_HANDLE_TYPE_DC_BUFFER);
+			}
+	}
+	/* Release now we have cleaned up look up handles. */
+	UnlockHandle();
+
 	if (psDCBufferAcquireOUT->eError != PVRSRV_OK)
 	{
 		if (psExtMemInt)
@@ -1638,26 +2253,26 @@ PVRSRVBridgeDCBufferRelease(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DCBUFFERRELEASE *psDCBufferReleaseOUT,
 					 CONNECTION_DATA *psConnection)
 {
-
-
-
-
-
-
-
-
+	/* Lock over handle destruction. */
+	LockHandle();
 
 	psDCBufferReleaseOUT->eError =
-		PVRSRVReleaseHandle(psConnection->psHandleBase,
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
 					(IMG_HANDLE) psDCBufferReleaseIN->hExtMem,
 					PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT);
-	if ((psDCBufferReleaseOUT->eError != PVRSRV_OK) && (psDCBufferReleaseOUT->eError != PVRSRV_ERROR_RETRY))
+	if ((psDCBufferReleaseOUT->eError != PVRSRV_OK) &&
+	    (psDCBufferReleaseOUT->eError != PVRSRV_ERROR_RETRY))
 	{
+		PVR_DPF((PVR_DBG_ERROR,
+		        "PVRSRVBridgeDCBufferRelease: %s",
+		        PVRSRVGetErrorStringKM(psDCBufferReleaseOUT->eError)));
 		PVR_ASSERT(0);
+		UnlockHandle();
 		goto DCBufferRelease_exit;
 	}
 
-
+	/* Release now we have destroyed handles. */
+	UnlockHandle();
 
 DCBufferRelease_exit:
 
@@ -1670,119 +2285,94 @@ DCBufferRelease_exit:
  * Server bridge dispatch related glue 
  */
 
+static IMG_BOOL bUseLock = IMG_TRUE;
 
-PVRSRV_ERROR InitDCBridge(IMG_VOID);
-PVRSRV_ERROR DeinitDCBridge(IMG_VOID);
+PVRSRV_ERROR InitDCBridge(void);
+PVRSRV_ERROR DeinitDCBridge(void);
 
 /*
  * Register all DC functions with services
  */
-PVRSRV_ERROR InitDCBridge(IMG_VOID)
+PVRSRV_ERROR InitDCBridge(void)
 {
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDEVICESQUERYCOUNT, PVRSRVBridgeDCDevicesQueryCount,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDEVICESENUMERATE, PVRSRVBridgeDCDevicesEnumerate,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDEVICEACQUIRE, PVRSRVBridgeDCDeviceAcquire,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDEVICERELEASE, PVRSRVBridgeDCDeviceRelease,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCGETINFO, PVRSRVBridgeDCGetInfo,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCPANELQUERYCOUNT, PVRSRVBridgeDCPanelQueryCount,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCPANELQUERY, PVRSRVBridgeDCPanelQuery,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCFORMATQUERY, PVRSRVBridgeDCFormatQuery,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDIMQUERY, PVRSRVBridgeDCDimQuery,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCSETBLANK, PVRSRVBridgeDCSetBlank,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCSETVSYNCREPORTING, PVRSRVBridgeDCSetVSyncReporting,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCLASTVSYNCQUERY, PVRSRVBridgeDCLastVSyncQuery,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCSYSTEMBUFFERACQUIRE, PVRSRVBridgeDCSystemBufferAcquire,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCSYSTEMBUFFERRELEASE, PVRSRVBridgeDCSystemBufferRelease,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDISPLAYCONTEXTCREATE, PVRSRVBridgeDCDisplayContextCreate,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDISPLAYCONTEXTCONFIGURECHECK, PVRSRVBridgeDCDisplayContextConfigureCheck,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDISPLAYCONTEXTCONFIGURE, PVRSRVBridgeDCDisplayContextConfigure,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCDISPLAYCONTEXTDESTROY, PVRSRVBridgeDCDisplayContextDestroy,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERALLOC, PVRSRVBridgeDCBufferAlloc,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERIMPORT, PVRSRVBridgeDCBufferImport,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERFREE, PVRSRVBridgeDCBufferFree,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERUNIMPORT, PVRSRVBridgeDCBufferUnimport,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERPIN, PVRSRVBridgeDCBufferPin,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERUNPIN, PVRSRVBridgeDCBufferUnpin,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERACQUIRE, PVRSRVBridgeDCBufferAcquire,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DC, PVRSRV_BRIDGE_DC_DCBUFFERRELEASE, PVRSRVBridgeDCBufferRelease,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 
 	return PVRSRV_OK;
@@ -1791,7 +2381,7 @@ PVRSRV_ERROR InitDCBridge(IMG_VOID)
 /*
  * Unregister all dc functions with services
  */
-PVRSRV_ERROR DeinitDCBridge(IMG_VOID)
+PVRSRV_ERROR DeinitDCBridge(void)
 {
 	return PVRSRV_OK;
 }

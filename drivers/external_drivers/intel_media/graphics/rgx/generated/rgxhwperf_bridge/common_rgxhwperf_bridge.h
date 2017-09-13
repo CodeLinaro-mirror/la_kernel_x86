@@ -2,8 +2,8 @@
 @File
 @Title          Common bridge header for rgxhwperf
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Declares common defines and structures that are used by both
-                the client and sever side of the bridge for rgxhwperf
+@Description    Declares common defines and structures used by both the client
+                and server side of the bridge for rgxhwperf
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,6 +45,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_RGXHWPERF_BRIDGE_H
 #define COMMON_RGXHWPERF_BRIDGE_H
 
+#include <powervr/mem_types.h>
+
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
@@ -67,17 +69,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for RGXCtrlHWPerf */
 typedef struct PVRSRV_BRIDGE_IN_RGXCTRLHWPERF_TAG
 {
-	IMG_HANDLE hDevNode;
+	IMG_UINT32 ui32StreamId;
 	IMG_BOOL bToggle;
 	IMG_UINT64 ui64Mask;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXCTRLHWPERF;
-
 
 /* Bridge out structure for RGXCtrlHWPerf */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCTRLHWPERF_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXCTRLHWPERF;
+
 
 /*******************************************
             RGXConfigEnableHWPerfCounters          
@@ -86,17 +88,16 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCTRLHWPERF_TAG
 /* Bridge in structure for RGXConfigEnableHWPerfCounters */
 typedef struct PVRSRV_BRIDGE_IN_RGXCONFIGENABLEHWPERFCOUNTERS_TAG
 {
-	IMG_HANDLE hDevNode;
 	IMG_UINT32 ui32ArrayLen;
 	RGX_HWPERF_CONFIG_CNTBLK * psBlockConfigs;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXCONFIGENABLEHWPERFCOUNTERS;
-
 
 /* Bridge out structure for RGXConfigEnableHWPerfCounters */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCONFIGENABLEHWPERFCOUNTERS_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXCONFIGENABLEHWPERFCOUNTERS;
+
 
 /*******************************************
             RGXCtrlHWPerfCounters          
@@ -105,18 +106,17 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCONFIGENABLEHWPERFCOUNTERS_TAG
 /* Bridge in structure for RGXCtrlHWPerfCounters */
 typedef struct PVRSRV_BRIDGE_IN_RGXCTRLHWPERFCOUNTERS_TAG
 {
-	IMG_HANDLE hDevNode;
 	IMG_BOOL bEnable;
 	IMG_UINT32 ui32ArrayLen;
 	IMG_UINT16 * pui16BlockIDs;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXCTRLHWPERFCOUNTERS;
-
 
 /* Bridge out structure for RGXCtrlHWPerfCounters */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCTRLHWPERFCOUNTERS_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXCTRLHWPERFCOUNTERS;
+
 
 /*******************************************
             RGXConfigCustomCounters          
@@ -125,17 +125,16 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCTRLHWPERFCOUNTERS_TAG
 /* Bridge in structure for RGXConfigCustomCounters */
 typedef struct PVRSRV_BRIDGE_IN_RGXCONFIGCUSTOMCOUNTERS_TAG
 {
-	IMG_HANDLE hDevNode;
 	IMG_UINT16 ui16CustomBlockID;
 	IMG_UINT16 ui16NumCustomCounters;
 	IMG_UINT32 * pui32CustomCounterIDs;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXCONFIGCUSTOMCOUNTERS;
-
 
 /* Bridge out structure for RGXConfigCustomCounters */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCONFIGCUSTOMCOUNTERS_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXCONFIGCUSTOMCOUNTERS;
+
 
 #endif /* COMMON_RGXHWPERF_BRIDGE_H */

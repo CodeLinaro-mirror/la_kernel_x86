@@ -42,7 +42,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 #include <asm/io.h>
 #include <asm/uaccess.h>
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/hardirq.h>
@@ -51,14 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <stdarg.h>
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
-#include <generated/compile.h>
-#include <generated/utsrelease.h>
-#else
-#include <linux/compile.h>
-#include <linux/utsrelease.h>
-#endif
 
 #include "allocmem.h"
 #include "pvrversion.h"
@@ -72,12 +63,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv.h"
 #include "rgxdevice.h"
 #include "rgxdebug.h"
+#include "rgxinit.h"
 #include "lists.h"
 #include "osfunc.h"
 
 /* Handle used by DebugFS to get GPU utilisation stats */
 static IMG_HANDLE ghGpuUtilUserDebugFS = NULL;
-static DEFINE_MUTEX(gsSeqFileLock);
 
 #if defined(PVRSRV_NEED_PVR_DPF)
 
@@ -101,6 +92,7 @@ typedef struct
 	const IMG_CHAR *pszFile;
 	IMG_INT iLine;
 	IMG_UINT32 ui32TID;
+	IMG_UINT32 ui32PID;
 	IMG_CHAR pcMesg[PVRSRV_DEBUG_CCB_MESG_MAX];
 	struct timeval sTimeVal;
 }
@@ -120,7 +112,8 @@ AddToBufferCCB(const IMG_CHAR *pszFileName, IMG_UINT32 ui32Line,
 
 	gsDebugCCB[giOffset].pszFile = pszFileName;
 	gsDebugCCB[giOffset].iLine   = ui32Line;
-	gsDebugCCB[giOffset].ui32TID = current->tgid;
+	gsDebugCCB[giOffset].ui32TID = current->pid;
+	gsDebugCCB[giOffset].ui32PID = current->tgid;
 
 	do_gettimeofday(&gsDebugCCB[giOffset].sTimeVal);
 
@@ -149,16 +142,17 @@ IMG_EXPORT void PVRSRVDebugPrintfDumpCCB(void)
 			continue;
 		}
 
-		printk(KERN_ERR "%s:%d: (%ld.%ld,tid=%u) %s\n",
+		printk(KERN_ERR "%s:%d: (%ld.%ld, tid=%u, pid=%u) %s\n",
 			   psDebugCCBEntry->pszFile,
 			   psDebugCCBEntry->iLine,
 			   (long)psDebugCCBEntry->sTimeVal.tv_sec,
 			   (long)psDebugCCBEntry->sTimeVal.tv_usec,
 			   psDebugCCBEntry->ui32TID,
+			   psDebugCCBEntry->ui32PID,
 			   psDebugCCBEntry->pcMesg);
 
 		/* Clear this entry so it doesn't get printed the next time again. */
-		psDebugCCBEntry->pszFile = IMG_NULL;
+		psDebugCCBEntry->pszFile = NULL;
 	}
 
 	mutex_unlock(&gsDebugCCBMutex);
@@ -167,7 +161,7 @@ IMG_EXPORT void PVRSRVDebugPrintfDumpCCB(void)
 #else /* defined(PVRSRV_DEBUG_CCB_MAX) */
 static INLINE void
 AddToBufferCCB(const IMG_CHAR *pszFileName, IMG_UINT32 ui32Line,
-               const IMG_CHAR *szBuffer)
+			   const IMG_CHAR *szBuffer)
 {
 	(void)pszFileName;
 	(void)szBuffer;
@@ -185,7 +179,7 @@ IMG_EXPORT void PVRSRVDebugPrintfDumpCCB(void)
 
 static IMG_BOOL VBAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz,
 						 const IMG_CHAR *pszFormat, va_list VArgs)
-						 IMG_FORMAT_PRINTF(3, 0);
+						 __printf(3, 0);
 
 
 #if defined(PVRSRV_NEED_PVR_DPF)
@@ -194,7 +188,7 @@ static IMG_BOOL VBAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz,
 
 static IMG_BOOL BAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz,
 						const IMG_CHAR *pszFormat, ...)
-						IMG_FORMAT_PRINTF(3, 4);
+						__printf(3, 4);
 
 /* NOTE: Must NOT be static! Used in module.c.. */
 IMG_UINT32 gPVRDebugLevel =
@@ -223,12 +217,8 @@ static IMG_CHAR gszBufferIRQ[PVR_MAX_MSG_LEN + 1];
 /* The lock is used to control access to gszBufferNonIRQ */
 static DEFINE_MUTEX(gsDebugMutexNonIRQ);
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39))
 /* The lock is used to control access to gszBufferIRQ */
-static spinlock_t gsDebugLockIRQ = SPIN_LOCK_UNLOCKED;
-#else
 static DEFINE_SPINLOCK(gsDebugLockIRQ);
-#endif
 
 #define	USE_SPIN_LOCK (in_interrupt() || !preemptible())
 
@@ -304,14 +294,17 @@ void PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...)
 	unsigned long ulLockFlags = 0;
 	IMG_CHAR *pszBuf;
 	IMG_UINT32 ui32BufSiz;
+	IMG_INT32  result;
 
 	SelectBuffer(&pszBuf, &ui32BufSiz);
 
 	va_start(vaArgs, pszFormat);
 
 	GetBufferLock(&ulLockFlags);
-	strncpy(pszBuf, "PVR_K: ", (ui32BufSiz - 2));
-	pszBuf[ui32BufSiz - 1] = '\0';
+
+	result = snprintf(pszBuf, (ui32BufSiz - 2), "PVR_K: %u: ", current->pid);
+	PVR_ASSERT(result>0);
+	ui32BufSiz -= result;
 
 	if (VBAppend(pszBuf, ui32BufSiz, pszFormat, vaArgs))
 	{
@@ -340,6 +333,7 @@ void PVRSRVTrace(const IMG_CHAR *pszFormat, ...)
 	unsigned long ulLockFlags = 0;
 	IMG_CHAR *pszBuf;
 	IMG_UINT32 ui32BufSiz;
+	IMG_INT32  result;
 
 	SelectBuffer(&pszBuf, &ui32BufSiz);
 
@@ -347,8 +341,9 @@ void PVRSRVTrace(const IMG_CHAR *pszFormat, ...)
 
 	GetBufferLock(&ulLockFlags);
 
-	strncpy(pszBuf, "PVR: ", (ui32BufSiz - 2));
-	pszBuf[ui32BufSiz - 1] = '\0';
+	result = snprintf(pszBuf, (ui32BufSiz - 2), "PVR: %u: ", current->pid);
+	PVR_ASSERT(result>0);
+	ui32BufSiz -= result;
 
 	if (VBAppend(pszBuf, ui32BufSiz, pszFormat, VArgs))
 	{
@@ -465,8 +460,14 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 		}
 		pszBuf[ui32BufSiz - 1] = '\0';
 
-		(void) BAppend(pszBuf, ui32BufSiz, "%u: ", current->pid);
-
+		if (current->pid == task_tgid_nr(current))
+		{
+			(void) BAppend(pszBuf, ui32BufSiz, "%5u: ", current->pid);
+		}
+		else
+		{
+			(void) BAppend(pszBuf, ui32BufSiz, "%5u-%5u: ", task_tgid_nr(current) /* pid id of group*/, current->pid /* task id */);
+		}
 
 		if (VBAppend(pszBuf, ui32BufSiz, pszFormat, vaArgs))
 		{
@@ -474,6 +475,8 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 		}
 		else
 		{
+			IMG_BOOL bTruncated = IMG_FALSE;
+
 #if !defined(__sh__)
 			pszLeafName = (IMG_CHAR *)strrchr (pszFileName, '/');
 
@@ -483,7 +486,23 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 			}
 #endif /* __sh__ */
 
-			if (BAppend(pszBuf, ui32BufSiz, " [%u, %s]", ui32Line, pszFileName))
+#if defined(DEBUG)
+			{
+				static const IMG_CHAR *lastFile = NULL;
+
+				if (lastFile == pszFileName)
+				{
+					bTruncated = BAppend(pszBuf, ui32BufSiz, " [%u]", ui32Line);
+				}
+				else
+				{
+					bTruncated = BAppend(pszBuf, ui32BufSiz, " [%s:%u]", pszFileName, ui32Line);
+					lastFile = pszFileName;
+				}
+			}
+#endif
+
+			if (bTruncated)
 			{
 				printk(KERN_ERR "PVR_K:(Message Truncated): %s\n", pszBuf);
 			}
@@ -537,9 +556,9 @@ static void *_DebugVersionSeqStart(struct seq_file *psSeqFile,
 	}
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugVersionCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugVersionCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static void _DebugVersionSeqStop(struct seq_file *psSeqFile, void *pvData)
@@ -560,37 +579,53 @@ static void *_DebugVersionSeqNext(struct seq_file *psSeqFile,
 	(*puiPosition)++;
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugVersionCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugVersionCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static int _DebugVersionSeqShow(struct seq_file *psSeqFile, void *pvData)
 {
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+
 	if (pvData == SEQ_START_TOKEN)
 	{
-		const IMG_CHAR *pszSystemVersionString = PVRSRVGetSystemName();
-
-		seq_printf(psSeqFile, "Version: %s (%s) %s\n",
-			   PVRVERSION_STRING,
-			   PVR_BUILD_TYPE, PVR_BUILD_DIR);
-
-		seq_printf(psSeqFile, "System Version String: %s\n", pszSystemVersionString);
-
-		seq_printf(psSeqFile, "Kernel Version: " UTS_RELEASE " (" UTS_MACHINE ")\n");
+		if(psPVRSRVData->sDriverInfo.bIsNoMatch)
+		{
+			seq_printf(psSeqFile, "Driver UM Version: %d (%s) %s\n",
+					psPVRSRVData->sDriverInfo.sUMBuildInfo.ui32BuildRevision,
+				    (psPVRSRVData->sDriverInfo.sUMBuildInfo.ui32BuildType)?"release":"debug",
+				    PVR_BUILD_DIR);
+			seq_printf(psSeqFile, "Driver KM Version: %d (%s) %s\n",
+								psPVRSRVData->sDriverInfo.sKMBuildInfo.ui32BuildRevision,
+							    (BUILD_TYPE_RELEASE == psPVRSRVData->sDriverInfo.sKMBuildInfo.ui32BuildType)?"release":"debug",
+							    PVR_BUILD_DIR);
+		}else
+		{
+			seq_printf(psSeqFile, "Driver Version: %s (%s) %s\n",
+						   PVRVERSION_STRING,
+						   PVR_BUILD_TYPE, PVR_BUILD_DIR);
+		}
 	}
 	else if (pvData != NULL)
 	{
 		PVRSRV_DEVICE_NODE *psDevNode = (PVRSRV_DEVICE_NODE *)pvData;
 
+		seq_printf(psSeqFile, "\nDevice Name: %s\n", psDevNode->psDevConfig->pszName);
+
+		if (psDevNode->psDevConfig->pszVersion)
+		{
+			seq_printf(psSeqFile, "Device Version: %s\n", psDevNode->psDevConfig->pszVersion);
+		}
+
 		if (psDevNode->pfnDeviceVersionString)
 		{
 			IMG_CHAR *pszDeviceVersionString;
-			
+
 			if (psDevNode->pfnDeviceVersionString(psDevNode, &pszDeviceVersionString) == PVRSRV_OK)
 			{
 				seq_printf(psSeqFile, "%s\n", pszDeviceVersionString);
-				
+
 				OSFreeMem(pszDeviceVersionString);
 			}
 		}
@@ -612,7 +647,7 @@ static struct seq_operations gsDebugVersionReadOps =
 */ /**************************************************************************/
 
 static void *_DebugStatusCompare_AnyVaCb(PVRSRV_DEVICE_NODE *psDevNode,
-					 va_list va)
+										 va_list va)
 {
 	loff_t *puiCurrentPosition = va_arg(va, loff_t *);
 	loff_t uiPosition = va_arg(va, loff_t);
@@ -624,7 +659,7 @@ static void *_DebugStatusCompare_AnyVaCb(PVRSRV_DEVICE_NODE *psDevNode,
 }
 
 static void *_DebugStatusSeqStart(struct seq_file *psSeqFile,
-				  loff_t *puiPosition)
+								  loff_t *puiPosition)
 {
 	PVRSRV_DATA *psPVRSRVData = (PVRSRV_DATA *)psSeqFile->private;
 	loff_t uiCurrentPosition = 1;
@@ -635,9 +670,9 @@ static void *_DebugStatusSeqStart(struct seq_file *psSeqFile,
 	}
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugStatusCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugStatusCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static void _DebugStatusSeqStop(struct seq_file *psSeqFile, void *pvData)
@@ -647,8 +682,8 @@ static void _DebugStatusSeqStop(struct seq_file *psSeqFile, void *pvData)
 }
 
 static void *_DebugStatusSeqNext(struct seq_file *psSeqFile,
-				    void *pvData,
-				    loff_t *puiPosition)
+								 void *pvData,
+								 loff_t *puiPosition)
 {
 	PVRSRV_DATA *psPVRSRVData = (PVRSRV_DATA *)psSeqFile->private;
 	loff_t uiCurrentPosition = 1;
@@ -658,9 +693,9 @@ static void *_DebugStatusSeqNext(struct seq_file *psSeqFile,
 	(*puiPosition)++;
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugVersionCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugStatusCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static int _DebugStatusSeqShow(struct seq_file *psSeqFile, void *pvData)
@@ -690,14 +725,18 @@ static int _DebugStatusSeqShow(struct seq_file *psSeqFile, void *pvData)
 		PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)pvData;
 		IMG_CHAR           *pszStatus = "";
 		IMG_CHAR           *pszReason = "";
+		PVRSRV_DEVICE_HEALTH_STATUS eHealthStatus;
+		PVRSRV_DEVICE_HEALTH_REASON eHealthReason;
 		
 		/* Update the health status now if possible... */
 		if (psDeviceNode->pfnUpdateHealthStatus)
 		{
 			psDeviceNode->pfnUpdateHealthStatus(psDeviceNode, IMG_FALSE);
 		}
+		eHealthStatus = OSAtomicRead(&psDeviceNode->eHealthStatus);
+		eHealthReason = OSAtomicRead(&psDeviceNode->eHealthReason);
 		
-		switch (psDeviceNode->eHealthStatus)
+		switch (eHealthStatus)
 		{
 			case PVRSRV_DEVICE_HEALTH_STATUS_OK:  pszStatus = "OK";  break;
 			case PVRSRV_DEVICE_HEALTH_STATUS_NOT_RESPONDING:  pszStatus = "NOT RESPONDING";  break;
@@ -705,111 +744,93 @@ static int _DebugStatusSeqShow(struct seq_file *psSeqFile, void *pvData)
 			default:  pszStatus = "UNKNOWN";  break;
 		}
 
-		/* Write the device status to the sequence file... */
-		if (psDeviceNode->sDevId.eDeviceType == PVRSRV_DEVICE_TYPE_RGX)
+		switch (eHealthReason)
 		{
-			switch (psDeviceNode->eHealthReason)
+			case PVRSRV_DEVICE_HEALTH_REASON_NONE:  pszReason = "";  break;
+			case PVRSRV_DEVICE_HEALTH_REASON_ASSERTED:  pszReason = " (FW Assert)";  break;
+			case PVRSRV_DEVICE_HEALTH_REASON_POLL_FAILING:  pszReason = " (Poll failure)";  break;
+			case PVRSRV_DEVICE_HEALTH_REASON_TIMEOUTS:  pszReason = " (Global Event Object timeouts rising)";  break;
+			case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_CORRUPT:  pszReason = " (KCCB offset invalid)";  break;
+			case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_STALLED:  pszReason = " (KCCB stalled)";  break;
+			default:  pszReason = " (Unknown reason)";  break;
+		}
+
+		seq_printf(psSeqFile, "Firmware Status: %s%s\n", pszStatus, pszReason);
+
+#if defined(PVRSRV_GPUVIRT_GUESTDRV)
+		/*
+		 * Guest drivers do not support the following functionality:
+		 *	- Perform actual on-chip fw tracing
+		 *	- Collect actual on-chip GPU utilization stats
+		 *	- Perform actual on-chip GPU power/dvfs management
+		 */
+		PVR_UNREFERENCED_PARAMETER(ghGpuUtilUserDebugFS);
+#else
+		/* Write other useful stats to aid the test cycle... */
+		if (psDeviceNode->pvDevice != NULL)
+		{
+			PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+			RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
+
+			/* Calculate the number of HWR events in total across all the DMs... */
+			if (psRGXFWIfTraceBufCtl != NULL)
 			{
-				case PVRSRV_DEVICE_HEALTH_REASON_NONE:  pszReason = "";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_ASSERTED:  pszReason = " (FW Assert)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_POLL_FAILING:  pszReason = " (Poll failure)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_TIMEOUTS:  pszReason = " (Global Event Object timeouts rising)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_CORRUPT:  pszReason = " (KCCB offset invalid)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_STALLED:  pszReason = " (KCCB stalled)";  break;
-				default:  pszReason = " (Unknown reason)";  break;
+				IMG_UINT32 ui32HWREventCount = 0;
+				IMG_UINT32 ui32CRREventCount = 0;
+				IMG_UINT32 ui32DMIndex;
+
+				for (ui32DMIndex = 0; ui32DMIndex < psDevInfo->sDevFeatureCfg.ui32MAXDMCount; ui32DMIndex++)
+				{
+					ui32HWREventCount += psRGXFWIfTraceBufCtl->aui32HwrDmLockedUpCount[ui32DMIndex];
+					ui32CRREventCount += psRGXFWIfTraceBufCtl->aui32HwrDmOverranCount[ui32DMIndex];
+				}
+
+				seq_printf(psSeqFile, "HWR Event Count: %d\n", ui32HWREventCount);
+				seq_printf(psSeqFile, "CRR Event Count: %d\n", ui32CRREventCount);
 			}
 
-			seq_printf(psSeqFile, "Firmware Status: %s%s\n", pszStatus, pszReason);
+			/* Write the number of APM events... */
+			seq_printf(psSeqFile, "APM Event Count: %d\n", psDevInfo->ui32ActivePMReqTotal);
 
-			/* Write other useful stats to aid the test cycle... */
-			if (psDeviceNode->pvDevice != NULL)
+			/* Write the current GPU Utilisation values... */
+			if (psDevInfo->pfnGetGpuUtilStats &&
+				eHealthStatus == PVRSRV_DEVICE_HEALTH_STATUS_OK)
 			{
-				PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
-				RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
+				RGXFWIF_GPU_UTIL_STATS sGpuUtilStats;
+				PVRSRV_ERROR eError = PVRSRV_OK;
 
-				/* Calculate the number of HWR events in total across all the DMs... */
-				if (psRGXFWIfTraceBufCtl != NULL)
+				eError = psDevInfo->pfnGetGpuUtilStats(psDeviceNode,
+													   ghGpuUtilUserDebugFS,
+													   &sGpuUtilStats);
+
+				if ((eError == PVRSRV_OK) &&
+					((IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative))
 				{
-					IMG_UINT32 ui32HWREventCount = 0;
-					IMG_UINT32 ui32CRREventCount = 0;
-					IMG_UINT32 ui32DMIndex;
+					IMG_UINT64 util;
+					IMG_UINT32 rem;
 
-					for (ui32DMIndex = 0; ui32DMIndex < RGXFWIF_DM_MAX; ui32DMIndex++)
-					{
-						ui32HWREventCount += psRGXFWIfTraceBufCtl->aui16HwrDmLockedUpCount[ui32DMIndex];
-						ui32CRREventCount += psRGXFWIfTraceBufCtl->aui16HwrDmOverranCount[ui32DMIndex];
-					}
+					util = 100 * (sGpuUtilStats.ui64GpuStatActiveHigh +
+								  sGpuUtilStats.ui64GpuStatActiveLow);
+					util = OSDivide64(util, (IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative, &rem);
 
-					seq_printf(psSeqFile, "HWR Event Count: %d\n", ui32HWREventCount);
-					seq_printf(psSeqFile, "CRR Event Count: %d\n", ui32CRREventCount);
+					seq_printf(psSeqFile, "GPU Utilisation: %u%%\n", (IMG_UINT32)util);
 				}
-				
-				/* Write the number of APM events... */
-				seq_printf(psSeqFile, "APM Event Count: %d\n", psDevInfo->ui32ActivePMReqTotal);
-				
-				/* Write the current GPU Utilisation values... */
-				if (psDevInfo->pfnRegisterGpuUtilStats && psDevInfo->pfnGetGpuUtilStats &&
-				    psDeviceNode->eHealthStatus == PVRSRV_DEVICE_HEALTH_STATUS_OK)
+				else
 				{
-					RGXFWIF_GPU_UTIL_STATS sGpuUtilStats;
-					PVRSRV_ERROR eError = PVRSRV_OK;
-
-					if (ghGpuUtilUserDebugFS == NULL)
-					{
-						eError = psDevInfo->pfnRegisterGpuUtilStats(&ghGpuUtilUserDebugFS);
-					}
-
-					if (eError == PVRSRV_OK)
-					{
-						eError = psDevInfo->pfnGetGpuUtilStats(psDeviceNode,
-						                                       ghGpuUtilUserDebugFS,
-						                                       &sGpuUtilStats);
-					}
-
-					if ((eError == PVRSRV_OK) &&
-					    ((IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative))
-					{
-						IMG_UINT64 util;
-						IMG_UINT32 rem;
-
-						util = 100 * (sGpuUtilStats.ui64GpuStatActiveHigh +
-						              sGpuUtilStats.ui64GpuStatActiveLow);
-						util = OSDivide64(util, (IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative, &rem);
-
-						seq_printf(psSeqFile, "GPU Utilisation: %u%%\n", (IMG_UINT32)util);
-					}
-					else
-					{
-						seq_printf(psSeqFile, "GPU Utilisation: -\n");
-					}
+					seq_printf(psSeqFile, "GPU Utilisation: -\n");
 				}
 			}
 		}
-		else
-		{
-			switch (psDeviceNode->eHealthReason)
-			{
-				case PVRSRV_DEVICE_HEALTH_REASON_NONE:  pszReason = "";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_ASSERTED:  pszReason = " (ASSERTED)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_POLL_FAILING:  pszReason = " (POLL FAILING)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_TIMEOUTS:  pszReason = " (TIMEOUTS)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_CORRUPT:  pszReason = " (QUEUE CORRUPT)";  break;
-				case PVRSRV_DEVICE_HEALTH_REASON_QUEUE_STALLED:  pszReason = " (QUEUE STALLED)";  break;
-				default:  pszReason = " (UNKNOWN)";  break;
-			}
-
-			seq_printf(psSeqFile, "Device %d Status: %s%s\n",
-					   psDeviceNode->sDevId.ui32DeviceIndex, pszStatus, pszReason);
-		}
+#endif
 	}
 
 	return 0;
 }
 
 static IMG_INT DebugStatusSet(const char __user *pcBuffer,
-			     size_t uiCount,
-			     loff_t uiPosition,
-			     void *pvData)
+							  size_t uiCount,
+							  loff_t uiPosition,
+							  void *pvData)
 {
 	IMG_CHAR acDataBuffer[6];
 
@@ -880,9 +901,9 @@ static void *_DebugDumpDebugSeqStart(struct seq_file *psSeqFile, loff_t *puiPosi
 	}
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugDumpDebugCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugDumpDebugCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static void _DebugDumpDebugSeqStop(struct seq_file *psSeqFile, void *pvData)
@@ -892,8 +913,8 @@ static void _DebugDumpDebugSeqStop(struct seq_file *psSeqFile, void *pvData)
 }
 
 static void *_DebugDumpDebugSeqNext(struct seq_file *psSeqFile,
-				    void *pvData,
-				    loff_t *puiPosition)
+									void *pvData,
+									loff_t *puiPosition)
 {
 	PVRSRV_DATA *psPVRSRVData = (PVRSRV_DATA *)psSeqFile->private;
 	loff_t uiCurrentPosition = 1;
@@ -903,25 +924,22 @@ static void *_DebugDumpDebugSeqNext(struct seq_file *psSeqFile,
 	(*puiPosition)++;
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugDumpDebugCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugDumpDebugCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
-static struct seq_file *gpsDumpDebugPrintfSeqFile = IMG_NULL;
-
-static void _DumpDebugSeqPrintf(const IMG_CHAR *pszFormat, ...)
+static void _DumpDebugSeqPrintf(void *pvDumpDebugFile,
+				const IMG_CHAR *pszFormat, ...)
 {
-	if (gpsDumpDebugPrintfSeqFile)
-	{
-		IMG_CHAR  szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN];
-		va_list  ArgList;
+	struct seq_file *psSeqFile = (struct seq_file *)pvDumpDebugFile;
+	IMG_CHAR  szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN];
+	va_list  ArgList;
 
-		va_start(ArgList, pszFormat);
-		vsnprintf(szBuffer, PVR_MAX_DEBUG_MESSAGE_LEN, pszFormat, ArgList);
-		seq_printf(gpsDumpDebugPrintfSeqFile, "%s\n", szBuffer);
-		va_end(ArgList);
-	}
+	va_start(ArgList, pszFormat);
+	vsnprintf(szBuffer, PVR_MAX_DEBUG_MESSAGE_LEN, pszFormat, ArgList);
+	va_end(ArgList);
+	seq_printf(psSeqFile, "%s\n", szBuffer);
 }
 
 static int _DebugDumpDebugSeqShow(struct seq_file *psSeqFile, void *pvData)
@@ -932,18 +950,15 @@ static int _DebugDumpDebugSeqShow(struct seq_file *psSeqFile, void *pvData)
 
 		if (psDeviceNode->pvDevice != NULL)
 		{
-			mutex_lock(&gsSeqFileLock);
-			gpsDumpDebugPrintfSeqFile = psSeqFile;
-			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, _DumpDebugSeqPrintf);
-			gpsDumpDebugPrintfSeqFile = IMG_NULL;
-			mutex_unlock(&gsSeqFileLock);
+			PVRSRVDebugRequest(psDeviceNode, DEBUG_REQUEST_VERBOSITY_MAX,
+						_DumpDebugSeqPrintf, psSeqFile);
 		}
 	}
 
 	return 0;
 }
 
-static struct seq_operations gsDumpDebugReadOps = 
+static struct seq_operations gsDumpDebugReadOps =
 {
 	.start = _DebugDumpDebugSeqStart,
 	.stop  = _DebugDumpDebugSeqStop,
@@ -953,8 +968,7 @@ static struct seq_operations gsDumpDebugReadOps =
 /*************************************************************************/ /*!
  Firmware Trace DebugFS entry
 */ /**************************************************************************/
-
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
+#if !defined(PVRSRV_GPUVIRT_GUESTDRV)
 static void *_DebugFWTraceCompare_AnyVaCb(PVRSRV_DEVICE_NODE *psDevNode, va_list va)
 {
 	loff_t *puiCurrentPosition = va_arg(va, loff_t *);
@@ -977,9 +991,9 @@ static void *_DebugFWTraceSeqStart(struct seq_file *psSeqFile, loff_t *puiPositi
 	}
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugFWTraceCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugFWTraceCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
 static void _DebugFWTraceSeqStop(struct seq_file *psSeqFile, void *pvData)
@@ -989,8 +1003,8 @@ static void _DebugFWTraceSeqStop(struct seq_file *psSeqFile, void *pvData)
 }
 
 static void *_DebugFWTraceSeqNext(struct seq_file *psSeqFile,
-				    void *pvData,
-				    loff_t *puiPosition)
+								  void *pvData,
+								  loff_t *puiPosition)
 {
 	PVRSRV_DATA *psPVRSRVData = (PVRSRV_DATA *)psSeqFile->private;
 	loff_t uiCurrentPosition = 1;
@@ -1000,25 +1014,22 @@ static void *_DebugFWTraceSeqNext(struct seq_file *psSeqFile,
 	(*puiPosition)++;
 
 	return List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
-					      _DebugFWTraceCompare_AnyVaCb,
-					      &uiCurrentPosition,
-					      *puiPosition);
+										  _DebugFWTraceCompare_AnyVaCb,
+										  &uiCurrentPosition,
+										  *puiPosition);
 }
 
-static struct seq_file *gpsFWTracePrintfSeqFile = IMG_NULL;
-
-static void _FWTraceSeqPrintf(const IMG_CHAR *pszFormat, ...)
+static void _FWTraceSeqPrintf(void *pvDumpDebugFile,
+				const IMG_CHAR *pszFormat, ...)
 {
-	if (gpsFWTracePrintfSeqFile)
-	{
-		IMG_CHAR  szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN];
-		va_list  ArgList;
+	struct seq_file *psSeqFile = (struct seq_file *)pvDumpDebugFile;
+	IMG_CHAR  szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN];
+	va_list  ArgList;
 
-		va_start(ArgList, pszFormat);
-		vsnprintf(szBuffer, PVR_MAX_DEBUG_MESSAGE_LEN, pszFormat, ArgList);
-		seq_printf(gpsFWTracePrintfSeqFile, "%s\n", szBuffer);
-		va_end(ArgList);
-	}
+	va_start(ArgList, pszFormat);
+	vsnprintf(szBuffer, PVR_MAX_DEBUG_MESSAGE_LEN, pszFormat, ArgList);
+	va_end(ArgList);
+	seq_printf(psSeqFile, "%s\n", szBuffer);
 }
 
 static int _DebugFWTraceSeqShow(struct seq_file *psSeqFile, void *pvData)
@@ -1026,21 +1037,19 @@ static int _DebugFWTraceSeqShow(struct seq_file *psSeqFile, void *pvData)
 	if (pvData != NULL  &&  pvData != SEQ_START_TOKEN)
 	{
 		PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)pvData;
-		
+
 		if (psDeviceNode->pvDevice != NULL)
 		{
 			PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
 
-			gpsFWTracePrintfSeqFile = psSeqFile;
-			RGXDumpFirmwareTrace(_FWTraceSeqPrintf, psDevInfo);
-			gpsFWTracePrintfSeqFile = IMG_NULL;
+			RGXDumpFirmwareTrace(_FWTraceSeqPrintf, psSeqFile, psDevInfo);
 		}
 	}
 
 	return 0;
 }
 
-static struct seq_operations gsFWTraceReadOps = 
+static struct seq_operations gsFWTraceReadOps =
 {
 	.start = _DebugFWTraceSeqStart,
 	.stop  = _DebugFWTraceSeqStop,
@@ -1048,13 +1057,11 @@ static struct seq_operations gsFWTraceReadOps =
 	.show  = _DebugFWTraceSeqShow,
 };
 #endif
-
-
 /*************************************************************************/ /*!
  Debug level DebugFS entry
 */ /**************************************************************************/
 
-#if defined(DEBUG)
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 static void *DebugLevelSeqStart(struct seq_file *psSeqFile, loff_t *puiPosition)
 {
 	if (*puiPosition == 0)
@@ -1072,8 +1079,8 @@ static void DebugLevelSeqStop(struct seq_file *psSeqFile, void *pvData)
 }
 
 static void *DebugLevelSeqNext(struct seq_file *psSeqFile,
-			       void *pvData,
-			       loff_t *puiPosition)
+							   void *pvData,
+							   loff_t *puiPosition)
 {
 	PVR_UNREFERENCED_PARAMETER(psSeqFile);
 	PVR_UNREFERENCED_PARAMETER(pvData);
@@ -1106,9 +1113,9 @@ static struct seq_operations gsDebugLevelReadOps =
 
 
 static IMG_INT DebugLevelSet(const char __user *pcBuffer,
-			     size_t uiCount,
-			     loff_t uiPosition,
-			     void *pvData)
+							 size_t uiCount,
+							 loff_t uiPosition,
+							 void *pvData)
 {
 	IMG_UINT32 *uiDebugLevel = (IMG_UINT32 *)pvData;
 	IMG_CHAR acDataBuffer[6];
@@ -1150,11 +1157,9 @@ static PVR_DEBUGFS_ENTRY_DATA *gpsVersionDebugFSEntry;
 static PVR_DEBUGFS_ENTRY_DATA *gpsStatusDebugFSEntry;
 static PVR_DEBUGFS_ENTRY_DATA *gpsDumpDebugDebugFSEntry;
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 static PVR_DEBUGFS_ENTRY_DATA *gpsFWTraceDebugFSEntry;
-#endif
 
-#if defined(DEBUG)
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 static PVR_DEBUGFS_ENTRY_DATA *gpsDebugLevelDebugFSEntry;
 #endif
 
@@ -1164,144 +1169,145 @@ int PVRDebugCreateDebugFSEntries(void)
 	int iResult;
 
 	PVR_ASSERT(psPVRSRVData != NULL);
-	PVR_ASSERT(gpsVersionDebugFSEntry == NULL);
+
+	/*
+	 * The DebugFS entries are designed to work in a single device system but
+	 * this function will be called multiple times in a multi-device system.
+	 * Return an error in this case.
+	 */
+	if (gpsVersionDebugFSEntry)
+	{
+		return -EEXIST;
+	}
+
+#if !defined(NO_HARDWARE)
+	if (RGXRegisterGpuUtilStats(&ghGpuUtilUserDebugFS) != PVRSRV_OK)
+	{
+		return -ENOMEM;
+	}
+#endif
 
 	iResult = PVRDebugFSCreateEntry("version",
-					NULL,
-					&gsDebugVersionReadOps,
-					NULL,
-					psPVRSRVData,
-					&gpsVersionDebugFSEntry);
+									NULL,
+									&gsDebugVersionReadOps,
+									NULL,
+									NULL,
+									NULL,
+									psPVRSRVData,
+									&gpsVersionDebugFSEntry);
 	if (iResult != 0)
 	{
 		return iResult;
 	}
 
 	iResult = PVRDebugFSCreateEntry("status",
-					NULL,
-					&gsDebugStatusReadOps,
-					(PVRSRV_ENTRY_WRITE_FUNC *)DebugStatusSet,
-					psPVRSRVData,
-					&gpsStatusDebugFSEntry);
+									NULL,
+									&gsDebugStatusReadOps,
+									(PVRSRV_ENTRY_WRITE_FUNC *)DebugStatusSet,
+									NULL,
+									NULL,
+									psPVRSRVData,
+									&gpsStatusDebugFSEntry);
 	if (iResult != 0)
 	{
 		goto ErrorRemoveVersionEntry;
 	}
 
 	iResult = PVRDebugFSCreateEntry("debug_dump",
-					NULL,
-					&gsDumpDebugReadOps,
-					NULL,
-					psPVRSRVData,
-					&gpsDumpDebugDebugFSEntry);
+									NULL,
+									&gsDumpDebugReadOps,
+									NULL,
+									NULL,
+									NULL,
+									psPVRSRVData,
+									&gpsDumpDebugDebugFSEntry);
 	if (iResult != 0)
 	{
 		goto ErrorRemoveStatusEntry;
 	}
-
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
+#if !defined(PVRSRV_GPUVIRT_GUESTDRV)
 	iResult = PVRDebugFSCreateEntry("firmware_trace",
-					NULL,
-					&gsFWTraceReadOps,
-					NULL,
-					psPVRSRVData,
-					&gpsFWTraceDebugFSEntry);
+									NULL,
+									&gsFWTraceReadOps,
+									NULL,
+									NULL,
+									NULL,
+									psPVRSRVData,
+									&gpsFWTraceDebugFSEntry);
 	if (iResult != 0)
 	{
 		goto ErrorRemoveDumpDebugEntry;
 	}
 #endif
-
-#if defined(DEBUG)
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 	iResult = PVRDebugFSCreateEntry("debug_level",
-					NULL,
-					&gsDebugLevelReadOps,
-					(PVRSRV_ENTRY_WRITE_FUNC *)DebugLevelSet,
-					&gPVRDebugLevel,
-					&gpsDebugLevelDebugFSEntry);
+									NULL,
+									&gsDebugLevelReadOps,
+									(PVRSRV_ENTRY_WRITE_FUNC *)DebugLevelSet,
+									NULL,
+									NULL,
+									&gPVRDebugLevel,
+									&gpsDebugLevelDebugFSEntry);
 	if (iResult != 0)
 	{
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 		goto ErrorRemoveFWTraceLogEntry;
-#else
-		goto ErrorRemoveDumpDebugEntry;
-#endif
 	}
 #endif
 
 	return 0;
 
-#if (defined(DEBUG) && defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS))
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 ErrorRemoveFWTraceLogEntry:
-	PVRDebugFSRemoveEntry(gpsFWTraceDebugFSEntry);
-	gpsFWTraceDebugFSEntry = NULL;
+	PVRDebugFSRemoveEntry(&gpsFWTraceDebugFSEntry);
 #endif
-
-#if (defined(DEBUG) || defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS))
+#if !defined(PVRSRV_GPUVIRT_GUESTDRV)
 ErrorRemoveDumpDebugEntry:
-	PVRDebugFSRemoveEntry(gpsDumpDebugDebugFSEntry);
-	gpsDumpDebugDebugFSEntry = NULL;
+	PVRDebugFSRemoveEntry(&gpsDumpDebugDebugFSEntry);
 #endif
-
 ErrorRemoveStatusEntry:
-	PVRDebugFSRemoveEntry(gpsStatusDebugFSEntry);
-	gpsStatusDebugFSEntry = NULL;
+	PVRDebugFSRemoveEntry(&gpsStatusDebugFSEntry);
 
 ErrorRemoveVersionEntry:
-	PVRDebugFSRemoveEntry(gpsVersionDebugFSEntry);
-	gpsVersionDebugFSEntry = NULL;
+	PVRDebugFSRemoveEntry(&gpsVersionDebugFSEntry);
 
 	return iResult;
 }
 
 void PVRDebugRemoveDebugFSEntries(void)
 {
-	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-	PVRSRV_DEVICE_NODE *psDeviceNode;
-	PVRSRV_RGXDEV_INFO *psDevInfo;
-
-	psDeviceNode = psPVRSRVData->apsRegisteredDevNodes[0];
-	if (psDeviceNode)
+#if !defined(NO_HARDWARE)
+	if (ghGpuUtilUserDebugFS != NULL)
 	{
-		psDevInfo = psDeviceNode->pvDevice;
-		if (psDevInfo && psDevInfo->pfnUnregisterGpuUtilStats)
-		{
-			psDevInfo->pfnUnregisterGpuUtilStats(ghGpuUtilUserDebugFS);
-		}
+		RGXUnregisterGpuUtilStats(ghGpuUtilUserDebugFS);
+		ghGpuUtilUserDebugFS = NULL;
 	}
+#endif
 
-#if defined(DEBUG)
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 	if (gpsDebugLevelDebugFSEntry != NULL)
 	{
-		PVRDebugFSRemoveEntry(gpsDebugLevelDebugFSEntry);
-		gpsDebugLevelDebugFSEntry = NULL;
+		PVRDebugFSRemoveEntry(&gpsDebugLevelDebugFSEntry);
 	}
 #endif
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 	if (gpsFWTraceDebugFSEntry != NULL)
 	{
-		PVRDebugFSRemoveEntry(gpsFWTraceDebugFSEntry);
-		gpsFWTraceDebugFSEntry = NULL;
+		PVRDebugFSRemoveEntry(&gpsFWTraceDebugFSEntry);
 	}
-#endif
 
 	if (gpsDumpDebugDebugFSEntry != NULL)
 	{
-		PVRDebugFSRemoveEntry(gpsDumpDebugDebugFSEntry);
-		gpsDumpDebugDebugFSEntry = NULL;
+		PVRDebugFSRemoveEntry(&gpsDumpDebugDebugFSEntry);
 	}
 
 	if (gpsStatusDebugFSEntry != NULL)
 	{
-		PVRDebugFSRemoveEntry(gpsStatusDebugFSEntry);
-		gpsStatusDebugFSEntry = NULL;
+		PVRDebugFSRemoveEntry(&gpsStatusDebugFSEntry);
 	}
 
 	if (gpsVersionDebugFSEntry != NULL)
 	{
-		PVRDebugFSRemoveEntry(gpsVersionDebugFSEntry);
-		gpsVersionDebugFSEntry = NULL;
+		PVRDebugFSRemoveEntry(&gpsVersionDebugFSEntry);
 	}
 }
 

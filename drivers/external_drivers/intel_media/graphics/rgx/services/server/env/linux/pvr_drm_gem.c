@@ -47,13 +47,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <drm/drm.h>
 
 #include "private_data.h"
-#include "driverlock.h"
 #include "pmr.h"
 #include "physmem.h"
-#include "pvr_drm.h"
+#include "pvr_drm_gem.h"
 #include "pvr_drm_display.h"
-#include "sync_server_internal.h"
+#include "sync_server.h"
 #include "allocmem.h"
+#include "module_common.h"
 
 #if defined(PVR_DRM_USE_PRIME)
 #include "physmem_dmabuf.h"
@@ -63,12 +63,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ri_server.h"
 #endif
 
-static PVRSRV_ERROR GEMSyncHandleDestroy(IMG_PVOID pvParam)
+static PVRSRV_ERROR GEMSyncHandleDestroy(void * pvParam)
 {
 	SERVER_SYNC_PRIMITIVE *psSync = (SERVER_SYNC_PRIMITIVE *)pvParam;
 
-	ServerSyncUnref(psSync);
-
+	PVRSRVServerSyncFreeKM(psSync);
 	return PVRSRV_OK;
 }
 
@@ -77,7 +76,7 @@ static int GEMSyncHandleCreate(CONNECTION_DATA *psConnection, SERVER_SYNC_PRIMIT
 	PVRSRV_ERROR eError;
 	int iErr;
 
-	ServerSyncRef(psSync);
+	PVRSRVServerSyncGetKM(psSync);
 
 	eError = PVRSRVAllocHandle(psConnection->psHandleBase,
 				   phSync,
@@ -104,7 +103,7 @@ static int GEMSyncHandleCreate(CONNECTION_DATA *psConnection, SERVER_SYNC_PRIMIT
 	return 0;
 
 ErrorSyncUnreference:
-	ServerSyncUnref(psSync);
+	PVRSRVServerSyncFreeKM(psSync);
 
 	return iErr;
 }
@@ -121,13 +120,12 @@ typedef struct PMR_GEM_PRIV_TAG
 } PMR_GEM_PRIV;
 
 
-static PVRSRV_ERROR PMRGEMLockPhysAddress(PMR_IMPL_PRIVDATA pvPriv,
-					  IMG_UINT32 uiLog2DevPageSize)
+static PVRSRV_ERROR PMRGEMLockPhysAddress(PMR_IMPL_PRIVDATA pvPriv)
 {
 	PMR_GEM_PRIV *psGEMPriv = pvPriv;
 
 	/* Call  PMRLockSysPhysAddresses using the proper lock class to avoid a Lockdep issue */
-	return PMRLockSysPhysAddressesNested(psGEMPriv->psBackingPMR, uiLog2DevPageSize, 1);
+	return PMRLockSysPhysAddressesNested(psGEMPriv->psBackingPMR, 1);
 }
 
 static PVRSRV_ERROR PMRGEMUnlockPhysAddress(PMR_IMPL_PRIVDATA pvPriv)
@@ -138,6 +136,7 @@ static PVRSRV_ERROR PMRGEMUnlockPhysAddress(PMR_IMPL_PRIVDATA pvPriv)
 }
 
 static PVRSRV_ERROR PMRGEMDevPhysAddr(PMR_IMPL_PRIVDATA pvPriv,
+                      IMG_UINT32 ui32Log2PageSize,
 				      IMG_UINT32 ui32NumOfPages,
 				      IMG_DEVMEM_OFFSET_T *uiOffset,
 					  IMG_BOOL *pbValid,
@@ -153,7 +152,7 @@ static PVRSRV_ERROR PMRGEMDevPhysAddr(PMR_IMPL_PRIVDATA pvPriv,
 	   offset/uiNumOfPages pair into offset[array] for PMR factories
 	   to translate, i.e. PMR adapter -> PMR core -> PMR factories */
 	return PMR_DevPhysAddr(psGEMPriv->psBackingPMR,
-						   PAGE_SHIFT, 
+						   ui32Log2PageSize, 
 						   ui32NumOfPages,
 						   uiOffset[0], 
 						   psDevAddrPtr,
@@ -184,14 +183,14 @@ static PVRSRV_ERROR PMRGEMPDumpSymbolicAddr(PMR_IMPL_PRIVDATA pvPriv,
 #endif
 
 static PVRSRV_ERROR PMRGEMAcquireKernelMappingData(PMR_IMPL_PRIVDATA pvPriv,
-						   IMG_SIZE_T uiOffset,
-						   IMG_SIZE_T uiSize,
+						   size_t uiOffset,
+						   size_t uiSize,
 						   void **ppvKernelAddressOut,
 						   IMG_HANDLE *phHandleOut,
-						   PMR_FLAGS_T unref__ ulFlags)
+						   PMR_FLAGS_T __maybe_unused ulFlags)
 {
 	PMR_GEM_PRIV *psGEMPriv = pvPriv;
-	IMG_SIZE_T uiLength;
+	size_t uiLength;
 
 	return PMRAcquireKernelMappingData(psGEMPriv->psBackingPMR,
 					   uiOffset,
@@ -212,8 +211,8 @@ static void PMRGEMReleaseKernelMappingData(PMR_IMPL_PRIVDATA pvPriv,
 static PVRSRV_ERROR PMRGEMReadBytes(PMR_IMPL_PRIVDATA pvPriv,
 				    IMG_DEVMEM_OFFSET_T uiOffset,
 				    IMG_UINT8 *pcBuffer,
-				    IMG_SIZE_T uiBufferSize,
-				    IMG_SIZE_T *puiNumBytes)
+				    size_t uiBufferSize,
+				    size_t *puiNumBytes)
 {
 	PMR_GEM_PRIV *psGEMPriv = pvPriv;
 
@@ -227,8 +226,8 @@ static PVRSRV_ERROR PMRGEMReadBytes(PMR_IMPL_PRIVDATA pvPriv,
 static PVRSRV_ERROR PMRGEMWriteBytes(PMR_IMPL_PRIVDATA pvPriv,
 				     IMG_DEVMEM_OFFSET_T uiOffset,
 				     IMG_UINT8 *pcBuffer,
-				     IMG_SIZE_T uiBufferSize,
-				     IMG_SIZE_T *puiNumBytes)
+				     size_t uiBufferSize,
+				     size_t *puiNumBytes)
 {
 	PMR_GEM_PRIV *psGEMPriv = pvPriv;
 
@@ -271,9 +270,10 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 				PMR **ppsPMR)
 {
 	struct pvr_drm_gem_object *psPVRObj = to_pvr_drm_gem_object(psObj);
-	IMG_BOOL bMappingTable = IMG_TRUE;
+	IMG_UINT32 MappingTable;
 	PMR_GEM_PRIV *psGEMPriv;
 	PVRSRV_ERROR eError;
+	const IMG_CHAR *pszAllocName = "GEM CREATE";
 
 	/* Create the private data structure for the PMR */
 	psGEMPriv = OSAllocZMem(sizeof *psGEMPriv);
@@ -287,14 +287,17 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 	switch (psPVRObj->type)
 	{
 		case PVR_DRM_GEM_PMR:
-			eError = PhysmemNewRamBackedPMR(psDevNode,
+			eError = PhysmemNewRamBackedPMR(NULL,
+							psDevNode,
 							psObj->size,
 							psObj->size,
 							1,
 							1,
-							&bMappingTable,
+							&MappingTable,
 							PAGE_SHIFT,
 							uiFlags,
+							OSStringLength(pszAllocName) + 1,
+							pszAllocName,
 							&psGEMPriv->psBackingPMR);
 			break;
 #if defined(SUPPORT_DRM_DC_MODULE)
@@ -309,10 +312,15 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 #endif
 #if defined(PVR_DRM_USE_PRIME)
 		case PVR_DRM_GEM_IMPORT_PMR:
-			eError = PhysmemCreateNewDmaBufBackedPMR(psDevNode->apsPhysHeap[PVR_DRM_PHYS_HEAP],
+			eError = PhysmemCreateNewDmaBufBackedPMR(psDevNode,
+								 psDevNode->apsPhysHeap[PVR_DRM_PHYS_HEAP],
 								 psObj->import_attach,
 								 NULL,
 								 uiFlags,
+								 psObj->size,
+								 1,
+								 1,
+								 &MappingTable, 
 								 &psGEMPriv->psBackingPMR);
 			break;
 #endif
@@ -327,19 +335,20 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 		goto ErrorFreePMRPriv;
 	}
 
-	eError = PMRCreatePMR(psDevNode->apsPhysHeap[PVR_DRM_PHYS_HEAP],
+	eError = PMRCreatePMR(psDevNode,
+                  psDevNode->apsPhysHeap[PVR_DRM_PHYS_HEAP],
 			      psObj->size,
 			      psObj->size,
 			      1,
 			      1,
-			      &bMappingTable,
+			      &MappingTable,
 			      PAGE_SHIFT,
 			      uiFlags,
 			      "PMRGEM",
 			      &gsPMRGEMFuncTab,
 			      psGEMPriv,
+                  PMR_TYPE_NONE,
 			      ppsPMR,
-			      IMG_NULL,
 			      IMG_FALSE);
 	if (eError != PVRSRV_OK)
 	{
@@ -418,7 +427,7 @@ int PVRDRMGEMCreate(struct drm_device *dev, void *arg, struct drm_file *file)
 	return iRet;
 }
 
-static PVRSRV_ERROR GEMDestroyPMRHandle(IMG_PVOID pvParam)
+static PVRSRV_ERROR GEMDestroyPMRHandle(void * pvParam)
 {
 	struct drm_gem_object *psObj = PVRSRVGEMGetObject((PMR *)pvParam);
 
@@ -533,8 +542,8 @@ int PVRDRMIMGToGEMHandle(struct drm_device *dev, void *arg, struct drm_file *fil
 
 	eError = PVRSRVLookupHandle(psConnection->psHandleBase,
 				    (void **)&psPMR,
-				    (IMG_HANDLE)(IMG_UINTPTR_T)psIMGToGEMHandle->img_handle,
-				    PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+				    (IMG_HANDLE)(uintptr_t)psIMGToGEMHandle->img_handle,
+				    PVRSRV_HANDLE_TYPE_PHYSMEM_PMR, IMG_TRUE);
 	if (eError != PVRSRV_OK)
 	{
 		iRet = -EINVAL;
@@ -672,7 +681,7 @@ int PVRSRVGEMDumbCreate(struct drm_file *file,
 }
 
 int PVRSRVGEMDumbDestroy(struct drm_file *file,
-			 struct drm_device unref__ *dev,
+			 struct drm_device __maybe_unused *dev,
 			 uint32_t handle)
 {
 	return drm_gem_handle_delete(file, handle);
@@ -841,7 +850,8 @@ int PVRSRVGEMInitObject(struct drm_gem_object *obj,
 					break;
 			}
 
-			eError = PVRSRVServerSyncAllocKM(psDevPriv->dev_node,
+			eError = PVRSRVServerSyncAllocKM(NULL,
+							 psDevPriv->dev_node,
 							 &psPVRObj->apsSyncPrim[iSyncIndex],
 							 &psPVRObj->auiSyncPrimVAddr[iSyncIndex],
 							 strlen(pszSyncName),
@@ -976,5 +986,4 @@ ExitUnlock:
 
 	return psPMR;
 }
-
 #endif /* defined(SUPPORT_DRM) */

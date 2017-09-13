@@ -44,8 +44,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef CLIENT_PDUMPMM_BRIDGE_H
 #define CLIENT_PDUMPMM_BRIDGE_H
 
+#include "img_defs.h"
+#include "pvrsrv_error.h"
+
+#if defined(PVR_INDIRECT_BRIDGE_CLIENTS)
 #include "pvr_bridge_client.h"
 #include "pvr_bridge.h"
+#endif
 
 #include "common_pdumpmm_bridge.h"
 
@@ -73,7 +78,8 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePMRPDumpSaveToFile(IMG_HANDLE hBrid
 								IMG_DEVMEM_OFFSET_T uiOffset,
 								IMG_DEVMEM_SIZE_T uiSize,
 								IMG_UINT32 ui32ArraySize,
-								const IMG_CHAR *puiFileName);
+								const IMG_CHAR *puiFileName,
+								IMG_UINT32 ui32uiFileOffset);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePMRPDumpSymbolicAddr(IMG_HANDLE hBridge,
 								  IMG_HANDLE hPMR,

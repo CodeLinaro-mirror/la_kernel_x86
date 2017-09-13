@@ -46,11 +46,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define _SYNC_INTERNAL_
 
 #include "img_types.h"
-#include "sync_external.h"
+#include <powervr/sync_external.h>
 #include "ra.h"
 #include "dllist.h"
 #include "lock.h"
 #include "devicemem.h"
+
+
+#define LOCAL_SYNC_PRIM_RESET_VALUE 0
 
 /*
 	Private structure's
@@ -58,8 +61,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SYNC_PRIM_NAME_SIZE		50
 typedef struct SYNC_PRIM_CONTEXT
 {
-	SYNC_BRIDGE_HANDLE			hBridge;						/*!< Bridge handle */
-	IMG_HANDLE					hDeviceNode;					/*!< The device we're operating on */
+	SHARED_DEV_CONNECTION       hDevConnection;
 	IMG_CHAR					azName[SYNC_PRIM_NAME_SIZE];	/*!< Name of the RA */
 	RA_ARENA					*psSubAllocRA;					/*!< RA context */
 	IMG_CHAR					azSpanName[SYNC_PRIM_NAME_SIZE];/*!< Name of the span RA */
@@ -106,16 +108,17 @@ typedef struct _SYNC_PRIM_SERVER_
 typedef struct _SYNC_PRIM_
 {
 	PVRSRV_CLIENT_SYNC_PRIM	sCommon;		/*!< Client visible part of the sync prim */
-	SYNC_PRIM_TYPE			eType;			/*!< Sync primative type */
+	SYNC_PRIM_TYPE			eType;			/*!< Sync primitive type */
 	union {
-		SYNC_PRIM_LOCAL		sLocal;			/*!< Local sync primative data */
-		SYNC_PRIM_SERVER	sServer;		/*!< Server sync primative data */
+		SYNC_PRIM_LOCAL		sLocal;			/*!< Local sync primitive data */
+		SYNC_PRIM_SERVER	sServer;		/*!< Server sync primitive data */
 	} u;
 } SYNC_PRIM;
 
 
 /* FIXME this must return a correctly typed pointer */
-IMG_INTERNAL IMG_UINT32 SyncPrimGetFirmwareAddr(PVRSRV_CLIENT_SYNC_PRIM *psSync);
+IMG_INTERNAL PVRSRV_ERROR
+SyncPrimGetFirmwareAddr(PVRSRV_CLIENT_SYNC_PRIM *psSync, IMG_UINT32 *pui32FwAddr);
 
 IMG_INTERNAL PVRSRV_ERROR SyncPrimLocalGetHandleAndOffset(PVRSRV_CLIENT_SYNC_PRIM *psSync,
 							IMG_HANDLE *phBlock,

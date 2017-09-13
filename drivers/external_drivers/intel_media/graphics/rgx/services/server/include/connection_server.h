@@ -59,6 +59,7 @@ extern IMG_UINT32 gui32HandleDataFreeCounter;
 typedef struct _CONNECTION_DATA_
 {
 	PVRSRV_HANDLE_BASE		*psHandleBase;
+	PROCESS_HANDLE_BASE		*psProcessHandleBase;
 	struct _SYNC_CONNECTION_DATA_	*psSyncConnectionData;
 	struct _PDUMP_CONNECTION_DATA_	*psPDumpConnectionData;
 
@@ -74,9 +75,11 @@ typedef struct _CONNECTION_DATA_
 
 	IMG_PID				pid;
 
-	IMG_PVOID			hSecureData;
+	void				*hSecureData;
 
 	IMG_HANDLE			hProcessStats;
+
+	IMG_HANDLE			hClientTLStream;
 
 	/* Structure which is hooked into the cleanup thread work list */
 	PVRSRV_CLEANUP_THREAD_WORK sCleanupThreadFn;
@@ -86,11 +89,10 @@ typedef struct _CONNECTION_DATA_
 	struct _CONNECTION_DATA_	*psNext;
 } CONNECTION_DATA;
 
-PVRSRV_ERROR PVRSRVConnectionConnect(IMG_PVOID *ppvPrivData, IMG_PVOID pvOSData);
-void PVRSRVConnectionDisconnect(IMG_PVOID pvPrivData);
+#include "osconnection_server.h"
 
-PVRSRV_ERROR PVRSRVConnectionInit(void);
-PVRSRV_ERROR PVRSRVConnectionDeInit(void);
+PVRSRV_ERROR PVRSRVConnectionConnect(void **ppvPrivData, void *pvOSData);
+void PVRSRVConnectionDisconnect(void *pvPrivData);
 
 IMG_PID PVRSRVGetPurgeConnectionPid(void);
 
@@ -100,8 +102,17 @@ IMG_PID PVRSRVGetPurgeConnectionPid(void);
 static INLINE
 IMG_HANDLE PVRSRVConnectionPrivateData(CONNECTION_DATA *psConnection)
 {
-	return (psConnection != IMG_NULL) ? psConnection->hOsPrivateData : IMG_NULL;
+	return (psConnection != NULL) ? psConnection->hOsPrivateData : NULL;
 }
 
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(PVRSRVGetDevData)
+#endif
+static INLINE
+PVRSRV_DEVICE_NODE * PVRSRVGetDevData(CONNECTION_DATA *psConnection)
+{
+	return OSGetDevData(psConnection);
+}
 
 #endif /* !defined(_CONNECTION_SERVER_H_) */

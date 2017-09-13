@@ -2,8 +2,8 @@
 @File
 @Title          Common bridge header for timerquery
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Declares common defines and structures that are used by both
-                the client and sever side of the bridge for timerquery
+@Description    Declares common defines and structures used by both the client
+                and server side of the bridge for timerquery
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,6 +45,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef COMMON_TIMERQUERY_BRIDGE_H
 #define COMMON_TIMERQUERY_BRIDGE_H
 
+#include <powervr/mem_types.h>
+
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
@@ -66,16 +68,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for RGXBeginTimerQuery */
 typedef struct PVRSRV_BRIDGE_IN_RGXBEGINTIMERQUERY_TAG
 {
-	IMG_HANDLE hDevNode;
 	IMG_UINT32 ui32QueryId;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXBEGINTIMERQUERY;
-
 
 /* Bridge out structure for RGXBeginTimerQuery */
 typedef struct PVRSRV_BRIDGE_OUT_RGXBEGINTIMERQUERY_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXBEGINTIMERQUERY;
+
 
 /*******************************************
             RGXEndTimerQuery          
@@ -84,15 +85,15 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXBEGINTIMERQUERY_TAG
 /* Bridge in structure for RGXEndTimerQuery */
 typedef struct PVRSRV_BRIDGE_IN_RGXENDTIMERQUERY_TAG
 {
-	IMG_HANDLE hDevNode;
+	 IMG_UINT32 ui32EmptyStructPlaceholder;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXENDTIMERQUERY;
-
 
 /* Bridge out structure for RGXEndTimerQuery */
 typedef struct PVRSRV_BRIDGE_OUT_RGXENDTIMERQUERY_TAG
 {
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXENDTIMERQUERY;
+
 
 /*******************************************
             RGXQueryTimer          
@@ -101,10 +102,8 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXENDTIMERQUERY_TAG
 /* Bridge in structure for RGXQueryTimer */
 typedef struct PVRSRV_BRIDGE_IN_RGXQUERYTIMER_TAG
 {
-	IMG_HANDLE hDevNode;
 	IMG_UINT32 ui32QueryId;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXQUERYTIMER;
-
 
 /* Bridge out structure for RGXQueryTimer */
 typedef struct PVRSRV_BRIDGE_OUT_RGXQUERYTIMER_TAG
@@ -114,6 +113,7 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXQUERYTIMER_TAG
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXQUERYTIMER;
 
+
 /*******************************************
             RGXCurrentTime          
  *******************************************/
@@ -121,9 +121,8 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXQUERYTIMER_TAG
 /* Bridge in structure for RGXCurrentTime */
 typedef struct PVRSRV_BRIDGE_IN_RGXCURRENTTIME_TAG
 {
-	IMG_HANDLE hDevNode;
+	 IMG_UINT32 ui32EmptyStructPlaceholder;
 } __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXCURRENTTIME;
-
 
 /* Bridge out structure for RGXCurrentTime */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCURRENTTIME_TAG
@@ -131,5 +130,6 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCURRENTTIME_TAG
 	IMG_UINT64 ui64Time;
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXCURRENTTIME;
+
 
 #endif /* COMMON_TIMERQUERY_BRIDGE_H */

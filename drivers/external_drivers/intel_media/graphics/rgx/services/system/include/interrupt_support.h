@@ -44,16 +44,61 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
+#include "pvrsrv_device.h"
 
-typedef struct _PVR_IRQ_PRIV_DATA_ PVR_IRQ_PRIV_DATA;
-typedef IMG_BOOL (*PFN_SYS_LISR)(IMG_VOID *pvData);
+#define SYS_IRQ_FLAG_TRIGGER_DEFAULT (0x0 << 0)
+#define SYS_IRQ_FLAG_TRIGGER_LOW     (0x1 << 0)
+#define SYS_IRQ_FLAG_TRIGGER_HIGH    (0x2 << 0)
+#define SYS_IRQ_FLAG_TRIGGER_MASK    (SYS_IRQ_FLAG_TRIGGER_DEFAULT | \
+                                      SYS_IRQ_FLAG_TRIGGER_LOW | \
+                                      SYS_IRQ_FLAG_TRIGGER_HIGH)
+#define SYS_IRQ_FLAG_SHARED          (0x1 << 8)
 
+#define SYS_IRQ_FLAG_MASK            (SYS_IRQ_FLAG_TRIGGER_MASK | \
+                                      SYS_IRQ_FLAG_SHARED)
+
+typedef IMG_BOOL (*PFN_SYS_LISR)(void *pvData);
+
+typedef struct _SYS_INTERRUPT_DATA_
+{
+	void			*psSysData;
+	const IMG_CHAR	*pszName;
+	PFN_SYS_LISR	pfnLISR;
+	void			*pvData;
+	IMG_UINT32		ui32InterruptFlag;
+#if defined(SUPPORT_PVRSRV_GPUVIRT)
+	IMG_UINT32		ui32IRQ;
+#endif
+} SYS_INTERRUPT_DATA;
+
+/*************************************************************************/ /*!
+@Function       OSInstallSystemLISR
+@Description    Installs a system low-level interrupt handler
+@Output         phLISR                  On return, contains a handle to the
+                                        installed LISR
+@Input          ui32IRQ                 The IRQ number for which the
+                                        interrupt handler should be installed
+@Input          pszDevName              Name of the device for which the handler
+                                        is being installed
+@Input          pfnLISR                 A pointer to an interrupt handler
+                                        function
+@Input          pvData                  A pointer to data that should be passed
+                                        to pfnLISR when it is called
+@Input          ui32Flags               Interrupt flags
+@Return         PVRSRV_OK on success, a failure code otherwise
+*/ /**************************************************************************/
 PVRSRV_ERROR OSInstallSystemLISR(IMG_HANDLE *phLISR, 
-				 IMG_UINT32 ui32IRQ, 
-				 PVR_IRQ_PRIV_DATA *psPrivData, 
+				 IMG_UINT32 ui32IRQ,
+				 const IMG_CHAR *pszDevName, 
 				 PFN_SYS_LISR pfnLISR, 
-				 IMG_VOID *pvData);
+				 void *pvData,
+				 IMG_UINT32 ui32Flags);
 
+/*************************************************************************/ /*!
+@Function       OSUninstallSystemLISR
+@Description    Uninstalls a system low-level interrupt handler
+@Input          hLISRData              The handle to the LISR to uninstall
+@Return         PVRSRV_OK on success, a failure code otherwise
+*/ /**************************************************************************/
 PVRSRV_ERROR OSUninstallSystemLISR(IMG_HANDLE hLISRData);
-
 #endif /* !defined(__INTERRUPT_SUPPORT_H__) */

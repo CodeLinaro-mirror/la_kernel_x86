@@ -50,8 +50,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <device.h>
 #include <pmr.h>
 
+#include "connection_server.h"
+
+
 IMG_EXPORT PVRSRV_ERROR
 PVRSRVDebugMiscSLCSetBypassStateKM(
+	CONNECTION_DATA *psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode,
 	IMG_UINT32  uiFlags,
 	IMG_BOOL  bSetBypassed);
@@ -65,11 +69,40 @@ PVRSRVDebugMiscInitFWImageKM(
 	IMG_UINT64 ui64FWSigLen);
 
 IMG_EXPORT PVRSRV_ERROR
+PVRSRVRGXDebugMiscQueryFWLogKM(
+	const CONNECTION_DATA *psConnection,
+	const PVRSRV_DEVICE_NODE *psDeviceNode,
+	IMG_UINT32 *pui32RGXFWLogType);
+
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVRGXDebugMiscSetFWLogKM(
-	PVRSRV_DEVICE_NODE *psDeviceNode,
+	const CONNECTION_DATA *psConnection,
+	const PVRSRV_DEVICE_NODE *psDeviceNode,
 	IMG_UINT32  ui32RGXFWLogType);
 
 IMG_EXPORT PVRSRV_ERROR
-PVRSRVRGXDebugMiscDumpFreelistPageListKM(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRVRGXDebugMiscSetHCSDeadlineKM(
+	CONNECTION_DATA *psConnection,
+	PVRSRV_DEVICE_NODE *psDeviceNode,
+	IMG_UINT32  ui32HCSDeadlineMS);
+
+IMG_EXPORT PVRSRV_ERROR
+PVRSRVRGXDebugMiscSetOSidPriorityKM(
+	CONNECTION_DATA *psConnection,
+	PVRSRV_DEVICE_NODE *psDeviceNode,
+	IMG_UINT32  ui32OSid,
+	IMG_UINT32  ui32OSidPriority);
+
+IMG_EXPORT PVRSRV_ERROR
+PVRSRVRGXDebugMiscSetOSNewOnlineStateKM(
+	CONNECTION_DATA *psConnection,
+	PVRSRV_DEVICE_NODE *psDeviceNode,
+	IMG_UINT32  ui32OSid,
+	IMG_UINT32  ui32OSNewState);
+
+IMG_EXPORT PVRSRV_ERROR
+PVRSRVRGXDebugMiscDumpFreelistPageListKM(
+	CONNECTION_DATA * psConnection,
+	PVRSRV_DEVICE_NODE *psDeviceNode);
 
 #endif

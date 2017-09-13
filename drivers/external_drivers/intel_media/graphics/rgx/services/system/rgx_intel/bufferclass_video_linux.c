@@ -91,8 +91,6 @@ static struct class *psPvrClass;
 
 static int AssignedMajorNumber;
 
-#define unref__ __attribute__ ((unused))
-
 #if defined(LMA)
 #define PVR_BUFFERCLASS_MEMOFFSET (220 * 1024 * 1024)
 #define PVR_BUFFERCLASS_MEMSIZE      (4 * 1024 * 1024)
@@ -275,7 +273,7 @@ BCFreeKernelMem(void *pvMem)
 
 BCE_ERROR
 BCAllocDiscontigMemory(unsigned long ulSize,
-		       BCE_HANDLE unref__ * phMemHandle,
+		       BCE_HANDLE __maybe_unused * phMemHandle,
 		       IMG_CPU_VIRTADDR * pLinAddr,
 		       IMG_SYS_PHYADDR ** ppPhysAddr)
 {
@@ -312,7 +310,7 @@ BCAllocDiscontigMemory(unsigned long ulSize,
 
 void
 BCFreeDiscontigMemory(unsigned long ulSize,
-		      BCE_HANDLE unref__ hMemHandle,
+		      BCE_HANDLE __maybe_unused hMemHandle,
 		      IMG_CPU_VIRTADDR LinAddr, IMG_SYS_PHYADDR * pPhysAddr)
 {
 	kfree(pPhysAddr);
@@ -323,7 +321,7 @@ BCFreeDiscontigMemory(unsigned long ulSize,
 
 BCE_ERROR
 BCAllocContigMemory(unsigned long ulSize,
-		    BCE_HANDLE unref__ * phMemHandle,
+		    BCE_HANDLE __maybe_unused * phMemHandle,
 		    IMG_CPU_VIRTADDR * pLinAddr, IMG_CPU_PHYADDR * pPhysAddr)
 {
 #if defined(LMA)
@@ -384,7 +382,7 @@ BCAllocContigMemory(unsigned long ulSize,
 
 void
 BCFreeContigMemory(unsigned long ulSize,
-		   BCE_HANDLE unref__ hMemHandle,
+		   BCE_HANDLE __maybe_unused hMemHandle,
 		   IMG_CPU_VIRTADDR LinAddr, IMG_CPU_PHYADDR PhysAddr)
 {
 #if defined(LMA)
@@ -434,7 +432,7 @@ BCOpenPVRServices(BCE_HANDLE * phPVRServices)
 
 
 BCE_ERROR
-BCClosePVRServices(BCE_HANDLE unref__ hPVRServices)
+BCClosePVRServices(BCE_HANDLE __maybe_unused hPVRServices)
 {
 	return (BCE_OK);
 }
@@ -476,7 +474,7 @@ BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 	if (p->type != BC_MEMORY_MMAP && p->type != BC_MEMORY_USERPTR)
 		return -EINVAL;
 
-	if ((psDevInfo = GetAnchorPtr(id)) == IMG_NULL)
+	if ((psDevInfo = GetAnchorPtr(id)) == NULL)
 		return -ENODEV;
 
 	if (psDevInfo->ulNumBuffers)
@@ -535,7 +533,7 @@ BCVideoDestroyBuffers(int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 	IMG_UINT32 i;
-	if ((psDevInfo = GetAnchorPtr(id)) == IMG_NULL)
+	if ((psDevInfo = GetAnchorPtr(id)) == NULL)
 		return -ENODEV;
 
 	if (!psDevInfo->ulNumBuffers)
@@ -570,7 +568,7 @@ GetBufferCount(unsigned int *puiBufferCount, int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo = GetAnchorPtr(id);
 
-	if (psDevInfo == IMG_NULL) {
+	if (psDevInfo == NULL) {
 		return -1;
 	}
 
@@ -579,8 +577,9 @@ GetBufferCount(unsigned int *puiBufferCount, int id)
 	return 0;
 }
 
+#ifdef ENABLE_TNG_VID_VSP
 static int
-BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
+BCVideoBridge(struct drm_device *dev, void * arg,
 		struct drm_file *file_priv)
 {
 	int err = -EFAULT;
@@ -608,7 +607,7 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 	} else
 		id = psBridge->device_id;
 
-	if ((devinfo = GetAnchorPtr(id)) == IMG_NULL)
+	if ((devinfo = GetAnchorPtr(id)) == NULL)
 		return -ENODEV;
 
 	switch (command) {
@@ -703,7 +702,7 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 	}
 	case BC_Video_ioctl_alloc_buffer: {
 		bc_buf_ptr_t p;
-		IMG_VOID *pvBuf;
+		void *pvBuf;
 		IMG_UINT32 ui32Size;
 		IMG_UINT32 ulCounter;
 		BUFFER_INFO *bufferInfo;
@@ -805,6 +804,7 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 
 	return 0;
 }
+#endif
 
 int
 BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
@@ -814,7 +814,7 @@ BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 	int id = BC_CAMERA_DEVICEID;
 	int command = psBridge->ioctl_cmd;
 
-	if ((devinfo = GetAnchorPtr(BC_CAMERA_DEVICEID)) == IMG_NULL)
+	if ((devinfo = GetAnchorPtr(BC_CAMERA_DEVICEID)) == NULL)
 		return -ENODEV;
 
 	switch (command) {

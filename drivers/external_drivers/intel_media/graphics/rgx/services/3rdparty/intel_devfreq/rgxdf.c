@@ -55,78 +55,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_internal.h"
 #include "rgxfwutils.h"
 #include "img_types.h"
+#include "lists.h"
 
 extern struct drm_device *gpsPVRDRMDev;
 
 static PVRSRV_DEVICE_NODE* pDevNode = NULL;
 
-static PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void)
+static void* RGXDevNodeMatched(PVRSRV_DEVICE_NODE *psDeviceNode, va_list va)
 {
-	if(pDevNode == NULL)
-	{
-		PVRSRV_DEVICE_TYPE *peDeviceTypeInt = NULL;
-		PVRSRV_DEVICE_CLASS *peDeviceClassInt = NULL;
-		IMG_UINT32 *pui32DeviceIndexInt = NULL;
-		IMG_HANDLE hDevCookie = NULL;
-		IMG_UINT32 numDevices = 0;
-		IMG_UINT32 i = 0;
-		IMG_UINT32 rgxIndex = IMG_UINT32_MAX;
-		IMG_UINT32 error = 0;
+	void *pvOSDevice = va_arg(va, void *);
 
-		peDeviceTypeInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(PVRSRV_DEVICE_TYPE), GFP_KERNEL);
-		if (!peDeviceTypeInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto EnumerateDevices_exit;
-		}
+	if (psDeviceNode->psDevConfig->pvOSDevice == pvOSDevice)
+		return psDeviceNode;
+	return NULL;
+}
 
-		peDeviceClassInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(PVRSRV_DEVICE_CLASS), GFP_KERNEL);
-		if (!peDeviceClassInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto EnumerateDevices_exit;
-		}
+PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void)
+{
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
-		pui32DeviceIndexInt = kzalloc(PVRSRV_MAX_DEVICES * sizeof(IMG_UINT32), GFP_KERNEL);
-		if (!pui32DeviceIndexInt)
-		{
-			error = PVRSRV_ERROR_OUT_OF_MEMORY;
-			goto EnumerateDevices_exit;
-		}
+	if (gpsPVRDRMDev == NULL || psPVRSRVData == NULL) {
+		return NULL;
+	}
 
-		/* Enumerate active devices */
-		error = PVRSRVEnumerateDevicesKM(
-						&numDevices,
-						peDeviceTypeInt,
-						peDeviceClassInt,
-						pui32DeviceIndexInt);
-		if (error == 0){
-			for(i =0; i < numDevices; i++){
-				if (peDeviceTypeInt[i] == PVRSRV_DEVICE_TYPE_RGX){
-					rgxIndex = pui32DeviceIndexInt[i];
-				}
- 			}
-
-			if(rgxIndex != IMG_UINT32_MAX){
-				/* Now we have to acquire the node to work with, RGX device required*/
-				error = PVRSRVAcquireDeviceDataKM (rgxIndex, PVRSRV_DEVICE_TYPE_RGX, &hDevCookie);
-
-				if (error == 0)
-					pDevNode = (PVRSRV_DEVICE_NODE*)hDevCookie;
-			}
-		}
-
-EnumerateDevices_exit:
-		if (peDeviceTypeInt)
-			kfree(peDeviceTypeInt);
-		if (peDeviceClassInt)
-			kfree(peDeviceClassInt);
-		if (pui32DeviceIndexInt)
-			kfree(pui32DeviceIndexInt);
+	if (pDevNode == NULL) {
+		pDevNode = List_PVRSRV_DEVICE_NODE_Any_va(psPVRSRVData->psDeviceNodeList,
+					&RGXDevNodeMatched, gpsPVRDRMDev->dev);
 	}
 
 	return pDevNode;
 }
+EXPORT_SYMBOL(RGXGetDeviceNode);
 
 unsigned int RGXGetDRMDeviceID(void)
 {
@@ -145,7 +104,7 @@ int rgx_is_device_powered(void)
 	int isPowered = IMG_FALSE;
 
 	if(psDeviceNode)
-		isPowered = PVRSRVIsDevicePowered(psDeviceNode->sDevId.ui32DeviceIndex);
+		isPowered = PVRSRVIsDevicePowered(psDeviceNode);
 
 	return isPowered;
 }
@@ -170,8 +129,8 @@ out:
 }
 EXPORT_SYMBOL(RGXUpdateClockSpeed);
 
-unsigned int RGXPreClockSpeed(void){
-
+unsigned int RGXPreClockSpeed(void)
+{
 	PVRSRV_ERROR	eError = PVRSRV_OK;
 	PVRSRV_DEVICE_NODE* psDeviceNode = RGXGetDeviceNode();
 
@@ -180,7 +139,7 @@ unsigned int RGXPreClockSpeed(void){
 		goto out;
 	}
 
-	eError = PVRSRVDevicePreClockSpeedChange(psDeviceNode->sDevId.ui32DeviceIndex, IMG_FALSE, NULL);
+	eError = PVRSRVDevicePreClockSpeedChange(psDeviceNode, IMG_FALSE, NULL);
 out:
 	return eError;
 }
@@ -197,7 +156,7 @@ unsigned int RGXPostClockSpeed(void){
 	}
 
 
-	PVRSRVDevicePostClockSpeedChange(psDeviceNode->sDevId.ui32DeviceIndex, IMG_FALSE, NULL);
+	PVRSRVDevicePostClockSpeedChange(psDeviceNode, IMG_FALSE, NULL);
 
 out:
 	return eError;

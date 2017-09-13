@@ -871,7 +871,7 @@ static DC_MRFLD_FLIP *_Next_Queued_Flip(int iPipe)
 
 	if (iPipe != DC_PIPE_A && iPipe != DC_PIPE_B) {
 		DRM_ERROR("%s: Invalid pipe %d\n", __func__, iPipe);
-		return IMG_NULL;
+		return NULL;
 	}
 
 	psFlipQueue = &gpsDevice->sFlipQueues[iPipe];
@@ -1299,7 +1299,7 @@ static int _Vsync_ISR(struct drm_device *psDrmDev, int iPipe)
 
 /*----------------------------------------------------------------------------*/
 
-static IMG_VOID DC_MRFLD_GetInfo(IMG_HANDLE hDeviceData,
+static void DC_MRFLD_GetInfo(IMG_HANDLE hDeviceData,
 				DC_DISPLAY_INFO *psDisplayInfo)
 {
 	DC_MRFLD_DEVICE *psDevice = (DC_MRFLD_DEVICE *)hDeviceData;
@@ -1421,7 +1421,7 @@ static PVRSRV_ERROR DC_MRFLD_BufferSystemAcquire(IMG_HANDLE hDeviceData,
 	return PVRSRV_OK;
 }
 
-static IMG_VOID DC_MRFLD_BufferSystemRelease(IMG_HANDLE hSystemBuffer)
+static void DC_MRFLD_BufferSystemRelease(IMG_HANDLE hSystemBuffer)
 {
 	/*TODO: do something here*/
 }
@@ -1485,7 +1485,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 			continue;
 		}
 		psBuffer = OSAllocMem(sizeof(DC_MRFLD_BUFFER));
-		if (psBuffer == IMG_NULL) {
+		if (psBuffer == NULL) {
 			for (j = 0; j < i; j++) {
 				if (ahBuffers[j]) {
 					OSFreeMem(ahBuffers[j]);
@@ -1493,7 +1493,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 			}
 			return PVRSRV_ERROR_OUT_OF_MEMORY;
 		}
-		OSMemCopy(psBuffer, ahBuffers[i], sizeof(DC_MRFLD_BUFFER));
+		OSDeviceMemCopy(psBuffer, ahBuffers[i], sizeof(DC_MRFLD_BUFFER));
 		psBuffer->ui32ContextCount = 0;
 		ahBuffers[i] = psBuffer;
 	}
@@ -1535,7 +1535,7 @@ static PVRSRV_ERROR DC_MRFLD_ContextConfigureCheck(
 	return PVRSRV_OK;
 }
 
-static IMG_VOID DC_MRFLD_ContextConfigure(IMG_HANDLE hDisplayContext,
+static void DC_MRFLD_ContextConfigure(IMG_HANDLE hDisplayContext,
 				IMG_UINT32 ui32PipeCount,
 				PVRSRV_SURFACE_CONFIG_INFO *pasSurfAttrib,
 				IMG_HANDLE *ahBuffers,
@@ -1557,7 +1557,7 @@ static IMG_VOID DC_MRFLD_ContextConfigure(IMG_HANDLE hDisplayContext,
 	_Queue_Flip(hConfigData, ahBuffers, ui32PipeCount, ui32DisplayPeriod);
 }
 
-static IMG_VOID DC_MRFLD_ContextDestroy(IMG_HANDLE hDisplayContext)
+static void DC_MRFLD_ContextDestroy(IMG_HANDLE hDisplayContext)
 {
 	DC_MRFLD_DISPLAY_CONTEXT *psDisplayContext =
 		(DC_MRFLD_DISPLAY_CONTEXT *)hDisplayContext;
@@ -1758,7 +1758,7 @@ static PVRSRV_ERROR DC_MRFLD_BufferImport(IMG_HANDLE hDisplayContext,
 
 static PVRSRV_ERROR DC_MRFLD_BufferAcquire(IMG_HANDLE hBuffer,
 					IMG_DEV_PHYADDR *pasDevPAddr,
-					IMG_PVOID *ppvLinAddr)
+					void **ppvLinAddr)
 {
 	DC_MRFLD_BUFFER *psBuffer = (DC_MRFLD_BUFFER *)hBuffer;
 	IMG_UINT32 ulPages;
@@ -1780,12 +1780,12 @@ static PVRSRV_ERROR DC_MRFLD_BufferAcquire(IMG_HANDLE hBuffer,
 	return PVRSRV_OK;
 }
 
-static IMG_VOID DC_MRFLD_BufferRelease(IMG_HANDLE hBuffer)
+static void DC_MRFLD_BufferRelease(IMG_HANDLE hBuffer)
 {
 
 }
 
-static IMG_VOID DC_MRFLD_BufferFree(IMG_HANDLE hBuffer)
+static void DC_MRFLD_BufferFree(IMG_HANDLE hBuffer)
 {
 	DC_MRFLD_DISPLAY_CONTEXT *psDisplayContext;
 	DC_MRFLD_BUFFER *psBuffer = (DC_MRFLD_BUFFER *)hBuffer;
@@ -1836,7 +1836,7 @@ static PVRSRV_ERROR DC_MRFLD_BufferMap(IMG_HANDLE hBuffer)
 	return PVRSRV_OK;
 }
 
-static IMG_VOID DC_MRFLD_BufferUnmap(IMG_HANDLE hBuffer)
+static void DC_MRFLD_BufferUnmap(IMG_HANDLE hBuffer)
 {
 
 }
@@ -1847,9 +1847,9 @@ static DC_DEVICE_FUNCTIONS sDCFunctions = {
 	.pfnPanelQuery			= DC_MRFLD_PanelQuery,
 	.pfnFormatQuery			= DC_MRFLD_FormatQuery,
 	.pfnDimQuery			= DC_MRFLD_DimQuery,
-	.pfnSetBlank			= IMG_NULL,
-	.pfnSetVSyncReporting		= IMG_NULL,
-	.pfnLastVSyncQuery		= IMG_NULL,
+	.pfnSetBlank			= NULL,
+	.pfnSetVSyncReporting		= NULL,
+	.pfnLastVSyncQuery		= NULL,
 	.pfnContextCreate		= DC_MRFLD_ContextCreate,
 	.pfnContextDestroy		= DC_MRFLD_ContextDestroy,
 	.pfnContextConfigure		= DC_MRFLD_ContextConfigure,
@@ -1938,7 +1938,7 @@ static PVRSRV_ERROR _SystemBuffer_Init(DC_MRFLD_DEVICE *psDevice)
 	return PVRSRV_OK;
 }
 
-static IMG_VOID _SystemBuffer_Deinit(DC_MRFLD_DEVICE *psDevice)
+static void _SystemBuffer_Deinit(DC_MRFLD_DEVICE *psDevice)
 {
 	if (psDevice->psSystemBuffer) {
 		kfree(psDevice->psSystemBuffer->psSysAddr);

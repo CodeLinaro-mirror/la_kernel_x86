@@ -47,80 +47,54 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_defs.h"
 #include "allocmem.h"
+#include "pvr_debug.h"
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #include "process_stats.h"
 #endif
+#include "osfunc.h"
 
-IMG_INTERNAL IMG_PVOID OSAllocMem(IMG_UINT32 ui32Size)
+#if defined(PVR_DISABLE_KMALLOC_MEMSTATS)
+#define ALLOCMEM_MEMSTATS_PADDING 0
+#else
+#define ALLOCMEM_MEMSTATS_PADDING sizeof(IMG_UINT32)
+#endif
+
+/* Ensure poison value is not divisible by 4.
+ * Used to poison memory to trip up use after free in kernel-side code
+ */
+#define OS_MEM_POISON_VALUE (0x6b)
+
+static inline void _pvr_vfree(const void* pvAddr)
 {
-	IMG_PVOID pvRet = IMG_NULL;
-
-	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
-	{
-		pvRet = vmalloc(ui32Size);
-	}
-	if (pvRet == IMG_NULL)
-	{
-		pvRet = kmalloc(ui32Size, GFP_KERNEL);
-	}
-
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
-
-	if (pvRet != IMG_NULL)
-	{
-
-		if (!is_vmalloc_addr(pvRet))
-		{
-#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
-#else
-			{
-				IMG_CPU_PHYADDR sCpuPAddr;
-				sCpuPAddr.uiAddr = 0;
-
-				PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
-				                             pvRet,
-				                             sCpuPAddr,
-				                             ksize(pvRet),
-				                             IMG_NULL);
-			}
+#if defined(DEBUG)
+			/* Size harder to come by for vmalloc and since vmalloc allocates
+			 * a whole number of pages, poison the minimum size known to have
+			 * been allocated.
+			 */
+			OSCachedMemSet((void*)pvAddr, OS_MEM_POISON_VALUE, PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD);
 #endif
-		}
-		else
-		{
-#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											   ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											   (IMG_UINT64)(IMG_UINTPTR_T) pvRet);
-#else
-			{
-				IMG_CPU_PHYADDR sCpuPAddr;
-				sCpuPAddr.uiAddr = 0;
-
-				PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											 pvRet,
-											 sCpuPAddr,
-											 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											 IMG_NULL);
-			}
-#endif
-		}
-
-	}
-#endif
-	return pvRet;
+			vfree(pvAddr);
 }
 
-
-IMG_INTERNAL IMG_PVOID OSAllocMemstatMem(IMG_UINT32 ui32Size)
+static inline void _pvr_kfree(const void* pvAddr)
 {
-	IMG_PVOID pvRet = IMG_NULL;
+#if defined(DEBUG)
+			/* Poison whole memory block */
+			OSCachedMemSet((void*)pvAddr, OS_MEM_POISON_VALUE, ksize(pvAddr));
+#endif
+			kfree(pvAddr);
+}
+
+#if !defined(PVRSRV_ENABLE_PROCESS_STATS)
+IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
+{
+	void *pvRet = NULL;
 
 	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
 	{
 		pvRet = vmalloc(ui32Size);
 	}
-	if (pvRet == IMG_NULL)
+	if (pvRet == NULL)
 	{
 		pvRet = kmalloc(ui32Size, GFP_KERNEL);
 	}
@@ -128,126 +102,343 @@ IMG_INTERNAL IMG_PVOID OSAllocMemstatMem(IMG_UINT32 ui32Size)
 	return pvRet;
 }
 
-IMG_INTERNAL IMG_PVOID OSAllocZMem(IMG_UINT32 ui32Size)
+IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 {
-	IMG_PVOID pvRet = IMG_NULL;
+	void *pvRet = NULL;
 
 	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
 	{
 		pvRet = vzalloc(ui32Size);
 	}
-	if (pvRet == IMG_NULL)
+	if (pvRet == NULL)
 	{
 		pvRet = kzalloc(ui32Size, GFP_KERNEL);
 	}
 
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+	return pvRet;
+}
 
-	if (pvRet != IMG_NULL)
+/*
+ * The parentheses around OSFreeMem prevent the macro in allocmem.h from
+ * applying, as it would break the function's definition.
+ */
+IMG_INTERNAL void (OSFreeMem)(void *pvMem)
+{
+	if (pvMem != NULL)
+	{
+		if (!is_vmalloc_addr(pvMem))
+		{
+			_pvr_kfree(pvMem);
+		}
+		else
+		{
+			_pvr_vfree(pvMem);
+		}
+	}
+}
+#else
+#if defined(PVRSRV_DEBUG_LINUX_MEMORY_STATS) && defined(DEBUG) && defined(PVRSRV_ENABLE_MEMORY_STATS)
+IMG_INTERNAL void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
+{
+	void *pvRet = NULL;
+
+	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
+	{
+		pvRet = vmalloc(ui32Size);
+	}
+	if (pvRet == NULL)
+	{
+		pvRet = kmalloc(ui32Size, GFP_KERNEL);
+	}
+
+	if (pvRet != NULL)
 	{
 
 		if (!is_vmalloc_addr(pvRet))
 		{
-#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
-#else
-			{
-				IMG_CPU_PHYADDR sCpuPAddr;
-				sCpuPAddr.uiAddr = 0;
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
 
-				PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
-				                             pvRet,
-				                             sCpuPAddr,
-				                             ksize(pvRet),
-				                             IMG_NULL);
-			}
-#endif
+			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
+										  pvRet,
+										  sCpuPAddr,
+										  ksize(pvRet),
+										  NULL,
+										  pvAllocFromFile,
+										  ui32AllocFromLine);
 		}
 		else
 		{
-#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											   ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											   (IMG_UINT64)(IMG_UINTPTR_T) pvRet);
-#else
-			{
-				IMG_CPU_PHYADDR sCpuPAddr;
-				sCpuPAddr.uiAddr = 0;
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
 
-				PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											 pvRet,
-											 sCpuPAddr,
-											 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											 IMG_NULL);
-			}
-#endif
+			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+										  pvRet,
+										  sCpuPAddr,
+										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										  NULL,
+										  pvAllocFromFile,
+										  ui32AllocFromLine);
 		}
-
 	}
-#endif
 	return pvRet;
 }
 
-IMG_INTERNAL IMG_PVOID OSAllocMemstatZMem(IMG_UINT32 ui32Size)
+IMG_INTERNAL void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
 {
-	IMG_PVOID pvRet = IMG_NULL;
+	void *pvRet = NULL;
 
 	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
 	{
 		pvRet = vzalloc(ui32Size);
 	}
-	if (pvRet == IMG_NULL)
+	if (pvRet == NULL)
 	{
 		pvRet = kzalloc(ui32Size, GFP_KERNEL);
 	}
 
+	if (pvRet != NULL)
+	{
+		if (!is_vmalloc_addr(pvRet))
+		{
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
+										  pvRet,
+										  sCpuPAddr,
+										  ksize(pvRet),
+										  NULL,
+										  pvAllocFromFile,
+										  ui32AllocFromLine);
+		}
+		else
+		{
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+										  pvRet,
+										  sCpuPAddr,
+										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										  NULL,
+										  pvAllocFromFile,
+										  ui32AllocFromLine);
+		}
+	}
+	return pvRet;
+}
+#else
+IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
+{
+	void *pvRet = NULL;
+
+	if ((ui32Size + ALLOCMEM_MEMSTATS_PADDING) > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
+	{
+		pvRet = vmalloc(ui32Size);
+	}
+	if (pvRet == NULL)
+	{
+		/* Allocate an additional 4 bytes to store the PID of the allocating process */
+		pvRet = kmalloc(ui32Size + ALLOCMEM_MEMSTATS_PADDING, GFP_KERNEL);
+	}
+
+	if (pvRet != NULL)
+	{
+
+		if (!is_vmalloc_addr(pvRet))
+		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
+#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
+			{
+				/* Store the PID in the final additional 4 bytes allocated */
+				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
+				*puiTemp = OSGetCurrentProcessID();
+			}
+			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
+#else
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
+										 pvRet,
+										 sCpuPAddr,
+										 ksize(pvRet),
+										 NULL);
+#endif
+#endif
+		}
+		else
+		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
+#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
+			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+											    (IMG_UINT64)(uintptr_t) pvRet);
+#else
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+										 pvRet,
+										 sCpuPAddr,
+										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										 NULL);
+#endif
+#endif
+		}
+	}
 	return pvRet;
 }
 
-IMG_INTERNAL void OSFreeMem(IMG_PVOID pvMem)
+IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 {
+	void *pvRet = NULL;
 
-	if ( !is_vmalloc_addr(pvMem) )
+	if ((ui32Size + ALLOCMEM_MEMSTATS_PADDING) > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
 	{
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
-		if (pvMem != IMG_NULL)
+		pvRet = vzalloc(ui32Size);
+	}
+	if (pvRet == NULL)
+	{
+		/* Allocate an additional 4 bytes to store the PID of the allocating process */
+		pvRet = kzalloc(ui32Size + ALLOCMEM_MEMSTATS_PADDING, GFP_KERNEL);
+	}
+
+	if (pvRet != NULL)
+	{
+		if (!is_vmalloc_addr(pvRet))
 		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvMem));
+			{
+				/* Store the PID in the final additional 4 bytes allocated */
+				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
+				*puiTemp = OSGetCurrentProcessID();
+			}
+			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
+#else
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
+								 pvRet,
+								 sCpuPAddr,
+								 ksize(pvRet),
+								 NULL);
+#endif
+#endif
+		}
+		else
+		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
+#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
+			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+											    (IMG_UINT64)(uintptr_t) pvRet);
+#else
+			IMG_CPU_PHYADDR sCpuPAddr;
+			sCpuPAddr.uiAddr = 0;
+
+			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
+										 pvRet,
+										 sCpuPAddr,
+										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										 NULL);
+#endif
+#endif
+		}
+	}
+	return pvRet;
+}
+#endif
+
+/*
+ * The parentheses around OSFreeMem prevent the macro in allocmem.h from
+ * applying, as it would break the function's definition.
+ */
+IMG_INTERNAL void (OSFreeMem)(void *pvMem)
+{
+	if (pvMem != NULL)
+	{
+		if (!is_vmalloc_addr(pvMem))
+		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
+#if !defined(PVRSRV_ENABLE_MEMORY_STATS)
+			IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvMem) + (ksize(pvMem) - ALLOCMEM_MEMSTATS_PADDING));
+			PVRSRVStatsDecrMemKAllocStat(ksize(pvMem), *puiTemp);
 #else
 			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
-			                               (IMG_UINT64)(IMG_UINTPTR_T) pvMem);
+			                                (IMG_UINT64)(uintptr_t) pvMem);
 #endif
+#endif
+			_pvr_kfree(pvMem);
 		}
-#endif
-		kfree(pvMem);
-	}
-	else
-	{
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
-		if (pvMem != IMG_NULL)
+		else
 		{
+#if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
 			PVRSRVStatsDecrMemAllocStatAndUntrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-			                                     (IMG_UINT64)(IMG_UINTPTR_T) pvMem);
+			                                      (IMG_UINT64)(uintptr_t) pvMem);
 #else
 			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-			                               (IMG_UINT64)(IMG_UINTPTR_T) pvMem);
+			                                (IMG_UINT64)(uintptr_t) pvMem);
 #endif
+#endif
+			_pvr_vfree(pvMem);
 		}
-#endif
-		vfree(pvMem);
 	}
 }
+#endif
 
-IMG_INTERNAL void OSFreeMemstatMem(IMG_PVOID pvMem)
+
+IMG_INTERNAL void *OSAllocMemNoStats(IMG_UINT32 ui32Size)
 {
-	if ( !is_vmalloc_addr(pvMem) )
+	void *pvRet = NULL;
+
+	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
 	{
-		kfree(pvMem);
+		pvRet = vmalloc(ui32Size);
 	}
-	else
+	if (pvRet == NULL)
 	{
-		vfree(pvMem);
+		pvRet = kmalloc(ui32Size, GFP_KERNEL);
+	}
+
+	return pvRet;
+}
+
+IMG_INTERNAL void *OSAllocZMemNoStats(IMG_UINT32 ui32Size)
+{
+	void *pvRet = NULL;
+
+	if (ui32Size > PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD)
+	{
+		pvRet = vzalloc(ui32Size);
+	}
+	if (pvRet == NULL)
+	{
+		pvRet = kzalloc(ui32Size, GFP_KERNEL);
+	}
+
+	return pvRet;
+}
+
+/*
+ * The parentheses around OSFreeMemNoStats prevent the macro in allocmem.h from
+ * applying, as it would break the function's definition.
+ */
+IMG_INTERNAL void (OSFreeMemNoStats)(void *pvMem)
+{
+	if (pvMem != NULL)
+	{
+		if ( !is_vmalloc_addr(pvMem) )
+		{
+			_pvr_kfree(pvMem);
+		}
+		else
+		{
+			_pvr_vfree(pvMem);
+		}
 	}
 }

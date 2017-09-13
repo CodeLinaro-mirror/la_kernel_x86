@@ -75,8 +75,6 @@ static struct class *psPvrClass;
 
 static int AssignedMajorNumber;
 
-#define unref__ __attribute__ ((unused))
-
 #if defined(LMA)
 #define PVR_BUFFERCLASS_MEMOFFSET (220 * 1024 * 1024)
 #define PVR_BUFFERCLASS_MEMSIZE      (4 * 1024 * 1024)
@@ -253,7 +251,7 @@ BCFreeKernelMem(void *pvMem)
 
 BCE_ERROR
 BCAllocDiscontigMemory(unsigned long ulSize,
-		       BCE_HANDLE unref__ * phMemHandle,
+		       BCE_HANDLE __maybe_unused * phMemHandle,
 		       IMG_CPU_VIRTADDR * pLinAddr,
 		       IMG_SYS_PHYADDR ** ppPhysAddr)
 {
@@ -290,7 +288,7 @@ BCAllocDiscontigMemory(unsigned long ulSize,
 
 void
 BCFreeDiscontigMemory(unsigned long ulSize,
-		      BCE_HANDLE unref__ hMemHandle,
+		      BCE_HANDLE __maybe_unused hMemHandle,
 		      IMG_CPU_VIRTADDR LinAddr, IMG_SYS_PHYADDR * pPhysAddr)
 {
 	kfree(pPhysAddr);
@@ -301,7 +299,7 @@ BCFreeDiscontigMemory(unsigned long ulSize,
 
 BCE_ERROR
 BCAllocContigMemory(unsigned long ulSize,
-		    BCE_HANDLE unref__ * phMemHandle,
+		    BCE_HANDLE __maybe_unused * phMemHandle,
 		    IMG_CPU_VIRTADDR * pLinAddr, IMG_CPU_PHYADDR * pPhysAddr)
 {
 #if defined(LMA)
@@ -362,7 +360,7 @@ BCAllocContigMemory(unsigned long ulSize,
 
 void
 BCFreeContigMemory(unsigned long ulSize,
-		   BCE_HANDLE unref__ hMemHandle,
+		   BCE_HANDLE __maybe_unused hMemHandle,
 		   IMG_CPU_VIRTADDR LinAddr, IMG_CPU_PHYADDR PhysAddr)
 {
 #if defined(LMA)
@@ -412,7 +410,7 @@ BCOpenPVRServices(BCE_HANDLE * phPVRServices)
 
 
 BCE_ERROR
-BCClosePVRServices(BCE_HANDLE unref__ hPVRServices)
+BCClosePVRServices(BCE_HANDLE __maybe_unused hPVRServices)
 {
 	return (BCE_OK);
 }

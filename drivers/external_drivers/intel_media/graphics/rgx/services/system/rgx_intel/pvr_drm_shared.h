@@ -50,7 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * DRM command numbers, relative to DRM_COMMAND_BASE. 
  * These defines must be prefixed with "DRM_".
  */
-#define DRM_PVR_SRVKM_CMD			0x12 /* Used for PVR Services ioctls */
 #define DRM_PVR_DBGDRV_CMD			1 /* Debug driver (PDUMP) ioctls */
 #define DRM_PVR_UNPRIV_CMD			2 /* PVR driver unprivileged ioctls */
 #define DRM_PVR_GEM_CREATE			3

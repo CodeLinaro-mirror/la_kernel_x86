@@ -49,7 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem_server.h"
 #include "debugmisc_server.h"
 #include "pmr.h"
-#include "physmem_osmem.h"
+#include "physmem_tdsecbuf.h"
 
 
 #include "common_debugmisc_bridge.h"
@@ -62,11 +62,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "srvcore.h"
 #include "handle.h"
 
-#if defined (SUPPORT_AUTH)
-#include "osauth.h"
-#endif
-
 #include <linux/slab.h>
+
+
 
 
 
@@ -81,41 +79,29 @@ PVRSRVBridgeDebugMiscSLCSetBypassState(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_DEBUGMISCSLCSETBYPASSSTATE *psDebugMiscSLCSetBypassStateOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	IMG_HANDLE hDevNodeInt = IMG_NULL;
 
 
 
 
 
 
-
-				{
-					/* Look up the address from the handle */
-					psDebugMiscSLCSetBypassStateOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &hDevNodeInt,
-											psDebugMiscSLCSetBypassStateIN->hDevNode,
-											PVRSRV_HANDLE_TYPE_DEV_NODE);
-					if(psDebugMiscSLCSetBypassStateOUT->eError != PVRSRV_OK)
-					{
-						goto DebugMiscSLCSetBypassState_exit;
-					}
-				}
 
 
 	psDebugMiscSLCSetBypassStateOUT->eError =
-		PVRSRVDebugMiscSLCSetBypassStateKM(
-					hDevNodeInt,
+		PVRSRVDebugMiscSLCSetBypassStateKM(psConnection, OSGetDevData(psConnection),
 					psDebugMiscSLCSetBypassStateIN->ui32Flags,
 					psDebugMiscSLCSetBypassStateIN->bIsBypassed);
 
 
 
 
-DebugMiscSLCSetBypassState_exit:
+
+
+
 
 	return 0;
 }
+
 
 static IMG_INT
 PVRSRVBridgeRGXDebugMiscSetFWLog(IMG_UINT32 ui32DispatchTableEntry,
@@ -123,40 +109,28 @@ PVRSRVBridgeRGXDebugMiscSetFWLog(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETFWLOG *psRGXDebugMiscSetFWLogOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	IMG_HANDLE hDevNodeInt = IMG_NULL;
 
 
 
 
 
 
-
-				{
-					/* Look up the address from the handle */
-					psRGXDebugMiscSetFWLogOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &hDevNodeInt,
-											psRGXDebugMiscSetFWLogIN->hDevNode,
-											PVRSRV_HANDLE_TYPE_DEV_NODE);
-					if(psRGXDebugMiscSetFWLogOUT->eError != PVRSRV_OK)
-					{
-						goto RGXDebugMiscSetFWLog_exit;
-					}
-				}
 
 
 	psRGXDebugMiscSetFWLogOUT->eError =
-		PVRSRVRGXDebugMiscSetFWLogKM(
-					hDevNodeInt,
+		PVRSRVRGXDebugMiscSetFWLogKM(psConnection, OSGetDevData(psConnection),
 					psRGXDebugMiscSetFWLogIN->ui32RGXFWLogType);
 
 
 
 
-RGXDebugMiscSetFWLog_exit:
+
+
+
 
 	return 0;
 }
+
 
 static IMG_INT
 PVRSRVBridgeRGXDebugMiscDumpFreelistPageList(IMG_UINT32 ui32DispatchTableEntry,
@@ -164,39 +138,29 @@ PVRSRVBridgeRGXDebugMiscDumpFreelistPageList(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_RGXDEBUGMISCDUMPFREELISTPAGELIST *psRGXDebugMiscDumpFreelistPageListOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	IMG_HANDLE hDevNodeInt = IMG_NULL;
 
 
 
+	PVR_UNREFERENCED_PARAMETER(psRGXDebugMiscDumpFreelistPageListIN);
 
 
 
-
-				{
-					/* Look up the address from the handle */
-					psRGXDebugMiscDumpFreelistPageListOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &hDevNodeInt,
-											psRGXDebugMiscDumpFreelistPageListIN->hDevNode,
-											PVRSRV_HANDLE_TYPE_DEV_NODE);
-					if(psRGXDebugMiscDumpFreelistPageListOUT->eError != PVRSRV_OK)
-					{
-						goto RGXDebugMiscDumpFreelistPageList_exit;
-					}
-				}
 
 
 	psRGXDebugMiscDumpFreelistPageListOUT->eError =
-		PVRSRVRGXDebugMiscDumpFreelistPageListKM(
-					hDevNodeInt);
+		PVRSRVRGXDebugMiscDumpFreelistPageListKM(psConnection, OSGetDevData(psConnection)
+					);
 
 
 
 
-RGXDebugMiscDumpFreelistPageList_exit:
+
+
+
 
 	return 0;
 }
+
 
 static IMG_INT
 PVRSRVBridgePhysmemImportSecBuf(IMG_UINT32 ui32DispatchTableEntry,
@@ -204,58 +168,57 @@ PVRSRVBridgePhysmemImportSecBuf(IMG_UINT32 ui32DispatchTableEntry,
 					  PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF *psPhysmemImportSecBufOUT,
 					 CONNECTION_DATA *psConnection)
 {
-	IMG_HANDLE hDevNodeInt = IMG_NULL;
-	PMR * psPMRPtrInt = IMG_NULL;
+	PMR * psPMRPtrInt = NULL;
 
 
 
 
 
 
-
-				{
-					/* Look up the address from the handle */
-					psPhysmemImportSecBufOUT->eError =
-						PVRSRVLookupHandle(psConnection->psHandleBase,
-											(IMG_VOID **) &hDevNodeInt,
-											psPhysmemImportSecBufIN->hDevNode,
-											PVRSRV_HANDLE_TYPE_DEV_NODE);
-					if(psPhysmemImportSecBufOUT->eError != PVRSRV_OK)
-					{
-						goto PhysmemImportSecBuf_exit;
-					}
-				}
 
 
 	psPhysmemImportSecBufOUT->eError =
-		PhysmemNewTDSecureBufPMR(
-					hDevNodeInt,
+		PhysmemImportSecBuf(psConnection, OSGetDevData(psConnection),
 					psPhysmemImportSecBufIN->uiSize,
-					psPhysmemImportSecBufIN->ui32Log2PageSize,
+					psPhysmemImportSecBufIN->ui32Log2Align,
 					psPhysmemImportSecBufIN->uiFlags,
-					&psPMRPtrInt);
+					&psPMRPtrInt,
+					&psPhysmemImportSecBufOUT->ui64SecBufHandle);
 	/* Exit early if bridged call fails */
 	if(psPhysmemImportSecBufOUT->eError != PVRSRV_OK)
 	{
 		goto PhysmemImportSecBuf_exit;
 	}
 
+	/* Lock over handle creation. */
+	LockHandle();
 
-	psPhysmemImportSecBufOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+
+
+
+
+	psPhysmemImportSecBufOUT->eError = PVRSRVAllocHandleUnlocked(psConnection->psHandleBase,
+
 							&psPhysmemImportSecBufOUT->hPMRPtr,
-							(IMG_VOID *) psPMRPtrInt,
+							(void *) psPMRPtrInt,
 							PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
 							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
 							,(PFN_HANDLE_RELEASE)&PMRUnrefPMR);
 	if (psPhysmemImportSecBufOUT->eError != PVRSRV_OK)
 	{
+		UnlockHandle();
 		goto PhysmemImportSecBuf_exit;
 	}
 
+	/* Release now we have created handles. */
+	UnlockHandle();
 
 
 
 PhysmemImportSecBuf_exit:
+
+
+
 	if (psPhysmemImportSecBufOUT->eError != PVRSRV_OK)
 	{
 		if (psPMRPtrInt)
@@ -269,36 +232,132 @@ PhysmemImportSecBuf_exit:
 }
 
 
+static IMG_INT
+PVRSRVBridgeRGXDebugMiscSetHCSDeadline(IMG_UINT32 ui32DispatchTableEntry,
+					  PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETHCSDEADLINE *psRGXDebugMiscSetHCSDeadlineIN,
+					  PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETHCSDEADLINE *psRGXDebugMiscSetHCSDeadlineOUT,
+					 CONNECTION_DATA *psConnection)
+{
+
+
+
+
+
+
+
+
+	psRGXDebugMiscSetHCSDeadlineOUT->eError =
+		PVRSRVRGXDebugMiscSetHCSDeadlineKM(psConnection, OSGetDevData(psConnection),
+					psRGXDebugMiscSetHCSDeadlineIN->ui32RGXHCSDeadline);
+
+
+
+
+
+
+
+
+	return 0;
+}
+
+
+static IMG_INT
+PVRSRVBridgeRGXDebugMiscSetOSidPriority(IMG_UINT32 ui32DispatchTableEntry,
+					  PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSIDPRIORITY *psRGXDebugMiscSetOSidPriorityIN,
+					  PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSIDPRIORITY *psRGXDebugMiscSetOSidPriorityOUT,
+					 CONNECTION_DATA *psConnection)
+{
+
+
+
+
+
+
+
+
+	psRGXDebugMiscSetOSidPriorityOUT->eError =
+		PVRSRVRGXDebugMiscSetOSidPriorityKM(psConnection, OSGetDevData(psConnection),
+					psRGXDebugMiscSetOSidPriorityIN->ui32OSid,
+					psRGXDebugMiscSetOSidPriorityIN->ui32Priority);
+
+
+
+
+
+
+
+
+	return 0;
+}
+
+
+static IMG_INT
+PVRSRVBridgeRGXDebugMiscSetOSNewOnlineState(IMG_UINT32 ui32DispatchTableEntry,
+					  PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSNEWONLINESTATE *psRGXDebugMiscSetOSNewOnlineStateIN,
+					  PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSNEWONLINESTATE *psRGXDebugMiscSetOSNewOnlineStateOUT,
+					 CONNECTION_DATA *psConnection)
+{
+
+
+
+
+
+
+
+
+	psRGXDebugMiscSetOSNewOnlineStateOUT->eError =
+		PVRSRVRGXDebugMiscSetOSNewOnlineStateKM(psConnection, OSGetDevData(psConnection),
+					psRGXDebugMiscSetOSNewOnlineStateIN->ui32OSid,
+					psRGXDebugMiscSetOSNewOnlineStateIN->ui32OSNewState);
+
+
+
+
+
+
+
+
+	return 0;
+}
+
+
+
 
 /* *************************************************************************** 
  * Server bridge dispatch related glue 
  */
 
+static IMG_BOOL bUseLock = IMG_TRUE;
 
-PVRSRV_ERROR InitDEBUGMISCBridge(IMG_VOID);
-PVRSRV_ERROR DeinitDEBUGMISCBridge(IMG_VOID);
+PVRSRV_ERROR InitDEBUGMISCBridge(void);
+PVRSRV_ERROR DeinitDEBUGMISCBridge(void);
 
 /*
  * Register all DEBUGMISC functions with services
  */
-PVRSRV_ERROR InitDEBUGMISCBridge(IMG_VOID)
+PVRSRV_ERROR InitDEBUGMISCBridge(void)
 {
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_DEBUGMISCSLCSETBYPASSSTATE, PVRSRVBridgeDebugMiscSLCSetBypassState,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETFWLOG, PVRSRVBridgeRGXDebugMiscSetFWLog,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCDUMPFREELISTPAGELIST, PVRSRVBridgeRGXDebugMiscDumpFreelistPageList,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_PHYSMEMIMPORTSECBUF, PVRSRVBridgePhysmemImportSecBuf,
-					IMG_NULL, IMG_NULL,
-					0, 0);
+					NULL, bUseLock);
+
+	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETHCSDEADLINE, PVRSRVBridgeRGXDebugMiscSetHCSDeadline,
+					NULL, bUseLock);
+
+	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSIDPRIORITY, PVRSRVBridgeRGXDebugMiscSetOSidPriority,
+					NULL, bUseLock);
+
+	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSNEWONLINESTATE, PVRSRVBridgeRGXDebugMiscSetOSNewOnlineState,
+					NULL, bUseLock);
 
 
 	return PVRSRV_OK;
@@ -307,8 +366,7 @@ PVRSRV_ERROR InitDEBUGMISCBridge(IMG_VOID)
 /*
  * Unregister all debugmisc functions with services
  */
-PVRSRV_ERROR DeinitDEBUGMISCBridge(IMG_VOID)
+PVRSRV_ERROR DeinitDEBUGMISCBridge(void)
 {
 	return PVRSRV_OK;
 }
-

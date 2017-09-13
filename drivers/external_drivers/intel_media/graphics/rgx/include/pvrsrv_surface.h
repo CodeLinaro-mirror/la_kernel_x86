@@ -47,7 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define _PVRSRV_SURFACE_H_
 
 #include "img_types.h"
-#include "fbc_types.h"
+#include <powervr/buffer_attribs.h>
 
 #define PVRSRV_SURFACE_TRANSFORM_NONE	   (0 << 0)
 #define PVRSRV_SURFACE_TRANSFORM_FLIP_H    (1 << 0)
@@ -67,7 +67,8 @@ typedef enum _PVRSRV_SURFACE_MEMLAYOUT_  {
 } PVRSRV_SURFACE_MEMLAYOUT;
 
 typedef struct _PVRSRV_SURFACE_FBC_LAYOUT_ {
-	FB_COMPRESSION	eFBCompressionMode;
+	/*! The compression mode for this surface*/
+	IMG_FB_COMPRESSION	eFBCompressionMode;
 } PVRSRV_SURFACE_FBC_LAYOUT;
 
 typedef struct _PVRSRV_SURFACE_FORMAT_
@@ -112,13 +113,13 @@ typedef struct _PVRSRV_SURFACE_CONFIG_INFO_
 	/*!< Alpha blending mode e.g. none / premult / coverage */
 	IMG_UINT32				eBlendType;
 
-	/*!< Custom data for the display engine */
+	/*! Custom data for the display engine */
 	IMG_UINT64				ui64Custom;
 
 	/*!< Plane alpha */
 	IMG_UINT8				ui8PlaneAlpha;
 	IMG_UINT8				ui8Reserved1[3];
-} __attribute__((packed)) PVRSRV_SURFACE_CONFIG_INFO;
+}__attribute__((packed)) PVRSRV_SURFACE_CONFIG_INFO;
 
 typedef struct _PVRSRV_PANEL_INFO_
 {
@@ -132,8 +133,8 @@ typedef struct _PVRSRV_PANEL_INFO_
 	Helper function to create a Config Info based on a Surface Info
 	to do a flip with no scale, transformation etc.
 */
-static INLINE IMG_VOID SurfaceConfigFromSurfInfo(PVRSRV_SURFACE_INFO *psSurfaceInfo,
-												 PVRSRV_SURFACE_CONFIG_INFO *psConfigInfo)
+static INLINE void SurfaceConfigFromSurfInfo(PVRSRV_SURFACE_INFO *psSurfaceInfo,
+                                             PVRSRV_SURFACE_CONFIG_INFO *psConfigInfo)
 {
 	psConfigInfo->sCrop.sDims = psSurfaceInfo->sDims;
 	psConfigInfo->sCrop.i32XOffset = 0;

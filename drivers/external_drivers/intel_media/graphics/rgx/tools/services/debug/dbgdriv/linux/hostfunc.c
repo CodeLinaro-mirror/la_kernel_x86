@@ -39,7 +39,6 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
-#include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -49,11 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/string.h>
 #include <asm/page.h>
 #include <linux/vmalloc.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15))
 #include <linux/mutex.h>
-#else
-#include <asm/semaphore.h>
-#endif
 #include <linux/hardirq.h>
 
 #if defined(SUPPORT_DBGDRV_EVENT_OBJECTS)
@@ -70,113 +65,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "hostfunc.h"
 #include "dbgdriv.h"
 
-#if defined(PVRSRV_NEED_PVR_DPF) && !defined(SUPPORT_DRM)
-IMG_UINT32	gPVRDebugLevel = (DBGPRIV_FATAL | DBGPRIV_ERROR | DBGPRIV_WARNING |
-		DBGPRIV_CALLTRACE); /* Added call trace level to support PVR_LOGging of state in debug driver */
-
-#define PVR_STRING_TERMINATOR		'\0'
-#define PVR_IS_FILE_SEPARATOR(character) ( ((character) == '\\') || ((character) == '/') )
-
-/******************************************************************************/
-
-
-/*----------------------------------------------------------------------------
-<function>
-	FUNCTION   : PVRSRVDebugPrintf
-	PURPOSE    : To output a debug message to the user
-	PARAMETERS : In : uDebugLevel - The current debug level
-	             In : pszFile - The source file generating the message
-	             In : uLine - The line of the source file
-	             In : pszFormat - The message format string
-	             In : ... - Zero or more arguments for use by the format string
-	RETURNS    : None
-</function>
-------------------------------------------------------------------------------*/
-void PVRSRVDebugPrintf	(
-						IMG_UINT32	ui32DebugLevel,
-						const IMG_CHAR*	pszFileName,
-						IMG_UINT32	ui32Line,
-						const IMG_CHAR*	pszFormat,
-						...
-					)
-{
-	IMG_BOOL bTrace;
-	IMG_CHAR *pszLeafName;
-
-	pszLeafName = (char *)strrchr (pszFileName, '/');
-
-	if (pszLeafName)
-	{
-		pszFileName = pszLeafName;
-	}
-
-	bTrace = (IMG_BOOL)(ui32DebugLevel & DBGPRIV_CALLTRACE) ? IMG_TRUE : IMG_FALSE;
-
-	if (gPVRDebugLevel & ui32DebugLevel)
-	{
-		va_list vaArgs;
-		static char szBuffer[512];
-
-		va_start (vaArgs, pszFormat);
-
-		/* Add in the level of warning */
-		if (bTrace == IMG_FALSE)
-		{
-			switch(ui32DebugLevel)
-			{
-				case DBGPRIV_FATAL:
-				{
-					strcpy (szBuffer, "PVR_K:(Fatal): ");
-					break;
-				}
-				case DBGPRIV_ERROR:
-				{
-					strcpy (szBuffer, "PVR_K:(Error): ");
-					break;
-				}
-				case DBGPRIV_WARNING:
-				{
-					strcpy (szBuffer, "PVR_K:(Warning): ");
-					break;
-				}
-				case DBGPRIV_MESSAGE:
-				{
-					strcpy (szBuffer, "PVR_K:(Message): ");
-					break;
-				}
-				case DBGPRIV_VERBOSE:
-				{
-					strcpy (szBuffer, "PVR_K:(Verbose): ");
-					break;
-				}
-				default:
-				{
-					strcpy (szBuffer, "PVR_K:()");
-					break;
-				}
-			}
-		}
-		else
-		{
-			strcpy (szBuffer, "PVR_K: ");
-		}
-
-		vsprintf (&szBuffer[strlen(szBuffer)], pszFormat, vaArgs);
-
- 		/*
- 		 * Metrics and Traces don't need a location
- 		 */
- 		if (bTrace == IMG_FALSE)
-		{
-			sprintf (&szBuffer[strlen(szBuffer)], " [%d, %s]", (int)ui32Line, pszFileName);
-		}
-
-		printk(KERN_INFO "%s\n", szBuffer);
-
-		va_end (vaArgs);
-	}
-}
-#endif	/* defined(PVRSRV_NEED_PVR_DPF) && !defined(SUPPORT_DRM) */
 
 /*!
 ******************************************************************************
@@ -191,10 +79,10 @@ void PVRSRVDebugPrintf	(
 
  @Input    ui32Size :	number of bytes to set
 
- @Return   IMG_VOID
+ @Return   void
 
 ******************************************************************************/
-IMG_VOID HostMemSet(IMG_VOID *pvDest, IMG_UINT8 ui8Value, IMG_UINT32 ui32Size)
+void HostMemSet(void *pvDest, IMG_UINT8 ui8Value, IMG_UINT32 ui32Size)
 {
 	memset(pvDest, (int) ui8Value, (size_t) ui32Size);
 }
@@ -213,7 +101,7 @@ IMG_VOID HostMemSet(IMG_VOID *pvDest, IMG_UINT8 ui8Value, IMG_UINT32 ui32Size)
  @Return  none
 
 ******************************************************************************/
-IMG_VOID HostMemCopy(IMG_VOID *pvDst, IMG_VOID *pvSrc, IMG_UINT32 ui32Size)
+void HostMemCopy(void *pvDst, void *pvSrc, IMG_UINT32 ui32Size)
 {
 #if defined(USE_UNOPTIMISED_MEMCPY)
     unsigned char *src,*dst;
@@ -236,38 +124,38 @@ IMG_UINT32 HostReadRegistryDWORDFromString(char *pcKey, char *pcValueName, IMG_U
 	return 0;
 }
 
-IMG_VOID * HostPageablePageAlloc(IMG_UINT32 ui32Pages)
+void * HostPageablePageAlloc(IMG_UINT32 ui32Pages)
 {
     return (void*)vmalloc(ui32Pages * PAGE_SIZE);/*, GFP_KERNEL);*/
 }
 
-IMG_VOID HostPageablePageFree(IMG_VOID * pvBase)
+void HostPageablePageFree(void * pvBase)
 {
     vfree(pvBase);
 }
 
-IMG_VOID * HostNonPageablePageAlloc(IMG_UINT32 ui32Pages)
+void * HostNonPageablePageAlloc(IMG_UINT32 ui32Pages)
 {
     return (void*)vmalloc(ui32Pages * PAGE_SIZE);/*, GFP_KERNEL);*/
 }
 
-IMG_VOID HostNonPageablePageFree(IMG_VOID * pvBase)
+void HostNonPageablePageFree(void * pvBase)
 {
     vfree(pvBase);
 }
 
-IMG_VOID * HostMapKrnBufIntoUser(IMG_VOID * pvKrnAddr, IMG_UINT32 ui32Size, IMG_VOID **ppvMdl)
+void * HostMapKrnBufIntoUser(void * pvKrnAddr, IMG_UINT32 ui32Size, void **ppvMdl)
 {
     /* XXX Not yet implemented */
-	return IMG_NULL;
+	return NULL;
 }
 
-IMG_VOID HostUnMapKrnBufFromUser(IMG_VOID * pvUserAddr, IMG_VOID * pvMdl, IMG_VOID * pvProcess)
+void HostUnMapKrnBufFromUser(void * pvUserAddr, void * pvMdl, void * pvProcess)
 {
     /* XXX Not yet implemented */
 }
 
-IMG_VOID HostCreateRegDeclStreams(IMG_VOID)
+void HostCreateRegDeclStreams(void)
 {
     /* XXX Not yet implemented */
 }
@@ -280,14 +168,14 @@ IMG_VOID HostCreateRegDeclStreams(IMG_VOID)
 static int iStreamData;
 static wait_queue_head_t sStreamDataEvent;
 
-IMG_INT32 HostCreateEventObjects(IMG_VOID)
+IMG_INT32 HostCreateEventObjects(void)
 {
 	init_waitqueue_head(&sStreamDataEvent);
 
 	return 0;
 }
 
-IMG_VOID HostWaitForEvent(DBG_EVENT eEvent)
+void HostWaitForEvent(DBG_EVENT eEvent)
 {
 	switch(eEvent)
 	{
@@ -309,7 +197,7 @@ IMG_VOID HostWaitForEvent(DBG_EVENT eEvent)
 	}
 }
 
-IMG_VOID HostSignalEvent(DBG_EVENT eEvent)
+void HostSignalEvent(DBG_EVENT eEvent)
 {
 	switch(eEvent)
 	{
@@ -322,7 +210,7 @@ IMG_VOID HostSignalEvent(DBG_EVENT eEvent)
 	}
 }
 
-IMG_VOID HostDestroyEventObjects(IMG_VOID)
+void HostDestroyEventObjects(void)
 {
 }
 #endif	/* defined(SUPPORT_DBGDRV_EVENT_OBJECTS) */

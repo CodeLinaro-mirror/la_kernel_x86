@@ -44,8 +44,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef CLIENT_RI_BRIDGE_H
 #define CLIENT_RI_BRIDGE_H
 
+#include "img_defs.h"
+#include "pvrsrv_error.h"
+
+#if defined(PVR_INDIRECT_BRIDGE_CLIENTS)
 #include "pvr_bridge_client.h"
 #include "pvr_bridge.h"
+#endif
 
 #include "common_ri_bridge.h"
 
@@ -61,13 +66,30 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteMEMDESCEntry(IMG_HANDLE hBri
 								 const IMG_CHAR *puiTextB,
 								 IMG_UINT64 ui64Offset,
 								 IMG_UINT64 ui64Size,
+								 IMG_UINT64 ui64BackedSize,
 								 IMG_BOOL bIsImport,
 								 IMG_BOOL bIsExportable,
 								 IMG_HANDLE *phRIHandle);
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteProcListEntry(IMG_HANDLE hBridge,
+								  IMG_UINT32 ui32TextBSize,
+								  const IMG_CHAR *puiTextB,
+								  IMG_UINT64 ui64Size,
+								  IMG_UINT64 ui64BackedSize,
+								  IMG_UINT64 ui64DevVAddr,
+								  IMG_HANDLE *phRIHandle);
+
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCAddr(IMG_HANDLE hBridge,
 								 IMG_HANDLE hRIHandle,
 								 IMG_DEV_VIRTADDR sAddr);
+
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCPinning(IMG_HANDLE hBridge,
+								    IMG_HANDLE hRIHandle,
+								    IMG_BOOL bIsPinned);
+
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCBacking(IMG_HANDLE hBridge,
+								    IMG_HANDLE hRIHandle,
+								    IMG_INT32 i32NumModified);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDeleteMEMDESCEntry(IMG_HANDLE hBridge,
 								  IMG_HANDLE hRIHandle);

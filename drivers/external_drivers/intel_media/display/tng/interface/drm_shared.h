@@ -19,6 +19,7 @@
  *
  **************************************************************************/
 #include <img_types.h>
+#include <powervr/mem_types.h>
 
 #ifndef _DRM_SHARED_H_
 #define _DRM_SHARED_H_

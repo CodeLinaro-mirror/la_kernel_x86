@@ -42,11 +42,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/version.h>
 #include <drm/drmP.h>
 #include <drm/drm.h>
-
 #include "img_defs.h"
 #include "lock.h"
 #include "pvr_drm_ext.h"
-#include "pvrsrv_interface.h"
+#include "pvr_drm_gem.h"
 #include "pvr_bridge.h"
 #include "srvkm.h"
 #include "dc_mrfld.h"
@@ -59,13 +58,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <linux/module.h>
 #include "pvrmodule.h"
+#include "pmr_impl.h"
+#include "handle.h"
+#include "connection_server.h"
+#include "pmr_os.h"
+#include "private_data.h"
+#include "module_common.h"
+#include "pvr_drm.h"
 
-#define PVR_DRM_SRVKM_CMD       DRM_PVR_RESERVED1
 #define PVR_DRM_IS_MASTER_CMD   DRM_PVR_RESERVED4
 #define PVR_DRM_DBGDRV_CMD      DRM_PVR_RESERVED6
 
-#define PVR_DRM_SRVKM_IOCTL \
-	DRM_IOW(DRM_COMMAND_BASE + PVR_DRM_SRVKM_CMD, PVRSRV_BRIDGE_PACKAGE)
 
 #define PVR_DRM_IS_MASTER_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_IS_MASTER_CMD)
@@ -91,7 +94,8 @@ static struct drm_ioctl_desc pvr_ioctls[] = {
 };
 #else
 static struct drm_ioctl_desc pvr_ioctls[] = {
-	{PVR_DRM_SRVKM_IOCTL, DRM_UNLOCKED, PVRSRV_BridgeDispatchKM, "PVR_DRM_SRVKM_IOCTL"},
+	{DRM_IOCTL_PVR_SRVKM_CMD, DRM_RENDER_ALLOW | DRM_UNLOCKED, PVRSRV_BridgeDispatchKM,
+	"DRM_IOCTL_PVR_SRVKM_CMD"},
 	{PVR_DRM_IS_MASTER_IOCTL, DRM_MASTER, PVRDRMIsMaster, "PVR_DRM_IS_MASTER_IOCTL"},
 #if defined(PDUMP)
 	{PVR_DRM_DBGDRV_IOCTL, 0, dbgdrv_ioctl. "PVR_DRM_DBGDRV_IOCTL"}
@@ -99,16 +103,79 @@ static struct drm_ioctl_desc pvr_ioctls[] = {
 };
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)) */
 
+typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
+
 DECLARE_WAIT_QUEUE_HEAD(sWaitForInit);
 
 static bool bInitComplete;
 static bool bInitFailed;
 
-struct pci_dev *gpsPVRLDMDev;
+static struct pci_dev *gpsPVRLDMDev;
 
 struct drm_device *gpsPVRDRMDev;
+static PVRSRV_DEVICE_NODE *gpsDeviceNode;
 
 #define PVR_DRM_FILE struct drm_file *
+
+int PVRCore_Init(void)
+{
+	int error = 0;
+
+	if ((error = PVRSRVCommonDriverInit()) != 0)
+	{
+		return error;
+	}
+
+	error = PVRSRVDeviceCreate(&gpsPVRLDMDev->dev, &gpsDeviceNode);
+	if (error != 0)
+	{
+		DRM_DEBUG("%s: unable to init PVR service (%d)", __FUNCTION__, error);
+		return error;
+	}
+
+	error = PVRSRVCommonDeviceInit(gpsDeviceNode);
+	if (error != 0)
+	{
+		return error;
+	}
+
+	return 0;
+}
+
+void PVRCore_Cleanup(void)
+{
+	PVRSRVCommonDeviceDeinit(gpsDeviceNode);
+	PVRSRVDeviceDestroy(gpsDeviceNode);
+	gpsDeviceNode = NULL;
+
+	PVRSRVCommonDriverDeinit();
+}
+
+int PVRSRVOpen(struct drm_device __maybe_unused *dev, struct drm_file *pDRMFile)
+{
+	int err;
+
+	if (!try_module_get(THIS_MODULE))
+	{
+		DRM_DEBUG("%s: Failed to get module", __FUNCTION__);
+		return -ENOENT;
+	}
+
+	err = PVRSRVCommonDeviceOpen(gpsDeviceNode, pDRMFile);
+	if (err)
+	{
+		module_put(THIS_MODULE);
+	}
+
+	return err;
+}
+
+void PVRSRVRelease(struct drm_device __maybe_unused *dev, struct drm_file *pDRMFile)
+{
+	PVRSRVCommonDeviceRelease(gpsDeviceNode, pDRMFile);
+
+	module_put(THIS_MODULE);
+}
 
 int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 {
@@ -119,19 +186,18 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	gpsPVRDRMDev = dev;
 	gpsPVRLDMDev = dev->pdev;
 
-#if defined(PDUMP)
-	iRes = dbgdrv_init();
+	iRes = PVRCore_Init();
 	if (iRes != 0)
 	{
 		goto exit;
 	}
+
+#ifdef CONFIG_PCI
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)) && \
+      (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+      dev->driver->set_busid = drm_pci_set_busid;
 #endif
-	
-	iRes = PVRCore_Init();
-	if (iRes != 0)
-	{
-		goto exit_dbgdrv_cleanup;
-	}
+#endif
 
 	if (MerrifieldDCInit(dev) != PVRSRV_OK)
 	{
@@ -140,14 +206,8 @@ int PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 	}
 
 	goto exit;
-
 exit_pvrcore_cleanup:
 	PVRCore_Cleanup();
-
-exit_dbgdrv_cleanup:
-#if defined(PDUMP)
-	dbgdrv_cleanup();
-#endif
 exit:
 	if (iRes != 0)
 	{
@@ -170,10 +230,6 @@ int PVRSRVDrmUnload(struct drm_device *dev)
 	}
 
 	PVRCore_Cleanup();
-
-#if defined(PDUMP)
-	dbgdrv_cleanup();
-#endif
 
 	return 0;
 }
@@ -213,7 +269,6 @@ int PVRSRVDrmOpen(struct drm_device *dev, struct drm_file *file)
 void PVRSRVDrmPostClose(struct drm_device *dev, struct drm_file *file)
 {
 	PVRSRVRelease(dev, file);
-
 	file->driver_priv = NULL;
 }
 
@@ -344,5 +399,5 @@ int PVRSRVInterrupt(struct drm_device* dev)
 
 int PVRSRVMMap(struct file *pFile, struct vm_area_struct *ps_vma)
 {
-	return MMapPMR(pFile, ps_vma);
+	return PVRSRV_MMap(pFile, ps_vma);
 }

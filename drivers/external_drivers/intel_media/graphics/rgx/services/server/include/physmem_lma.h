@@ -66,9 +66,10 @@ PhysmemNewLocalRamBackedPMR(PVRSRV_DEVICE_NODE *psDevNode,
 							IMG_DEVMEM_SIZE_T uiChunkSize,
 							IMG_UINT32 ui32NumPhysChunks,
 							IMG_UINT32 ui32NumVirtChunks,
-							IMG_BOOL *pabMappingTable,
+							IMG_UINT32 *pui32MappingTable,
 							IMG_UINT32 uiLog2PageSize,
 							PVRSRV_MEMALLOCFLAGS_T uiFlags,
+							const IMG_CHAR *pszAnnotation,
 							PMR **ppsPMRPtr);
 
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
@@ -76,9 +77,9 @@ PhysmemNewLocalRamBackedPMR(PVRSRV_DEVICE_NODE *psDevNode,
  * Define some helper list functions for the virtualization validation code
  */
 
-IMG_VOID	InsertPidOSidsCoupling(IMG_PID pId, IMG_UINT32 ui32OSid, IMG_UINT32 ui32OSidReg);
-IMG_VOID	RetrieveOSidsfromPidList(IMG_PID pId, IMG_UINT32 *pui32OSid, IMG_UINT32 *pui32OSidReg);
-IMG_VOID	RemovePidOSidCoupling(IMG_PID pId);
+void	InsertPidOSidsCoupling(IMG_PID pId, IMG_UINT32 ui32OSid, IMG_UINT32 ui32OSidReg, IMG_BOOL bOSidAxiProt);
+void	RetrieveOSidsfromPidList(IMG_PID pId, IMG_UINT32 *pui32OSid, IMG_UINT32 *pui32OSidReg, IMG_BOOL *pbOSidAxiProt);
+void	RemovePidOSidCoupling(IMG_PID pId);
 #endif
 
 #endif /* #ifndef _SRVSRV_PHYSMEM_LMA_H_ */
