@@ -419,8 +419,13 @@ static void get_model_name(struct cpuinfo_x86 *c)
 
 	while (*p) {
 		/* Note the last non-whitespace index */
-		if (!isspace(*p))
+		if (!isspace(*p)) {
 			s = q;
+		/* Skip multiple spaces */
+		} else if (isspace(*(p+1))) {
+			*p++;
+			continue;
+		}
 
 		*q++ = *p++;
 	}
