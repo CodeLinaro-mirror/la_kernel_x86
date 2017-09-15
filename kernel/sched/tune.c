@@ -12,11 +12,12 @@
 #include "tune.h"
 
 #ifdef CONFIG_CGROUP_SCHEDTUNE
-static bool schedtune_initialized = false;
+bool schedtune_initialized = false;
 #endif
 
 unsigned int sysctl_sched_cfs_boost __read_mostly;
 
+extern struct reciprocal_value schedtune_spc_rdiv;
 extern struct target_nrg schedtune_target_nrg;
 
 /* Performance Boost region (B) threshold params */
@@ -205,7 +206,7 @@ schedtune_accept_deltas(int nrg_delta, int cap_delta,
  *    implementation especially for the computation of the per-CPU boost
  *    value
  */
-#define BOOSTGROUPS_COUNT 4
+#define BOOSTGROUPS_COUNT 5
 
 /* Array of configured boostgroups */
 static struct schedtune *allocated_group[BOOSTGROUPS_COUNT] = {
@@ -368,12 +369,6 @@ void schedtune_enqueue_task(struct task_struct *p, int cpu)
 	raw_spin_unlock_irqrestore(&bg->lock, irq_flags);
 }
 
-int schedtune_allow_attach(struct cgroup_taskset *tset)
-{
-	/* We always allows tasks to be moved between existing CGroups */
-	return 0;
-}
-
 int schedtune_can_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
@@ -532,6 +527,9 @@ int schedtune_task_boost(struct task_struct *p)
 	struct schedtune *st;
 	int task_boost;
 
+	if (!unlikely(schedtune_initialized))
+		return 0;
+
 	/* Get task boost value */
 	rcu_read_lock();
 	st = task_schedtune(p);
@@ -545,6 +543,9 @@ int schedtune_prefer_idle(struct task_struct *p)
 {
 	struct schedtune *st;
 	int prefer_idle;
+
+	if (!unlikely(schedtune_initialized))
+		return 0;
 
 	/* Get prefer_idle value */
 	rcu_read_lock();
@@ -646,6 +647,7 @@ schedtune_boostgroup_init(struct schedtune *st)
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		bg->group[st->idx].boost = 0;
 		bg->group[st->idx].tasks = 0;
+		raw_spin_lock_init(&bg->lock);
 	}
 
 	return 0;
@@ -715,7 +717,6 @@ schedtune_css_free(struct cgroup_subsys_state *css)
 struct cgroup_subsys schedtune_cgrp_subsys = {
 	.css_alloc	= schedtune_css_alloc,
 	.css_free	= schedtune_css_free,
-	.allow_attach   = schedtune_allow_attach,
 	.can_attach     = schedtune_can_attach,
 	.cancel_attach  = schedtune_cancel_attach,
 	.legacy_cftypes	= files,
@@ -732,6 +733,7 @@ schedtune_init_cgroups(void)
 	for_each_possible_cpu(cpu) {
 		bg = &per_cpu(cpu_boost_groups, cpu);
 		memset(bg, 0, sizeof(struct boost_groups));
+		raw_spin_lock_init(&bg->lock);
 	}
 
 	pr_info("schedtune: configured to support %d boost groups\n",
@@ -942,9 +944,12 @@ schedtune_init(void)
 	pr_info("schedtune: configured to support global boosting only\n");
 #endif
 
+	schedtune_spc_rdiv = reciprocal_value(100);
+
 	return 0;
 
 nodata:
+	pr_warning("schedtune: disabled!\n");
 	rcu_read_unlock();
 	return -EINVAL;
 }

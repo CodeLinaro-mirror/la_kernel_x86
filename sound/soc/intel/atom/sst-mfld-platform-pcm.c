@@ -774,6 +774,9 @@ static int sst_soc_prepare(struct device *dev)
 	struct sst_data *drv = dev_get_drvdata(dev);
 	int i;
 
+	if (!drv->soc_card)
+		return 0;
+
 	/* set the SSPs to idle */
 	for (i = 0; i < drv->soc_card->num_rtd; i++) {
 		struct snd_soc_dai *dai = drv->soc_card->rtd[i].cpu_dai;
@@ -791,6 +794,9 @@ static void sst_soc_complete(struct device *dev)
 {
 	struct sst_data *drv = dev_get_drvdata(dev);
 	int i;
+
+	if (!drv->soc_card)
+		return;
 
 	/* restart SSPs */
 	for (i = 0; i < drv->soc_card->num_rtd; i++) {

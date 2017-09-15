@@ -890,6 +890,7 @@ static struct {
 	{ trace_clock,			"perf",		1 },
 	{ ktime_get_mono_fast_ns,	"mono",		1 },
 	{ ktime_get_raw_fast_ns,	"mono_raw",	1 },
+	{ ktime_get_boot_fast_ns,	"boot",		1 },
 	ARCH_TRACE_CLOCKS
 };
 
@@ -1705,7 +1706,7 @@ tracing_generic_entry_update(struct trace_entry *entry, unsigned long flags,
 		TRACE_FLAG_IRQS_NOSUPPORT |
 #endif
 		((pc & HARDIRQ_MASK) ? TRACE_FLAG_HARDIRQ : 0) |
-		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
+		((pc & SOFTIRQ_OFFSET) ? TRACE_FLAG_SOFTIRQ : 0) |
 		(tif_need_resched() ? TRACE_FLAG_NEED_RESCHED : 0) |
 		(test_preempt_need_resched() ? TRACE_FLAG_PREEMPT_RESCHED : 0);
 }
@@ -4877,19 +4878,20 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
 	struct trace_iterator *iter = filp->private_data;
 	ssize_t sret;
 
-	/* return any leftover data */
-	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
-	if (sret != -EBUSY)
-		return sret;
-
-	trace_seq_init(&iter->seq);
-
 	/*
 	 * Avoid more than one consumer on a single file descriptor
 	 * This is just a matter of traces coherency, the ring buffer itself
 	 * is protected.
 	 */
 	mutex_lock(&iter->mutex);
+
+	/* return any leftover data */
+	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
+	if (sret != -EBUSY)
+		goto out;
+
+	trace_seq_init(&iter->seq);
+
 	if (iter->trace->read) {
 		sret = iter->trace->read(iter, filp, ubuf, cnt, ppos);
 		if (sret)
@@ -5916,9 +5918,6 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		return -EBUSY;
 #endif
 
-	if (splice_grow_spd(pipe, &spd))
-		return -ENOMEM;
-
 	if (*ppos & (PAGE_SIZE - 1))
 		return -EINVAL;
 
@@ -5927,6 +5926,9 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			return -EINVAL;
 		len &= PAGE_MASK;
 	}
+
+	if (splice_grow_spd(pipe, &spd))
+		return -ENOMEM;
 
  again:
 	trace_access_lock(iter->cpu_file);
@@ -5985,19 +5987,21 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 	/* did we read anything? */
 	if (!spd.nr_pages) {
 		if (ret)
-			return ret;
+			goto out;
 
+		ret = -EAGAIN;
 		if ((file->f_flags & O_NONBLOCK) || (flags & SPLICE_F_NONBLOCK))
-			return -EAGAIN;
+			goto out;
 
 		ret = wait_on_pipe(iter, true);
 		if (ret)
-			return ret;
+			goto out;
 
 		goto again;
 	}
 
 	ret = splice_to_pipe(pipe, &spd);
+out:
 	splice_shrink_spd(&spd);
 
 	return ret;
@@ -6207,11 +6211,13 @@ ftrace_trace_snapshot_callback(struct ftrace_hash *hash,
 		return ret;
 
  out_reg:
+	ret = alloc_snapshot(&global_trace);
+	if (ret < 0)
+		goto out;
+
 	ret = register_ftrace_function_probe(glob, ops, count);
 
-	if (ret >= 0)
-		alloc_snapshot(&global_trace);
-
+ out:
 	return ret < 0 ? ret : 0;
 }
 
@@ -6882,6 +6888,7 @@ static int instance_rmdir(const char *name)
 	}
 	kfree(tr->topts);
 
+	free_cpumask_var(tr->tracing_cpumask);
 	kfree(tr->name);
 	kfree(tr);
 
