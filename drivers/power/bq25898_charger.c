@@ -539,7 +539,6 @@ struct bq25898_charger {
 	int revision;
 	char model_name[MODEL_NAME_SIZE];
 	char manufacturer[DEV_MANUFACTURER_NAME_SIZE];
-	int current_now;		/* provided by healthd */
 	unsigned int postcharge_duration_mn;	/* duration in mn after charge termination interrupt */
 	u32 irq_counter;
 	bool ship_mode_scheduled;
@@ -570,7 +569,7 @@ static enum power_supply_property bq25898_battery_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,		/* power supply online */
 	POWER_SUPPLY_PROP_TEMP,			/* battery temperature */
 	POWER_SUPPLY_PROP_TECHNOLOGY,		/* battery technology */
-	POWER_SUPPLY_PROP_CURRENT_NOW,		/* battery current */
+	POWER_SUPPLY_PROP_CURRENT_AVG,		/* battery current */
 	POWER_SUPPLY_PROP_VOLTAGE_NOW		/* battery voltage */
 };
 
@@ -2142,6 +2141,33 @@ static int bq25898_restore_configuration(struct bq25898_charger *chip)
 	return ret;
 }
 
+static int bq25898_detect_battery(struct bq25898_charger *chip)
+{
+	struct power_supply *batt_psy;
+	int i;
+
+	for (i = 0; i < chip->psy_usb->num_supplicants; i++) {
+		batt_psy = power_supply_get_by_name(chip->psy_usb->supplied_to[i]);
+		if (!batt_psy) {
+			dev_dbg(&chip->client->dev,
+				"battery '%s' not found\n", chip->psy_usb->supplied_to[i]);
+		} else {
+			dev_dbg(&chip->client->dev,
+				"found battery '%s'\n", batt_psy->desc->name);
+			break;
+		}
+	}
+
+	if (!batt_psy) {
+		dev_err(&chip->client->dev,
+			"no battery found\n");
+		return -ENODEV;
+	}
+	chip->batt_psy = batt_psy;
+
+	return 0;
+}
+
 static int status_reg_to_ps_status(int val)
 {
 	/* Pre-charge or fast charge */
@@ -2162,32 +2188,17 @@ static int status_reg_to_ps_status(int val)
 	return POWER_SUPPLY_STATUS_UNKNOWN;
 }
 
-static int update_batt_status(struct bq25898_charger *chip, int status)
+static int bq25898_update_batt_status(struct bq25898_charger *chip, int status)
 {
 	union power_supply_propval val;
-	struct power_supply *batt_psy;
-	int ret, i;
+	int ret;
 
 	if (!chip->batt_psy) {
-		for (i = 0; i < chip->psy_usb->num_supplicants; i++) {
-			batt_psy = power_supply_get_by_name(chip->psy_usb->supplied_to[i]);
-			if (!batt_psy) {
-				dev_dbg(&chip->client->dev,
-					"battery '%s' not found\n", chip->psy_usb->supplied_to[i]);
-			} else {
-				dev_dbg(&chip->client->dev,
-					"found battery '%s'\n", batt_psy->desc->name);
-				break;
-			}
-		}
-
-		if (!batt_psy) {
-			dev_err(&chip->client->dev,
-				"no battery found\n");
-			return -ENODEV;
-		}
-		chip->batt_psy = batt_psy;
+		ret = bq25898_detect_battery(chip);
+		if (ret)
+			return ret;
 	}
+
 	val.intval = status;
 	dev_dbg(&chip->client->dev, "sending status %d to psy '%s'\n",
 		val.intval, chip->batt_psy->desc->name);
@@ -2253,7 +2264,7 @@ static int bq25898_charger_status_reg_handler(struct bq25898_charger *chip)
 			"Discarding received charger interrupt\n");
 	}
 
-	update_batt_status(chip, status_reg_to_ps_status(val));
+	bq25898_update_batt_status(chip, status_reg_to_ps_status(val));
 
 	chip->status_reg_oldvalue = val;
 	return ret;
@@ -2397,18 +2408,44 @@ static void bq25898_sw_config_worker(struct work_struct *work)
 	}
 }
 
+static int bq25898_get_batt_current_avg(struct bq25898_charger *chip,
+				union power_supply_propval *val)
+{
+	int ret;
+
+	if (!chip->batt_psy) {
+		ret = bq25898_detect_battery(chip);
+		if (ret)
+			return ret;
+	}
+	return power_supply_get_property(chip->batt_psy,
+					 POWER_SUPPLY_PROP_CURRENT_AVG,
+					 val);
+}
+
 static void bq25898_sw_charge_term_worker(struct work_struct *work)
 {
 	int ret = 0;
+	union power_supply_propval val;
+	int batt_current;
 	struct bq25898_charger *chip = container_of(work, struct bq25898_charger,
 						sw_term_work.work);
 
 	if (!chip)
 		return;
 
-	dev_dbg(&chip->client->dev, "Postcharging phase started at : %lu, current_time : %lu, current_now value %d",
-		chip->postcharge_start_time_sec, CURRENT_TIME.tv_sec, chip->current_now);
-	if ((chip->current_now < chip->curr_eoc_limit) ||
+	ret = bq25898_get_batt_current_avg(chip, &val);
+	if (!ret) {
+		batt_current = val.intval;
+	} else {
+		dev_err(&chip->client->dev, "error getting batt_current, defaulting to 0\n");
+		/* Postcharging will end immediately! */
+		batt_current = 0;
+	}
+
+	dev_dbg(&chip->client->dev, "Postcharging phase started at : %lu, current_time : %lu, current_avg value %d",
+		chip->postcharge_start_time_sec, CURRENT_TIME.tv_sec, batt_current);
+	if (((batt_current >= 0) && (batt_current < chip->curr_eoc_limit)) ||
 		(((CURRENT_TIME.tv_sec - chip->postcharge_start_time_sec) / 60) >= chip->postcharge_duration_mn)) {
 		/* Mark battery as full */
 		chip->is_charge_complete = true;
@@ -2770,7 +2807,7 @@ static int bq25898_get_property(struct power_supply *psy,
 
 		val->intval = ret;
 		dev_dbg(&chip->client->dev, "%s prop status:%d\n", __func__, val->intval);
-		update_batt_status(chip, val->intval);
+		bq25898_update_batt_status(chip, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		ret = bq25898_get_prop_health(chip);
@@ -2811,8 +2848,13 @@ static int bq25898_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		val->intval = chip->current_now;
+	case POWER_SUPPLY_PROP_CURRENT_AVG:
+		ret = bq25898_get_batt_current_avg(chip, val);
+		if (ret < 0)
+			goto error;
+
+		dev_dbg(&chip->client->dev, "%s FG current_avg:%d\n",
+			__func__, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		ret = bq25898_get_prop_voltage_now(chip);
@@ -2830,42 +2872,6 @@ error:
 	mutex_unlock(&chip->sysfs_lock);
 
 	return ( ret < 0 ? ret : 0 );
-}
-
-static int bq25898_set_property(struct power_supply *psy,
-				enum power_supply_property psp,
-				const union power_supply_propval *val)
-{
-	struct bq25898_charger *chip = to_bq25898(psy);
-
-	if (!val || !chip)
-		return -EINVAL;
-
-	mutex_lock(&chip->sysfs_lock);
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		dev_dbg(&chip->client->dev, "%s prop current:%d\n", __func__, val->intval);
-		chip->current_now = val->intval;
-		break;
-	default:
-		break;
-	}
-	mutex_unlock(&chip->sysfs_lock);
-
-	return 0;
-}
-
-static int bq25898_property_is_writeable(struct power_supply *psy,
-					enum power_supply_property psp)
-{
-	switch (psp) {
-	case POWER_SUPPLY_PROP_CURRENT_NOW:	/* provided by Healthd from Fuel Gauge */
-		return 1;
-	default:
-		return -EPERM;
-	}
-	return 0;
 }
 
 static int bq25898_force_charging(struct bq25898_charger *chip)
@@ -2901,8 +2907,10 @@ static int bq25898_force_charging(struct bq25898_charger *chip)
 
 	dev_info(&chip->client->dev, "charge restarted for a maximum of %d mn\n", chip->postcharge_duration_mn);
 
-	/* the sw_term_work will disable the forced charging when "chip->current_now" < BQ25898_CURR_TERM_LIMIT
-	 * or when "chip->postcharge_duration" minutes has been elapsed */
+	/*
+	 * the sw_term_work will disable the forced charging when "batt_current" < BQ25898_CURR_TERM_LIMIT
+	 * or when "chip->postcharge_duration" minutes has been elapsed
+	 */
 	cancel_work_sync(&chip->sw_config_work);
 	chip->postcharge_start_time_sec = CURRENT_TIME.tv_sec;
 	schedule_delayed_work(&chip->sw_term_work, chip->curr_check_interval);
@@ -2988,12 +2996,9 @@ static int bq25898_probe(struct i2c_client *client,
 	psy_desc->type = POWER_SUPPLY_TYPE_USB;
 	psy_desc->properties = bq25898_battery_properties;
 	psy_desc->num_properties = ARRAY_SIZE(bq25898_battery_properties);
-	psy_desc->set_property = bq25898_set_property;
 	psy_desc->get_property = bq25898_get_property;
-	psy_desc->property_is_writeable = bq25898_property_is_writeable;
 
 	chip->postcharge_duration_mn = BQ25898_POSTCHARGE_DEFAULT_DURATION_MN;
-	chip->current_now = 0;
 	chip->irq_counter = 0;
 	chip->ship_mode_scheduled = false;
 	chip->is_charge_complete = false;
@@ -3157,6 +3162,9 @@ static int bq25898_remove(struct i2c_client *client)
 
 	if (!chip)
 		return -EINVAL;
+
+	if (chip->batt_psy)
+		power_supply_put(chip->batt_psy);
 
 	flush_scheduled_work();
 	flush_work(&chip->sw_config_work);
