@@ -2833,10 +2833,9 @@ int mmc_suspend_host(struct mmc_host *host)
                                 if (err)
                                         goto out;
                         }
-                        err = host->bus_ops->suspend(host);
                 }
 
-                if (err == -ENOSYS || !host->bus_ops->resume) {
+                if (!host->bus_ops->resume) {
                         /*
                          * We simply "remove" the card in this case.
                          * It will be redetected on resume.  (Calling
@@ -2850,12 +2849,11 @@ int mmc_suspend_host(struct mmc_host *host)
                         mmc_power_off(host);
                         mmc_release_host(host);
                         host->pm_flags = 0;
-                        err = 0;
                 }
         }
         mmc_bus_put(host);
 
-        if (!err && !mmc_card_keep_power(host))
+        if (!mmc_card_keep_power(host))
                 mmc_power_off(host);
 
 out:
