@@ -83,8 +83,8 @@ int rpmsg_atomic_send_command(struct rpmsg_instance *instance, u32 cmd,
 	 * Only to be called late in the reboot sequence
 	 * when only CPU0 is online
 	 */
-	BUG_ON(num_online_cpus() > 1);
-
+	if (WARN_ON(num_online_cpus() > 1))
+		return -EBUSY;
 
 	/* Prepare Tx buffer */
 	instance->tx_msg->cmd = cmd;
