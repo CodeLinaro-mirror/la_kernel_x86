@@ -4339,7 +4339,7 @@ int st_lsm6ds3h_common_suspend(struct lsm6ds3h_data *cdata)
 
 	int64_t my_timestamp = ktime_to_ns(ktime_get_boottime());
 
-	dev_info(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d, timestamp=%lld\n",
+	dev_dbg(cdata->dev, "st_lsm6ds3h_common_suspend enabled=%d, timestamp=%lld\n",
 		cdata->sensors_enabled, my_timestamp);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {
@@ -4374,7 +4374,7 @@ int st_lsm6ds3h_common_resume(struct lsm6ds3h_data *cdata)
 
 	int64_t my_timestamp = ktime_to_ns(ktime_get_boottime());
 
-	dev_info(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d, timestamp=%lld\n",
+	dev_dbg(cdata->dev, "st_lsm6ds3h_common_resume enabled=%d, timestamp=%lld\n",
 		cdata->sensors_enabled, my_timestamp);
 
 	for (i = 0; i < ST_INDIO_FULL_DEV_NUM; i++) {

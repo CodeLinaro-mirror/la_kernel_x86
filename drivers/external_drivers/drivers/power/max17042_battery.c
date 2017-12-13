@@ -1708,7 +1708,7 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 	else
 		soc_tr |= soc;
 
-	dev_info(&chip->client->dev,
+	dev_dbg(&chip->client->dev,
 		"soc perc: soc: %d, offset: %d\n", soc, offset);
 	ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th, soc_tr);
 	if (ret < 0)

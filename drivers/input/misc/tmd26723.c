@@ -287,7 +287,7 @@ static int tmd26723_change_ps_threshold(struct i2c_client *client)
 		return data->ps_data;
 	}
 
-	pr_info("%s:data->pilt = 0x%x.data->piht = 0x%x, data->psdata = 0x%x\n", __func__, data->pilt, data->piht, data->ps_data);
+	pr_debug("%s:data->pilt = 0x%x.data->piht = 0x%x, data->psdata = 0x%x\n", __func__, data->pilt, data->piht, data->ps_data);
 
 	if (data->ps_data >= data->ps_threshold) {
 		/* far-to-near detected */

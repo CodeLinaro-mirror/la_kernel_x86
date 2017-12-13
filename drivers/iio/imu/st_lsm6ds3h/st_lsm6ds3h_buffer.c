@@ -296,7 +296,7 @@ int st_lsm6ds3h_read_fifo(struct lsm6ds3h_data *cdata, int flags)
 	if (read_len & ST_LSM6DS3H_FIFO_DATA_OVR) {
 		want_to_discard = true;
 		overrun_flag = true;
-		dev_err(cdata->dev,
+		dev_dbg(cdata->dev,
 			"data fifo overrun, read_len=%d.\n", read_len);
 
 		if ((read_len & ST_LSM6DS3H_FIFO_DIFF_MASK) == 0)
@@ -382,7 +382,7 @@ read_fifo_report:
 		 */
 		offset = ((byte_in_pattern/ST_LSM6DS3H_BYTE_FOR_CHANNEL) - pattern)
 			* ST_LSM6DS3H_BYTE_FOR_CHANNEL;
-		dev_info(cdata->dev, "FIFO overrun, offset=%d", offset);
+		dev_dbg(cdata->dev, "FIFO overrun, offset=%d", offset);
 		if (offset != byte_in_pattern) {
 			read_len -= byte_in_pattern;
 		} else {
@@ -436,7 +436,7 @@ static irqreturn_t st_lsm6ds3h_step_counter_trigger_handler(int irq, void *p)
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct lsm6ds3h_sensor_data *sdata = iio_priv(indio_dev);
 
-	dev_info(sdata->cdata->dev, "st_lsm6ds3h_step_counter_trigger_handler\n");
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h_step_counter_trigger_handler\n");
 	if (!sdata->cdata->reset_steps) {
 		err = sdata->cdata->tf->read(sdata->cdata,
 					(u8)indio_dev->channels[0].address,
@@ -458,7 +458,7 @@ static irqreturn_t st_lsm6ds3h_step_counter_trigger_handler(int irq, void *p)
 				ALIGN(ST_LSM6DS3H_BYTE_FOR_CHANNEL,
 						sizeof(s64))) = timestamp;
 
-	dev_info(sdata->cdata->dev, "st_lsm6ds3h step, timestamp=%lld\n", timestamp);
+	dev_dbg(sdata->cdata->dev, "st_lsm6ds3h step, timestamp=%lld\n", timestamp);
 	iio_push_to_buffers(indio_dev, sdata->buffer_data);
 
 st_lsm6ds3h_step_counter_done:

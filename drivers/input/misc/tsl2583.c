@@ -335,10 +335,10 @@ static int taos_set_power(struct tsl258x_chip *chip, int on)
 	int ret = 0;
 
 	if (!on) {
-		dev_info(&chip->client->dev, "powering down sensor\n");
+		dev_dbg(&chip->client->dev, "powering down sensor\n");
 		cntrl = TSL258X_CNTL_PWR_OFF;
 	} else {
-		dev_info(&chip->client->dev, "powering up sensor\n");
+		dev_dbg(&chip->client->dev, "powering up sensor\n");
 		cntrl = TSL258X_CNTL_PWR_ON;
 	}
 	ret = taos_i2c_smbus_write_data(chip->client,
@@ -365,10 +365,10 @@ static int taos_set_enable(struct tsl258x_chip *chip, int en)
 
 	if (!en) {
 		cntrl = TSL258X_CNTL_PWR_ON;
-		dev_info(&chip->client->dev, "disabling sensor\n");
+		dev_dbg(&chip->client->dev, "disabling sensor\n");
 	} else {
 		cntrl = TSL258X_CNTL_PWR_ON | TSL258X_CNTL_ADC_ENBL;
-		dev_info(&chip->client->dev, "enabling sensor\n");
+		dev_dbg(&chip->client->dev, "enabling sensor\n");
 
 		dev_dbg(&chip->client->dev, "%s: integration time als_time=%dms\n",
 			__func__, chip->taos_settings.als_time);

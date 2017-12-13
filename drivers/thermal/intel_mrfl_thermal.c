@@ -838,13 +838,13 @@ exit_free:
 
 static int mrfl_thermal_resume(struct device *dev)
 {
-	dev_info(dev, "resume called.\n");
+	dev_dbg(dev, "resume called.\n");
 	return 0;
 }
 
 static int mrfl_thermal_suspend(struct device *dev)
 {
-	dev_info(dev, "suspend called.\n");
+	dev_dbg(dev, "suspend called.\n");
 	return 0;
 }
 
