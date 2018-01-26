@@ -223,6 +223,7 @@ static int mmc_clock_opt_set(void *data, u64 val)
 	if (val > host->f_max)
 		return -EINVAL;
 
+	host->f_user_request = (unsigned int) val;
 	mmc_claim_host(host);
 	mmc_set_clock(host, (unsigned int) val);
 	mmc_release_host(host);

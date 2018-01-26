@@ -1911,6 +1911,10 @@ static int _mmc_resume(struct mmc_host *host)
 	err = mmc_init_card(host, host->card->ocr, host->card);
 	mmc_card_clr_suspended(host->card);
 
+	/* restore mmc frequency to the value set in the debugfs */
+	if (host->f_user_request > host->f_min)
+		mmc_set_clock(host, host->f_user_request);
+
 out:
 	mmc_release_host(host);
 	return err;
