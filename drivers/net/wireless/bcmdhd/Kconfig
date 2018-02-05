@@ -17,12 +17,11 @@ choice
 config BCMDHD_GENERIC_CHIP_SUPPORT
 	bool "No chip specific options"
 	depends on BCMDHD
-	default y
 	---help---
 		Disable any chip specific options.
 
 config BCM4339
-        bool "BCM4339 support only"
+        bool "BCM4339 support"
         depends on BCMDHD
         ---help---
                 Enable any BCM4339 specific options.
@@ -32,6 +31,12 @@ config BCM4354
 	depends on BCMDHD
         ---help---
                 Enable any BCM4354 specific options.
+
+config BCM43340
+	tristate "BCM43340 support"
+	depends on BCMDHD
+        ---help---
+                Enable any BCM43340 specific options.
 
 config BCM4343
 	tristate "BCM4343W support"
@@ -63,7 +68,6 @@ config BCMDHD_GENERIC_PLATFORM_SUPPORT
 config IMX_PLATFORM
 	bool "Enable NXP iMX specific flags"
 	depends on BCMDHD
-	default y
 	---help---
 	        Enable NXP iMX specific flags
 

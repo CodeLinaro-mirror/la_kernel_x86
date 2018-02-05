@@ -2,7 +2,9 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -152,12 +154,10 @@ ai_scan(si_t *sih, void *regs, uint devid)
 		eromptr = regs;
 		break;
 
-#ifdef BCMSDIO
 	case SPI_BUS:
 	case SDIO_BUS:
 		eromptr = (uint32 *)(uintptr)erombase;
 		break;
-#endif	/* BCMSDIO */
 
 	case PCMCIA_BUS:
 	default:
@@ -396,13 +396,11 @@ ai_setcoreidx(si_t *sih, uint coreidx)
 			OSL_PCI_WRITE_CONFIG(sii->osh, PCI_BAR0_WIN2, 4, wrap);
 		break;
 
-#ifdef BCMSDIO
 	case SPI_BUS:
 	case SDIO_BUS:
 		sii->curmap = regs = (void *)((uintptr)addr);
 		sii->curwrap = (void *)((uintptr)wrap);
 		break;
-#endif	/* BCMSDIO */
 
 	case PCMCIA_BUS:
 	default:

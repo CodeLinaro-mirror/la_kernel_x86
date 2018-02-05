@@ -1,7 +1,9 @@
 /*
  * Broadcom BCMSDH to gSPI Protocol Conversion Layer
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +23,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmspibrcm.c 662541 2016-10-28 03:22:57Z $
+ * $Id: bcmspibrcm.c 674219 2017-10-12 20:23:32Z $
  */
 
 #define HSMODE
@@ -487,32 +489,6 @@ sdioh_iovar_op(sdioh_info_t *si, const char *name,
 		int_val = (int32)si->local_intrcount;
 		bcopy(&int_val, arg, val_size);
 		break;
-	case IOV_GVAL(IOV_DEVREG):
-	{
-		sdreg_t *sd_ptr = (sdreg_t *)params;
-		uint8 data;
-
-		if (sdioh_cfg_read(si, sd_ptr->func, sd_ptr->offset, &data)) {
-			bcmerror = BCME_SDIO_ERROR;
-			break;
-		}
-
-		int_val = (int)data;
-		bcopy(&int_val, arg, sizeof(int_val));
-		break;
-	}
-
-	case IOV_SVAL(IOV_DEVREG):
-	{
-		sdreg_t *sd_ptr = (sdreg_t *)params;
-		uint8 data = (uint8)sd_ptr->value;
-
-		if (sdioh_cfg_write(si, sd_ptr->func, sd_ptr->offset, &data)) {
-			bcmerror = BCME_SDIO_ERROR;
-			break;
-		}
-		break;
-	}
 
 
 	case IOV_GVAL(IOV_SPIERRSTATS):
