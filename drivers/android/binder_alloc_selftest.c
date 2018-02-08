@@ -47,9 +47,12 @@ enum buf_end_align_type {
 	 */
 	SAME_PAGE_UNALIGNED = 0,
 	/**
-	 * @SAME_PAGE_ALIGNED: The end of this buffer is on
-	 * the same page as the end of the previous buffer and
-	 * is page aligned. Examples:
+	 * @SAME_PAGE_ALIGNED: When the end of the previous buffer
+	 * is not page aligned, the end of this buffer is on the
+	 * same page as the end of the previous buffer and is page
+	 * aligned. When the previous buffer is page aligned, the
+	 * end of this buffer is aligned to the next page boundary.
+	 * Examples:
 	 * buf1 ][ buf2 ]| ...
 	 * buf1 ]|[ buf2 ]| ...
 	 */

@@ -533,7 +533,7 @@ static void binder_delete_free_buffer(struct binder_alloc *alloc,
 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC,
 				   "%d: merge free, buffer %pK do not share page with %pK or %pK\n",
 				   alloc->pid, buffer->data,
-				   prev->data, next->data);
+				   prev->data, next ? next->data : NULL);
 		binder_update_page_range(alloc, 0, buffer_start_page(buffer),
 					 buffer_start_page(buffer) + PAGE_SIZE,
 					 NULL);
@@ -688,9 +688,10 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 	if (__binder_update_page_range(alloc, 1, alloc->buffer,
 				       alloc->buffer + BINDER_MIN_ALLOC, vma)) {
 		ret = -ENOMEM;
-		failure_string = "alloc small buf";
-		goto err_alloc_small_buf_failed;
+		failure_string = "alloc buffer struct";
+		goto err_alloc_buf_struct_failed;
 	}
+
 	buffer->data = alloc->buffer;
 	list_add(&buffer->entry, &alloc->buffers);
 	buffer->free = 1;
@@ -702,8 +703,6 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 
 	return 0;
 
-err_alloc_small_buf_failed:
-	kfree(buffer);
 err_alloc_buf_struct_failed:
 	kfree(alloc->pages);
 	alloc->pages = NULL;
