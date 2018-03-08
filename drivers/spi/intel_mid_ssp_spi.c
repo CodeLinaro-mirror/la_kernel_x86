@@ -1395,7 +1395,7 @@ static int intel_mid_ssp_spi_plat_probe(struct platform_device *pdev)
 static int intel_mid_ssp_spi_plat_remove(struct platform_device *pdev)
 {
 	pm_runtime_forbid(&pdev->dev);
-	return;
+	return 0;
 }
 
 #ifdef CONFIG_PM
