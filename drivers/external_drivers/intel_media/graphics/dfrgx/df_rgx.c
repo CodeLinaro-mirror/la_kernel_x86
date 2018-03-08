@@ -510,7 +510,7 @@ static int tcd_set_cur_state(struct thermal_cooling_device *tcd,
 }
 
 
-unsigned long voltage_gfx = 0.95;
+unsigned long voltage_gfx = 0;
 void df_rgx_init_available_freq_table(struct device *dev)
 {
 	int i = 0;
