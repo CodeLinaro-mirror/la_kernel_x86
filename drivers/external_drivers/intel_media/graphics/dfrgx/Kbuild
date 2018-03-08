@@ -68,7 +68,7 @@ include drivers/external_drivers/intel_media/graphics/dfrgx/dependencies/Makefil
 my_warning_flags :=
 my_warning_flags += -Wall -fmessage-length=0 -Wunused-parameter
 
-my_warning_flags += -Wextra -Wno-sign-compare -Wformat-nonliteral -Wformat-security -fdiagnostics-show-option -Wdeclaration-after-statement -Wmissing-format-attribute -Wpointer-arith -Wlogical-op -Wbad-function-cast -Wmissing-prototypes
+my_warning_flags += -Wextra -Wno-sign-compare -Wformat-nonliteral -Wformat-security -fdiagnostics-show-option -Wdeclaration-after-statement -Wmissing-format-attribute -Wpointer-arith -Wbad-function-cast -Wmissing-prototypes
 
 # Turn off things that too many kernel headers cause.
 my_warning_flags += -Wno-unused-parameter -Wno-pointer-arith -Wno-bad-function-cast
