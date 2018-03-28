@@ -1113,7 +1113,7 @@ static int intel_gpio_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int intel_gpio_runtime_idle(struct device *dev)
+static int __maybe_unused intel_gpio_runtime_idle(struct device *dev)
 {
 	int err = pm_schedule_suspend(dev, 500);
 	return err ?: -EBUSY;

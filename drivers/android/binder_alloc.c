@@ -30,6 +30,8 @@
 #include "binder_alloc.h"
 #include "binder_trace.h"
 
+#define BINDER_MIN_ALLOC (1 * PAGE_SIZE)
+
 static DEFINE_MUTEX(binder_alloc_mmap_lock);
 
 enum {
@@ -688,10 +690,9 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 	if (__binder_update_page_range(alloc, 1, alloc->buffer,
 				       alloc->buffer + BINDER_MIN_ALLOC, vma)) {
 		ret = -ENOMEM;
-		failure_string = "alloc buffer struct";
-		goto err_alloc_buf_struct_failed;
+		failure_string = "alloc small buf";
+		goto err_alloc_small_buf_failed;
 	}
-
 	buffer->data = alloc->buffer;
 	list_add(&buffer->entry, &alloc->buffers);
 	buffer->free = 1;
@@ -703,6 +704,8 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 
 	return 0;
 
+err_alloc_small_buf_failed:
+	kfree(buffer);
 err_alloc_buf_struct_failed:
 	kfree(alloc->pages);
 	alloc->pages = NULL;
