@@ -47,9 +47,6 @@ enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_PRIV_STR
 };
 
-/* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
-#define BRCM_VENDOR_SCMD_CAPA	"cap"
-
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 13, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
 extern int wl_cfgvendor_attach(struct wiphy *wiphy);
 extern int wl_cfgvendor_detach(struct wiphy *wiphy);
