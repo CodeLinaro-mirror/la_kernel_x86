@@ -1,9 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- *
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc_linux.c 663687 2017-01-26 10:12:51Z $
+ * $Id: bcmsdh_sdmmc_linux.c 662758 2016-11-10 08:03:26Z $
  */
 
 #include <typedefs.h>

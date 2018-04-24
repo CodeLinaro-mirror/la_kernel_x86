@@ -1,9 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.h 681188 2017-12-21 19:33:42Z $
+ * $Id: wl_cfg80211.h 662786 2016-11-11 09:06:37Z $
  */
 
 #ifndef _wl_cfg80211_h_
@@ -141,8 +139,8 @@ do {									\
 
 #define WL_SCAN_RETRY_MAX	3
 #define WL_NUM_PMKIDS_MAX	MAXPMKID
-#define WL_SCAN_BUF_MAX		(1024 * 8)
-#define WL_TLV_INFO_MAX		1500
+#define WL_SCAN_BUF_MAX 	(1024 * 8)
+#define WL_TLV_INFO_MAX 	1500
 #define WL_SCAN_IE_LEN_MAX      2048
 #define WL_BSS_INFO_MAX		2048
 #define WL_ASSOC_INFO_MAX	512
@@ -588,7 +586,9 @@ struct bcm_cfg80211 {
 	bool pwr_save;
 	bool roam_on;		/* on/off switch for self-roaming */
 	bool scan_tried;	/* indicates if first scan attempted */
+#if defined(BCMSDIO)
 	bool wlfc_on;
+#endif 
 	bool vsdb_mode;
 	bool roamoff_on_concurrent;
 	u8 *ioctl_buf;		/* ioctl buffer */

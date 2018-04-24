@@ -1,9 +1,7 @@
 /*
  * DHD Bus Module for SDIO
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_sdio.c 681188 2017-12-21 19:33:42Z $
+ * $Id: dhd_sdio.c 663157 2016-12-08 12:19:27Z $
  */
 
 #include <typedefs.h>
@@ -103,6 +101,7 @@ extern bool  bcmsdh_fatal_error(void *sdh);
 #define DHD_TXMINMAX	1	/* Max tx frames if rx still pending */
 
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
+#define MAX_NVRAMBUF_SIZE	4096	/* max nvram buf size */
 #define MAX_DATA_BUF	(64 * 1024)	/* Must be large enough to hold biggest possible glom */
 
 #ifndef DHD_FIRSTREAD
@@ -144,8 +143,8 @@ extern bool  bcmsdh_fatal_error(void *sdh);
 #if (PMU_MAX_TRANSITION_DLY <= 1000000)
 #undef PMU_MAX_TRANSITION_DLY
 #define PMU_MAX_TRANSITION_DLY 1000000
-#endif
 #define PMU_TRANSITION_DLY_EXTRA 500000
+#endif
 
 /* hooks for limiting threshold custom tx num in rx processing */
 #define DEFAULT_TXINRX_THRES	0
@@ -382,9 +381,9 @@ typedef struct dhd_bus {
 	bool		txglom_enable;	/* Flag to indicate whether tx glom is enabled/disabled */
 	uint32		txglomsize;	/* Glom size limitation */
 	void		*pad_pkt;
-#if defined(CUSTOMER_IMX) && defined(OOB_INTR_ONLY)
+#if defined(CUSTOMER_IMX)
 	int			bus_wake_on_resume;
-#endif /* CUSTOMER_IMX && OOB_INTR_ONLY */
+#endif /* CUSTOMER_IMX */
 } dhd_bus_t;
 
 /* clkstate */
@@ -1885,12 +1884,6 @@ static int dhdsdio_txpkt_preprocess(dhd_bus_t *bus, void *pkt, int chan, int txs
 		PKTALIGN(osh, tmp_pkt, PKTLEN(osh, pkt), DHD_SDALIGN);
 		bcopy(PKTDATA(osh, pkt), PKTDATA(osh, tmp_pkt), PKTLEN(osh, pkt));
 		*new_pkt = tmp_pkt;
-#if defined(CUSTOMER_IMX)
-		/* pull back sdpcm_hdrlen length from old skb as new skb here is passed
-		 * to postprocessing
-		 */
-		PKTPULL(osh, pkt, sdpcm_hdrlen);
-#endif 
 		pkt = tmp_pkt;
 	}
 
@@ -4313,6 +4306,7 @@ dhd_txglom_enable(dhd_pub_t *dhdp, bool enable)
 	 */
 	dhd_bus_t *bus = dhdp->bus;
 #ifdef BCMSDIOH_TXGLOM
+	char buf[256];
 	uint32 rxglom;
 	int32 ret;
 
@@ -4325,8 +4319,9 @@ dhd_txglom_enable(dhd_pub_t *dhdp, bool enable)
 
 	if (enable) {
 		rxglom = 1;
-		ret = dhd_iovar(dhdp, 0, "bus:rxglom", (char*)&rxglom,
-			sizeof(rxglom), NULL, 0, TRUE);
+		memset(buf, 0, sizeof(buf));
+		bcm_mkiovar("bus:rxglom", (void *)&rxglom, 4, buf, sizeof(buf));
+		ret = dhd_wl_ioctl_cmd(dhdp, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
 		if (ret >= 0)
 			bus->txglom_enable = TRUE;
 		else {
@@ -6563,12 +6558,13 @@ dhd_bus_watchdog(dhd_pub_t *dhdp)
 	if (dhdp->busstate == DHD_BUS_DOWN)
 		return FALSE;
 
-#if defined(CUSTOMER_IMX) && defined(OOB_INTR_ONLY)
+
+#if defined(CUSTOMER_IMX)
 	if (bus->bus_wake_on_resume) {
 		BUS_WAKE(bus);
 		bus->bus_wake_on_resume = 0;
 	}
-#endif /* CUSTOMER_IMX && OOB_INTR_ONLY */
+#endif /* CUSTOMER_IMX */
 
 
 	/* Poll period: check device if appropriate. */
@@ -7532,7 +7528,8 @@ dhdsdio_resume(void *context)
 
 #if defined(OOB_INTR_ONLY) || defined(CUSTOMER_IMX)
 	dhd_bus_t *bus = (dhd_bus_t*)context;
-#endif 
+#endif /* defined(OOB_INTR_ONLY)||defined(BCMSPI_ANDROID)||
+		* defined(CUSTOMER_IMX) */
 
 #if defined(OOB_INTR_ONLY)
 
@@ -7543,11 +7540,11 @@ dhdsdio_resume(void *context)
 #endif 
 
 
-#if defined(CUSTOMER_IMX) && defined(OOB_INTR_ONLY)
+#if defined(CUSTOMER_IMX)
 
 	bus->bus_wake_on_resume = 1;
 	dhd_os_wd_timer(bus->dhd, 1000);
-#endif /* CUSTOMER_IMX && OOB_INTR_ONLY */
+#endif /* CUSTOMER_IMX */
 
 	return 0;
 }
@@ -8249,6 +8246,7 @@ dhd_bus_pktq_flush(dhd_pub_t *dhdp)
 	}
 }
 
+#ifdef BCMSDIO
 int
 dhd_sr_config(dhd_pub_t *dhd, bool on)
 {
@@ -8270,6 +8268,7 @@ dhd_get_chipid(dhd_pub_t *dhd)
 	else
 		return 0;
 }
+#endif /* BCMSDIO */
 
 #ifdef DEBUGGER
 uint32 dhd_sdio_reg_read(void *h, uint32 addr)
@@ -8314,9 +8313,3 @@ dhd_get_oob_disable(struct dhd_bus *bus)
 	return bus->dhd->oob_disable;
 }
 #endif /* OOB_PARAM */
-
-bool
-dhd_get_txctl_pend(struct dhd_bus *bus)
-{
-	return bus->ctrl_frame_stat;
-}

@@ -4,9 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1770,9 +1768,8 @@
 #define ENABLE_NET_OFFLOAD_MASK		0x0400
 
 #define PFN_VERSION			2
-#ifndef MAX_PFN_LIST_COUNT
+#define PFN_SCANRESULT_VERSION		1
 #define MAX_PFN_LIST_COUNT		16
-#endif /* MAX_PFN_LIST_COUNT */
 
 #define PFN_COMPLETE			1
 #define PFN_INCOMPLETE			0

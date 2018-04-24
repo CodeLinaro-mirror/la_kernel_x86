@@ -2,9 +2,7 @@
  * SDIO spec header file
  * Protocol and standard (common) device definitions
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -30,6 +28,7 @@
 #ifndef	_SDIO_H
 #define	_SDIO_H
 
+#ifdef BCMSDIO
 
 /* CCCR structure for function 0 */
 typedef volatile struct {
@@ -618,4 +617,6 @@ typedef volatile struct {
 /* command issue options */
 #define CMD_OPTION_DEFAULT	0
 #define CMD_OPTION_TUNING	1
+
+#endif /* def BCMSDIO */
 #endif /* _SDIO_H */

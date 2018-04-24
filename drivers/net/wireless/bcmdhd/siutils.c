@@ -2,9 +2,7 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -39,12 +37,14 @@
 #include <pcicfg.h>
 #include <sbpcmcia.h>
 #include <sbsocram.h>
+#ifdef BCMSDIO
 #include <bcmsdh.h>
 #include <sdio.h>
 #include <sbsdio.h>
 #include <sbhnddma.h>
 #include <sbsdpcmdev.h>
 #include <bcmsdpcm.h>
+#endif /* BCMSDIO */
 #include <hndpmu.h>
 
 #ifdef BCM_SDRBL
@@ -167,6 +167,7 @@ si_buscore_prep(si_info_t *sii, uint bustype, uint devid, void *sdh)
 		sii->memseg = TRUE;
 
 
+#if defined(BCMSDIO)
 	if (BUSTYPE(bustype) == SDIO_BUS) {
 		int err;
 		uint8 clkset;
@@ -199,6 +200,7 @@ si_buscore_prep(si_info_t *sii, uint bustype, uint devid, void *sdh)
 		bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SDIOPULLUP, 0, NULL);
 	}
 
+#endif /* BCMSDIO && BCMDONGLEHOST */
 
 	return TRUE;
 }
@@ -292,6 +294,7 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 			sii->pub.buscoretype = cid;
 			sii->pub.buscoreidx = i;
 		}
+#ifdef BCMSDIO
 		else if (((BUSTYPE(bustype) == SDIO_BUS) ||
 		          (BUSTYPE(bustype) == SPI_BUS)) &&
 		         ((cid == PCMCIA_CORE_ID) ||
@@ -300,6 +303,7 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 			sii->pub.buscoretype = cid;
 			sii->pub.buscoreidx = i;
 		}
+#endif /* BCMSDIO */
 
 		/* find the core idx before entering this func. */
 		if ((savewin && (savewin == cores_info->coresba[i])) ||
@@ -331,6 +335,7 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 		OR_REG(sii->osh, &cc->slow_clk_ctl, SCC_SS_XTAL);
 
 
+#if defined(BCMSDIO)
 	/* Make sure any on-chip ARM is off (in case strapping is wrong), or downloaded code was
 	 * already running.
 	 */
@@ -339,6 +344,7 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 		    si_setcore(&sii->pub, ARMCM3_CORE_ID, 0))
 			si_core_disable(&sii->pub, 0);
 	}
+#endif /* BCMSDIO && BCMDONGLEHOST */
 
 	/* return to the original core */
 	si_setcoreidx(&sii->pub, *origidx);
@@ -395,8 +401,10 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, void *regs,
 		if (!regs)
 			return NULL;
 		cc = (chipcregs_t *)regs;
+#ifdef BCMSDIO
 	} else if ((bustype == SDIO_BUS) || (bustype == SPI_BUS)) {
 		cc = (chipcregs_t *)sii->curmap;
+#endif
 	} else {
 		cc = (chipcregs_t *)REG_MAP(SI_ENUM_BASE, SI_CORE_SIZE);
 	}

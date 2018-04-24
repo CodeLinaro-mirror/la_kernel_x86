@@ -5,11 +5,9 @@
  * JTAG, 0/1/2 UARTs, clock frequency control, a watchdog interrupt timer,
  * GPIO interface, extbus, and support for serial and parallel flashes.
  *
- * $Id: sbchipc.h 665041 2017-05-12 18:10:06Z $
+ * $Id: sbchipc.h 662459 2016-10-24 04:35:43Z $
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -3193,9 +3191,7 @@ typedef volatile struct {
 * Maximum delay for the PMU state transition in us.
 * This is an upper bound intended for spinwaits etc.
 */
-#ifndef PMU_MAX_TRANSITION_DLY
 #define PMU_MAX_TRANSITION_DLY	15000
-#endif
 
 /* PMU resource up transition time in ILP cycles */
 #define PMURES_UP_TRANSITION	2

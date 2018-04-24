@@ -1,9 +1,7 @@
 /*
  * Linux platform device for DHD WLAN adapter
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -447,7 +445,8 @@ static int wifi_plat_dev_drv_suspend(struct platform_device *pdev, pm_message_t 
 #endif /* OOB_PARAM */
 
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY)
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY) && \
+	defined(BCMSDIO)
 	OOB_PARAM_IF(!(adapter->oob_disable)) {
 		bcmsdh_oob_intr_set(0);
 	}
@@ -463,7 +462,8 @@ static int wifi_plat_dev_drv_resume(struct platform_device *pdev)
 #endif /* OOB_PARAM */
 
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY)
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY) && \
+	defined(BCMSDIO)
 	OOB_PARAM_IF(!(adapter->oob_disable)) {
 		if (dhd_os_check_if_up(wl_cfg80211_get_dhdp()))
 			bcmsdh_oob_intr_set(1);
@@ -717,6 +717,7 @@ extern uint dhd_deferred_tx;
 extern struct semaphore dhd_registration_sem;
 #endif 
 
+#ifdef BCMSDIO
 static int dhd_wifi_platform_load_sdio(void)
 {
 	int i;
@@ -829,6 +830,12 @@ fail:
 
 	return err;
 }
+#else /* BCMSDIO */
+static int dhd_wifi_platform_load_sdio(void)
+{
+	return 0;
+}
+#endif /* BCMSDIO */
 
 static int dhd_wifi_platform_load_usb(void)
 {

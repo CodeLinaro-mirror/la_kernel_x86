@@ -1,9 +1,7 @@
 /*
  * DHD Bus Module for PCIE
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie.c 677604 2017-11-21 08:06:28Z $
+ * $Id: dhd_pcie.c 662459 2016-10-24 04:35:43Z $
  */
 
 
@@ -54,6 +52,7 @@
 #include <bcmpcie.h>
 
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
+#define MAX_NVRAMBUF_SIZE	4096	/* max nvram buf size */
 
 #define ARMCR4REG_BANKIDX	(0x40/sizeof(uint32))
 #define ARMCR4REG_BANKPDA	(0x4C/sizeof(uint32))

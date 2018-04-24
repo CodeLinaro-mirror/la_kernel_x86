@@ -2,9 +2,7 @@
  * Misc utility routines for accessing the SOC Interconnects
  * of Broadcom HNBU chips.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -270,7 +268,9 @@ extern uint si_pcie_readreg(void *sih, uint addrtype, uint offset);
 extern uint si_pcie_writereg(void *sih, uint addrtype, uint offset, uint val);
 
 
+#ifdef BCMSDIO
 extern void si_sdio_init(si_t *sih);
+#endif
 
 extern uint16 si_d11_devid(si_t *sih);
 extern int si_corepciid(si_t *sih, uint func, uint16 *pcivendor, uint16 *pcidevice,

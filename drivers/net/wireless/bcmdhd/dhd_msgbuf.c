@@ -4,9 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_msgbuf.c 664887 2017-05-03 09:58:11Z $
+ * $Id: dhd_msgbuf.c 452261 2014-01-29 19:30:23Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -1256,30 +1254,20 @@ dhdmsgbuf_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, 
 	dhd_prot_t *prot = dhd->prot;
 
 	int ret = 0;
-	uint copylen = 0;
-
-	if (!len || !buf) {
-		DHD_ERROR(("%s(): Zero length bailing\n", __FUNCTION__));
-		ret = BCME_BADARG;
-		goto done;
-	}
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
-
 
 	/* Respond "bcmerror" and "bcmerrorstr" with local cache */
 	if (cmd == WLC_GET_VAR && buf)
 	{
-		copylen = MIN(len, BCME_STRLEN);
-		if ((len >= strlen("bcmerrorstr")) &&
-			(!strcmp((char *)buf, "bcmerrorstr"))) {
-			strncpy((char *)buf, bcmerrorstr(dhd->dongle_error), copylen);
-			*(uint8 *)((uint8 *)buf + (copylen - 1)) = '\0';
+		if (!strcmp((char *)buf, "bcmerrorstr"))
+		{
+			strncpy((char *)buf, bcmerrorstr(dhd->dongle_error), BCME_STRLEN);
 			goto done;
-		} else if ((len >= strlen("bcmerror")) &&
-			!strcmp((char *)buf, "bcmerror")) {
-			*(uint32 *)buf = dhd->dongle_error;
-			*(uint8 *)((uint8 *)buf + (sizeof(uint32))) = '\0';
+		}
+		else if (!strcmp((char *)buf, "bcmerror"))
+		{
+			*(int *)buf = dhd->dongle_error;
 			goto done;
 		}
 	}

@@ -1,9 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,7 +20,7 @@
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
- * $Id: bcmutils.c 681188 2017-12-21 19:33:42Z $
+ * $Id: bcmutils.c 658506 2016-09-08 06:44:19Z $
  */
 
 #include <bcm_cfg.h>
@@ -2120,7 +2118,7 @@ bcm_mkiovar(char *name, char *data, uint datalen, char *buf, uint buflen)
 	strncpy(buf, name, buflen);
 
 	/* append data onto the end of the name string */
-	if (data && datalen != 0) {
+	if (data) {
 		memcpy(&buf[len], data, datalen);
 		len += datalen;
 	}

@@ -1,9 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_android.c 681188 2017-12-21 19:33:42Z $
+ * $Id: wl_android.c 662786 2016-11-11 09:06:37Z $
  */
 
 #include <linux/module.h>
@@ -45,26 +43,15 @@
 #ifdef PNO_SUPPORT
 #include <dhd_pno.h>
 #endif
+#ifdef BCMSDIO
 #include <bcmsdbus.h>
+#endif
 #ifdef WL_CFG80211
 #include <wl_cfg80211.h>
 #endif
 #ifdef WL_NAN
 #include <wl_cfgnan.h>
 #endif /* WL_NAN */
-
-#ifdef CONFIG_COMPAT
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 24))
-#include <linux/compat.h>
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 24)) */
-#define iscompattask is_compat_task
-#if (CONFIG_X86 == 1) || (CONFIG_X86_64 == 1)
-#ifdef in_compat_syscall
-#undef  iscompattask
-#define iscompattask in_compat_syscall
-#endif /* in_compat_syscall */
-#endif /* (CONFIG_X86 == 1) || (CONFIG_X86_64 == 1) */
-#endif /* CONFIG_COMPAT */
 
 /*
  * Android private command strings, PLEASE define new private commands here
@@ -326,19 +313,11 @@ static int wl_android_get_rssi(struct net_device *net, char *command, int total_
 		return -1;
 	if ((ssid.SSID_len == 0) || (ssid.SSID_len > DOT11_MAX_SSID_LEN)) {
 		DHD_ERROR(("%s: wldev_get_ssid failed\n", __FUNCTION__));
-	} else if (total_len <= ssid.SSID_len) {
-		return -ENOMEM;
 	} else {
 		memcpy(command, ssid.SSID, ssid.SSID_len);
 		bytes_written = ssid.SSID_len;
 	}
-	if ((total_len - bytes_written) < (strlen(" rssi -XXX") + 1))
-		return -ENOMEM;
-
-	bytes_written += scnprintf(&command[bytes_written], total_len - bytes_written,
-		" rssi %d", scbval.val);
-	command[bytes_written] = '\0';
-
+	bytes_written += snprintf(&command[bytes_written], total_len, " rssi %d", scbval.val);
 	DHD_TRACE(("%s: command result is %s (%d)\n", __FUNCTION__, command, bytes_written));
 	return bytes_written;
 }
@@ -1008,7 +987,9 @@ int wl_android_wifi_on(struct net_device *dev)
 	if (!g_wifi_on) {
 		do {
 			dhd_net_wifi_platform_set_power(dev, TRUE, WIFI_TURNON_DELAY);
+#ifdef BCMSDIO
 			ret = dhd_net_bus_resume(dev, 0);
+#endif
 			if (ret == 0)
 				break;
 			DHD_ERROR(("\nfailed to power up wifi chip, retry again (%d left) **\n\n",
@@ -1019,8 +1000,10 @@ int wl_android_wifi_on(struct net_device *dev)
 			DHD_ERROR(("\nfailed to power up wifi chip, max retry reached **\n\n"));
 			goto exit;
 		}
+#ifdef BCMSDIO
 		ret = dhd_net_bus_devreset(dev, FALSE);
 		dhd_net_bus_resume(dev, 1);
+#endif
 		if (!ret) {
 			if (dhd_dev_init_ioctl(dev) < 0)
 				ret = -EFAULT;
@@ -1046,8 +1029,10 @@ int wl_android_wifi_off(struct net_device *dev)
 
 	dhd_net_if_lock(dev);
 	if (g_wifi_on) {
+#ifdef BCMSDIO
 		ret = dhd_net_bus_devreset(dev, TRUE);
 		dhd_net_bus_suspend(dev);
+#endif
 		dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
 		g_wifi_on = FALSE;
 	}
@@ -1768,7 +1753,7 @@ wl_android_iolist_resume(struct net_device *dev, struct list_head *head)
 static int
 wl_android_set_miracast(struct net_device *dev, char *command, int total_len)
 {
-	int mode, val = 0;
+	int mode, val;
 	int ret = 0;
 	struct io_cfg config;
 
@@ -1955,10 +1940,14 @@ nlmsg_failure:
 
 int wl_keep_alive_set(struct net_device *dev, char* extra, int total_len)
 {
+	char 				buf[256];
+	const char 			*str;
 	wl_mkeep_alive_pkt_t	mkeep_alive_pkt;
-	int32 ret;
+	wl_mkeep_alive_pkt_t	*mkeep_alive_pktp;
+	int					buf_len;
+	int					str_len;
+	int res 				= -1;
 	uint period_msec = 0;
-	char *buf;
 
 	if (extra == NULL)
 	{
@@ -1973,42 +1962,46 @@ int wl_keep_alive_set(struct net_device *dev, char* extra, int total_len)
 	DHD_ERROR(("%s: period_msec is %d\n", __FUNCTION__, period_msec));
 
 	memset(&mkeep_alive_pkt, 0, sizeof(wl_mkeep_alive_pkt_t));
+
+	str = "mkeep_alive";
+	str_len = strlen(str);
+	strncpy(buf, str, str_len);
+	buf[ str_len ] = '\0';
+	mkeep_alive_pktp = (wl_mkeep_alive_pkt_t *) (buf + str_len + 1);
 	mkeep_alive_pkt.period_msec = period_msec;
+	buf_len = str_len + 1;
 	mkeep_alive_pkt.version = htod16(WL_MKEEP_ALIVE_VERSION);
 	mkeep_alive_pkt.length = htod16(WL_MKEEP_ALIVE_FIXED_LEN);
 
 	/* Setup keep alive zero for null packet generation */
 	mkeep_alive_pkt.keep_alive_id = 0;
 	mkeep_alive_pkt.len_bytes = 0;
+	buf_len += WL_MKEEP_ALIVE_FIXED_LEN;
+	/* Keep-alive attributes are set in local	variable (mkeep_alive_pkt), and
+	 * then memcpy'ed into buffer (mkeep_alive_pktp) since there is no
+	 * guarantee that the buffer is properly aligned.
+	 */
+	memcpy((char *)mkeep_alive_pktp, &mkeep_alive_pkt, WL_MKEEP_ALIVE_FIXED_LEN);
 
-	buf = kzalloc(WLC_IOCTL_SMLEN, GFP_KERNEL);
-	if (!buf) {
-		DHD_ERROR(("%s: buffer alloc failed\n", __FUNCTION__));
-		return BCME_NOMEM;
-	}
-	ret = wldev_iovar_setbuf(dev, "mkeep_alive", (char *)&mkeep_alive_pkt,
-		WL_MKEEP_ALIVE_FIXED_LEN, buf, WLC_IOCTL_SMLEN, NULL);
-	if (ret < 0) {
-		DHD_ERROR(("%s:keep_alive set failed. ret[%d]\n", __FUNCTION__, ret));
+	if ((res = wldev_ioctl(dev, WLC_SET_VAR, buf, buf_len, TRUE)) < 0)
+	{
+		DHD_ERROR(("%s:keep_alive set failed. res[%d]\n", __FUNCTION__, res));
 	}
 	else
 	{
-		DHD_ERROR(("%s:keep_alive set ok. ret[%d]\n", __FUNCTION__, ret));
+		DHD_ERROR(("%s:keep_alive set ok. res[%d]\n", __FUNCTION__, res));
 	}
 
-	kfree(buf);
-	return ret;
+	return res;
 }
 
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 {
 #define PRIVATE_COMMAND_MAX_LEN	8192
-#define PRIVATE_COMMAND_DEF_LEN	4096
 	int ret = 0;
 	char *command = NULL;
 	int bytes_written = 0;
 	android_wifi_priv_cmd priv_cmd;
-	int buf_size = 0;
 
 	net_os_wake_lock(net);
 
@@ -2023,7 +2016,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	}
 
 #ifdef CONFIG_COMPAT
-	if (iscompattask()) {
+	if (is_compat_task()) {
 		compat_android_wifi_priv_cmd compat_priv_cmd;
 		if (copy_from_user(&compat_priv_cmd, ifr->ifr_data,
 			sizeof(compat_android_wifi_priv_cmd))) {
@@ -2043,15 +2036,12 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		}
 	}
 	if ((priv_cmd.total_len > PRIVATE_COMMAND_MAX_LEN) || (priv_cmd.total_len < 0)) {
-		DHD_ERROR(("%s: buf length invalid:%d\n", __FUNCTION__,
-			priv_cmd.total_len));
+		DHD_ERROR(("%s: invalid length of private command : %d\n",
+			__FUNCTION__, priv_cmd.total_len));
 		ret = -EINVAL;
 		goto exit;
 	}
-
-	buf_size = max(priv_cmd.total_len, PRIVATE_COMMAND_DEF_LEN);
-	command = kmalloc((buf_size + 1), GFP_KERNEL);
-
+	command = kmalloc((priv_cmd.total_len + 1), GFP_KERNEL);
 	if (!command)
 	{
 		DHD_ERROR(("%s: failed to allocate memory\n", __FUNCTION__));
@@ -2279,21 +2269,19 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 #endif /* WLTDLS */
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
-		bytes_written = scnprintf(command, sizeof("FAIL"), "FAIL");
+		snprintf(command, 3, "OK");
+		bytes_written = strlen("OK");
 	}
 
 	if (bytes_written >= 0) {
-		if ((bytes_written == 0) && (priv_cmd.total_len > 0)) {
+		if ((bytes_written == 0) && (priv_cmd.total_len > 0))
 			command[0] = '\0';
-		}
-
 		if (bytes_written >= priv_cmd.total_len) {
-			DHD_ERROR(("%s: err. bytes_written:%d >= buf_size:%d \n",
-				__FUNCTION__, bytes_written, buf_size));
-			ret = BCME_BUFTOOSHORT;
-			goto exit;
+			DHD_ERROR(("%s: bytes_written = %d\n", __FUNCTION__, bytes_written));
+			bytes_written = priv_cmd.total_len;
+		} else {
+			bytes_written++;
 		}
-		bytes_written++;
 		priv_cmd.used_len = bytes_written;
 		if (copy_to_user(priv_cmd.buf, command, bytes_written)) {
 			DHD_ERROR(("%s: failed to copy data to user buffer\n", __FUNCTION__));

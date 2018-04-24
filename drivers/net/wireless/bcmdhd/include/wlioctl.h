@@ -4,9 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h 683547 2018-02-01 02:10:05Z $
+ * $Id: wlioctl.h 662961 2016-11-24 01:22:35Z $
  */
 
 #ifndef _wlioctl_h_
@@ -269,12 +267,6 @@ typedef struct wl_bss_config {
 #define DLOAD_FLAG_VER_SHIFT	12	/* Downloader version shift */
 
 #define DL_CRC_NOT_INUSE 			0x0001
-#define DL_BEGIN		0x0002
-#define DL_END			0x0004
-
-/* Flags for Major/Minor/Date number shift and mask */
-#define EPI_VER_SHIFT     16
-#define EPI_VER_MASK      0xFFFF
 
 /* generic download types & flags */
 enum {
@@ -2405,6 +2397,8 @@ enum {
 #define REPORT_SEPERATELY_MASK	0x0800
 
 #define PFN_VERSION			2
+#define PFN_SCANRESULT_VERSION		1
+#define MAX_PFN_LIST_COUNT		16
 
 #define PFN_COMPLETE			1
 #define PFN_INCOMPLETE			0
@@ -2417,150 +2411,42 @@ enum {
 #define PFN_PARTIAL_SCAN_BIT		0
 #define PFN_PARTIAL_SCAN_MASK		1
 
-#define PFN_SWC_RSSI_WINDOW_MAX   8
-#define PFN_SWC_MAX_NUM_APS       16
-#define PFN_HOTLIST_MAX_NUM_APS   64
-
-/* Version 1 and 2 for various scan results structures defined below */
-#define PFN_SCANRESULTS_VERSION_V1	1
-#define PFN_SCANRESULTS_VERSION_V2	2
-
-/** PFN network info structure */
-typedef struct wl_pfn_subnet_info_v1 {
+/* PFN network info structure */
+typedef struct wl_pfn_subnet_info {
 	struct ether_addr BSSID;
-	uint8	channel; /**< channel number only */
+	uint8	channel; /* channel number only */
 	uint8	SSID_len;
 	uint8	SSID[32];
-} wl_pfn_subnet_info_v1_t;
+} wl_pfn_subnet_info_t;
 
-typedef struct wl_pfn_subnet_info_v2 {
-	struct ether_addr BSSID;
-	uint8   channel; /**< channel number only */
-	uint8   SSID_len;
-	union {
-		uint8   SSID[32];
-		uint16 index;
-	} u;
-} wl_pfn_subnet_info_v2_t;
+typedef struct wl_pfn_net_info {
+	wl_pfn_subnet_info_t pfnsubnet;
+	int16	RSSI; /* receive signal strength (in dBm) */
+	uint16	timestamp; /* age in seconds */
+} wl_pfn_net_info_t;
 
-typedef struct wl_pfn_net_info_v1 {
-	wl_pfn_subnet_info_v1_t pfnsubnet;
-	int16	RSSI; /**< receive signal strength (in dBm) */
-	uint16	timestamp; /**< age in seconds */
-} wl_pfn_net_info_v1_t;
+typedef struct wl_pfn_lnet_info {
+	wl_pfn_subnet_info_t pfnsubnet; /* BSSID + channel + SSID len + SSID */
+	uint16	flags; /* partial scan, etc */
+	int16	RSSI; /* receive signal strength (in dBm) */
+	uint32	timestamp; /* age in miliseconds */
+	uint16	rtt0; /* estimated distance to this AP in centimeters */
+	uint16	rtt1; /* standard deviation of the distance to this AP in centimeters */
+} wl_pfn_lnet_info_t;
 
-typedef struct wl_pfn_net_info_v2 {
-	wl_pfn_subnet_info_v2_t pfnsubnet;
-	int16   RSSI; /**< receive signal strength (in dBm) */
-	uint16  timestamp; /**< age in seconds */
-} wl_pfn_net_info_v2_t;
-
-/* Version 1 and 2 for various lbest scan results structures below */
-#define PFN_LBEST_SCAN_RESULT_VERSION_V1 1
-#define PFN_LBEST_SCAN_RESULT_VERSION_V2 2
-
-#define MAX_CHBKT_PER_RESULT		4
-
-typedef struct wl_pfn_lnet_info_v1 {
-	wl_pfn_subnet_info_v1_t pfnsubnet; /**< BSSID + channel + SSID len + SSID */
-	uint16	flags; /**< partial scan, etc */
-	int16	RSSI; /**< receive signal strength (in dBm) */
-	uint32	timestamp; /**< age in miliseconds */
-	uint16	rtt0; /**< estimated distance to this AP in centimeters */
-	uint16	rtt1; /**< standard deviation of the distance to this AP in centimeters */
-} wl_pfn_lnet_info_v1_t;
-
-typedef struct wl_pfn_lnet_info_v2 {
-	wl_pfn_subnet_info_v2_t pfnsubnet; /**< BSSID + channel + SSID len + SSID */
-	uint16  flags; /**< partial scan, etc */
-	int16   RSSI; /**< receive signal strength (in dBm) */
-	uint32  timestamp; /**< age in miliseconds */
-	uint16  rtt0; /**< estimated distance to this AP in centimeters */
-	uint16  rtt1; /**< standard deviation of the distance to this AP in centimeters */
-} wl_pfn_lnet_info_v2_t;
-
-typedef struct wl_pfn_lscanresults_v1 {
+typedef struct wl_pfn_lscanresults {
 	uint32 version;
 	uint32 status;
 	uint32 count;
-	wl_pfn_lnet_info_v1_t netinfo[1];
-} wl_pfn_lscanresults_v1_t;
+	wl_pfn_lnet_info_t netinfo[1];
+} wl_pfn_lscanresults_t;
 
-typedef struct wl_pfn_lscanresults_v2 {
-	uint32 version;
-	uint16 status;
-	uint16 count;
-	uint32 scan_ch_buckets[MAX_CHBKT_PER_RESULT];
-	wl_pfn_lnet_info_v2_t netinfo[1];
-} wl_pfn_lscanresults_v2_t;
-
-/**this is used to report on 1-* pfn scan results */
-typedef struct wl_pfn_scanresults_v1 {
+typedef struct wl_pfn_scanresults {
 	uint32 version;
 	uint32 status;
 	uint32 count;
-	wl_pfn_net_info_v1_t netinfo[1];
-} wl_pfn_scanresults_v1_t;
-
-typedef struct wl_pfn_scanresults_v2 {
-	uint32 version;
-	uint32 status;
-	uint32 count;
-	uint32 scan_ch_bucket;
-	wl_pfn_net_info_v2_t netinfo[1];
-} wl_pfn_scanresults_v2_t;
-
-typedef struct wl_pfn_significant_net {
-	uint16 flags;
-	uint16 channel;
-	struct ether_addr BSSID;
-	int8 rssi[PFN_SWC_RSSI_WINDOW_MAX];
-} wl_pfn_significant_net_t;
-
-#define PFN_SWC_SCANRESULT_VERSION     1
-
-typedef struct wl_pfn_swc_results {
-	uint32 version;
-	uint32 pkt_count;   /**< No. of results in current frame */
-	uint32 total_count; /**< Total expected results */
-	wl_pfn_significant_net_t list[1];
-} wl_pfn_swc_results_t;
-typedef struct wl_pfn_net_info_bssid {
-	struct ether_addr BSSID;
-	uint8 channel;	/**< channel number only */
-	int8  RSSI;	/**< receive signal strength (in dBm) */
-	uint16 flags;	/**< (e.g. partial scan, off channel) */
-	uint16 timestamp; /**< age in seconds */
-} wl_pfn_net_info_bssid_t;
-
-typedef struct wl_pfn_scanhist_bssid {
-	uint32 version;
-	uint32 status;
-	uint32 count;
-	wl_pfn_net_info_bssid_t netinfo[1];
-} wl_pfn_scanhist_bssid_t;
-
-/* Version 1 and 2 for various single scan result */
-#define PFN_SCANRESULT_VERSION_V1	1
-#define PFN_SCANRESULT_VERSION_V2	2
-
-/* used to report exactly one scan result */
-/* plus reports detailed scan info in bss_info */
-typedef struct wl_pfn_scanresult_v1 {
-	uint32 version;
-	uint32 status;
-	uint32 count;
-	wl_pfn_net_info_v1_t netinfo;
-	wl_bss_info_t bss_info;
-} wl_pfn_scanresult_v1_t;
-
-typedef struct wl_pfn_scanresult_v2 {
-	uint32 version;
-	uint32 status;
-	uint32 count;
-	wl_pfn_net_info_v2_t netinfo;
-	wl_bss_info_t bss_info;
-} wl_pfn_scanresult_v2_t;
+	wl_pfn_net_info_t netinfo[1];
+} wl_pfn_scanresults_t;
 
 /* PFN data structure */
 typedef struct wl_pfn_param {
@@ -2796,7 +2682,7 @@ typedef struct pm_wake_packet {
 typedef enum wl_pkt_filter_type {
 	WL_PKT_FILTER_TYPE_PATTERN_MATCH=0,	/* Pattern matching filter */
 	WL_PKT_FILTER_TYPE_MAGIC_PATTERN_MATCH=1, /* Magic packet match */
-	WL_PKT_FILTER_TYPE_PATTERN_LIST_MATCH=2, /* A pattern list (match all to match filter) */
+	WL_PKT_FILTER_TYPE_PATTERN_LIST_MATCH=2,	/* A pattern list (match all to match filter) */
 	WL_PKT_FILTER_TYPE_ENCRYPTED_PATTERN_MATCH=3, /* SECURE WOWL magic / net pattern match */
 	WL_PKT_FILTER_TYPE_APF_MATCH=4, /* Android packet filter match */
 	WL_PKT_FILTER_TYPE_PATTERN_MATCH_TIMEOUT=5, /* Pattern matching filter with timeout event */

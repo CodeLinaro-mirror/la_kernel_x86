@@ -1,9 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c 682076 2018-01-11 23:33:38Z $
+ * $Id: dhd_common.c 662961 2016-11-24 01:22:35Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -95,9 +93,6 @@ extern int dhd_change_mtu(dhd_pub_t *dhd, int new_mtu, int ifidx);
 #if !defined(AP) && defined(WLP2P)
 extern int dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif
-
-#define MAX_CHUNK_LEN 1408 /* 8 * 8 * 22 */
-
 bool ap_cfg_running = FALSE;
 bool ap_fw_loaded = FALSE;
 
@@ -288,11 +283,6 @@ int
 dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifindex, wl_ioctl_t *ioc, void *buf, int len)
 {
 	int ret = 0;
-
-	if ((!dhd_pub->prot) || (dhd_pub->busstate == DHD_BUS_DOWN) || dhd_pub->hang_was_sent) {
-		DHD_ERROR(("%s : bus is down. we have nothing to do\n", __FUNCTION__));
-		return ret;
-	}
 
 	if (dhd_os_proto_block(dhd_pub))
 	{
@@ -549,7 +539,9 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 #ifdef BCMDHDUSB
 		int_val = BUS_TYPE_USB;
 #endif
+#ifdef BCMSDIO
 		int_val = BUS_TYPE_SDIO;
+#endif
 #ifdef PCIE_FULL_DONGLE
 		int_val = BUS_TYPE_PCIE;
 #endif
@@ -1428,11 +1420,9 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		break;
 	case WLC_E_PKT_FILTER:
 		if (status == WLC_E_PKT_FILTER_TIMEOUT)
-			DHD_EVENT(("MACEVENT: %s, Timeout(Pkt Filter Id=%d)\n",
-			event_name, reason));
+			DHD_EVENT(("MACEVENT: %s, Timeout(Pkt Filter Id=%d)\n", event_name, reason));
 		else
-			DHD_EVENT(("MACEVENT: %s, status %d reason %d\n",
-			event_name, status, reason));
+			DHD_EVENT(("MACEVENT: %s, status %d reason %d\n", event_name, status, reason));
 		break;
 
 	default:
@@ -1796,9 +1786,10 @@ dhd_pktfilter_offload_enable(dhd_pub_t * dhd, char *arg, int enable, int master_
 		__FUNCTION__, arg));
 
 	/* Contorl the master mode */
-	rc = dhd_iovar(dhd, 0, "pkt_filter_mode", (char*)&master_mode,
-		sizeof(master_mode), NULL, 0, TRUE);
-	if (rc < 0)
+	bcm_mkiovar("pkt_filter_mode", (char *)&master_mode, 4, buf, sizeof(buf));
+	rc = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+	rc = rc >= 0 ? 0 : rc;
+	if (rc)
 		DHD_TRACE(("%s: failed to add pktfilter %s, retcode = %d\n",
 		__FUNCTION__, arg, rc));
 
@@ -1946,9 +1937,11 @@ fail:
 
 void dhd_pktfilter_offload_delete(dhd_pub_t *dhd, int id)
 {
+	char iovbuf[32];
 	int ret;
 
-	ret = dhd_iovar(dhd, 0, "pkt_filter_delete", (char *)&id, sizeof(id), NULL, 0, TRUE);
+	bcm_mkiovar("pkt_filter_delete", (char *)&id, 4, iovbuf, sizeof(iovbuf));
+	ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 	if (ret < 0) {
 		DHD_ERROR(("%s: Failed to delete filter ID:%d, ret=%d\n",
 			__FUNCTION__, id, ret));
@@ -1963,43 +1956,60 @@ void dhd_pktfilter_offload_delete(dhd_pub_t *dhd, int id)
 void
 dhd_arp_offload_set(dhd_pub_t * dhd, int arp_mode)
 {
-	int ret;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
+	int iovar_len;
+	int retcode;
 
-	ret = dhd_iovar(dhd, 0, "arp_ol", (char*)&arp_mode, sizeof(arp_mode),
-		NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_TRACE(("%s: failed to set ARP offload mode to 0x%x, ret = %d\n",
-			__FUNCTION__, arp_mode, ret));
+	iovar_len = bcm_mkiovar("arp_ol", (char *)&arp_mode, 4, iovbuf, sizeof(iovbuf));
+	if (!iovar_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return;
 	}
-	else {
+
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iovar_len, TRUE, 0);
+	retcode = retcode >= 0 ? 0 : retcode;
+	if (retcode)
+		DHD_TRACE(("%s: failed to set ARP offload mode to 0x%x, retcode = %d\n",
+			__FUNCTION__, arp_mode, retcode));
+	else
 		DHD_TRACE(("%s: successfully set ARP offload mode to 0x%x\n",
 			__FUNCTION__, arp_mode));
-	}
 }
 
 void
 dhd_arp_offload_enable(dhd_pub_t * dhd, int arp_enable)
 {
-	int ret;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
+	int iovar_len;
+	int retcode;
 
-	ret = dhd_iovar(dhd, 0, "arpoe", (char*)&arp_enable,
-		sizeof(arp_enable), NULL, 0, TRUE);
-	if (ret < 0)
+	iovar_len = bcm_mkiovar("arpoe", (char *)&arp_enable, 4, iovbuf, sizeof(iovbuf));
+	if (!iovar_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return;
+	}
+
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iovar_len, TRUE, 0);
+	retcode = retcode >= 0 ? 0 : retcode;
+	if (retcode)
 		DHD_TRACE(("%s: failed to enabe ARP offload to %d, retcode = %d\n",
-			__FUNCTION__, arp_enable, ret));
+			__FUNCTION__, arp_enable, retcode));
 	else
 		DHD_TRACE(("%s: successfully enabed ARP offload to %d\n",
 			__FUNCTION__, arp_enable));
 	if (arp_enable) {
 		uint32 version;
-		ret = dhd_iovar(dhd, 0, "arp_version", NULL, 0,
-			(char *)&version, sizeof(version), FALSE);
-		if (ret) {
-			DHD_INFO(("%s: fail to get version (maybe version 1:ret = %d\n",
-				__FUNCTION__, ret));
+		bcm_mkiovar("arp_version", 0, 0, iovbuf, sizeof(iovbuf));
+		retcode = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0);
+		if (retcode) {
+			DHD_INFO(("%s: fail to get version (maybe version 1:retcode = %d\n",
+				__FUNCTION__, retcode));
 			dhd->arp_version = 1;
 		}
 		else {
+			memcpy(&version, iovbuf, sizeof(version));
 			DHD_INFO(("%s: ARP Version= %x\n", __FUNCTION__, version));
 			dhd->arp_version = version;
 		}
@@ -2010,58 +2020,77 @@ void
 dhd_aoe_arp_clr(dhd_pub_t *dhd, int idx)
 {
 	int ret = 0;
+	int iov_len = 0;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
 
 	if (dhd == NULL) return;
 	if (dhd->arp_version == 1)
 		idx = 0;
 
-	ret = dhd_iovar(dhd, idx, "arp_table_clear", NULL, 0, NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
+	iov_len = bcm_mkiovar("arp_table_clear", 0, 0, iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return;
 	}
+	if ((ret  = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx)) < 0)
+		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
 }
 
 void
 dhd_aoe_hostip_clr(dhd_pub_t *dhd, int idx)
 {
 	int ret = 0;
+	int iov_len = 0;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
 
 	if (dhd == NULL) return;
 	if (dhd->arp_version == 1)
 		idx = 0;
 
-	ret = dhd_iovar(dhd, idx, "arp_hostip_clear", NULL, 0, NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
+	iov_len = bcm_mkiovar("arp_hostip_clear", 0, 0, iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return;
 	}
+	if ((ret  = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx)) < 0)
+		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
 }
 
 void
 dhd_arp_offload_add_ip(dhd_pub_t *dhd, uint32 ipaddr, int idx)
 {
-	int ret;
+	int iov_len = 0;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
+	int retcode;
 
 
 	if (dhd == NULL) return;
 	if (dhd->arp_version == 1)
 		idx = 0;
-	ret = dhd_iovar(dhd, idx, "arp_hostip", (char *)&ipaddr, sizeof(ipaddr),
-		NULL, 0, TRUE);
-
-	if (ret < 0) {
-		DHD_TRACE(("%s: ARP ip addr add failed, ret = %d\n",
-		__FUNCTION__, ret));
+	iov_len = bcm_mkiovar("arp_hostip", (char *)&ipaddr,
+		sizeof(ipaddr), iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return;
 	}
-	else {
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx);
+
+	if (retcode)
+		DHD_TRACE(("%s: ARP ip addr add failed, retcode = %d\n",
+		__FUNCTION__, retcode));
+	else
 		DHD_TRACE(("%s: sARP H ipaddr entry added \n",
 		__FUNCTION__));
-	}
 }
 
 int
 dhd_arp_get_arp_hostip_table(dhd_pub_t *dhd, void *buf, int buflen, int idx)
 {
-	int ret, i;
+	int retcode, i;
+	int iov_len;
 	uint32 *ptr32 = buf;
 	bool clr_bottom = FALSE;
 
@@ -2071,12 +2100,13 @@ dhd_arp_get_arp_hostip_table(dhd_pub_t *dhd, void *buf, int buflen, int idx)
 	if (dhd->arp_version == 1)
 		idx = 0;
 
-	ret = dhd_iovar(dhd, idx, "arp_hostip", NULL, 0, (char *)buf, buflen,
-		FALSE);
+	iov_len = bcm_mkiovar("arp_hostip", 0, 0, buf, buflen);
+	BCM_REFERENCE(iov_len);
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, buflen, FALSE, idx);
 
-	if (ret < 0) {
+	if (retcode) {
 		DHD_TRACE(("%s: ioctl WLC_GET_VAR error %d\n",
-		__FUNCTION__, ret));
+		__FUNCTION__, retcode));
 
 		return -1;
 	}
@@ -2103,21 +2133,28 @@ dhd_arp_get_arp_hostip_table(dhd_pub_t *dhd, void *buf, int buflen, int idx)
 int
 dhd_ndo_enable(dhd_pub_t * dhd, int ndo_enable)
 {
-	int ret;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
+	int iov_len;
+	int retcode;
 
 	if (dhd == NULL)
 		return -1;
 
-	ret = dhd_iovar(dhd, 0, "ndoe", (char *)&ndo_enable, sizeof(ndo_enable),
-		NULL, 0, TRUE);
-	if (ret < 0)
-		DHD_ERROR(("%s: failed to enabe ndo to %d, ret = %d\n",
-			__FUNCTION__, ndo_enable, ret));
+	iov_len = bcm_mkiovar("ndoe", (char *)&ndo_enable, 4, iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return -1;
+	}
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, 0);
+	if (retcode)
+		DHD_ERROR(("%s: failed to enabe ndo to %d, retcode = %d\n",
+			__FUNCTION__, ndo_enable, retcode));
 	else
 		DHD_TRACE(("%s: successfully enabed ndo offload to %d\n",
 			__FUNCTION__, ndo_enable));
 
-	return ret;
+	return retcode;
 }
 
 /*
@@ -2127,21 +2164,30 @@ dhd_ndo_enable(dhd_pub_t * dhd, int ndo_enable)
 int
 dhd_ndo_add_ip(dhd_pub_t *dhd, char* ipv6addr, int idx)
 {
-	int ret;
+	int iov_len = 0;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
+	int retcode;
 
 	if (dhd == NULL)
 		return -1;
 
-	ret = dhd_iovar(dhd, 0, "nd_hostip", (char*)&ipv6addr, IPV6_ADDR_LEN,
-		NULL, 0, TRUE);
-	if (ret < 0)
-		DHD_ERROR(("%s: ndo ip addr add failed, ret = %d\n",
-		__FUNCTION__, ret));
+	iov_len = bcm_mkiovar("nd_hostip", (char *)ipv6addr,
+		IPV6_ADDR_LEN, iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return -1;
+	}
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx);
+
+	if (retcode)
+		DHD_ERROR(("%s: ndo ip addr add failed, retcode = %d\n",
+		__FUNCTION__, retcode));
 	else
 		DHD_TRACE(("%s: ndo ipaddr entry added \n",
 		__FUNCTION__));
 
-	return ret;
+	return retcode;
 }
 /*
  * Neighbor Discover Offload: enable NDO feature
@@ -2150,15 +2196,23 @@ dhd_ndo_add_ip(dhd_pub_t *dhd, char* ipv6addr, int idx)
 int
 dhd_ndo_remove_ip(dhd_pub_t *dhd, int idx)
 {
+	int iov_len = 0;
+	char iovbuf[DHD_IOVAR_BUF_SIZE];
 	int retcode;
 
 	if (dhd == NULL)
 		return -1;
 
-	retcode = dhd_iovar(dhd, 0, "nd_hostip_clear", NULL, 0,
-		NULL, 0, TRUE);
+	iov_len = bcm_mkiovar("nd_hostip_clear", NULL,
+		0, iovbuf, sizeof(iovbuf));
+	if (!iov_len) {
+		DHD_ERROR(("%s: Insufficient iovar buffer size %zu \n",
+			__FUNCTION__, sizeof(iovbuf)));
+		return -1;
+	}
+	retcode = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx);
 
-	if (retcode < 0)
+	if (retcode)
 		DHD_ERROR(("%s: ndo ip addr remove failed, retcode = %d\n",
 		__FUNCTION__, retcode));
 	else
@@ -2332,274 +2386,55 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 	return res;
 }
 #endif /* defined(KEEP_ALIVE) */
+/* Android ComboSCAN support */
 
-/* Given filename and download type,  returns a buffer pointer and length
- * for download to f/w. Type can be FW or NVRAM.
- *
- */
-int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
-	char ** buffer, int *length)
-
-{
-	int ret = BCME_ERROR;
-	int len = 0;
-	int file_len;
-	void *image = NULL;
-	uint8 *buf = NULL;
-
-	/* Point to cache if available. */
-#ifdef CACHE_FW_IMAGES
-	if (component == FW) {
-		if (dhd->cached_fw_length) {
-			len = dhd->cached_fw_length;
-			buf = dhd->cached_fw;
-		}
-	}
-	else if (component == NVRAM) {
-		if (dhd->cached_nvram_length) {
-			len = dhd->cached_nvram_length;
-			buf = dhd->cached_nvram;
-		}
-	}
-	else if (component == CLM_BLOB) {
-		if (dhd->cached_clm_length) {
-			len = dhd->cached_clm_length;
-			buf = dhd->cached_clm;
-		}
-	} else {
-		return ret;
-	}
-#endif /* CACHE_FW_IMAGES */
-	/* No Valid cache found on this call */
-	if (!len) {
-		file_len = *length;
-		*length = 0;
-
-		if (file_path) {
-			image = dhd_os_open_image(file_path);
-			if (image == NULL) {
-				goto err;
-			}
-		}
-
-		buf = MALLOCZ(dhd->osh, file_len);
-		if (buf == NULL) {
-			DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
-				__FUNCTION__, file_len));
-			goto err;
-		}
-
-		/* Download image */
-#if defined(BCMEMBEDIMAGE) && defined(DHD_EFI)
-		if (!image) {
-			memcpy(buf, nvram_arr, sizeof(nvram_arr));
-			len = sizeof(nvram_arr);
-		} else {
-			len = dhd_os_get_image_block((char *)buf, file_len, image);
-			if ((len <= 0 || len > file_len)) {
-				MFREE(dhd->osh, buf, file_len);
-				goto err;
-			}
-		}
-#else
-		len = dhd_os_get_image_block((char *)buf, file_len, image);
-		if ((len <= 0 || len > file_len)) {
-			MFREE(dhd->osh, buf, file_len);
-			goto err;
-		}
-#endif /* DHD_EFI */
-	}
-
-	ret = BCME_OK;
-	*length = len;
-	*buffer = buf;
-
-	/* Cache if first call. */
-#ifdef CACHE_FW_IMAGES
-	if (component == FW) {
-		if (!dhd->cached_fw_length) {
-			dhd->cached_fw = buf;
-			dhd->cached_fw_length = len;
-		}
-	}
-	else if (component == NVRAM) {
-		if (!dhd->cached_nvram_length) {
-			dhd->cached_nvram = buf;
-			dhd->cached_nvram_length = len;
-		}
-	}
-	else if (component == CLM_BLOB) {
-		if (!dhd->cached_clm_length) {
-			 dhd->cached_clm = buf;
-			 dhd->cached_clm_length = len;
-		}
-	}
-#endif /* CACHE_FW_IMAGES */
-
-err:
-	if (image)
-		dhd_os_close_image(image);
-
-	return ret;
-}
-
+/*
+ *  data parsing from ComboScan tlv list
+*/
 int
-dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_type,
-	unsigned char *dload_buf, int len)
+wl_iw_parse_data_tlv(char** list_str, void *dst, int dst_size, const char token,
+                     int input_size, int *bytes_left)
 {
-	struct wl_dload_data *dload_ptr = (struct wl_dload_data *)dload_buf;
-	int err = 0;
-	int dload_data_offset;
-	static char iovar_buf[WLC_IOCTL_MEDLEN];
-	int iovar_len;
+	char* str;
+	uint16 short_temp;
+	uint32 int_temp;
 
-	memset(iovar_buf, 0, sizeof(iovar_buf));
-
-	dload_data_offset = OFFSETOF(wl_dload_data_t, data);
-	dload_ptr->flag = (DLOAD_HANDLER_VER << DLOAD_FLAG_VER_SHIFT) | flag;
-	dload_ptr->dload_type = dload_type;
-	dload_ptr->len = htod32(len - dload_data_offset);
-	dload_ptr->crc = 0;
-	len = len + 8 - (len%8);
-
-	iovar_len = bcm_mkiovar(iovar, dload_buf,
-		(uint)len, iovar_buf, sizeof(iovar_buf));
-	if (iovar_len == 0) {
-		DHD_ERROR(("%s: insufficient buffer space passed to bcm_mkiovar for '%s' \n",
-		           __FUNCTION__, iovar));
-		return BCME_BUFTOOSHORT;
+	if ((list_str == NULL) || (*list_str == NULL) ||(bytes_left == NULL) || (*bytes_left < 0)) {
+		DHD_ERROR(("%s error paramters\n", __FUNCTION__));
+		return -1;
 	}
+	str = *list_str;
 
-	err = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovar_buf,
-			iovar_len, IOV_SET, 0);
+	/* Clean all dest bytes */
+	memset(dst, 0, dst_size);
+	while (*bytes_left > 0) {
 
-	return err;
-}
-
-int
-dhd_download_clm_blob(dhd_pub_t	*dhd, unsigned char *buf, uint32 len)
-{
-	int chunk_len, cumulative_len = 0;
-	int size2alloc;
-	unsigned char *new_buf;
-	int err = 0, data_offset;
-	uint16 dl_flag = DL_BEGIN;
-
-	data_offset = OFFSETOF(wl_dload_data_t, data);
-	size2alloc = data_offset + MAX_CHUNK_LEN;
-
-	if ((new_buf = (unsigned char *)MALLOCZ(dhd->osh, size2alloc)) != NULL) {
-		do {
-			if (len >= MAX_CHUNK_LEN)
-				chunk_len = MAX_CHUNK_LEN;
-			else
-				chunk_len = len;
-
-			memcpy(new_buf + data_offset, buf + cumulative_len, chunk_len);
-			cumulative_len += chunk_len;
-
-			if (len - chunk_len == 0)
-				dl_flag |= DL_END;
-
-			err = dhd_download_2_dongle(dhd, "clmload", dl_flag, DL_TYPE_CLM,
-				new_buf, data_offset + chunk_len);
-
-			dl_flag &= ~DL_BEGIN;
-
-			len = len - chunk_len;
-		} while ((len > 0) && (err == 0));
-
-		MFREE(dhd->osh, new_buf, size2alloc);
-	} else {
-		err = BCME_NOMEM;
-	}
-
-	return err;
-}
-
-int
-dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
-{
-	char *clm_blob_path;
-	int len;
-	char *memblock = NULL;
-	int err = BCME_OK;
-	char iovbuf[WLC_IOCTL_SMLEN];
-	wl_country_t *cspec;
-
-	if (clm_path[0] != '\0') {
-		if (strlen(clm_path) > MOD_PARAM_PATHLEN) {
-			DHD_ERROR(("clm path exceeds max len\n"));
-			return BCME_ERROR;
+		if (str[0] != token) {
+			DHD_TRACE(("%s NOT Type=%d get=%d left_parse=%d \n",
+				__FUNCTION__, token, str[0], *bytes_left));
+			return -1;
 		}
-		clm_blob_path = clm_path;
-		DHD_ERROR(("clm path from module param:%s\n", clm_path));
-	} else {
-		clm_blob_path = CONFIG_BCMDHD_CLM_PATH;
-	}
 
+		*bytes_left -= 1;
+		str += 1;
 
-	/* If CLM blob file is found on the filesystem, download the file.
-	 * After CLM file download or If the blob file is not present,
-	 * validate the country code before proceeding with the initialization.
-	 * If country code is not valid, fail the initialization.
-	 */
-	len = MAX_CLM_BUF_SIZE;
-	dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
-	if ((len > 0) && (len < MAX_CLM_BUF_SIZE) && memblock) {
-		/* Found blob file. Download the file */
-		DHD_ERROR(("clm file download from %s \n", clm_blob_path));
-		err = dhd_download_clm_blob(dhd, memblock, len);
-		if (err) {
-			DHD_ERROR(("%s: CLM download failed err=%d\n", __FUNCTION__, err));
-			/* Retrieve clmload_status and print */
-			memset(iovbuf, 0, sizeof(iovbuf));
-			bcm_mkiovar("clmload_status", NULL, 0, iovbuf, sizeof(iovbuf));
-			err = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0);
-			if (err) {
-				DHD_ERROR(("%s: clmload_status get failed err=%d \n",
-					__FUNCTION__, err));
-			} else {
-				DHD_ERROR(("%s: clmload_status: %d \n",
-					__FUNCTION__, *((int *)iovbuf)));
-			}
-			err = BCME_ERROR;
-			goto exit;
-		} else {
-			DHD_INFO(("%s: CLM download succeeded \n", __FUNCTION__));
+		if (input_size == 1) {
+			memcpy(dst, str, input_size);
 		}
-	} else {
-		DHD_INFO(("Skipping the clm download. len:%d memblk:%p \n", len, memblock));
-	}
+		else if (input_size == 2) {
+			memcpy(dst, (char *)htod16(memcpy(&short_temp, str, input_size)),
+				input_size);
+		}
+		else if (input_size == 4) {
+			memcpy(dst, (char *)htod32(memcpy(&int_temp, str, input_size)),
+				input_size);
+		}
 
-	/* Verify country code */
-	memset(iovbuf, 0, sizeof(iovbuf));
-	bcm_mkiovar("country", NULL, 0, iovbuf, sizeof(iovbuf));
-	err = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0);
-	if (err) {
-		DHD_ERROR(("%s: country code get failed\n", __FUNCTION__));
-		goto exit;
+		*bytes_left -= input_size;
+		str += input_size;
+		*list_str = str;
+		return 1;
 	}
-
-	cspec = (wl_country_t *)iovbuf;
-	if ((strncmp(cspec->ccode, WL_CCODE_NULL_COUNTRY, WLC_CNTRY_BUF_SZ)) == 0) {
-		/* Country code not initialized or CLM download not proper */
-		DHD_ERROR(("country code not initialized\n"));
-		err = BCME_ERROR;
-	}
-exit:
-
-	if (memblock) {
-		dhd_free_download_buffer(dhd, memblock, MAX_CLM_BUF_SIZE);
-	}
-
-	return err;
+	return 1;
 }
 
-void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length)
-{
-#ifdef CACHE_FW_IMAGES
-	return;
-#endif
-	MFREE(dhd->osh, buffer, length);
-}

@@ -1,9 +1,7 @@
 /*
  * Common function shared by Linux WEXT, cfg80211 and p2p drivers
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wldev_common.c 681188 2017-12-21 19:33:42Z $
+ * $Id: wldev_common.c 657248 2016-08-31 11:29:39Z $
  */
 
 #include <osl.h>
@@ -166,12 +164,6 @@ s32 wldev_mkiovar_bsscfg(
 	u32 prefixlen;
 	u32 namelen;
 	u32 iolen;
-
-	/* initialize buffer */
-	if (!iovar_buf || buflen == 0) {
-		return BCME_BADARG;
-	}
-	memset(iovar_buf, 0, buflen);
 
 	if (bssidx == 0) {
 		return wldev_mkiovar((s8*)iovar_name, (s8 *)param, paramlen,
@@ -318,7 +310,6 @@ int wldev_get_ssid(
 
 	if (!pssid)
 		return -ENOMEM;
-	memset(pssid, 0, sizeof(*pssid));
 	error = wldev_ioctl(dev, WLC_GET_SSID, pssid, sizeof(wlc_ssid_t), 0);
 	if (unlikely(error))
 		return error;

@@ -1,9 +1,7 @@
 /*
  * DHD Protocol Module for CDC and BDC.
  *
- * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
- * 
- * Copyright (C) 1999-2018, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_cdc.c 682076 2018-01-11 23:33:38Z $
+ * $Id: dhd_cdc.c 657232 2016-08-31 11:02:44Z $
  *
  * BDC is like CDC, except it includes a header for data packets to convey
  * packet priority over the bus, and flags (e.g. to indicate checksum status
@@ -121,29 +119,22 @@ dhdcdc_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uin
 	cdc_ioctl_t *msg = &prot->msg;
 	int ret = 0, retries = 0;
 	uint32 id, flags = 0;
-	uint copylen = 0;
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 	DHD_CTL(("%s: cmd %d len %d\n", __FUNCTION__, cmd, len));
-	if (!len || !buf) {
-		DHD_ERROR(("%s(): Zero length bailing\n", __FUNCTION__));
-		ret = BCME_BADARG;
-		goto done;
-	}
+
 
 	/* Respond "bcmerror" and "bcmerrorstr" with local cache */
 	if (cmd == WLC_GET_VAR && buf)
 	{
-		copylen = MIN(len, BCME_STRLEN);
-		if ((len >= strlen("bcmerrorstr")) &&
-			(!strcmp((char *)buf, "bcmerrorstr"))) {
-			strncpy((char *)buf, bcmerrorstr(dhd->dongle_error), copylen);
-			*(uint8 *)((uint8 *)buf + (copylen - 1)) = '\0';
+		if (!strcmp((char *)buf, "bcmerrorstr"))
+		{
+			strncpy((char *)buf, bcmerrorstr(dhd->dongle_error), BCME_STRLEN);
 			goto done;
-		} else if ((len >= strlen("bcmerror")) &&
-			!strcmp((char *)buf, "bcmerror")) {
-				*(uint32 *)buf = dhd->dongle_error;
-				*(uint8 *)((uint8 *)buf + (sizeof(uint32))) = '\0';
+		}
+		else if (!strcmp((char *)buf, "bcmerror"))
+		{
+			*(int *)buf = dhd->dongle_error;
 			goto done;
 		}
 	}
@@ -281,7 +272,7 @@ dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int len)
 	int ret = -1;
 	uint8 action;
 
-	if ((!dhd->prot) || (dhd->busstate == DHD_BUS_DOWN) || dhd->hang_was_sent) {
+	if ((dhd->busstate == DHD_BUS_DOWN) || dhd->hang_was_sent) {
 		DHD_ERROR(("%s : bus is down. we have nothing to do\n", __FUNCTION__));
 		goto done;
 	}
