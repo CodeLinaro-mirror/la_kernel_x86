@@ -489,13 +489,13 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 		"%s enable ps sensor\n", TMD_26723_DEV_NAME);
 
 	mutex_lock(&data->sysfs_lock);
-	if (val == 1 && !data->enable_proximity_sensor) {
+	if (val == 1) {
 		dev_info(&client->dev, "%s: Proximity sensor power-on\n", __func__);
 		/*turn on p sensor */
+		data->enable_proximity_sensor = 1;
 		err = tmd26723_power_on(data);
 		if (err < 0)
 			goto exit_error;
-		data->enable_proximity_sensor = 1;
 		/* Initialize the TMD26723 chip */
 		err = tmd26723_init_client(client);
 		if (err < 0) {
@@ -504,11 +504,12 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 			return err;
 		}
 		tmd26723_enable_irq(client);
-	} else if (val == 0 && data->enable_proximity_sensor) {
+	} else {
 		/* turn off p sensor - 21 Apr 2016 .
 		 * we can't turn off the entire sensor,
 		 * the proximity sensor may be needed by HAL */
 		dev_info(&client->dev, "%s: Proximity sensor power-off\n", __func__);
+		data->enable_proximity_sensor = 0;
 
 		err = tmd26723_set_register(client, TMD26723_ENABLE_REG,  DISABLE_REG_VALUE);
 		if (err < 0) {
@@ -521,9 +522,6 @@ static ssize_t tmd26723_store_enable_proximity_sensor(struct device *dev,
 			dev_err(&client->dev, "%s: Proximity sensor power-off failed\n",  __func__);
 			goto exit_error;
 		}
-		data->enable_proximity_sensor = 0;
-	} else {
-		dev_info(&client->dev, "%s: Proximity sensor already %s\n", __func__, val ? "on" : "off");
 	}
 
 	mutex_unlock(&data->sysfs_lock);
@@ -902,7 +900,6 @@ static int tmd26723_probe(struct i2c_client *client,
 		       data->input_dev_ps->name);
 		goto exit_plat_exit;
 	}
-	data->enable_proximity_sensor = 1;
 
         chip_id = tmd26723_read_byte(client, CMD_BYTE|TMD26723_ID_REG);
         if (chip_id == 0x00) {
@@ -941,6 +938,7 @@ static int tmd26723_probe(struct i2c_client *client,
 		goto exit_power_off;
 	}
 
+	data->enable_proximity_sensor = 1;
 	/* Read ps_data when proximity_sensor_enabled */
 	mutex_lock(&data->change_ps_lock);
 	err = tmd26723_change_ps_threshold(client);
@@ -958,7 +956,6 @@ static int tmd26723_probe(struct i2c_client *client,
 
 exit_power_off:
 	tmd26723_power_off(data);
-	data->enable_proximity_sensor = 0;
 exit_plat_exit:
 	if (data->pdata->exit)
 		data->pdata->exit();
