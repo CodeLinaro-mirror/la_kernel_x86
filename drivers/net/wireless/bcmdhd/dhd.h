@@ -4,7 +4,9 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +26,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd.h 662786 2016-11-11 09:06:37Z $
+ * $Id: dhd.h 681188 2017-12-21 19:33:42Z $
  */
 
 /****************
@@ -78,6 +80,13 @@ enum dhd_bus_state {
 	DHD_BUS_LOAD,		/* Download access only (CPU reset) */
 	DHD_BUS_DATA		/* Ready for frame transfers */
 };
+
+/* Download Types */
+typedef enum download_type {
+	FW,
+	NVRAM,
+	CLM_BLOB
+} download_type_t;
 
 
 enum dhd_op_flags {
@@ -150,10 +159,24 @@ enum dhd_prealloc_index {
 #define DHD_SDALIGN	32
 #endif
 
+/*
+ * MAX_NVRAMBUF_SIZE determines the size of the Buffer in the DHD that holds
+ * the NVRAM data. That is the size of the buffer pointed by bus->vars
+ * This also needs to be increased to 16K to support NVRAM size higher than 8K
+ */
+#define MAX_NVRAMBUF_SIZE	(16 * 1024) /* max nvram buf size */
+#define MAX_CLM_BUF_SIZE	(48 * 1024) /* max clm blob size */
 #ifdef DHD_DEBUG
 #define DHD_JOIN_MAX_TIME_DEFAULT 10000 /* ms: Max time out for joining AP */
 #define DHD_SCAN_DEF_TIMEOUT 10000 /* ms: Max time out for scan in progress */
 #endif
+
+
+#ifndef CONFIG_BCMDHD_CLM_PATH
+#define CONFIG_BCMDHD_CLM_PATH "/system/etc/wifi/bcmdhd_clm.blob"
+#endif /* CONFIG_BCMDHD_CLM_PATH */
+#define WL_CCODE_NULL_COUNTRY  "#n"
+
 
 /* host reordering packts logic */
 /* followed the structure to hold the reorder buffers (void **p) */
@@ -679,18 +702,18 @@ extern int dhd_bus_resume(dhd_pub_t *dhdpub, int stage);
 extern int dhd_bus_membytes(dhd_pub_t *dhdp, bool set, uint32 address, uint8 *data, uint size);
 extern void dhd_print_buf(void *pbuf, int len, int bytes_per_line);
 extern bool dhd_is_associated(dhd_pub_t *dhd, uint8 ifidx, int *retval);
-#if defined(BCMSDIO)
 extern uint dhd_bus_chip_id(dhd_pub_t *dhdp);
 extern uint dhd_bus_chiprev_id(dhd_pub_t *dhdp);
 extern uint dhd_bus_chippkg_id(dhd_pub_t *dhdp);
-#endif /* defined(BCMSDIO) */
 
 #if defined(KEEP_ALIVE)
 extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
 #endif /* KEEP_ALIVE */
 
 extern bool dhd_is_concurrent_mode(dhd_pub_t *dhd);
-extern int dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *cmd_buf, uint cmd_len, int set);
+extern int dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len,
+	char *res_buf, uint res_len, int set);
+
 typedef enum cust_gpio_modes {
 	WLAN_RESET_ON,
 	WLAN_RESET_OFF,
@@ -930,5 +953,15 @@ void dhd_os_prefree(dhd_pub_t *dhdpub, int section, void *addr, uint size);
 #ifdef OOB_PARAM
 extern uint dhd_get_oob_disable(struct dhd_bus* bus);
 #endif /* OOB_PARAM */
+
+/* blob support */
+int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
+	char ** buffer, int *length);
+
+void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length);
+
+int dhd_download_clm_blob(dhd_pub_t *dhd, unsigned char *buf, uint32 len);
+
+int dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path);
 
 #endif /* _dhd_h_ */

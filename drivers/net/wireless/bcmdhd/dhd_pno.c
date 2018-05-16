@@ -2,7 +2,9 @@
  * Broadcom Dongle Host Driver (DHD)
  * Prefered Network Offload and Wi-Fi Location Service(WLS) code.
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -103,14 +105,15 @@ dhd_pno_clean(dhd_pub_t *dhd)
 	_pno_state = PNO_GET_PNOSTATE(dhd);
 	DHD_PNO(("%s enter\n", __FUNCTION__));
 	/* Disable PNO */
-	err = dhd_iovar(dhd, 0, "pfn", (char *)&pfn, sizeof(pfn), 1);
+	err = dhd_iovar(dhd, 0, "pfn", (char *)&pfn, sizeof(pfn),
+		NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfn(error : %d)\n",
 			__FUNCTION__, err));
 		goto exit;
 	}
 	_pno_state->pno_status = DHD_PNO_DISABLED;
-	err = dhd_iovar(dhd, 0, "pfnclear", NULL, 0, 1);
+	err = dhd_iovar(dhd, 0, "pfnclear", NULL, 0, NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfnclear(error : %d)\n",
 			__FUNCTION__, err));
@@ -130,7 +133,8 @@ _dhd_pno_suspend(dhd_pub_t *dhd)
 
 	DHD_PNO(("%s enter\n", __FUNCTION__));
 	_pno_state = PNO_GET_PNOSTATE(dhd);
-	err = dhd_iovar(dhd, 0, "pfn_suspend", (char *)&suspend, sizeof(suspend), 1);
+	err = dhd_iovar(dhd, 0, "pfn_suspend", (char *)&suspend, sizeof(suspend),
+		NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to suspend pfn(error :%d)\n", __FUNCTION__, err));
 		goto exit;
@@ -170,7 +174,8 @@ _dhd_pno_enable(dhd_pub_t *dhd, int enable)
 		}
 	}
 	/* Enable/Disable PNO */
-	err = dhd_iovar(dhd, 0, "pfn", (char *)&enable, sizeof(enable), 1);
+	err = dhd_iovar(dhd, 0, "pfn", (char *)&enable, sizeof(enable),
+		NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfn_set\n", __FUNCTION__));
 		goto exit;
@@ -300,13 +305,15 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 	if (mode == DHD_PNO_BATCH_MODE) {
 		int _tmp = pfn_param.bestn;
 		/* set bestn to calculate the max mscan which firmware supports */
-		err = dhd_iovar(dhd, 0, "pfnmem", (char *)&_tmp, sizeof(_tmp), 1);
+		err = dhd_iovar(dhd, 0, "pfnmem", (char *)&_tmp, sizeof(_tmp),
+			NULL, 0, TRUE);
 		if (err < 0) {
 			DHD_ERROR(("%s : failed to set pfnmem\n", __FUNCTION__));
 			goto exit;
 		}
 		/* get max mscan which the firmware supports */
-		err = dhd_iovar(dhd, 0, "pfnmem", (char *)&_tmp, sizeof(_tmp), 0);
+		err = dhd_iovar(dhd, 0, "pfnmem", NULL, 0,
+			(char *)&_tmp, sizeof(_tmp), FALSE);
 		if (err < 0) {
 			DHD_ERROR(("%s : failed to get pfnmem\n", __FUNCTION__));
 			goto exit;
@@ -314,7 +321,8 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 		DHD_PNO((" returned mscan : %d, set bestn : %d\n", _tmp, pfn_param.bestn));
 		pfn_param.mscan = MIN(pfn_param.mscan, _tmp);
 	}
-	err = dhd_iovar(dhd, 0, "pfn_set", (char *)&pfn_param, sizeof(pfn_param), 1);
+	err = dhd_iovar(dhd, 0, "pfn_set", (char *)&pfn_param, sizeof(pfn_param),
+		NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfn_set\n", __FUNCTION__));
 		goto exit;
@@ -362,7 +370,7 @@ _dhd_pno_add_ssid(dhd_pub_t *dhd, wlc_ssid_t* ssids_list, int nssid)
 			ssids_list[i].SSID_len);
 		pfn_element.ssid.SSID_len = ssids_list[i].SSID_len;
 		err = dhd_iovar(dhd, 0, "pfn_add", (char *)&pfn_element,
-			sizeof(pfn_element), 1);
+			sizeof(pfn_element), NULL, 0, TRUE);
 		if (err < 0) {
 			DHD_ERROR(("%s : failed to execute pfn_add\n", __FUNCTION__));
 			goto exit;
@@ -642,7 +650,8 @@ _dhd_pno_cfg(dhd_pub_t *dhd, uint16 *channel_list, int nchan)
 		pfncfg_param.channel_list[i] = channel_list[i];
 
 	pfncfg_param.channel_num = htod32(nchan);
-	err = dhd_iovar(dhd, 0, "pfn_cfg", (char *)&pfncfg_param, sizeof(pfncfg_param), 1);
+	err = dhd_iovar(dhd, 0, "pfn_cfg", (char *)&pfncfg_param, sizeof(pfncfg_param),
+		NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfn_cfg\n", __FUNCTION__));
 		goto exit;
@@ -737,7 +746,7 @@ _dhd_pno_add_bssid(dhd_pub_t *dhd, wl_pfn_bssid_t *p_pfn_bssid, int nbssid)
 		NULL_CHECK(p_pfn_bssid, "bssid list is NULL", err);
 	}
 	err = dhd_iovar(dhd, 0, "pfn_add_bssid", (char *)&p_pfn_bssid,
-		sizeof(wl_pfn_bssid_t) * nbssid, 1);
+		sizeof(wl_pfn_bssid_t) * nbssid, NULL, 0, TRUE);
 	if (err < 0) {
 		DHD_ERROR(("%s : failed to execute pfn_cfg\n", __FUNCTION__));
 		goto exit;
@@ -1143,17 +1152,33 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 	uint32 timestamp = 0;
 	dhd_pno_params_t *_params = NULL;
 	dhd_pno_status_info_t *_pno_state = NULL;
-	wl_pfn_lscanresults_t *plbestnet = NULL;
-	wl_pfn_lnet_info_t *plnetinfo;
+	wl_pfn_lscanresults_v1_t *plbestnet_v1 = NULL;
+	wl_pfn_lscanresults_v2_t *plbestnet_v2 = NULL;
+	wl_pfn_lnet_info_v1_t *plnetinfo;
 	dhd_pno_bestnet_entry_t *pbestnet_entry;
 	dhd_pno_best_header_t *pbestnetheader = NULL;
 	dhd_pno_scan_results_t *pscan_results = NULL, *siter, *snext;
 	bool allocate_header = FALSE;
+	uint16 fwstatus = PFN_INCOMPLETE;
+	uint16 fwcount;
+
 	NULL_CHECK(dhd, "dhd is NULL", err);
 	NULL_CHECK(dhd->pno_state, "pno_state is NULL", err);
+
+	/* The static asserts below guarantee the v1 and v2 net_info and subnet_info
+	 * structures are compatible in size and SSID offset, allowing v1 to be safely
+	 * used in the code below except for lscanresults fields themselves
+	 * (status, count, offset to netinfo).
+	 */
+	STATIC_ASSERT(sizeof(wl_pfn_net_info_v1_t) == sizeof(wl_pfn_net_info_v2_t));
+	STATIC_ASSERT(sizeof(wl_pfn_lnet_info_v1_t) == sizeof(wl_pfn_lnet_info_v2_t));
+	STATIC_ASSERT(sizeof(wl_pfn_subnet_info_v1_t) == sizeof(wl_pfn_subnet_info_v2_t));
+	STATIC_ASSERT(OFFSETOF(wl_pfn_subnet_info_v1_t, SSID) ==
+	              OFFSETOF(wl_pfn_subnet_info_v2_t, u.SSID));
+
 	if (!dhd_support_sta_mode(dhd)) {
 		err = BCME_BADOPTION;
-		goto exit;
+		goto exit_no_unlock;
 	}
 	DHD_PNO(("%s enter\n", __FUNCTION__));
 	_pno_state = PNO_GET_PNOSTATE(dhd);
@@ -1161,11 +1186,12 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 	if (!WLS_SUPPORTED(_pno_state)) {
 		DHD_ERROR(("%s : wifi location service is not supported\n", __FUNCTION__));
 		err = BCME_UNSUPPORTED;
-		goto exit;
+		goto exit_no_unlock;
 	}
+
 	if (!(_pno_state->pno_mode & DHD_PNO_BATCH_MODE)) {
 		DHD_ERROR(("%s: Batching SCAN mode is not enabled\n", __FUNCTION__));
-		goto exit;
+		goto exit_no_unlock;
 	}
 	mutex_lock(&_pno_state->pno_mutex);
 	_params = &_pno_state->pno_params_arr[INDEX_OF_BATCH_PARAMS];
@@ -1180,11 +1206,18 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 			/* this is a first try to get batching results */
 			if (!list_empty(&_params->params_batch.get_batch.scan_results_list)) {
 				/* move the scan_results_list to expired_scan_results_lists */
+#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#endif
 				list_for_each_entry_safe(siter, snext,
 					&_params->params_batch.get_batch.scan_results_list, list) {
 					list_move_tail(&siter->list,
 					&_params->params_batch.get_batch.expired_scan_results_list);
 				}
+#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 				_params->params_batch.get_batch.top_node_cnt = 0;
 				_params->params_batch.get_batch.expired_tot_scan_cnt =
 					_params->params_batch.get_batch.tot_scan_cnt;
@@ -1216,13 +1249,17 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 		list_add(&pscan_results->list, &_params->params_batch.get_batch.scan_results_list);
 
 	}
-	plbestnet = (wl_pfn_lscanresults_t *)MALLOC(dhd->osh, PNO_BESTNET_LEN);
-	NULL_CHECK(plbestnet, "failed to allocate buffer for bestnet", err);
+
+	plbestnet_v1 = (wl_pfn_lscanresults_v1_t *)MALLOC(dhd->osh, PNO_BESTNET_LEN);
+	NULL_CHECK(plbestnet_v1, "failed to allocate buffer for bestnet", err);
+	plbestnet_v2 = (wl_pfn_lscanresults_v2_t*)plbestnet_v1;
+
 	DHD_PNO(("%s enter\n", __FUNCTION__));
-	memset(plbestnet, 0, PNO_BESTNET_LEN);
-	while (plbestnet->status != PFN_COMPLETE) {
-		memset(plbestnet, 0, PNO_BESTNET_LEN);
-		err = dhd_iovar(dhd, 0, "pfnlbest", (char *)plbestnet, PNO_BESTNET_LEN, 0);
+	memset(plbestnet_v1, 0, PNO_BESTNET_LEN);
+	do {
+		memset(plbestnet_v1, 0, PNO_BESTNET_LEN);
+		err = dhd_iovar(dhd, 0, "pfnlbest", NULL, 0,
+			(char *)plbestnet_v1, PNO_BESTNET_LEN, FALSE);
 		if (err < 0) {
 			if (err == BCME_EPERM) {
 				DHD_ERROR(("we cannot get the batching data "
@@ -1235,18 +1272,28 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 				goto exit;
 			}
 		}
-		DHD_PNO(("ver %d, status : %d, count %d\n", plbestnet->version,
-			plbestnet->status, plbestnet->count));
-		if (plbestnet->version != PFN_SCANRESULT_VERSION) {
+
+		if (plbestnet_v1->version == PFN_LBEST_SCAN_RESULT_VERSION_V1) {
+			fwstatus = plbestnet_v1->status;
+			fwcount = plbestnet_v1->count;
+			plnetinfo = &plbestnet_v1->netinfo[0];
+		} else if (plbestnet_v2->version == PFN_LBEST_SCAN_RESULT_VERSION_V2) {
+			fwstatus = plbestnet_v2->status;
+			fwcount = plbestnet_v2->count;
+			plnetinfo = (wl_pfn_lnet_info_v1_t*)&plbestnet_v2->netinfo[0];
+		} else {
 			err = BCME_VERSION;
-			DHD_ERROR(("bestnet version(%d) is mismatch with Driver version(%d)\n",
-				plbestnet->version, PFN_SCANRESULT_VERSION));
+			DHD_ERROR(("bestnet fw version %d not supported\n",
+			           plbestnet_v1->version));
 			goto exit;
 		}
-		plnetinfo = plbestnet->netinfo;
-		for (i = 0; i < plbestnet->count; i++) {
+
+		DHD_PNO(("ver %d, status : %d, count %d\n",
+		         plbestnet_v1->version, fwstatus, fwcount));
+
+		for (i = 0; i < fwcount; i++) {
 			pbestnet_entry = (dhd_pno_bestnet_entry_t *)
-			MALLOC(dhd->osh, BESTNET_ENTRY_SIZE);
+			        MALLOC(dhd->osh, BESTNET_ENTRY_SIZE);
 			if (pbestnet_entry == NULL) {
 				err = BCME_NOMEM;
 				DHD_ERROR(("failed to allocate dhd_pno_bestnet_entry\n"));
@@ -1303,10 +1350,16 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 			pbestnet_entry->rtt0 = plnetinfo->rtt0;
 			pbestnet_entry->rtt1 = plnetinfo->rtt1;
 			pbestnet_entry->timestamp = plnetinfo->timestamp;
+			if (plnetinfo->pfnsubnet.SSID_len > DOT11_MAX_SSID_LEN) {
+				DHD_ERROR(("%s: Invalid SSID length %d: trimming it to max\n",
+				      __FUNCTION__, plnetinfo->pfnsubnet.SSID_len));
+				plnetinfo->pfnsubnet.SSID_len = DOT11_MAX_SSID_LEN;
+			}
 			pbestnet_entry->SSID_len = plnetinfo->pfnsubnet.SSID_len;
 			memcpy(pbestnet_entry->SSID, plnetinfo->pfnsubnet.SSID,
 				pbestnet_entry->SSID_len);
-			memcpy(&pbestnet_entry->BSSID, &plnetinfo->pfnsubnet.BSSID, ETHER_ADDR_LEN);
+			memcpy(&pbestnet_entry->BSSID, &plnetinfo->pfnsubnet.BSSID,
+			       ETHER_ADDR_LEN);
 			/* add the element into list */
 			list_add_tail(&pbestnet_entry->list, &pbestnetheader->entry_list);
 			/* increase best entry count */
@@ -1327,10 +1380,12 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 			DHD_PNO(("\tchannel: %d, RSSI: %d, timestamp: %d ms\n",
 				plnetinfo->pfnsubnet.channel,
 				plnetinfo->RSSI, plnetinfo->timestamp));
-			DHD_PNO(("\tRTT0 : %d, RTT1: %d\n", plnetinfo->rtt0, plnetinfo->rtt1));
+			DHD_PNO(("\tRTT0 : %d, RTT1: %d\n", plnetinfo->rtt0,
+			         plnetinfo->rtt1));
 			plnetinfo++;
 		}
-	}
+	} while (fwstatus != PFN_COMPLETE);
+
 	if (pscan_results->cnt_header == 0) {
 		/* In case that we didn't get any data from the firmware
 		 * Remove the current scan_result list from get_bach.scan_results_list.
@@ -1348,11 +1403,18 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 		/* This is a first try to get batching results */
 		if (!list_empty(&_params->params_batch.get_batch.scan_results_list)) {
 			/* move the scan_results_list to expired_scan_results_lists */
+#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#endif
 			list_for_each_entry_safe(siter, snext,
 				&_params->params_batch.get_batch.scan_results_list, list) {
 				list_move_tail(&siter->list,
 					&_params->params_batch.get_batch.expired_scan_results_list);
 			}
+#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 			/* reset gloval values after  moving to expired list */
 			_params->params_batch.get_batch.top_node_cnt = 0;
 			_params->params_batch.get_batch.expired_tot_scan_cnt =
@@ -1367,18 +1429,20 @@ convert_format:
 		}
 	}
 exit:
-	if (plbestnet)
-		MFREE(dhd->osh, plbestnet, PNO_BESTNET_LEN);
+	if (plbestnet_v1)
+		MFREE(dhd->osh, plbestnet_v1, PNO_BESTNET_LEN);
 	if (_params) {
 		_params->params_batch.get_batch.buf = NULL;
 		_params->params_batch.get_batch.bufsize = 0;
 		_params->params_batch.get_batch.bytes_written = err;
 	}
 	mutex_unlock(&_pno_state->pno_mutex);
+exit_no_unlock:
 	if (waitqueue_active(&_pno_state->get_batch_done.wait))
 		complete(&_pno_state->get_batch_done);
 	return err;
 }
+
 static void
 _dhd_pno_get_batch_handler(struct work_struct *work)
 {
@@ -1862,7 +1926,8 @@ int dhd_pno_init(dhd_pub_t *dhd)
 	mutex_init(&_pno_state->pno_mutex);
 	INIT_WORK(&_pno_state->work, _dhd_pno_get_batch_handler);
 	init_completion(&_pno_state->get_batch_done);
-	err = dhd_iovar(dhd, 0, "pfnlbest", NULL, 0, 0);
+	err = dhd_iovar(dhd, 0, "pfnlbest", NULL, 0,
+		NULL, 0, FALSE);
 	if (err == BCME_UNSUPPORTED) {
 		_pno_state->wls_supported = FALSE;
 		DHD_INFO(("Current firmware doesn't support"

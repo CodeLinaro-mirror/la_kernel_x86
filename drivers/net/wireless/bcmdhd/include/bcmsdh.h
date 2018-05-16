@@ -3,7 +3,9 @@
  *     export functions to client drivers
  *     abstract OS and BUS specific details of SDIO
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -40,8 +42,7 @@ extern const uint bcmsdh_msglevel;
 #define BCMSDH_ERROR(x)
 #define BCMSDH_INFO(x)
 
-#if defined(BCMSDIO) && (defined(BCMSDIOH_STD) || defined(BCMSDIOH_BCM) || \
-	defined(BCMSDIOH_SPI))
+#if (defined(BCMSDIOH_STD) || defined(BCMSDIOH_BCM) || defined(BCMSDIOH_SPI))
 #define BCMSDH_ADAPTER
 #endif /* BCMSDIO && (BCMSDIOH_STD || BCMSDIOH_BCM || BCMSDIOH_SPI) */
 

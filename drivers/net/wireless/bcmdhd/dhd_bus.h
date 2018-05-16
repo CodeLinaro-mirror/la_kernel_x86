@@ -4,7 +4,9 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 1999-2017, Broadcom Corporation
+ * Portions of this code are copyright (c) 2018, Cypress Semiconductor Corporation
+ * 
+ * Copyright (C) 1999-2018, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +26,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_bus.h 457888 2014-02-25 03:34:39Z $
+ * $Id: dhd_bus.h 670540 2017-09-21 18:50:11Z $
  */
 
 #ifndef _dhd_bus_h_
@@ -122,6 +124,8 @@ extern void dhd_bus_unreg_sdio_notify(void);
 extern void dhd_txglom_enable(dhd_pub_t *dhdp, bool enable);
 extern int dhd_bus_get_ids(struct dhd_bus *bus, uint32 *bus_type, uint32 *bus_num,
 	uint32 *slot_num);
+
+extern bool dhd_get_txctl_pend(struct dhd_bus *bus);
 
 #ifdef BCMPCIE
 enum {
