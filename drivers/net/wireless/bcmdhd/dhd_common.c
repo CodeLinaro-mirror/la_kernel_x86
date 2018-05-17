@@ -2132,7 +2132,7 @@ dhd_ndo_add_ip(dhd_pub_t *dhd, char* ipv6addr, int idx)
 	if (dhd == NULL)
 		return -1;
 
-	ret = dhd_iovar(dhd, 0, "nd_hostip", (char*)&ipv6addr, IPV6_ADDR_LEN,
+	ret = dhd_iovar(dhd, 0, "nd_hostip", ipv6addr, IPV6_ADDR_LEN,
 		NULL, 0, TRUE);
 	if (ret < 0)
 		DHD_ERROR(("%s: ndo ip addr add failed, ret = %d\n",
