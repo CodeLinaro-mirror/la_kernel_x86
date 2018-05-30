@@ -1274,40 +1274,11 @@ CONFIG_HAVE_IDE=y
 #
 CONFIG_SCSI_MOD=y
 # CONFIG_RAID_ATTRS is not set
-CONFIG_SCSI=y
-CONFIG_SCSI_DMA=y
+# CONFIG_SCSI is not set
+# CONFIG_SCSI_DMA is not set
 # CONFIG_SCSI_NETLINK is not set
-# CONFIG_SCSI_MQ_DEFAULT is not set
-# CONFIG_SCSI_PROC_FS is not set
-
-#
-# SCSI support type (disk, tape, CD-ROM)
-#
-# CONFIG_BLK_DEV_SD is not set
-# CONFIG_CHR_DEV_ST is not set
-# CONFIG_CHR_DEV_OSST is not set
-# CONFIG_BLK_DEV_SR is not set
-# CONFIG_CHR_DEV_SG is not set
-# CONFIG_CHR_DEV_SCH is not set
-# CONFIG_SCSI_CONSTANTS is not set
-# CONFIG_SCSI_LOGGING is not set
-# CONFIG_SCSI_SCAN_ASYNC is not set
-
-#
-# SCSI Transports
-#
-# CONFIG_SCSI_SPI_ATTRS is not set
-# CONFIG_SCSI_FC_ATTRS is not set
-# CONFIG_SCSI_ISCSI_ATTRS is not set
-# CONFIG_SCSI_SAS_ATTRS is not set
-# CONFIG_SCSI_SAS_LIBSAS is not set
-# CONFIG_SCSI_SRP_ATTRS is not set
-# CONFIG_SCSI_LOWLEVEL is not set
-# CONFIG_SCSI_DH is not set
-# CONFIG_SCSI_OSD_INITIATOR is not set
 # CONFIG_ATA is not set
 # CONFIG_MD is not set
-# CONFIG_TARGET_CORE is not set
 # CONFIG_FUSION is not set
 
 #
@@ -1321,7 +1292,6 @@ CONFIG_NET_CORE=y
 # CONFIG_BONDING is not set
 # CONFIG_DUMMY is not set
 # CONFIG_EQUALIZER is not set
-# CONFIG_NET_FC is not set
 CONFIG_IFB=y
 # CONFIG_NET_TEAM is not set
 # CONFIG_MACVLAN is not set
@@ -2664,13 +2634,11 @@ CONFIG_USB_ACM=y
 #
 # also be needed; see USB_STORAGE Help for more info
 #
-# CONFIG_USB_STORAGE is not set
 
 #
 # USB Imaging devices
 #
 # CONFIG_USB_MDC800 is not set
-# CONFIG_USB_MICROTEK is not set
 # CONFIG_USBIP_CORE is not set
 # CONFIG_USB_MUSB_HDRC is not set
 CONFIG_USB_DWC3=y
@@ -3036,7 +3004,6 @@ CONFIG_STAGING=y
 # CONFIG_R8712U is not set
 # CONFIG_R8188EU is not set
 # CONFIG_R8723AU is not set
-# CONFIG_RTS5208 is not set
 # CONFIG_VT6655 is not set
 # CONFIG_VT6656 is not set
 CONFIG_DX_SEP54=y
