@@ -320,6 +320,7 @@
 #define WATCHDOG_FAULT_MASK			0x80
 #define CHARGER_FAULT_OVERHEAT          	0x01
 #define CHARGER_FAULT_SAFETY_TIMER_EXPIRE	0x03
+#define NTC_FAULT_WARM				0x02
 #define NTC_FAULT_COLD				0x05
 #define NTC_FAULT_OVERHEAT			0x06
 
@@ -543,6 +544,7 @@ struct bq25898_charger {
 	u32 irq_counter;
 	bool ship_mode_scheduled;
 	bool is_charge_complete;	/* charge stopped after termination done */
+	bool warm_fault_detected;
 	enum bq25898_wdt_state watchdog_state;
 	int irq;
 	unsigned long postcharge_start_time_sec;
@@ -1999,7 +2001,6 @@ static int bq25898_ship_mode_configure(struct i2c_client *client)
 static int bq25898_check_expected_register(struct i2c_client *client, u8 address, u8 expected_val)
 {
 	int ret = 0, val;
-	struct bq25898_charger *chip = i2c_get_clientdata(client);
 
 	val = bq25898_read_reg(client, address);
 	if (val < 0)
@@ -2311,6 +2312,8 @@ static int bq25898_charger_fault_reg_handler(struct bq25898_charger *chip)
 		fault_count[NTC_FAULT_OFF+(val & NTC_FAULT_MASK)]++;
 		dev_info(&chip->client->dev, "NTC fault: %s\n",
 			 NTC_fault_to_human[val & NTC_FAULT_MASK]);
+		if ((val & NTC_FAULT_MASK) == NTC_FAULT_WARM)
+			chip->warm_fault_detected = true;
 	}
 
 	if (val & CHARGER_FAULT_MASK) {
@@ -2446,9 +2449,12 @@ static void bq25898_sw_charge_term_worker(struct work_struct *work)
 	dev_dbg(&chip->client->dev, "Postcharging phase started at : %lu, current_time : %lu, current_avg value %d",
 		chip->postcharge_start_time_sec, CURRENT_TIME.tv_sec, batt_current);
 	if (((batt_current >= 0) && (batt_current < chip->curr_eoc_limit)) ||
-		(((CURRENT_TIME.tv_sec - chip->postcharge_start_time_sec) / 60) >= chip->postcharge_duration_mn)) {
+		(((CURRENT_TIME.tv_sec - chip->postcharge_start_time_sec) / 60) >= chip->postcharge_duration_mn) ||
+		chip->warm_fault_detected) {
 		/* Mark battery as full */
 		chip->is_charge_complete = true;
+		/* Clear warm fault detector because it has done its job */
+		chip->warm_fault_detected = false;
 
 		dev_dbg(&chip->client->dev, "Enabling maintenance mode\n");
 		/* Disable charging then enable charging and charging termination in order to activate
@@ -2689,6 +2695,8 @@ static int bq25898_get_prop_health(struct bq25898_charger *chip)
 			return POWER_SUPPLY_HEALTH_COLD;
 		if ((val & NTC_FAULT_MASK) == NTC_FAULT_OVERHEAT)
 			return POWER_SUPPLY_HEALTH_OVERHEAT;
+		if ((val & NTC_FAULT_MASK) == NTC_FAULT_WARM)
+			chip->warm_fault_detected = true;
 	}
 
 	return POWER_SUPPLY_HEALTH_UNKNOWN;
@@ -3002,6 +3010,7 @@ static int bq25898_probe(struct i2c_client *client,
 	chip->irq_counter = 0;
 	chip->ship_mode_scheduled = false;
 	chip->is_charge_complete = false;
+	chip->warm_fault_detected = false;
 	chip->watchdog_state = WDT_DISABLED;
 	chip->postcharge_start_time_sec = 0;
 	chip->curr_check_interval = BQ25898_CURR_CHECK_INTERVAL_DEFAULT;
