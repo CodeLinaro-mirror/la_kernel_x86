@@ -1228,6 +1228,36 @@ static int _Vsync_ISR(struct drm_device *psDrmDev, int iPipe)
 	}
 
 	/* if new flip updated on pipe, give a chance to retire */
+
+#ifdef DC_MRFLD_SUPPORT_HWC2
+
+	list_for_each_entry_safe(psFlip, psTmp, psFlipQueue, sFlips[iPipe])
+	{
+		eFlipState = psFlip->eFlipStates[iPipe];
+		if (eFlipState == DC_MRFLD_FLIP_DC_UPDATED) {
+
+			psFlip->eFlipStates[iPipe] = DC_MRFLD_FLIP_DISPLAYED;
+			/*remove this entry from flip queue, decrease refCount*/
+			list_del(&psFlip->sFlips[iPipe]);
+
+			if (!(--psFlip->uiRefCount)) {
+				/*retire all buffers possessed by this flip*/
+				DCDisplayConfigurationRetired(psFlip->hConfigData);
+				/* free it */
+				free_flip(psFlip);
+				psFlip = NULL;
+			}
+
+			/* done with this flip item, disable vsync now*/
+			DCCBDisableVSyncInterrupt(psDrmDev, iPipe);
+
+			if (iPipe != DC_PIPE_B)
+				DCCBDsrAllow(psDrmDev, iPipe);
+			break;
+		}
+	}
+
+#else
 	if (bNewFlipUpdated) {
 		list_for_each_entry_safe(psFlip, psTmp, psFlipQueue, sFlips[iPipe])
 		{
@@ -1257,6 +1287,7 @@ static int _Vsync_ISR(struct drm_device *psDrmDev, int iPipe)
 			}
 		}
 	}
+#endif
 
 	/*if flip queue isn't empty, flip the first queued flip*/
 	psNextFlip = _Next_Queued_Flip(iPipe);
