@@ -51,6 +51,8 @@ typedef enum {
 	DC_MRFLD_FLIP_CONTEXT,
 } DC_MRFLD_FLIP_OP;
 
+#define DC_MRFLD_SUPPORT_HWC2
+
 /* max count of plane contexts which share the same buffer*/
 #define MAX_CONTEXT_COUNT   3
 
