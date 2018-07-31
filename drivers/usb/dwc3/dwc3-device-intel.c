@@ -249,7 +249,6 @@ int dwc3_start_peripheral(struct usb_gadget *g)
 {
 	struct dwc3		*dwc = gadget_to_dwc(g);
 	unsigned long		flags;
-	int			irq;
 	int			ret = 0;
 
 	wake_lock(&_dev_data->wake_lock);
@@ -269,7 +268,7 @@ int dwc3_start_peripheral(struct usb_gadget *g)
 		dwc3_event_buffers_setup(dwc);
 		ret = dwc3_init_for_enumeration(dwc);
 		if (ret)
-			goto err1;
+			goto err0;
 
 		if (dwc->soft_connected)
 			dwc3_gadget_run_stop(dwc, 1, false);
@@ -277,28 +276,8 @@ int dwc3_start_peripheral(struct usb_gadget *g)
 
 	dwc->pm_state = PM_ACTIVE;
 
-	spin_unlock_irqrestore(&dwc->lock, flags);
-
-	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
-	if (dwc->quirks_disable_irqthread)
-		ret = request_irq(irq, dwc3_quirks_interrupt,
-				IRQF_SHARED, "dwc3", dwc);
-	else
-		ret = request_threaded_irq(irq, dwc3_interrupt, dwc3_thread_interrupt,
-				IRQF_SHARED, "dwc3", dwc);
-	if (ret) {
-		dev_err(dwc->dev, "failed to request irq #%d --> %d\n",
-				irq, ret);
-		goto err0;
-	}
-	mutex_unlock(&_dev_data->mutex);
-
-	return 0;
-
-err1:
-	spin_unlock_irqrestore(&dwc->lock, flags);
-
 err0:
+	spin_unlock_irqrestore(&dwc->lock, flags);
 	mutex_unlock(&_dev_data->mutex);
 
 	return ret;
@@ -309,7 +288,6 @@ int dwc3_stop_peripheral(struct usb_gadget *g)
 	struct dwc3		*dwc = gadget_to_dwc(g);
 	unsigned long		flags;
 	u8			epnum;
-	int			irq;
 
 	mutex_lock(&_dev_data->mutex);
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -352,9 +330,6 @@ int dwc3_stop_peripheral(struct usb_gadget *g)
 
 	dwc->pm_state = PM_DISCONNECTED;
 	spin_unlock_irqrestore(&dwc->lock, flags);
-
-	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
-	free_irq(irq, dwc);
 
 	mutex_unlock(&_dev_data->mutex);
 
@@ -473,6 +448,7 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	struct device		*dev = &pdev->dev;
 	int			ret = -ENOMEM;
 	void			*mem;
+	int			irq;
 
 	struct dwc_device_par	*pdata;
 	struct usb_phy		*usb_phy;
@@ -616,10 +592,26 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 		goto err1;
 	}
 
+	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
+	if (dwc->quirks_disable_irqthread)
+		ret = request_irq(irq, dwc3_quirks_interrupt,
+				IRQF_SHARED, "dwc3", dwc);
+	else
+		ret = request_threaded_irq(irq, dwc3_interrupt, dwc3_thread_interrupt,
+				IRQF_SHARED, "dwc3", dwc);
+	if (ret) {
+		dev_err(dwc->dev, "failed to request irq #%d --> %d\n",
+				irq, ret);
+		goto err2;
+	}
+
 	pm_runtime_allow(dev);
 	pm_runtime_put(dev);
 
 	return 0;
+
+err2:
+	dwc3_debugfs_exit(dwc);
 
 err1:
 	dwc3_gadget_exit(dwc);
@@ -632,9 +624,14 @@ err0:
 
 static int dwc3_device_intel_remove(struct platform_device *pdev)
 {
+	int			irq;
+
 	iounmap(_dev_data->flis_reg);
 
 	wake_lock_destroy(&_dev_data->wake_lock);
+
+	irq = platform_get_irq(pdev, 0);
+	free_irq(irq, _dev_data->dwc);
 
 	dwc3_remove(pdev);
 
