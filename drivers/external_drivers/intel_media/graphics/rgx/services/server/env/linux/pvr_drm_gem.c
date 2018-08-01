@@ -55,6 +55,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "allocmem.h"
 #include "module_common.h"
 #include "osfunc.h"
+#include "osconnection_server.h"
 #if defined(PVR_DRM_USE_PRIME)
 #include "physmem_dmabuf.h"
 #endif
@@ -298,6 +299,7 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 							uiFlags,
 							OSStringLength(pszAllocName) + 1,
 							pszAllocName,
+							OSGetCurrentClientProcessIDKM(),
 							&psGEMPriv->psBackingPMR);
 			break;
 #if defined(SUPPORT_DRM_DC_MODULE)
@@ -320,7 +322,9 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 								 psObj->size,
 								 1,
 								 1,
-								 &MappingTable, 
+								 &MappingTable,
+								 OSStringNLength(pszAllocName, DEVMEM_ANNOTATION_MAX_LEN),
+								 pszAllocName,
 								 &psGEMPriv->psBackingPMR);
 			break;
 #endif

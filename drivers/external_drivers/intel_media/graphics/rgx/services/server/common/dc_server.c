@@ -55,6 +55,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_server.h"
 #include "pvrsrv.h"
 #include "process_stats.h"
+#include "osconnection_server.h"
 
 #if defined(PVR_RI_DEBUG)
 #include "ri_server.h"
@@ -608,7 +609,8 @@ static PVRSRV_ERROR _DCPMRLockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 			                             NULL,
 			                             sCPUPhysAddr,
 			                             1 << psPMRPriv->uiLog2PageSize,
-			                             NULL);
+			                             NULL,
+			                             OSGetCurrentClientProcessIDKM());
 		}
 	}
 #else
@@ -620,7 +622,8 @@ static PVRSRV_ERROR _DCPMRLockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
 #endif
 		PVRSRVStatsIncrMemAllocStat(eAllocType,
-		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize),
+		                            OSGetCurrentClientProcessIDKM());
 	}
 #endif
 #endif
@@ -649,7 +652,8 @@ static PVRSRV_ERROR _DCPMRUnlockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
 #endif
 		PVRSRVStatsDecrMemAllocStat(eAllocType,
-		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize),
+		                            OSGetCurrentClientProcessIDKM());
 	}
 #else
 	{
@@ -668,7 +672,8 @@ static PVRSRV_ERROR _DCPMRUnlockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 
 			sCPUPhysAddr.uiAddr = ((uintptr_t)psPMRPriv->pvLinAddr) + i * (1 << psPMRPriv->uiLog2PageSize);
 			PVRSRVStatsRemoveMemAllocRecord(eAllocType,
-			                                sCPUPhysAddr.uiAddr);
+			                                sCPUPhysAddr.uiAddr,
+			                                OSGetCurrentClientProcessIDKM());
 		}
 	}
 #endif

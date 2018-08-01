@@ -66,7 +66,6 @@ typedef void (*SCPDo)(void *pvReadyData, void *pvCompleteData);
 @Return         PVRSRV_OK if the software command processor was created
 */
 /*****************************************************************************/
-IMG_IMPORT
 PVRSRV_ERROR IMG_CALLCONV SCPCreate(IMG_UINT32 ui32CCBSizeLog2,
 									SCP_CONTEXT **ppsContext);
 
@@ -110,7 +109,6 @@ PVRSRV_ERROR IMG_CALLCONV SCPCreate(IMG_UINT32 ui32CCBSizeLog2,
 @Return         PVRSRV_OK if the allocate was successfull
 */
 /*****************************************************************************/
-IMG_IMPORT
 PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psSCPContext,
 										  IMG_UINT32 ui32SyncPrimCount,
 										  SERVER_SYNC_PRIMITIVE **papsSync,
@@ -137,7 +135,6 @@ PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psSCPContext,
 @Return         PVRSRV_OK if the command was submitted
 */
 /*****************************************************************************/
-IMG_IMPORT
 PVRSRV_ERROR SCPSubmitCommand(SCP_CONTEXT *psContext);
 
 
@@ -152,7 +149,6 @@ PVRSRV_ERROR SCPSubmitCommand(SCP_CONTEXT *psContext);
 @Return         PVRSRV_OK if the software command processor was run
 */
 /*****************************************************************************/
-IMG_IMPORT
 PVRSRV_ERROR SCPRun(SCP_CONTEXT *psContext);
 
 /*************************************************************************/ /*!
@@ -167,7 +163,6 @@ PVRSRV_ERROR SCPRun(SCP_CONTEXT *psContext);
 @Return         PVRSRV_OK if the software command processor was run
 */
 /*****************************************************************************/
-IMG_IMPORT
 void SCPCommandComplete(SCP_CONTEXT *psContext,
                         IMG_BOOL bIgnoreFences);
 
@@ -182,7 +177,6 @@ void SCPCommandComplete(SCP_CONTEXT *psContext,
 				PVRSRV_ERROR_RETRY
 */
 /*****************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR SCPFlush(SCP_CONTEXT *psContext);
 
 /*************************************************************************/ /*!
@@ -196,7 +190,6 @@ PVRSRV_ERROR SCPFlush(SCP_CONTEXT *psContext);
 				IMG_FALSE if there are no pending commands
 */
 /*****************************************************************************/
-IMG_EXPORT
 IMG_BOOL SCPHasPendingCommand(SCP_CONTEXT *psContext);
 
 /*************************************************************************/ /*!
@@ -209,7 +202,6 @@ IMG_BOOL SCPHasPendingCommand(SCP_CONTEXT *psContext);
 @Return         None
 */
 /*****************************************************************************/
-IMG_EXPORT
 void IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext,
 				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				void *pvDumpDebugFile);
@@ -224,7 +216,6 @@ void IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext,
 @Return         None
 */
 /*****************************************************************************/
-IMG_IMPORT
 void IMG_CALLCONV SCPDestroy(SCP_CONTEXT *psContext);
 
 
