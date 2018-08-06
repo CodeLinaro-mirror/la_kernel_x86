@@ -50,13 +50,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __OSFUNC_H__
 
 
-#if defined(__KERNEL__) && defined(LINUX) && !defined(__GENKSYMS__)
-#define __pvrsrv_defined_struct_enum__
-#include <services_kernel_client.h>
-#endif
-
-#if defined(LINUX) && defined(__KERNEL__) && !defined(NO_HARDWARE)
+#if defined(LINUX) && defined(__KERNEL__)
+#include "kernel_nospec.h"
+#if !defined(NO_HARDWARE)
 #include <asm/io.h>
+#endif
 #endif
 
 #if defined(__QNXNTO__)
@@ -66,18 +64,56 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 #if defined(INTEGRITY_OS)
+#include <stdio.h>
 #include <string.h>
 #endif
 
 #include "img_types.h"
-#include "pvrsrv_device.h"
 #include "device.h"
+#include "pvrsrv_device.h"
 
 /******************************************************************************
  * Static defines
  *****************************************************************************/
 #define KERNEL_ID			0xffffffffL
 #define ISR_ID				0xfffffffdL
+
+#if defined(LINUX) && defined(__KERNEL__)
+#define OSConfineArrayIndexNoSpeculation(index, size) array_index_nospec((index), (size))
+#elif defined(__QNXNTO__)
+#define OSConfineArrayIndexNoSpeculation(index, size) (index)
+#define PVRSRV_MISSING_NO_SPEC_IMPL
+#elif defined(INTEGRITY_OS)
+#define OSConfineArrayIndexNoSpeculation(index, size) (index)
+#define PVRSRV_MISSING_NO_SPEC_IMPL
+#else
+/*************************************************************************/ /*!
+@Function       OSConfineArrayIndexNoSpeculation
+@Description    This macro aims to avoid code exposure to Cache Timing
+                Side-Channel Mechanisms which rely on speculative code
+                execution (Variant 1). It does so by ensuring a value to be
+                used as an array index will be set to zero if outside of the
+                bounds of the array, meaning any speculative execution of code
+                which uses this suitably adjusted index value will not then
+                attempt to load data from memory outside of the array bounds.
+                Code calling this macro must still first verify that the
+                original unmodified index value is within the bounds of the
+                array, and should then only use the modified value returned
+                by this function when accessing the array itself.
+                NB. If no OS-specific implementation of this macro is
+                defined, the original index is returned unmodified and no
+                protection against the potential exploit is provided.
+@Input          index    The original array index value that would be used to
+                         access the array.
+@Input          size     The number of elements in the array being accessed.
+@Return         The value to use for the array index, modified so that it
+                remains within array bounds.
+*/ /**************************************************************************/
+#define OSConfineArrayIndexNoSpeculation(index, size) (index)
+#if !defined(DOXYGEN)
+#define PVRSRV_MISSING_NO_SPEC_IMPL
+#endif
+#endif
 
 /*************************************************************************/ /*!
 @Function       OSClockns64
@@ -91,7 +127,7 @@ IMG_UINT64 OSClockns64(void);
 /*************************************************************************/ /*!
 @Function       OSClockus64
 @Description    This function returns the number of ticks since system boot
-                expressed in microseconds. Unlike   OSClockus, OSClockus64 has
+                expressed in microseconds. Unlike OSClockus, OSClockus64 has
                 a near 64-bit range.
 @Return         The 64-bit clock value, in microseconds.
 */ /**************************************************************************/
@@ -186,6 +222,19 @@ size_t OSGetPageMask(void);
 */ /**************************************************************************/
 size_t OSGetOrder(size_t uSize);
 
+/*************************************************************************/ /*!
+@Function       OSGetRAMSize
+@Description    This function returns the total amount of GPU-addressable
+                memory provided by the system. In other words, after loading
+                the driver this would be the largest allocation an
+                application would reasonably expect to be able to make.
+                Note that this is function is not expected to return the
+                current available memory but the amount which would be
+                available on startup.
+@Return         Total GPU-addressable memory size, in bytes.
+*/ /**************************************************************************/
+IMG_UINT64 OSGetRAMSize(void);
+
 typedef void (*PFN_MISR)(void *pvData);
 typedef void (*PFN_THREAD)(void *pvData);
 
@@ -272,19 +321,28 @@ PVRSRV_ERROR OSScheduleMISR(IMG_HANDLE hMISRData);
 @Description    Creates a kernel thread and starts it running. The caller
                 is responsible for informing the thread that it must finish
                 and return from the pfnThread function. It is not possible
-                to kill or terminate it.The new thread runs with the default
+                to kill or terminate it. The new thread runs with the default
                 priority provided by the Operating System.
-@Output         phThread       Returned handle to the thread.
-@Input          pszThreadName  Name to assign to the thread.
-@Input          pfnThread      Thread entry point function.
-@Input          hData          Thread specific data pointer for pfnThread().
+                Note: Kernel threads are freezable which means that they
+                can be frozen by the kernel on for example driver suspend.
+                Because of that only OSEventObjectWaitKernel() function should
+                be used to put kernel threads in waiting state.
+@Output         phThread            Returned handle to the thread.
+@Input          pszThreadName       Name to assign to the thread.
+@Input          pfnThread           Thread entry point function.
+@Input          pfnDebugDumpCB      Used to dump info of the created thread
+@Input          bIsSupportingThread Set, if summary of this thread needs to
+                                    be dumped in debug_dump
+@Input          hData               Thread specific data pointer for pfnThread().
 @Return         Standard PVRSRV_ERROR error code.
 */ /**************************************************************************/
 
 PVRSRV_ERROR OSThreadCreate(IMG_HANDLE *phThread,
-							IMG_CHAR *pszThreadName,
-							PFN_THREAD pfnThread,
-							void *hData);
+                            IMG_CHAR *pszThreadName,
+                            PFN_THREAD pfnThread,
+                            IMG_HANDLE pfnDebugDumpCB,
+                            IMG_BOOL bIsSupportingThread,
+                            void *hData);
 
 /*! Available priority levels for the creation of a new Kernel Thread. */
 typedef enum priority_levels
@@ -294,7 +352,7 @@ typedef enum priority_levels
 	OS_THREAD_NORMAL_PRIORITY,
 	OS_THREAD_LOW_PRIORITY,
 	OS_THREAD_LOWEST_PRIORITY,
-	OS_THREAD_NOSET_PRIORITY,   /* With this option the priority level is is the default for the given OS */
+	OS_THREAD_NOSET_PRIORITY,   /* With this option the priority level is the default for the given OS */
 	OS_THREAD_LAST_PRIORITY     /* This must be always the last entry */
 } OS_THREAD_LEVEL;
 
@@ -305,18 +363,23 @@ typedef enum priority_levels
                 is possible to specify the priority used to schedule the new
                 thread.
 
-@Output         phThread        Returned handle to the thread.
-@Input          pszThreadName   Name to assign to the thread.
-@Input          pfnThread       Thread entry point function.
-@Input          hData           Thread specific data pointer for pfnThread().
-@Input          eThreadPriority Priority level to assign to the new thread.
+@Output         phThread            Returned handle to the thread.
+@Input          pszThreadName       Name to assign to the thread.
+@Input          pfnThread           Thread entry point function.
+@Input          pfnDebugDumpCB      Used to dump info of the created thread
+@Input          bIsSupportingThread Set, if summary of this thread needs to
+                                    be dumped in debug_dump
+@Input          hData               Thread specific data pointer for pfnThread().
+@Input          eThreadPriority     Priority level to assign to the new thread.
 @Return         Standard PVRSRV_ERROR error code.
 */ /**************************************************************************/
 PVRSRV_ERROR OSThreadCreatePriority(IMG_HANDLE *phThread,
-									IMG_CHAR *pszThreadName,
-									PFN_THREAD pfnThread,
-									void *hData,
-									OS_THREAD_LEVEL eThreadPriority);
+                                    IMG_CHAR *pszThreadName,
+                                    PFN_THREAD pfnThread,
+                                    IMG_HANDLE pfnDebugDumpCB,
+                                    IMG_BOOL bIsSupportingThread,
+                                    void *hData,
+                                    OS_THREAD_LEVEL eThreadPriority);
 
 /*************************************************************************/ /*!
 @Function       OSThreadDestroy
@@ -470,7 +533,7 @@ IMG_BOOL OSUnMapPhysToLin(void *pvLinAddr, size_t ui32Bytes, IMG_UINT32 ui32Flag
 PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP eCacheOp);
 
 /**************************************************************************/ /*!
-@Function       OSFlushCPUCacheRangeKM
+@Function       OSCPUCacheFlushRangeKM
 @Description    Clean and invalidate the CPU cache for the specified
                 address range.
 @Input          psDevNode     device on which the allocation was made
@@ -484,17 +547,16 @@ PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP eCacheOp);
                               flushed
 @Return         None
  */ /**************************************************************************/
-void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheFlushRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
                             IMG_CPU_PHYADDR sCPUPhysEnd);
 
-
 /**************************************************************************/ /*!
-@Function       OSCleanCPUCacheRangeKM
+@Function       OSCPUCacheCleanRangeKM
 @Description    Clean the CPU cache for the specified address range.
-                This writes out the contents of the cache and unsets the
+                This writes out the contents of the cache and clears the
                 'dirty' bit (which indicates the physical memory is
                 consistent with the cache contents).
 @Input          psDevNode     device on which the allocation was made
@@ -508,14 +570,14 @@ void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                               cleaned
 @Return         None
  */ /**************************************************************************/
-void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheCleanRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
                             IMG_CPU_PHYADDR sCPUPhysEnd);
 
 /**************************************************************************/ /*!
-@Function       OSInvalidateCPUCacheRangeKM
+@Function       OSCPUCacheInvalidateRangeKM
 @Description    Invalidate the CPU cache for the specified address range.
                 The cache must reload data from those addresses if they
                 are accessed.
@@ -530,7 +592,7 @@ void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                               invalidated
 @Return         None
  */ /**************************************************************************/
-void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheInvalidateRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                                  void *pvVirtStart,
                                  void *pvVirtEnd,
                                  IMG_CPU_PHYADDR sCPUPhysStart,
@@ -538,14 +600,13 @@ void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 
 /**************************************************************************/ /*!
 @Function       OSCPUCacheOpAddressType
-@Description    Returns the address type (i.e. virtual/physical/both) that is 
-                used to perform cache maintenance on the CPU. This is used
+@Description    Returns the address type (i.e. virtual/physical/both) that OS
+                uses to perform cache maintenance on the CPU. This is used
 				to infer whether the virtual or physical address supplied to
-				the OSxxxCPUCacheRangeKM functions can be omitted when called.
-@Input          uiCacheOp       the type of cache operation to be performed
+				the OSCPUCacheXXXRangeKM functions can be omitted when called.
 @Return         PVRSRV_CACHE_OP_ADDR_TYPE
  */ /**************************************************************************/
-PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(PVRSRV_CACHE_OP uiCacheOp);
+PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(void);
 
 /*!
  ******************************************************************************
@@ -706,7 +767,7 @@ void OSPhyContigPagesUnmap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle
                 uncached this can be implemented as nop.
 @Input          psDevNode     device on which the allocation was made
 @Input          psMemHandle   the handle of the allocation to be flushed
-@Input          uiOffset      the offset in bytes from the start of the 
+@Input          uiOffset      the offset in bytes from the start of the
                               allocation from where to start flushing
 @Input          uiLength      the amount to flush from the offset in bytes
 @Return         PVRSRV_OK on success, a failure code otherwise.
@@ -745,6 +806,12 @@ IMG_UINT32 OSVSScanf(IMG_CHAR *pStr, const IMG_CHAR *pszFormat, ...);
 @Description    OS function to support the standard C strncpy() function.
  */ /**************************************************************************/
 IMG_CHAR* OSStringNCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uSize);
+
+/**************************************************************************/ /*!
+@Function       OSStringLCopy
+@Description    OS function to support the BSD C strlcpy() function.
+ */ /**************************************************************************/
+size_t OSStringLCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uSize);
 
 /**************************************************************************/ /*!
 @Function       OSSNPrintf
@@ -828,8 +895,10 @@ PVRSRV_ERROR OSEventObjectSignal(IMG_HANDLE hEventObject);
                 period (defined in EVENT_OBJECT_TIMEOUT_MS), the function
                 will return with the result code PVRSRV_ERROR_TIMEOUT.
 
-                Note: The global bridge lock should be released while waiting
-                for the event object to signal (if held by the current thread).
+                Note: If use of the global bridge lock is supported (if the
+                DDK has been built with PVRSRV_USE_BRIDGE_LOCK defined), the
+                global bridge lock should be released while waiting for the
+                event object to signal (if held by the current thread).
                 The following logic should be implemented in the OS
                 implementation:
                 ...
@@ -840,7 +909,8 @@ PVRSRV_ERROR OSEventObjectSignal(IMG_HANDLE hEventObject);
                 ...
                 / * sleep & reschedule - wait for signal * /
                 ...
-                if (bReleasePVRLock == IMG_TRUE) OSReleaseBridgeLock();
+                / * if lock was previously held, re-acquire it * /
+                if (bReleasePVRLock == IMG_TRUE) OSAcquireBridgeLock();
                 ...
 
 @Input          hOSEventKM    the OS event object handle associated with
@@ -848,6 +918,34 @@ PVRSRV_ERROR OSEventObjectSignal(IMG_HANDLE hEventObject);
 @Return         PVRSRV_OK on success, a failure code otherwise.
 */ /**************************************************************************/
 PVRSRV_ERROR OSEventObjectWait(IMG_HANDLE hOSEventKM);
+
+/*************************************************************************/ /*!
+@Function       OSEventObjectWaitKernel
+@Description    Wait for an event object to signal. The function is passed
+                an OS event object handle (which allows the OS to have the
+                calling thread wait on the associated event object).
+                The calling thread will be rescheduled when the associated
+                event object signals.
+                If the event object has not signalled after a default timeout
+                period (defined in EVENT_OBJECT_TIMEOUT_MS), the function
+                will return with the result code PVRSRV_ERROR_TIMEOUT.
+
+                Note: This function should be used only by kernel thread.
+                This is because all kernel threads are freezable and
+                this function allows the kernel to freeze the threads
+                when waiting.
+
+                See OSEventObjectWait() for more details.
+
+@Input          hOSEventKM    the OS event object handle associated with
+                              the event object.
+@Return         PVRSRV_OK on success, a failure code otherwise.
+*/ /**************************************************************************/
+#if defined(LINUX) && defined(__KERNEL__)
+PVRSRV_ERROR OSEventObjectWaitKernel(IMG_HANDLE hOSEventKM, IMG_UINT64 uiTimeoutus);
+#else
+#define OSEventObjectWaitKernel OSEventObjectWaitTimeout
+#endif
 
 /*************************************************************************/ /*!
 @Function       OSEventObjectWaitTimeout
@@ -859,8 +957,10 @@ PVRSRV_ERROR OSEventObjectWait(IMG_HANDLE hOSEventKM);
                 If the event object has not signalled after the specified
                 timeout period (passed in 'uiTimeoutus'), the function
                 will return with the result code PVRSRV_ERROR_TIMEOUT.
-                NB. The global bridge lock should be released while waiting
-                for the event object to signal (if held by the current thread)
+                NB. If use of the global bridge lock is supported (if
+                PVRSRV_USE_BRIDGE_LOCK is defined) it should be released while
+                waiting for the event object to signal (if held by the current
+                thread).
                 See OSEventObjectWait() for details.
 @Input          hOSEventKM    the OS event object handle associated with
                               the event object.
@@ -879,9 +979,10 @@ PVRSRV_ERROR OSEventObjectWaitTimeout(IMG_HANDLE hOSEventKM, IMG_UINT64 uiTimeou
                 If the event object has not signalled after a default timeout
                 period (defined in EVENT_OBJECT_TIMEOUT_MS), the function
                 will return with the result code PVRSRV_ERROR_TIMEOUT.
-                The global bridge lock is held while waiting for the event
-                object to signal (this will prevent other bridge calls from
-                being serviced during this time).
+                If use of the global bridge lock is supported (if
+                PVRSRV_USE_BRIDGE_LOCK is defined), it will be held while
+                waiting for the event object to signal (this will prevent
+                other bridge calls from being serviced during this time).
                 See OSEventObjectWait() for details.
 @Input          hOSEventKM    the OS event object handle associated with
                               the event object.
@@ -899,9 +1000,10 @@ PVRSRV_ERROR OSEventObjectWaitAndHoldBridgeLock(IMG_HANDLE hOSEventKM);
                 If the event object has not signalled after the specified
                 timeout period (passed in 'uiTimeoutus'), the function
                 will return with the result code PVRSRV_ERROR_TIMEOUT.
-                The global bridge lock is held while waiting for the event
-                object to signal (this will prevent other bridge calls from
-                being serviced during this time).
+                If use of the global bridge lock is supported (if
+                PVRSRV_USE_BRIDGE_LOCK is defined) it will be held while
+                waiting for the event object to signal (this will prevent
+                other bridge calls from being serviced during this time).
                 See OSEventObjectWait() for details.
 @Input          hOSEventKM    the OS event object handle associated with
                               the event object.
@@ -967,10 +1069,22 @@ void OSSleepms(IMG_UINT32 ui32Timems);
 */ /**************************************************************************/
 void OSReleaseThreadQuanta(void);
 
+
+/*************************************************************************/ /*!
+*/ /**************************************************************************/
+
+/* The access method is dependent on the location of the physical memory that
+ * makes up the PhyHeaps defined for the system and the CPU architecture. These
+ * macros may change in future to accommodate different access requirements.
+ */
+#define OSReadDeviceMem32(addr)        (*((volatile IMG_UINT32 __force *)(addr)))
+#define OSWriteDeviceMem32(addr, val)  (*((volatile IMG_UINT32 __force *)(addr)) = (IMG_UINT32)(val))
+
 #if defined(LINUX) && defined(__KERNEL__) && !defined(NO_HARDWARE)
-	#define OSReadHWReg8(addr, off)  (IMG_UINT8)readb((IMG_PBYTE)(addr) + (off))
-	#define OSReadHWReg16(addr, off) (IMG_UINT16)readw((IMG_PBYTE)(addr) + (off))
-	#define OSReadHWReg32(addr, off) (IMG_UINT32)readl((IMG_PBYTE)(addr) + (off))
+	#define OSReadHWReg8(addr, off)  (IMG_UINT8)readb((IMG_BYTE __iomem *)(addr) + (off))
+	#define OSReadHWReg16(addr, off) (IMG_UINT16)readw((IMG_BYTE __iomem *)(addr) + (off))
+	#define OSReadHWReg32(addr, off) (IMG_UINT32)readl((IMG_BYTE __iomem *)(addr) + (off))
+
 	/* Little endian support only */
 	#define OSReadHWReg64(addr, off) \
 			({ \
@@ -978,35 +1092,37 @@ void OSReleaseThreadQuanta(void);
 				__typeof__(off) _off = off; \
 				(IMG_UINT64) \
 				( \
-					( (IMG_UINT64)(readl((IMG_PBYTE)(_addr) + (_off) + 4)) << 32) \
-					| readl((IMG_PBYTE)(_addr) + (_off)) \
+					( (IMG_UINT64)(readl((IMG_BYTE __iomem *)(_addr) + (_off) + 4)) << 32) \
+					| readl((IMG_BYTE __iomem *)(_addr) + (_off)) \
 				); \
 			})
 
-	#define OSWriteHWReg8(addr, off, val)  writeb((IMG_UINT8)(val), (IMG_PBYTE)(addr) + (off))
-	#define OSWriteHWReg16(addr, off, val) writew((IMG_UINT16)(val), (IMG_PBYTE)(addr) + (off))
-	#define OSWriteHWReg32(addr, off, val) writel((IMG_UINT32)(val), (IMG_PBYTE)(addr) + (off))
+	#define OSWriteHWReg8(addr, off, val)  writeb((IMG_UINT8)(val), (IMG_BYTE __iomem *)(addr) + (off))
+	#define OSWriteHWReg16(addr, off, val) writew((IMG_UINT16)(val), (IMG_BYTE __iomem *)(addr) + (off))
+	#define OSWriteHWReg32(addr, off, val) writel((IMG_UINT32)(val), (IMG_BYTE __iomem *)(addr) + (off))
 	/* Little endian support only */
 	#define OSWriteHWReg64(addr, off, val) do \
 			{ \
 				__typeof__(addr) _addr = addr; \
 				__typeof__(off) _off = off; \
 				__typeof__(val) _val = val; \
-				writel((IMG_UINT32)((_val) & 0xffffffff), (_addr) + (_off));	\
-				writel((IMG_UINT32)(((IMG_UINT64)(_val) >> 32) & 0xffffffff), (_addr) + (_off) + 4); \
+				writel((IMG_UINT32)((_val) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off));	\
+				writel((IMG_UINT32)(((IMG_UINT64)(_val) >> 32) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off) + 4); \
 			} while (0)
+
 
 #elif defined(NO_HARDWARE)
 	/* FIXME: OSReadHWReg should not exist in no hardware builds */
 	#define OSReadHWReg8(addr, off)  (0x4eU)
 	#define OSReadHWReg16(addr, off) (0x3a4eU)
 	#define OSReadHWReg32(addr, off) (0x30f73a4eU)
-	#define OSReadHWReg64(addr, off) (0x5b376c9d30f73a4eU)
+	#define OSReadHWReg64(addr, off) ((IMG_UINT64)0x5b376c9d30f73a4eU)
 
 	#define OSWriteHWReg8(addr, off, val)
 	#define OSWriteHWReg16(addr, off, val)
 	#define OSWriteHWReg32(addr, off, val)
 	#define OSWriteHWReg64(addr, off, val)
+
 #else
 /*************************************************************************/ /*!
 @Function       OSReadHWReg8
@@ -1022,7 +1138,7 @@ void OSReleaseThreadQuanta(void);
                                    the register to be read.
 @Return         The byte read.
 */ /**************************************************************************/
-	IMG_UINT8 OSReadHWReg8(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+	IMG_UINT8 OSReadHWReg8(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
 
 /*************************************************************************/ /*!
 @Function       OSReadHWReg16
@@ -1038,7 +1154,7 @@ void OSReleaseThreadQuanta(void);
                                    the register to be read.
 @Return         The word read.
 */ /**************************************************************************/
-	IMG_UINT16 OSReadHWReg16(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+	IMG_UINT16 OSReadHWReg16(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
 
 /*************************************************************************/ /*!
 @Function       OSReadHWReg32
@@ -1054,7 +1170,7 @@ void OSReleaseThreadQuanta(void);
                                    the register to be read.
 @Return         The long word read.
 */ /**************************************************************************/
-	IMG_UINT32 OSReadHWReg32(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+	IMG_UINT32 OSReadHWReg32(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
 
 /*************************************************************************/ /*!
 @Function       OSReadHWReg64
@@ -1070,7 +1186,7 @@ void OSReleaseThreadQuanta(void);
                                    the register to be read.
 @Return         The long long word read.
 */ /**************************************************************************/
-	IMG_UINT64 OSReadHWReg64(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+	IMG_UINT64 OSReadHWReg64(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
 
 /*************************************************************************/ /*!
 @Function       OSWriteHWReg8
@@ -1086,7 +1202,7 @@ void OSReleaseThreadQuanta(void);
 @Input          ui8Value           The byte to be written to the register.
 @Return         None.
 */ /**************************************************************************/
-	void OSWriteHWReg8(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT8 ui8Value);
+	void OSWriteHWReg8(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT8 ui8Value);
 
 /*************************************************************************/ /*!
 @Function       OSWriteHWReg16
@@ -1102,7 +1218,7 @@ void OSReleaseThreadQuanta(void);
 @Input          ui16Value          The word to be written to the register.
 @Return         None.
 */ /**************************************************************************/
-	void OSWriteHWReg16(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT16 ui16Value);
+	void OSWriteHWReg16(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT16 ui16Value);
 
 /*************************************************************************/ /*!
 @Function       OSWriteHWReg32
@@ -1118,7 +1234,7 @@ void OSReleaseThreadQuanta(void);
 @Input          ui32Value          The long word to be written to the register.
 @Return         None.
 */ /**************************************************************************/
-	void OSWriteHWReg32(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT32 ui32Value);
+	void OSWriteHWReg32(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT32 ui32Value);
 
 /*************************************************************************/ /*!
 @Function       OSWriteHWReg64
@@ -1135,7 +1251,7 @@ void OSReleaseThreadQuanta(void);
                                    register.
 @Return         None.
 */ /**************************************************************************/
-	void OSWriteHWReg64(void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT64 ui64Value);
+	void OSWriteHWReg64(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT64 ui64Value);
 #endif
 
 typedef void (*PFN_TIMER_FUNC)(void*);
@@ -1189,53 +1305,11 @@ PVRSRV_ERROR OSDisableTimer(IMG_HANDLE hTimer);
 void OSPanic(void);
 
 /*************************************************************************/ /*!
-@Function       OSProcHasPrivSrvInit
-@Description    Checks whether the current process has sufficient privileges
-                to initialise services
-@Return         IMG_TRUE if it does, IMG_FALSE if it does not.
-*/ /**************************************************************************/
-IMG_BOOL OSProcHasPrivSrvInit(void);
-
-/*!
- ******************************************************************************
- * Access operation verification type
- *****************************************************************************/
-typedef enum _img_verify_test
-{
-	PVR_VERIFY_WRITE = 0,  /*!< Used with OSAccessOK() to check writing is possible */
-	PVR_VERIFY_READ        /*!< Used with OSAccessOK() to check reading is possible */
-} IMG_VERIFY_TEST;
-
-/*************************************************************************/ /*!
-@Function       OSAccessOK
-@Description    Checks that a user space pointer is valid
-@Input          eVerification    the test to be verified. This can be either
-                                 PVRSRV_VERIFY_WRITE or PVRSRV_VERIFY_READ.
-@Input          pvUserPtr        pointer to the memory to be checked
-@Input          ui32Bytes        size of the memory to be checked
-@Return         IMG_TRUE if the specified access is valid, IMG_FALSE if not.
-*/ /**************************************************************************/
-IMG_BOOL OSAccessOK(IMG_VERIFY_TEST eVerification, void *pvUserPtr, size_t ui32Bytes);
-
-/*************************************************************************/ /*!
-@Function       OSCopyFromUser
-@Description    Copy data from user-addressable memory to kernel-addressable
-                memory.
-                For operating systems that do not have a user/kernel space
-                distinction, this function should be implemented as a stub
-                which simply returns PVRSRV_ERROR_NOT_SUPPORTED.
-@Input          pvProcess        handle of the connection
-@Input          pvDest           pointer to the destination Kernel memory
-@Input          pvSrc            pointer to the source User memory
-@Input          ui32Bytes        size of the data to be copied
-@Return         PVRSRV_OK on success, a failure code otherwise.
-*/ /**************************************************************************/
-PVRSRV_ERROR OSCopyToUser(void *pvProcess, void *pvDest, const void *pvSrc, size_t ui32Bytes);
-
-/*************************************************************************/ /*!
 @Function       OSCopyToUser
 @Description    Copy data to user-addressable memory from kernel-addressable
                 memory.
+                Note that pvDest may be an invalid address or NULL and the
+                function should return an error in this case.
                 For operating systems that do not have a user/kernel space
                 distinction, this function should be implemented as a stub
                 which simply returns PVRSRV_ERROR_NOT_SUPPORTED.
@@ -1245,7 +1319,24 @@ PVRSRV_ERROR OSCopyToUser(void *pvProcess, void *pvDest, const void *pvSrc, size
 @Input          ui32Bytes        size of the data to be copied
 @Return         PVRSRV_OK on success, a failure code otherwise.
 */ /**************************************************************************/
-PVRSRV_ERROR OSCopyFromUser(void *pvProcess, void *pvDest, const void *pvSrc, size_t ui32Bytes);
+PVRSRV_ERROR OSCopyToUser(void *pvProcess, void __user *pvDest, const void *pvSrc, size_t ui32Bytes);
+
+/*************************************************************************/ /*!
+@Function       OSCopyFromUser
+@Description    Copy data from user-addressable memory to kernel-addressable
+                memory.
+                Note that pvSrc may be an invalid address or NULL and the
+                function should return an error in this case.
+                For operating systems that do not have a user/kernel space
+                distinction, this function should be implemented as a stub
+                which simply returns PVRSRV_ERROR_NOT_SUPPORTED.
+@Input          pvProcess        handle of the connection
+@Input          pvDest           pointer to the destination Kernel memory
+@Input          pvSrc            pointer to the source User memory
+@Input          ui32Bytes        size of the data to be copied
+@Return         PVRSRV_OK on success, a failure code otherwise.
+*/ /**************************************************************************/
+PVRSRV_ERROR OSCopyFromUser(void *pvProcess, void *pvDest, const void __user *pvSrc, size_t ui32Bytes);
 
 #if defined (__linux__) || defined (WINDOWS_WDF) || defined(INTEGRITY_OS)
 #define OSBridgeCopyFromUser OSCopyFromUser
@@ -1298,6 +1389,7 @@ PVRSRV_ERROR OSBridgeCopyToUser (void *pvProcess,
 #define PVRSRV_MAX_BRIDGE_IN_SIZE      0x2000    /*!< Size of the memory block used to hold data passed in to a bridge call */
 #define PVRSRV_MAX_BRIDGE_OUT_SIZE     0x1000    /*!< Size of the memory block used to hold data returned from a bridge call */
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK) || defined(DOXYGEN)
 /*************************************************************************/ /*!
 @Function       OSGetGlobalBridgeBuffers
 @Description    Returns the addresses and sizes of the buffers used to pass
@@ -1310,34 +1402,25 @@ PVRSRV_ERROR OSBridgeCopyToUser (void *pvProcess,
 */ /**************************************************************************/
 PVRSRV_ERROR OSGetGlobalBridgeBuffers (void **ppvBridgeInBuffer,
 									   void **ppvBridgeOutBuffer);
+#endif
 
 /*************************************************************************/ /*!
-@Function       OSSetDriverSuspended
-@Description    Prevent processes from using the driver while it is
-                suspended. This function is not required for most operating
-                systems.
-@Return         IMG_TRUE on success, IMG_FALSE otherwise.
+@Function       OSPlatformBridgeInit
+@Description    Called during device creation to allow the OS port to register
+                other bridge modules and related resources that it requires.
+@Return         PVRSRV_OK on success, a failure code otherwise.
 */ /**************************************************************************/
-IMG_BOOL OSSetDriverSuspended(void);
+PVRSRV_ERROR OSPlatformBridgeInit(void);
 
 /*************************************************************************/ /*!
-@Function       OSClearDriverSuspended
-@Description    Re-allows processes to use the driver when it is no longer
-                suspended. This function is not required for most operating
-                systems.
-@Return         IMG_TRUE on success, IMG_FALSE otherwise.
+@Function       OSPlatformBridgeDeInit
+@Description    Called during device destruction to allow the OS port to
+                deregister its OS specific bridges and clean up other
+                related resources.
+@Return         PVRSRV_OK on success, a failure code otherwise.
 */ /**************************************************************************/
-IMG_BOOL OSClearDriverSuspended(void);
+PVRSRV_ERROR OSPlatformBridgeDeInit(void);
 
-/*************************************************************************/ /*!
-@Function       OSGetDriverSuspended
-@Description    Returns whether or not processes are unable to use the driver
-                (due to  it being suspended). This function is not required
-                for most operating systems.
-@Return         IMG_TRUE if the driver is suspended (use is not possible),
-                IMG_FALSE if the driver is not suspended (use is possible).
-*/ /**************************************************************************/
-IMG_BOOL OSGetDriverSuspended(void);
 
 #if defined(LINUX) && defined(__KERNEL__)
 #define OSWriteMemoryBarrier() wmb()
@@ -1385,8 +1468,6 @@ int PVRSRVToNativeError(PVRSRV_ERROR e);
 #include <linux/slab.h>
 #include "allocmem.h"
 
-typedef struct rw_semaphore *POSWR_LOCK;
-
 #define OSWRLockCreate(ppsLock) ({ \
 	PVRSRV_ERROR e = PVRSRV_ERROR_OUT_OF_MEMORY; \
 	*(ppsLock) = OSAllocMem(sizeof(struct rw_semaphore)); \
@@ -1399,10 +1480,20 @@ typedef struct rw_semaphore *POSWR_LOCK;
 #define OSWRLockAcquireWrite(psLock) ({down_write(psLock); PVRSRV_OK;})
 #define OSWRLockReleaseWrite(psLock) ({up_write(psLock); PVRSRV_OK;})
 
+typedef spinlock_t *POS_SPINLOCK;
+
+#define OSSpinLockCreate(_ppsLock) ({ \
+	PVRSRV_ERROR e = PVRSRV_ERROR_OUT_OF_MEMORY; \
+	*(_ppsLock) = OSAllocMem(sizeof(spinlock_t)); \
+	if (*(_ppsLock)) {spin_lock_init(*(_ppsLock)); e = PVRSRV_OK;} \
+	e;})
+#define OSSpinLockDestroy(_psLock) ({OSFreeMem(_psLock);})
+
+#define OSSpinLockAcquire(_pLock, _pFlags) {unsigned long *p = (unsigned long *)_pFlags; spin_lock_irqsave(_pLock, *p);}
+#define OSSpinLockRelease(_pLock, _flags)  {spin_unlock_irqrestore(_pLock, _flags);}
+
 #elif defined(LINUX) || defined(__QNXNTO__) || defined (INTEGRITY_OS)
 /* User-mode unit tests use these definitions on Linux */
-
-typedef struct _OSWR_LOCK_ *POSWR_LOCK;
 
 PVRSRV_ERROR OSWRLockCreate(POSWR_LOCK *ppsLock);
 void OSWRLockDestroy(POSWR_LOCK psLock);
@@ -1411,13 +1502,15 @@ void OSWRLockReleaseRead(POSWR_LOCK psLock);
 void OSWRLockAcquireWrite(POSWR_LOCK psLock);
 void OSWRLockReleaseWrite(POSWR_LOCK psLock);
 
+/* For now, spin-locks are required on Linux only, so other platforms fake
+ * spinlocks with normal mutex locks */
+#define POS_SPINLOCK POS_LOCK
+#define OSSpinLockCreate(ppLock) OSLockCreate(ppLock, LOCK_TYPE_PASSIVE)
+#define OSSpinLockDestroy(pLock) OSLockDestroy(pLock)
+#define OSSpinLockAcquire(pLock, pFlags) {PVR_UNREFERENCED_PARAMETER(pFlags); OSLockAcquire(pLock);}
+#define OSSpinLockRelease(pLock, flags) {PVR_UNREFERENCED_PARAMETER(flags); OSLockRelease(pLock);}
+
 #else
-struct _OSWR_LOCK_ {
-	IMG_UINT32 ui32Dummy;
-};
-#if defined(WINDOWS_WDF)
-	typedef struct _OSWR_LOCK_ *POSWR_LOCK;
-#endif
 
 /*************************************************************************/ /*!
 @Function       OSWRLockCreate
@@ -1533,6 +1626,7 @@ IMG_UINT32 OSDivide64(IMG_UINT64 ui64Divident, IMG_UINT32 ui32Divisor, IMG_UINT3
 */ /**************************************************************************/
 void OSDumpStack(void);
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK) || defined(DOXYGEN)
 /*************************************************************************/ /*!
 @Function       OSAcquireBridgeLock
 @Description    Acquire the global bridge lock.
@@ -1556,12 +1650,13 @@ void OSAcquireBridgeLock(void);
 @Return         None
 */ /**************************************************************************/
 void OSReleaseBridgeLock(void);
+#endif
 
 /*
  *  Functions for providing support for PID statistics.
  */
 typedef void (OS_STATS_PRINTF_FUNC)(void *pvFilePtr, const IMG_CHAR *pszFormat, ...);
- 
+
 typedef void (OS_STATS_PRINT_FUNC)(void *pvFilePtr,
 								   void *pvStatPtr,
 								   OS_STATS_PRINTF_FUNC* pfnOSGetStatsPrintf);
@@ -1688,6 +1783,22 @@ void OSUserModeAccessToPerfCountersEn(void);
 */ /**************************************************************************/
 PVRSRV_ERROR OSDebugSignalPID(IMG_UINT32 ui32PID);
 
+#if defined(LINUX) && defined(__KERNEL__) && !defined(DOXYGEN)
+#define OSWarnOn(a) WARN_ON(a)
+#else
+/*************************************************************************/ /*!
+@Function       OSWarnOn
+@Description    This API allows the driver to emit a special token and stack
+                dump to the server log when an issue is detected that needs the
+                OS to be notified. The token or call may be used to trigger
+                log collection by the OS environment.
+                PVR_DPF log messages will have been emitted prior to this call.
+@Input          a    Expression to evaluate, if true trigger Warn signal
+@Return         None
+*/ /**************************************************************************/
+#define OSWarnOn(a) do { if ((a)) { OSDumpStack(); } } while(0)
+#endif
+
 #if defined(CONFIG_L4)
 #include <asm/api-l4env/api.h>
 #include <asm/io.h>
@@ -1699,6 +1810,17 @@ PVRSRV_ERROR OSDebugSignalPID(IMG_UINT32 ui32PID);
 #error "Unable to override page_to_phys() implementation"
 #endif
 #endif
+
+/*************************************************************************/ /*!
+@Function       OSThreadDumpInfo
+@Description    Traverse the thread list and call each of the stored
+                callbacks to dump the info in debug_dump.
+                Where operating systems do not support a debugfs,
+                file system this function may be implemented as a stub.
+*/ /**************************************************************************/
+void OSThreadDumpInfo(IMG_HANDLE hDbgReqestHandle,
+                      DUMPDEBUG_PRINTF_FUNC* pfnDumpDebugPrintf,
+                      void *pvDumpDebugFile);
 
 #endif /* __OSFUNC_H__ */
 

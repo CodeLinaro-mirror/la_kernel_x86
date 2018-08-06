@@ -41,8 +41,6 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#if defined(SUPPORT_KERNEL_SRVINIT)
-
 #include "pvr_debugfs.h"
 #include "pvr_uaccess.h"
 #include <linux/moduleparam.h>
@@ -50,17 +48,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/string.h>
 #include <stdbool.h>
 
+/* Common and SO layer */
+#include "img_defs.h"
+#include "sofunc_pvr.h"
+
 /* for action device access */
 #include "pvrsrv.h"
 #include "device.h"
 #include "rgxdevice.h"
 #include "rgxfwutils.h"
+#include "rgxhwperf.h"
 #include "debugmisc_server.h"
 #include "htbserver.h"
 #include "rgxutils.h"
 #include "rgxapi_km.h"
 
-#include "img_defs.h"
 
 /* defines for default values */
 #include "rgx_fwif.h"
@@ -222,21 +224,14 @@ static const struct apphint_init_data init_data_debugfs_device[] = {
 #undef UINT32Bitfield
 #undef UINT32List
 
-/* Don't use the kernel ARRAY_SIZE macro here because it checks
- * __must_be_array() and we need to be able to use this safely on a NULL ptr.
- * This will return an undefined size for a NULL ptr - so should only be
- * used here.
- */
-#define APPHINT_HELP_ARRAY_SIZE(a) (sizeof((a))/(sizeof((a[0]))))
+__maybe_unused static const char NO_PARAM_TABLE[] = {};
 
 static const struct apphint_param param_lookup[] = {
 #define X(a, b, c, d, e) \
-	{APPHINT_ID_ ## a, APPHINT_DATA_TYPE_ ## b, e, APPHINT_HELP_ARRAY_SIZE(e) },
+	{APPHINT_ID_ ## a, APPHINT_DATA_TYPE_ ## b, e, ARRAY_SIZE(e) },
 	APPHINT_LIST_ALL
 #undef X
 };
-
-#undef APPHINT_HELP_ARRAY_SIZE
 
 static const struct apphint_class_state class_state[] = {
 #define X(a) {APPHINT_CLASS_ ## a, APPHINT_ENABLED_CLASS_ ## a},
@@ -259,17 +254,21 @@ static const struct apphint_class_state class_state[] = {
 static struct apphint_state
 {
 	struct workqueue_struct *workqueue;
-	PVR_DEBUGFS_DIR_DATA *debugfs_device_rootdir[APPHINT_DEVICES_MAX];
-	PVR_DEBUGFS_ENTRY_DATA *debugfs_device_entry[APPHINT_DEVICES_MAX][APPHINT_DEBUGFS_DEVICE_ID_MAX];
-	PVR_DEBUGFS_DIR_DATA *debugfs_rootdir;
-	PVR_DEBUGFS_ENTRY_DATA *debugfs_entry[APPHINT_DEBUGFS_ID_MAX];
-	PVR_DEBUGFS_DIR_DATA *buildvar_rootdir;
-	PVR_DEBUGFS_ENTRY_DATA *buildvar_entry[APPHINT_BUILDVAR_ID_MAX];
+	PPVR_DEBUGFS_DIR_DATA debugfs_device_rootdir[APPHINT_DEVICES_MAX];
+	PPVR_DEBUGFS_ENTRY_DATA debugfs_device_entry[APPHINT_DEVICES_MAX][APPHINT_DEBUGFS_DEVICE_ID_MAX];
+	PPVR_DEBUGFS_DIR_DATA debugfs_rootdir;
+	PPVR_DEBUGFS_ENTRY_DATA debugfs_entry[APPHINT_DEBUGFS_ID_MAX];
+	PPVR_DEBUGFS_DIR_DATA buildvar_rootdir;
+	PPVR_DEBUGFS_ENTRY_DATA buildvar_entry[APPHINT_BUILDVAR_ID_MAX];
 
 	int num_devices;
 	PVRSRV_DEVICE_NODE *devices[APPHINT_DEVICES_MAX];
 	int initialized;
 
+	/* Array contains value space for 1 copy of all apphint values defined
+	 * (for device 1) and N copies of device specific apphint values for
+	 * multi-device platforms.
+	 */
 	struct apphint_action val[APPHINT_ID_MAX + ((APPHINT_DEVICES_MAX-1)*APPHINT_DEBUGFS_DEVICE_ID_MAX)];
 
 } apphint = {
@@ -309,6 +308,13 @@ get_value_offset_from_device(const PVRSRV_DEVICE_NODE * const device,
                              int * const offset)
 {
 	int i;
+
+	/* No device offset if not a device specific apphint */
+	if (APPHINT_OF_DRIVER_NO_DEVICE == device) {
+		*offset = 0;
+		return;
+	}
+
 	for (i = 0; device && i < APPHINT_DEVICES_MAX; i++) {
 		if (apphint.devices[i] == device)
 			break;
@@ -412,7 +418,7 @@ static void apphint_action(union apphint_value new_value,
 		PVR_DPF((PVR_DBG_ERROR,
 			"%s: failed to alloc memory for apphint change request",
 			__func__));
-			goto err_exit;
+		goto err_exit;
 	}
 	return;
 err_exit:
@@ -482,7 +488,7 @@ static int apphint_read(char *buffer, size_t count, APPHINT_ID ue,
 		/* buffer may include '\n', remove it */
 		char *arg = strsep(&buffer, "\n");
 
-		if (!lookup) {
+		if (lookup == (struct apphint_lookup *)NO_PARAM_TABLE) {
 			result = -EINVAL;
 			goto err_exit;
 		}
@@ -518,7 +524,7 @@ static int apphint_read(char *buffer, size_t count, APPHINT_ID ue,
 		char *string = strsep(&buffer, "\n");
 		char *token = strsep(&string, ",");
 
-		if (!lookup) {
+		if (lookup == (struct apphint_lookup *)NO_PARAM_TABLE) {
 			result = -EINVAL;
 			goto err_exit;
 		}
@@ -663,7 +669,7 @@ static int apphint_write(char *buffer, const size_t size,
 			(struct apphint_lookup *) hint->data_type_helper;
 		IMG_UINT32 i;
 
-		if (!lookup) {
+		if (lookup == (struct apphint_lookup *)NO_PARAM_TABLE) {
 			result = -EINVAL;
 			goto err_exit;
 		}
@@ -685,7 +691,7 @@ static int apphint_write(char *buffer, const size_t size,
 			(struct apphint_lookup *) hint->data_type_helper;
 		IMG_UINT32 i;
 
-		if (!lookup) {
+		if (lookup == (struct apphint_lookup *)NO_PARAM_TABLE) {
 			result = -EINVAL;
 			goto err_exit;
 		}
@@ -779,7 +785,7 @@ static const struct kernel_param_ops apphint_kparam_fops = {
 	module_param_cb(name, &apphint_kparam_fops, &apphint.val[number], perm);
 
 #define X(a, b, c, d, e) \
-	apphint_modparam_class_ ##c(a, APPHINT_ID_ ## a, (S_IRUSR|S_IRGRP|S_IROTH))
+	apphint_modparam_class_ ##c(a, APPHINT_ID_ ## a, 0444)
 	APPHINT_LIST_MODPARAM
 #undef X
 
@@ -851,7 +857,7 @@ static const struct seq_operations apphint_seq_fops = {
  */
 static ssize_t apphint_set(const char __user *buffer,
 			    size_t count,
-			    loff_t position,
+			    loff_t *ppos,
 			    void *data)
 {
 	APPHINT_ID id;
@@ -860,7 +866,8 @@ static ssize_t apphint_set(const char __user *buffer,
 	char km_buffer[APPHINT_BUFFER_SIZE];
 	int result = 0;
 
-	PVR_UNREFERENCED_PARAMETER(position);
+	if (ppos == NULL)
+		return -EIO;
 
 	if (count >= APPHINT_BUFFER_SIZE) {
 		PVR_DPF((PVR_DBG_ERROR, "%s: String too long (%zd)",
@@ -882,6 +889,7 @@ static ssize_t apphint_set(const char __user *buffer,
 	if (result >= 0)
 		apphint_action(value, action);
 
+	*ppos += count;
 err_exit:
 	return result;
 }
@@ -893,8 +901,8 @@ static int apphint_debugfs_init(char *sub_dir,
 		int device_num,
 		unsigned init_data_size,
 		const struct apphint_init_data *init_data,
-		PVR_DEBUGFS_DIR_DATA *parentdir,
-		PVR_DEBUGFS_DIR_DATA **rootdir, PVR_DEBUGFS_ENTRY_DATA **entry)
+		PPVR_DEBUGFS_DIR_DATA parentdir,
+		PPVR_DEBUGFS_DIR_DATA *rootdir, PPVR_DEBUGFS_ENTRY_DATA *entry)
 {
 	int result = 0;
 	unsigned i;
@@ -942,7 +950,7 @@ err_exit:
  * apphint_debugfs_deinit- destroy the debugfs entries
  */
 static void apphint_debugfs_deinit(unsigned num_entries,
-		PVR_DEBUGFS_DIR_DATA **rootdir, PVR_DEBUGFS_ENTRY_DATA **entry)
+		PPVR_DEBUGFS_DIR_DATA *rootdir, PPVR_DEBUGFS_ENTRY_DATA *entry)
 {
 	unsigned i;
 
@@ -1072,7 +1080,8 @@ int pvr_apphint_init(void)
 	 * race conditions when setting/updating apphints from different
 	 * contexts
 	 */
-	apphint.workqueue = alloc_workqueue("apphint_workqueue", WQ_UNBOUND, 1);
+	apphint.workqueue = alloc_workqueue("apphint_workqueue",
+	                                    WQ_UNBOUND | WQ_FREEZABLE, 1);
 	if (!apphint.workqueue) {
 		result = -ENOMEM;
 		goto err_out;
@@ -1139,7 +1148,7 @@ int pvr_apphint_device_register(PVRSRV_DEVICE_NODE *device)
 	apphint.devices[apphint.num_devices] = device;
 	apphint.num_devices++;
 
-	(void)PVRSRVRegisterDbgRequestNotify(
+	(void)SOPvrDbgRequestNotifyRegister(
 			&device->hAppHintDbgReqNotify,
 			device,
 			apphint_dump_state,
@@ -1167,7 +1176,7 @@ void pvr_apphint_device_unregister(PVRSRV_DEVICE_NODE *device)
 		return;
 
 	if (device->hAppHintDbgReqNotify) {
-		(void)PVRSRVUnregisterDbgRequestNotify(
+		(void)SOPvrDbgRequestNotifyUnregister(
 			device->hAppHintDbgReqNotify);
 		device->hAppHintDbgReqNotify = NULL;
 	}
@@ -1417,6 +1426,5 @@ void pvr_apphint_register_handlers_string(APPHINT_ID id,
 	};
 }
 
-#endif /* #if defined(SUPPORT_KERNEL_SRVINIT) */
 /* EOF */
 

@@ -46,40 +46,123 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _PVR_SYNC_H
 #define _PVR_SYNC_H
 
+#include <linux/device.h>
+#include <linux/kref.h>
+
 #include "pvr_fd_sync_kernel.h"
 
+
 /* Services internal interface */
-enum PVRSRV_ERROR pvr_sync_init(void *device_cookie);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_init
+@Description    Create an internal sync context
+@Input          dev: Linux device
+@Return         PVRSRV_OK on success
+*/ /***************************************************************************/
+enum PVRSRV_ERROR pvr_sync_init(struct device *dev);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_deinit
+@Description    Destroy an internal sync context. Drains any work items with
+				outstanding sync fence updates/dependencies.
+@Input          None
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_deinit(void);
 
 struct _RGXFWIF_DEV_VIRTADDR_;
 struct pvr_sync_append_data;
 
-enum PVRSRV_ERROR
-pvr_sync_append_fences(
-	const char				*name,
-	const s32				check_fence_fd,
-	const s32				update_timeline_fd,
-	const u32				nr_updates,
-	const struct _RGXFWIF_DEV_VIRTADDR_	*update_ufo_addresses,
-	const u32				*update_values,
-	const u32				nr_checks,
-	const struct _RGXFWIF_DEV_VIRTADDR_	*check_ufo_addresses,
-	const u32				*check_values,
-	struct pvr_sync_append_data		**append_sync_data);
-
+/**************************************************************************/ /*!
+@Function       pvr_sync_get_updates
+@Description    Internal API to resolve sync update data
+@Input          sync_data: PVR sync data
+@Output			nr_fences: number of UFO fence updates
+@Output			ufo_addrs: UFO fence addresses
+@Output			values: UFO fence values
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_get_updates(const struct pvr_sync_append_data *sync_data,
 	u32 *nr_fences,
 	struct _RGXFWIF_DEV_VIRTADDR_ **ufo_addrs,
 	u32 **values);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_get_checks
+@Description    Internal API to resolve sync check data
+@Input          sync_data: PVR sync data
+@Output			nr_fences: number of UFO fence checks
+@Output			ufo_addrs: UFO fence addresses
+@Output			values: UFO fence values
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_get_checks(const struct pvr_sync_append_data *sync_data,
 	u32 *nr_fences,
 	struct _RGXFWIF_DEV_VIRTADDR_ **ufo_addrs,
 	u32 **values);
 
+/**************************************************************************/ /*!
+@Function       pvr_sync_rollback_append_fences
+@Description    Undo the last sync fence and its timeline if present
+				Must be called before pvr_sync_free_append_fences_data which may
+				free the fence sync object.
+@Input          sync_data: PVR sync data
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_rollback_append_fences(struct pvr_sync_append_data *sync_data);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_nohw_complete_fences
+@Description    Force updates to progress sync timeline when hardware is not present.
+@Input          sync_data: PVR sync data
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_nohw_complete_fences(struct pvr_sync_append_data *sync_data);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_free_append_fences_data
+@Description    Commit the sync fences/updates
+@Input          sync_data: PVR sync data
+@Return         None
+*/ /***************************************************************************/
 void pvr_sync_free_append_fences_data(struct pvr_sync_append_data *sync_data);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_get_update_fd
+@Description    Get the file descriptor for the sync fence updates
+@Input          sync_data: PVR sync data
+@Return         Valid sync file descriptor on success; -EINVAL on failure
+*/ /***************************************************************************/
 int pvr_sync_get_update_fd(struct pvr_sync_append_data *sync_data);
+
+/**************************************************************************/ /*!
+@Function       pvr_sync_get_sw_timeline
+@Description    Get the PVR sync timeline from its file descriptor
+@Input          fd: Linux file descriptor
+@Return         PVR sync timeline
+*/ /***************************************************************************/
+struct pvr_counting_fence_timeline;
+struct pvr_counting_fence_timeline *pvr_sync_get_sw_timeline(int fd);
+
+/* PVR sync 2 SW timeline interface */
+
+struct pvr_sw_sync_timeline {
+	/* sw_sync_timeline must come first to allow casting of a ptr */
+	/* to the wrapping struct to a ptr to the sw_sync_timeline    */
+	struct sw_sync_timeline *sw_sync_timeline;
+	u64 current_value;
+	u64 next_value;
+	/* Reference count for this object */
+	struct kref kref;
+};
+
+/**************************************************************************/ /*!
+@Function       pvr_sw_sync_release_timeline
+@Description    Release the current reference on a PVR SW sync timeline
+@Input          timeline: the PVR SW sync timeline
+@Return         None
+*/ /***************************************************************************/
+void pvr_sw_sync_release_timeline(struct pvr_sw_sync_timeline *timeline);
 
 #endif /* _PVR_SYNC_H */

@@ -42,8 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _RGXCONFIG_KM_5_V_1_46_H_
 #define _RGXCONFIG_KM_5_V_1_46_H_
 
-/***** Automatically generated file (24/08/2016 07:01:08): Do not edit manually ********************/
-/***** Timestamp:  (24/08/2016 07:01:08)************************************************************/
+/***** Automatically generated file (04/09/2017 07:00:43): Do not edit manually ********************/
+/***** Timestamp:  (04/09/2017 07:00:43)************************************************************/
 
 #define RGX_BNC_KM_B 5
 #define RGX_BNC_KM_N 1
@@ -52,22 +52,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /******************************************************************************
  * DDK Defines
  *****************************************************************************/
-#define RGX_FEATURE_PHYS_BUS_WIDTH (40)
-#define RGX_FEATURE_PERFBUS 
-#define RGX_FEATURE_AXI_ACELITE 
-#define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
-#define RGX_FEATURE_DYNAMIC_DUST_POWER 
 #define RGX_FEATURE_NUM_CLUSTERS (1)
-#define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
-#define RGX_FEATURE_SLC_SIZE_IN_BYTES (16*1024)
-#define RGX_FEATURE_SLC_BANKS (1)
-#define RGX_FEATURE_GS_RTA_SUPPORT 
 #define RGX_FEATURE_NUM_ISP_IPP_PIPES (1)
 #define RGX_FEATURE_META (LTP217)
-#define RGX_FEATURE_FBCDC_ARCHITECTURE (1)
 #define RGX_FEATURE_META_COREMEM_SIZE (0)
+#define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
+#define RGX_FEATURE_PERFBUS 
+#define RGX_FEATURE_GS_RTA_SUPPORT 
 #define RGX_FEATURE_COMPUTE 
 #define RGX_FEATURE_ROGUEXE 
+#define RGX_FEATURE_NUM_RASTER_PIPES (1)
+#define RGX_FEATURE_DYNAMIC_DUST_POWER 
+#define RGX_FEATURE_AXI_ACELITE 
+#define RGX_FEATURE_PHYS_BUS_WIDTH (40)
+#define RGX_FEATURE_SLC_SIZE_IN_BYTES (16*1024)
+#define RGX_FEATURE_SLC_BANKS (1)
+#define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
+#define RGX_FEATURE_FBCDC_ARCHITECTURE (1)
+#define RGX_FEATURE_FBCDC_ALGORITHM (2)
 
 
 #endif /* _RGXCONFIG_5_V_1_46_H_ */

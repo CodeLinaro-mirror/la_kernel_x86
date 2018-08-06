@@ -51,7 +51,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif /* _WIN32 */
 
 #ifdef LINUX
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include "pvr_uaccess.h"
 #endif /* LINUX */
 
@@ -79,7 +79,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
  RETURNS	:
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivGetServiceTable(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivGetServiceTable(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	void **ppvOut;
 
@@ -89,12 +89,12 @@ static IMG_UINT32 DBGDIOCDrivGetServiceTable(void * pvInBuffer, void * pvOutBuff
 
 	*ppvOut = DBGDrivGetServiceTable();
 
-    return(IMG_TRUE);
+	return IMG_TRUE;
 }
 
 #if defined(__QNXNTO__)
 /*****************************************************************************
- FUNCTION	:	DBGIODrivCreateStream
+ FUNCTION	:	DBGDIOCDrivCreateStream
 
  PURPOSE	:
 
@@ -102,7 +102,7 @@ static IMG_UINT32 DBGDIOCDrivGetServiceTable(void * pvInBuffer, void * pvOutBuff
 
  RETURNS	:
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivCreateStream(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivCreateStream(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	PDBG_IN_CREATESTREAM psIn;
 	PDBG_OUT_CREATESTREAM psOut;
@@ -112,7 +112,7 @@ static IMG_UINT32 DBGDIOCDrivCreateStream(void * pvInBuffer, void * pvOutBuffer,
 	psIn = (PDBG_IN_CREATESTREAM) pvInBuffer;
 	psOut = (PDBG_OUT_CREATESTREAM) pvOutBuffer;
 
-	return (ExtDBGDrivCreateStream(psIn->u.pszName, DEBUG_FLAGS_NO_BUF_EXPANDSION, psIn->ui32Pages, &psOut->phInit, &psOut->phMain, &psOut->phDeinit));
+	return ExtDBGDrivCreateStream(psIn->u.pszName, DEBUG_FLAGS_NO_BUF_EXPANDSION, psIn->ui32Pages, &psOut->phInit, &psOut->phMain, &psOut->phDeinit);
 }
 #endif
 
@@ -125,10 +125,12 @@ static IMG_UINT32 DBGDIOCDrivCreateStream(void * pvInBuffer, void * pvOutBuffer,
 
  RETURNS	:
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivGetStream(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivGetStream(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	PDBG_IN_FINDSTREAM psParams;
-	IMG_SID *	phStream;
+	IMG_SID *phStream;
+
+	PVR_UNREFERENCED_PARAMETER(bCompat);
 
 	psParams	= (PDBG_IN_FINDSTREAM)pvInBuffer;
 	phStream	= (IMG_SID *)pvOutBuffer;
@@ -138,7 +140,7 @@ static IMG_UINT32 DBGDIOCDrivGetStream(void * pvInBuffer, void * pvOutBuffer, IM
 
 	*phStream = PStream2SID(ExtDBGDrivFindStream(psParams->pszName, psParams->bResetStream));
 
-	return(IMG_TRUE);
+	return IMG_TRUE;
 }
 
 /*****************************************************************************
@@ -150,12 +152,14 @@ static IMG_UINT32 DBGDIOCDrivGetStream(void * pvInBuffer, void * pvOutBuffer, IM
 
  RETURNS	:
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivRead(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivRead(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
-	IMG_UINT32 *	pui32BytesCopied;
-	PDBG_IN_READ	psInParams;
-	PDBG_STREAM		psStream;
-	IMG_UINT8	*pui8ReadBuffer;
+	IMG_UINT32   *pui32BytesCopied;
+	PDBG_IN_READ  psInParams;
+	PDBG_STREAM   psStream;
+	IMG_UINT8 __user *pui8ReadBuffer;
+
+	PVR_UNREFERENCED_PARAMETER(bCompat);
 
 	psInParams = (PDBG_IN_READ) pvInBuffer;
 	pui32BytesCopied = (IMG_UINT32 *) pvOutBuffer;
@@ -168,14 +172,14 @@ static IMG_UINT32 DBGDIOCDrivRead(void * pvInBuffer, void * pvOutBuffer, IMG_BOO
 		*pui32BytesCopied = ExtDBGDrivRead(psStream,
 									   psInParams->ui32BufID,
 									   psInParams->ui32OutBufferSize,
-									   pui8ReadBuffer);
-		return(IMG_TRUE);
+									   (IMG_UINT8 __force *) pui8ReadBuffer);
+		return IMG_TRUE;
 	}
 	else
 	{
 		/* invalid SID */
 		*pui32BytesCopied = 0;
-		return(IMG_FALSE);
+		return IMG_FALSE;
 	}
 }
 
@@ -188,7 +192,7 @@ static IMG_UINT32 DBGDIOCDrivRead(void * pvInBuffer, void * pvOutBuffer, IMG_BOO
 
  RETURNS	: success
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivSetMarker(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivSetMarker(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	PDBG_IN_SETMARKER	psParams;
 	PDBG_STREAM			psStream;
@@ -201,12 +205,12 @@ static IMG_UINT32 DBGDIOCDrivSetMarker(void * pvInBuffer, void * pvOutBuffer, IM
 	if (psStream != (PDBG_STREAM)NULL)
 	{
 		ExtDBGDrivSetMarker(psStream, psParams->ui32Marker);
-		return(IMG_TRUE);
+		return IMG_TRUE;
 	}
 	else
 	{
 		/* invalid SID */
-		return(IMG_FALSE);
+		return IMG_FALSE;
 	}
 }
 
@@ -219,7 +223,7 @@ static IMG_UINT32 DBGDIOCDrivSetMarker(void * pvInBuffer, void * pvOutBuffer, IM
 
  RETURNS	: success
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivGetMarker(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivGetMarker(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	PDBG_STREAM  psStream;
 	IMG_UINT32  *pui32Current;
@@ -232,13 +236,13 @@ static IMG_UINT32 DBGDIOCDrivGetMarker(void * pvInBuffer, void * pvOutBuffer, IM
 	if (psStream != (PDBG_STREAM)NULL)
 	{
 		*pui32Current = ExtDBGDrivGetMarker(psStream);
-		return(IMG_TRUE);
+		return IMG_TRUE;
 	}
 	else
 	{
 		/* invalid SID */
 		*pui32Current = 0;
-		return(IMG_FALSE);
+		return IMG_FALSE;
 	}
 }
 
@@ -252,7 +256,7 @@ static IMG_UINT32 DBGDIOCDrivGetMarker(void * pvInBuffer, void * pvOutBuffer, IM
 
  RETURNS	:
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivWaitForEvent(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivWaitForEvent(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	DBG_EVENT eEvent = (DBG_EVENT)(*(IMG_UINT32 *)pvInBuffer);
 
@@ -261,7 +265,7 @@ static IMG_UINT32 DBGDIOCDrivWaitForEvent(void * pvInBuffer, void * pvOutBuffer,
 
 	ExtDBGDrivWaitForEvent(eEvent);
 
-	return(IMG_TRUE);
+	return IMG_TRUE;
 }
 
 
@@ -274,7 +278,7 @@ static IMG_UINT32 DBGDIOCDrivWaitForEvent(void * pvInBuffer, void * pvOutBuffer,
 
  RETURNS	: success
 *****************************************************************************/
-static IMG_UINT32 DBGDIOCDrivGetFrame(void * pvInBuffer, void * pvOutBuffer, IMG_BOOL bCompat)
+static IMG_UINT32 DBGDIOCDrivGetFrame(void *pvInBuffer, void *pvOutBuffer, IMG_BOOL bCompat)
 {
 	IMG_UINT32  *pui32Current;
 
@@ -285,7 +289,7 @@ static IMG_UINT32 DBGDIOCDrivGetFrame(void * pvInBuffer, void * pvOutBuffer, IMG
 
 	*pui32Current = ExtDBGDrivGetFrame();
 
-	return(IMG_TRUE);
+	return IMG_TRUE;
 }
 
 /*
@@ -307,5 +311,5 @@ IMG_UINT32 (*g_DBGDrivProc[DEBUG_SERVICE_MAX_API])(void *, void *, IMG_BOOL) =
 };
 
 /*****************************************************************************
- End of file (IOCTL.C)
+ End of file (ioctl.c)
 *****************************************************************************/

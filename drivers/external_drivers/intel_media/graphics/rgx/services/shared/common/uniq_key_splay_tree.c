@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 
 #include "allocmem.h" /* for OSMemAlloc / OSMemFree */
 #include "osfunc.h" /* for OSMemFree */
@@ -65,14 +65,14 @@ IMG_PSPLAY_TREE PVRSRVSplay (IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 	{
 		return NULL;
 	}
-	
+
 	sTmp1.psLeft = NULL;
 	sTmp1.psRight = NULL;
 
 	psLeft = &sTmp1;
 	psRight = &sTmp1;
-	
-    for (;;)
+
+	for (;;)
 	{
 		if (ui32Flags < psTree->ui32Flags)
 		{
@@ -80,7 +80,7 @@ IMG_PSPLAY_TREE PVRSRVSplay (IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 			{
 				break;
 			}
-			
+
 			if (ui32Flags < psTree->psLeft->ui32Flags)
 			{
 				/* if we get to this point, we need to rotate right the tree */
@@ -131,14 +131,14 @@ IMG_PSPLAY_TREE PVRSRVSplay (IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 				break;
 			}
 		}
-    }
+	}
 
 	/* at this point re-assemble the tree */
-    psLeft->psRight = psTree->psLeft;
-    psRight->psLeft = psTree->psRight;
-    psTree->psLeft = sTmp1.psRight;
-    psTree->psRight = sTmp1.psLeft;
-    return psTree;
+	psLeft->psRight = psTree->psLeft;
+	psRight->psLeft = psTree->psRight;
+	psTree->psLeft = sTmp1.psRight;
+	psTree->psRight = sTmp1.psLeft;
+	return psTree;
 }
 
 
@@ -153,7 +153,7 @@ IMG_PSPLAY_TREE PVRSRVSplay (IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 IMG_INTERNAL
 IMG_PSPLAY_TREE PVRSRVInsert(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree) 
 {
-    IMG_PSPLAY_TREE psNew;
+	IMG_PSPLAY_TREE psNew;
 
 	if (psTree != NULL)
 	{
@@ -163,14 +163,14 @@ IMG_PSPLAY_TREE PVRSRVInsert(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 			return psTree;
 		}
 	}
-	
+
 	psNew = (IMG_PSPLAY_TREE) OSAllocMem(sizeof(IMG_SPLAY_TREE));
 	if (psNew == NULL)
 	{
 		PVR_DPF ((PVR_DBG_ERROR, "Error: failed to allocate memory to add a node to the splay tree."));
 		return NULL;
 	}
-	
+
 	psNew->ui32Flags = ui32Flags;
 	OSCachedMemSet(&(psNew->buckets[0]), 0, sizeof(psNew->buckets));
 
@@ -178,25 +178,25 @@ IMG_PSPLAY_TREE PVRSRVInsert(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 	psNew->bHasEltsMapping = ~(((IMG_ELTS_MAPPINGS) 1 << (sizeof(psNew->buckets) / (sizeof(psNew->buckets[0])))) - 1);
 #endif
 
-    if (psTree == NULL)
+	if (psTree == NULL)
 	{
 		psNew->psLeft  = NULL;
 		psNew->psRight = NULL;
 		return psNew;
-    }
+	}
 
-    if (ui32Flags < psTree->ui32Flags)
+	if (ui32Flags < psTree->ui32Flags)
 	{
 		psNew->psLeft  = psTree->psLeft;
 		psNew->psRight = psTree;
 		psTree->psLeft = NULL;
-    }
+	}
 	else 
 	{
 		psNew->psRight  = psTree->psRight;
 		psNew->psLeft   = psTree;
 		psTree->psRight = NULL;
-    }
+	}
 
 	return psNew;
 }
@@ -213,14 +213,14 @@ IMG_PSPLAY_TREE PVRSRVInsert(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 IMG_INTERNAL
 IMG_PSPLAY_TREE PVRSRVDelete(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 {
-    IMG_PSPLAY_TREE psTmp;
-    if (psTree == NULL)
+	IMG_PSPLAY_TREE psTmp;
+	if (psTree == NULL)
 	{
 		return NULL;
 	}
 
-    psTree = PVRSRVSplay(ui32Flags, psTree);
-    if (ui32Flags == psTree->ui32Flags)
+	psTree = PVRSRVSplay(ui32Flags, psTree);
+	if (ui32Flags == psTree->ui32Flags)
 	{
 		/* The value was present in the tree */
 		if (psTree->psLeft == NULL)
@@ -234,11 +234,11 @@ IMG_PSPLAY_TREE PVRSRVDelete(IMG_UINT32 ui32Flags, IMG_PSPLAY_TREE psTree)
 		}
 		OSFreeMem(psTree);
 		return psTmp;
-    }
+	}
 
 	/* the value was not present in the tree, so just return it as is (after the
 	 * splay) */
-    return psTree;
+	return psTree;
 }
 
 

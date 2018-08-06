@@ -156,7 +156,8 @@ HeapCfgHeapDetails(struct _CONNECTION_DATA_ * psConnection,
     IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
     IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
     IMG_UINT32 *puiLog2DataPageSizeOut,
-    IMG_UINT32 *puiLog2ImportAlignmentOut
+    IMG_UINT32 *puiLog2ImportAlignmentOut,
+    IMG_UINT32 *puiLog2TilingStrideFactorOut
 );
 
 #endif

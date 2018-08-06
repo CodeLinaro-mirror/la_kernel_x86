@@ -83,13 +83,17 @@ typedef struct _PVRSRV_DEV_CONNECTION_ PVRSRV_DEV_CONNECTION;
 	Flags for Services connection.
 	Allows to define per-client policy for Services
 */
-#define SRV_FLAGS_INIT_PROCESS          (1U << 1)  /*!< Allows connect to succeed if SrvInit
-											* has not yet run (used by SrvInit itself) */
 
 #define SRV_WORKEST_ENABLED             (1U << 2)  /*!< If Workload Estimation is enabled */
 #define SRV_PDVFS_ENABLED               (1U << 3)  /*!< If PDVFS is enabled */
 
 #define SRV_NO_HWPERF_CLIENT_STREAM     (1U << 4)  /*!< Don't create HWPerf for this connection */
+
+#define SRV_FLAGS_CLIENT_64BIT_COMPAT	(1U << 5)	/* This flags gets set if the client is 64 Bit
+ 	 	 	 	 	 	 	 	 	 	 	 	 	   compatible.
+ 	 	 	 	 	 	 	 	 	 	 	 	 	 */
+/* Size of pointer on a 64 bit machine */
+#define	POINTER_SIZE_64BIT	(8)
 
 /*
  * Bits 20 - 27 are used to pass information needed for validation
@@ -121,10 +125,14 @@ typedef struct _PVRSRV_DEV_CONNECTION_ PVRSRV_DEV_CONNECTION;
 /*
     Pdump flags which are accessible to Services clients
 */
-#define PDUMP_NONE		0x00000000UL /*<! No flags */
+#define PDUMP_NONE          0x00000000UL /*<! No flags */
 
-#define PDUMP_CONT	0x40000000UL /*<! Output this entry always regardless of framed capture range,
+#define PDUMP_CONT          0x40000000UL /*<! Output this entry always regardless of framed capture range,
                                                           used by client applications being dumped. */
+#define PDUMP_PERSIST       0x80000000UL /*<! Output this entry always regardless of app and range,
+                                                          used by persistent resources created after 
+                                                          driver initialisation that must appear in 
+                                                          all PDump captures in that session. */
 
 /* Status of the device. */
 typedef enum

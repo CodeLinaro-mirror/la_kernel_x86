@@ -47,11 +47,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_memallocflags.h"
 #include "pvrsrv.h"
 
-static INLINE IMG_UINT32 DevmemCPUCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
-											PVRSRV_MEMALLOCFLAGS_T ulFlags)
+static INLINE PVRSRV_ERROR DevmemCPUCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
+											  PVRSRV_MEMALLOCFLAGS_T ulFlags,
+											  IMG_UINT32 *pui32Ret)
 {
 	IMG_UINT32 ui32CPUCacheMode = PVRSRV_CPU_CACHE_MODE(ulFlags);
 	IMG_UINT32 ui32Ret;
+	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	PVR_ASSERT(ui32CPUCacheMode == PVRSRV_CPU_CACHE_MODE(ulFlags));
 
@@ -90,7 +92,6 @@ static INLINE IMG_UINT32 DevmemCPUCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
 			}
 
 			break;
-			break;
 
 		default:
 			PVR_LOG(("DevmemCPUCacheMode: Unknown CPU cache mode 0x%08x", ui32CPUCacheMode));
@@ -100,17 +101,22 @@ static INLINE IMG_UINT32 DevmemCPUCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
 				to uncached is the safest thing to do.
 			*/
 			ui32Ret = PVRSRV_MEMALLOCFLAG_CPU_UNCACHED;
+			eError = PVRSRV_ERROR_UNSUPPORTED_CACHE_MODE;
 			break;
 	}
 
-	return ui32Ret;
+	*pui32Ret = ui32Ret;
+	
+	return eError;
 }
 
-static INLINE IMG_UINT32 DevmemDeviceCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
-											   PVRSRV_MEMALLOCFLAGS_T ulFlags)
+static INLINE PVRSRV_ERROR DevmemDeviceCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
+												 PVRSRV_MEMALLOCFLAGS_T ulFlags,
+												 IMG_UINT32 *pui32Ret)
 {
 	IMG_UINT32 ui32DeviceCacheMode = PVRSRV_GPU_CACHE_MODE(ulFlags);
 	IMG_UINT32 ui32Ret;
+	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	PVR_ASSERT(ui32DeviceCacheMode == PVRSRV_GPU_CACHE_MODE(ulFlags));
 
@@ -158,10 +164,13 @@ static INLINE IMG_UINT32 DevmemDeviceCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
 				to uncached is the safest thing to do.
 			*/
 			ui32Ret = PVRSRV_MEMALLOCFLAG_GPU_UNCACHED;
+			eError = PVRSRV_ERROR_UNSUPPORTED_CACHE_MODE;
 			break;
 	}
 
-	return ui32Ret;
+	*pui32Ret = ui32Ret;
+	
+	return eError;
 }
 
 static INLINE IMG_BOOL DevmemCPUCacheCoherency(PVRSRV_DEVICE_NODE *psDeviceNode,

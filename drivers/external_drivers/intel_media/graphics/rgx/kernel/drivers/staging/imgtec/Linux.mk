@@ -38,7 +38,7 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### ###########################################################################
 
-modules := adf_fbdev adf_pdp adf_tc5_pdp apollo adf_sunxi drm_nulldisp drm_pdp plato drm_rk
+modules := adf_fbdev adf_pdp tc adf_sunxi drm_nulldisp drm_pdp plato drm_rk drm_pdp2_hdmi
 
 adf_fbdev_type := kernel_module
 adf_fbdev_target := adf_fbdev.ko
@@ -48,13 +48,9 @@ adf_pdp_type := kernel_module
 adf_pdp_target := adf_pdp.ko
 adf_pdp_makefile := $(THIS_DIR)/Kbuild.mk
 
-adf_tc5_pdp_type := kernel_module
-adf_tc5_pdp_target := adf_tc5_pdp.ko
-adf_tc5_pdp_makefile := $(THIS_DIR)/Kbuild.mk
-
-apollo_type := kernel_module
-apollo_target := apollo.ko
-apollo_makefile := $(THIS_DIR)/Kbuild.mk
+tc_type := kernel_module
+tc_target := tc.ko
+tc_makefile := $(THIS_DIR)/Kbuild.mk
 
 adf_sunxi_type := kernel_module
 adf_sunxi_target := adf_sunxi.ko
@@ -67,6 +63,10 @@ drm_nulldisp_makefile := $(THIS_DIR)/Kbuild.mk
 drm_pdp_type := kernel_module
 drm_pdp_target := drm_pdp.ko
 drm_pdp_makefile := $(THIS_DIR)/Kbuild.mk
+
+drm_pdp2_hdmi_type := kernel_module
+drm_pdp2_hdmi_target := drm_pdp2_hdmi.ko
+drm_pdp2_hdmi_makefile := $(THIS_DIR)/Kbuild.mk
 
 plato_type := kernel_module
 plato_target := plato.ko

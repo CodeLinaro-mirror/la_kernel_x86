@@ -47,130 +47,114 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_types.h"
 #include "device.h"
 
-typedef enum {
-    RGXTIMECORR_CLOCK_MONO,
-    RGXTIMECORR_CLOCK_MONO_RAW,
-    RGXTIMECORR_CLOCK_SCHED,
+typedef enum
+{
+	RGXTIMECORR_CLOCK_MONO,
+	RGXTIMECORR_CLOCK_MONO_RAW,
+	RGXTIMECORR_CLOCK_SCHED,
 
-    RGXTIMECORR_CLOCK_LAST
+	RGXTIMECORR_CLOCK_LAST
 } RGXTIMECORR_CLOCK_TYPE;
 
+typedef enum
+{
+	RGXTIMECORR_EVENT_POWER,
+	RGXTIMECORR_EVENT_DVFS,
+	RGXTIMECORR_EVENT_PERIODIC,
+	RGXTIMECORR_EVENT_CLOCK_CHANGE
+} RGXTIMECORR_EVENT;
+
 /*!
 ******************************************************************************
 
- @Function    RGXGPUFreqCalibratePrePowerOff
+ @Function    RGXTimeCorrBegin
 
- @Description Manage GPU frequency and timer correlation data
-              before a power off.
+ @Description Generate new timer correlation data, and start tracking
+              the current GPU frequency.
+
+ @Input       hDevHandle : RGX Device Node
+ @Input       eEvent     : Event associated with the beginning of a timer
+                           correlation period
+
+ @Return      void
+
+******************************************************************************/
+void RGXTimeCorrBegin(IMG_HANDLE hDevHandle, RGXTIMECORR_EVENT eEvent);
+
+/*!
+******************************************************************************
+
+ @Function    RGXTimeCorrEnd
+
+ @Description Stop tracking the CPU and GPU timers, and if possible
+              recalculate the GPU frequency to a value which makes the timer
+              correlation data more accurate.
+
+ @Input       hDevHandle : RGX Device Node
+ @Input       eEvent     : Event associated with the end of a timer
+                           correlation period
+
+ @Return      void
+
+******************************************************************************/
+void RGXTimeCorrEnd(IMG_HANDLE hDevHandle, RGXTIMECORR_EVENT eEvent);
+
+/*!
+******************************************************************************
+
+ @Function    RGXTimeCorrRestartPeriodic
+
+ @Description Perform actions from RGXTimeCorrEnd and RGXTimeCorrBegin,
+              but only if enough time has passed since the last timer
+              correlation data was generated.
 
  @Input       hDevHandle : RGX Device Node
 
  @Return      void
 
 ******************************************************************************/
-void RGXGPUFreqCalibratePrePowerOff(IMG_HANDLE hDevHandle);
+void RGXTimeCorrRestartPeriodic(IMG_HANDLE hDevHandle);
 
 /*!
 ******************************************************************************
 
- @Function    RGXGPUFreqCalibratePostPowerOn
-
- @Description Manage GPU frequency and timer correlation data
-              after a power on.
-
- @Input       hDevHandle : RGX Device Node
-
- @Return      void
-
-******************************************************************************/
-void RGXGPUFreqCalibratePostPowerOn(IMG_HANDLE hDevHandle);
-
-/*!
-******************************************************************************
-
- @Function    RGXGPUFreqCalibratePreClockSpeedChange
-
- @Description Manage GPU frequency and timer correlation data
-              before a DVFS transition.
-
- @Input       hDevHandle : RGX Device Node
-
- @Return      void
-
-******************************************************************************/
-void RGXGPUFreqCalibratePreClockSpeedChange(IMG_HANDLE hDevHandle);
-
-/*!
-******************************************************************************
-
- @Function    RGXGPUFreqCalibratePostClockSpeedChange
-
- @Description Manage GPU frequency and timer correlation data
-              after a DVFS transition.
-
- @Input       hDevHandle        : RGX Device Node
- @Input       ui32NewClockSpeed : GPU clock speed after the DVFS transition
-
- @Return      IMG_UINT32 : Calibrated GPU clock speed after the DVFS transition
-
-******************************************************************************/
-IMG_UINT32 RGXGPUFreqCalibratePostClockSpeedChange(IMG_HANDLE hDevHandle, IMG_UINT32 ui32NewClockSpeed);
-
-/*!
-******************************************************************************
-
- @Function    RGXGPUFreqCalibratePeriodic
-
- @Description Calibrate the GPU clock speed and correlate the timers
-              at regular intervals.
-
- @Input       hDevHandle : RGX Device Node
-
- @Return      void
-
-******************************************************************************/
-void RGXGPUFreqCalibrateCorrelatePeriodic(IMG_HANDLE hDevHandle);
-
-/*!
-******************************************************************************
-
- @Function    RGXGPUFreqCalibrateClockns64
+ @Function    RGXTimeCorrGetClockns64
 
  @Description Returns value of currently selected clock (in ns).
 
  @Return      clock value from currently selected clock source
 
 ******************************************************************************/
-IMG_UINT64 RGXGPUFreqCalibrateClockns64(void);
+IMG_UINT64 RGXTimeCorrGetClockns64(void);
 
 /*!
 ******************************************************************************
 
- @Function    RGXGPUFreqCalibrateClockns64
+ @Function    RGXTimeCorrGetClockus64
 
  @Description Returns value of currently selected clock (in us).
 
  @Return      clock value from currently selected clock source
 
 ******************************************************************************/
-IMG_UINT64 RGXGPUFreqCalibrateClockus64(void);
+IMG_UINT64 RGXTimeCorrGetClockus64(void);
 
 /*!
 ******************************************************************************
 
- @Function    RGXGPUFreqCalibrateClockSource
+ @Function    RGXTimeCorrGetClockSource
 
  @Description Returns currently selected clock source
 
  @Return      clock source type
 
 ******************************************************************************/
-RGXTIMECORR_CLOCK_TYPE RGXGPUFreqCalibrateGetClockSource(void);
+RGXTIMECORR_CLOCK_TYPE RGXTimeCorrGetClockSource(void);
 
 /*!
 ******************************************************************************
 
- @Function    RGXGPUFreqCalibrateSetClockSource
+ @Function    RGXTimeCorrSetClockSource
 
  @Description Sets clock source for correlation data.
 
@@ -180,10 +164,41 @@ RGXTIMECORR_CLOCK_TYPE RGXGPUFreqCalibrateGetClockSource(void);
  @Return      error code
 
 ******************************************************************************/
-PVRSRV_ERROR RGXGPUFreqCalibrateSetClockSource(PVRSRV_DEVICE_NODE *psDeviceNode,
-                                             RGXTIMECORR_CLOCK_TYPE eClockType);
+PVRSRV_ERROR RGXTimeCorrSetClockSource(PVRSRV_DEVICE_NODE *psDeviceNode,
+                                       RGXTIMECORR_CLOCK_TYPE eClockType);
 
-void RGXGPUFreqCalibrationInitAppHintCallbacks(
-                                        const PVRSRV_DEVICE_NODE *psDeviceNode);
+/*!
+******************************************************************************
+
+ @Function    RGXTimeCorrInitAppHintCallbacks
+
+ @Description Initialise apphint callbacks for timer correlation
+              related apphints.
+
+ @Input       psDeviceNode : RGX Device Node
+
+ @Return      void
+
+******************************************************************************/
+void RGXTimeCorrInitAppHintCallbacks(const PVRSRV_DEVICE_NODE *psDeviceNode);
+
+/*!
+******************************************************************************
+
+ @Function    RGXGetTimeCorrData
+
+ @Description Get a number of the most recent time correlation data points
+
+ @Input       psDeviceNode : RGX Device Node
+ @Output      psTimeCorrs  : Output array of RGXFWIF_TIME_CORR elements
+                             for data to be written to
+ @Input       ui32NumOut   : Number of elements to be written out
+
+ @Return      void
+
+******************************************************************************/
+void RGXGetTimeCorrData(PVRSRV_DEVICE_NODE *psDeviceNode,
+							RGXFWIF_TIME_CORR *psTimeCorrs,
+							IMG_UINT32 ui32NumOut);
 
 #endif /* __RGXTIMECORR_H__ */

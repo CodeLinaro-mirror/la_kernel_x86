@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @Title          Direct client bridge for pdumpctrl
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
@@ -37,7 +37,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #include "client_pdumpctrl_bridge.h"
 #include "img_defs.h"
@@ -47,68 +47,61 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pdump_km.h"
 
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpIsCapturing(IMG_HANDLE hBridge,
-								    IMG_BOOL *pbIsCapturing)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetState(IMG_HANDLE
+								 hBridge,
+								 IMG_UINT64 *
+								 pui64State)
 {
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
-	eError =
-		PDumpIsCaptureFrameKM(
-					pbIsCapturing);
+	eError = PDumpGetStateKM(pui64State);
 
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetFrame(IMG_HANDLE hBridge,
-								 IMG_UINT32 *pui32Frame)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetFrame(IMG_HANDLE
+								 hBridge,
+								 IMG_UINT32 *
+								 pui32Frame)
 {
 	PVRSRV_ERROR eError;
 
-
 	eError =
-		PDumpGetFrameKM(NULL, (PVRSRV_DEVICE_NODE *)((void*) hBridge)
-		,
-					pui32Frame);
+	    PDumpGetFrameKM(NULL, (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
+			    pui32Frame);
 
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpSetDefaultCaptureParams(IMG_HANDLE hBridge,
-										IMG_UINT32 ui32Mode,
-										IMG_UINT32 ui32Start,
-										IMG_UINT32 ui32End,
-										IMG_UINT32 ui32Interval,
-										IMG_UINT32 ui32MaxParamFileSize)
-{
-	PVRSRV_ERROR eError;
-	PVR_UNREFERENCED_PARAMETER(hBridge);
-
-
-	eError =
-		PDumpSetDefaultCaptureParamsKM(
-					ui32Mode,
-					ui32Start,
-					ui32End,
-					ui32Interval,
-					ui32MaxParamFileSize);
-
-	return eError;
-}
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpIsLastCaptureFrame(IMG_HANDLE hBridge,
-									   IMG_BOOL *pbpbIsLastCaptureFrame)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgePVRSRVPDumpSetDefaultCaptureParams(IMG_HANDLE hBridge,
+					 IMG_UINT32 ui32Mode,
+					 IMG_UINT32 ui32Start,
+					 IMG_UINT32 ui32End,
+					 IMG_UINT32 ui32Interval,
+					 IMG_UINT32 ui32MaxParamFileSize)
 {
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
 	eError =
-		PDumpIsLastCaptureFrameKM(
-					pbpbIsLastCaptureFrame);
+	    PDumpSetDefaultCaptureParamsKM(ui32Mode,
+					   ui32Start,
+					   ui32End,
+					   ui32Interval, ui32MaxParamFileSize);
 
 	return eError;
 }
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgePVRSRVPDumpIsLastCaptureFrame(IMG_HANDLE hBridge,
+				    IMG_BOOL * pbpbIsLastCaptureFrame)
+{
+	PVRSRV_ERROR eError;
+	PVR_UNREFERENCED_PARAMETER(hBridge);
+
+	eError = PDumpIsLastCaptureFrameKM(pbpbIsLastCaptureFrame);
+
+	return eError;
+}

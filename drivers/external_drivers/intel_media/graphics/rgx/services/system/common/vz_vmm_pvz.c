@@ -45,66 +45,68 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_types.h"
 #include "pvrsrv_error.h"
 #include "allocmem.h"
-#include "pvrsrv_vz.h"
+#include "pvrsrv.h"
 #include "vz_vmm_pvz.h"
 
 PVRSRV_ERROR SysVzPvzConnectionInit(void)
 {
 	PVRSRV_ERROR eError;
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzData;
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-	PVR_ASSERT(psPVRSRVData->hVzData == NULL);
-
-	/* Allocate and initialise virtualization specific state */
-	psPVRSRVData->hVzData = OSAllocZMem(sizeof(PVRSRV_VIRTZ_DATA));
-	PVR_ASSERT(psPVRSRVData->hVzData != NULL);
-	psPVRSRVVzData = psPVRSRVData->hVzData;
 
 	/* Create para-virtualization connection lock */
-	eError = OSLockCreate(&psPVRSRVVzData->hPvzLock, LOCK_TYPE_PASSIVE);
-	PVR_ASSERT(eError == PVRSRV_OK);
+	eError = OSLockCreate(&psPVRSRVData->hPvzConnectionLock, LOCK_TYPE_PASSIVE);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				 "%s:  OSLockCreate failed (%s)",
+				__FUNCTION__,
+				PVRSRVGetErrorStringKM(eError)));
+
+		goto e0;
+	}
 
 	/* Create VM manager para-virtualization connection */
-	eError = VMMCreatePvzConnection((VMM_PVZ_CONNECTION **)&psPVRSRVVzData->hPvzConnection);
-	PVR_ASSERT(eError == PVRSRV_OK);
+	eError = VMMCreatePvzConnection((VMM_PVZ_CONNECTION **)&psPVRSRVData->hPvzConnection);
+	if (eError != PVRSRV_OK)
+	{
+		OSLockDestroy(psPVRSRVData->hPvzConnectionLock);
+		psPVRSRVData->hPvzConnectionLock = NULL;
 
+		PVR_DPF((PVR_DBG_ERROR,
+				 "%s: Unable to create PVZ connection (%s)",
+				__FUNCTION__,
+				PVRSRVGetErrorStringKM(eError)));
+
+		goto e0;
+	}
+
+e0:
 	return eError;
 }
 
 void SysVzPvzConnectionDeInit(void)
 {
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzData;
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
-	psPVRSRVVzData = psPVRSRVData->hVzData;
+	VMMDestroyPvzConnection(psPVRSRVData->hPvzConnection);
+	psPVRSRVData->hPvzConnection = NULL;
 
-	VMMDestroyPvzConnection(psPVRSRVVzData->hPvzConnection);
-
-	OSLockDestroy(psPVRSRVVzData->hPvzLock);
-
-	OSFreeMem(psPVRSRVVzData);
-	psPVRSRVData->hVzData = NULL;
+	OSLockDestroy(psPVRSRVData->hPvzConnectionLock);
+	psPVRSRVData->hPvzConnectionLock = NULL;
 }
 
 VMM_PVZ_CONNECTION* SysVzPvzConnectionAcquire(void)
 {
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzData;
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-
-	psPVRSRVVzData = psPVRSRVData->hVzData;
-
-	PVR_ASSERT(psPVRSRVVzData->hPvzConnection != NULL);
-	return psPVRSRVVzData->hPvzConnection;
+	PVR_ASSERT(psPVRSRVData->hPvzConnection != NULL);
+	return psPVRSRVData->hPvzConnection;
 }
 
 void SysVzPvzConnectionRelease(VMM_PVZ_CONNECTION *psParaVz)
 {
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzData;
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-
 	/* Nothing to do, sanity check the pointer passed back */
-	psPVRSRVVzData = psPVRSRVData->hVzData;
-	PVR_ASSERT(psParaVz == psPVRSRVVzData->hPvzConnection);
+	PVR_ASSERT(psParaVz == psPVRSRVData->hPvzConnection);
 }
 
 /******************************************************************************

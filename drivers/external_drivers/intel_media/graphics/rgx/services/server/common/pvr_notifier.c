@@ -40,15 +40,18 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#include "allocmem.h"
-#include "device.h"
-#include "dllist.h"
 #include "img_defs.h"
-#include "osfunc.h"
+#include "allocmem.h"
+#include "dllist.h"
+
+#include "device.h"
 #include "pvr_notifier.h"
 #include "pvrsrv.h"
 #include "pvrversion.h"
+#include "connection_server.h"
 
+#include "osfunc.h"
+#include "sofunc_pvr.h"
 
 /*************************************************************************/ /*!
 Command Complete Notifier Interface
@@ -323,7 +326,9 @@ PVRSRVRegisterDbgRequestNotify(IMG_HANDLE *phNotify,
 
 	PVR_ASSERT(psDebugTable);
 
-	psNotify = OSAllocMem(sizeof(*psNotify));
+	/* NoStats used since this may be called outside of the register/de-register
+	 * process calls which track memory use. */
+	psNotify = OSAllocMemNoStats(sizeof(*psNotify));
 	if (!psNotify)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -375,6 +380,20 @@ ErrorReleaseLock:
 }
 
 PVRSRV_ERROR
+SOPvrDbgRequestNotifyRegister(IMG_HANDLE *phNotify,
+							  PVRSRV_DEVICE_NODE *psDevNode,
+							  PFN_DBGREQ_NOTIFY pfnDbgRequestNotify,
+							  IMG_UINT32 ui32RequesterID,
+							  PVRSRV_DBGREQ_HANDLE hDbgRequestHandle)
+{
+	return PVRSRVRegisterDbgRequestNotify(phNotify,
+			psDevNode,
+			pfnDbgRequestNotify,
+			ui32RequesterID,
+			hDbgRequestHandle);
+}
+
+PVRSRV_ERROR
 PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify)
 {
 	DEBUG_REQUEST_NOTIFY *psNotify = (DEBUG_REQUEST_NOTIFY *) hNotify;
@@ -392,9 +411,15 @@ PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify)
 	dllist_remove_node(&psNotify->sListNode);
 	OSWRLockReleaseWrite(psDebugTable->hLock);
 
-	OSFreeMem(psNotify);
+	OSFreeMemNoStats(psNotify);
 
 	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR
+SOPvrDbgRequestNotifyUnregister(IMG_HANDLE hNotify)
+{
+	return PVRSRVUnregisterDbgRequestNotify(hNotify);
 }
 
 void
@@ -411,23 +436,14 @@ PVRSRVDebugRequest(PVRSRV_DEVICE_NODE *psDevNode,
 	IMG_UINT32 i;
 	IMG_UINT32 j;
 
-	static_assert(IMG_ARR_NUM_ELEMS(apszVerbosityTable) == DEBUG_REQUEST_VERBOSITY_MAX+1,
+	static_assert(ARRAY_SIZE(apszVerbosityTable) == DEBUG_REQUEST_VERBOSITY_MAX+1,
 	              "Incorrect number of verbosity levels");
 
 	PVR_ASSERT(psDebugTable);
 
-	if (!pfnDumpDebugPrintf)
-	{
-		/*
-		 * Only dump the call stack to the kernel log if the debug text is going
-		 * there.
-		 */
-		OSDumpStack();
-	}
-
 	OSWRLockAcquireRead(psDebugTable->hLock);
 
-	if (ui32VerbLevel < IMG_ARR_NUM_ELEMS(apszVerbosityTable))
+	if (ui32VerbLevel < ARRAY_SIZE(apszVerbosityTable))
 	{
 		szVerbosityLevel = apszVerbosityTable[ui32VerbLevel];
 	}
@@ -442,7 +458,7 @@ PVRSRVDebugRequest(PVRSRV_DEVICE_NODE *psDevNode,
 
 	PVR_DUMPDEBUG_LOG("DDK info: %s (%s) %s",
 					   PVRVERSION_STRING, PVR_BUILD_TYPE, PVR_BUILD_DIR);
-	PVR_DUMPDEBUG_LOG("Time now: %015llu", OSClockus64());
+	PVR_DUMPDEBUG_LOG("Time now: %015" IMG_UINT64_FMTSPECx, OSClockus64());
 
 	switch (psPVRSRVData->eServicesState)
 	{
@@ -452,11 +468,16 @@ PVRSRVDebugRequest(PVRSRV_DEVICE_NODE *psDevNode,
 		case PVRSRV_SERVICES_STATE_BAD:
 			PVR_DUMPDEBUG_LOG("Services State: BAD");
 			break;
+		case PVRSRV_SERVICES_STATE_UNDEFINED:
+			PVR_DUMPDEBUG_LOG("Services State: UNDEFINED");
+			break;
 		default:
 			PVR_DUMPDEBUG_LOG("Services State: UNKNOWN (%d)",
 							   psPVRSRVData->eServicesState);
 			break;
 	}
+
+	PVRSRVConnectionDebugNotify(pfnDumpDebugPrintf, pvDumpDebugFile);
 
 	/* For each verbosity level */
 	for (j = 0; j <= ui32VerbLevel; j++)
@@ -479,4 +500,10 @@ PVRSRVDebugRequest(PVRSRV_DEVICE_NODE *psDevNode,
 
 	PVR_DUMPDEBUG_LOG("------------[ PVR DBG: END ]------------");
 	OSWRLockReleaseRead(psDebugTable->hLock);
+
+	if (!pfnDumpDebugPrintf)
+	{
+		/* Only notify OS of an issue if the debug dump has gone there */
+		OSWarnOn(IMG_TRUE);
+	}
 }

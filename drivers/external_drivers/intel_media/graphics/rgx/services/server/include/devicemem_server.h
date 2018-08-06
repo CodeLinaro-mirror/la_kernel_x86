@@ -135,7 +135,7 @@ PVRSRV_ERROR DevmemIntPinValidate(DEVMEMINT_MAPPING *psDevmemMapping, PMR *psPMR
  */
 PVRSRV_ERROR
 DevmemServerGetImportHandle(DEVMEM_MEMDESC *psMemDesc,
-						   IMG_HANDLE *phImport);
+                            IMG_HANDLE *phImport);
 
 /*
  * DevmemServerGetHeapHandle()
@@ -145,7 +145,7 @@ DevmemServerGetImportHandle(DEVMEM_MEMDESC *psMemDesc,
  */
 PVRSRV_ERROR
 DevmemServerGetHeapHandle(DEVMEMINT_RESERVATION *psReservation,
-						   IMG_HANDLE *phHeap);
+                          IMG_HANDLE *phHeap);
 
 /*
  * DevmemIntCtxCreate()
@@ -184,9 +184,7 @@ DevmemIntCtxCreate(CONNECTION_DATA *psConnection,
  * Undoes a prior DevmemIntCtxCreate or DevmemIntCtxImport.
  */
 extern PVRSRV_ERROR
-DevmemIntCtxDestroy(
-                  DEVMEMINT_CTX *psDevmemCtx
-                  );
+DevmemIntCtxDestroy(DEVMEMINT_CTX *psDevmemCtx);
 
 /*
  * DevmemIntHeapCreate()
@@ -212,13 +210,11 @@ DevmemIntCtxDestroy(
  * that will be created by this call.
  */
 extern PVRSRV_ERROR
-DevmemIntHeapCreate(
-                   DEVMEMINT_CTX *psDevmemCtx,
-                   IMG_DEV_VIRTADDR sHeapBaseAddr,
-                   IMG_DEVMEM_SIZE_T uiHeapLength,
-                   IMG_UINT32 uiLog2DataPageSize,
-                   DEVMEMINT_HEAP **ppsDevmemHeapPtr
-                   );
+DevmemIntHeapCreate(DEVMEMINT_CTX *psDevmemCtx,
+                    IMG_DEV_VIRTADDR sHeapBaseAddr,
+                    IMG_DEVMEM_SIZE_T uiHeapLength,
+                    IMG_UINT32 uiLog2DataPageSize,
+                    DEVMEMINT_HEAP **ppsDevmemHeapPtr);
 /*
  * DevmemIntHeapDestroy()
  *
@@ -228,9 +224,7 @@ DevmemIntHeapCreate(
  * call.
  */
 extern PVRSRV_ERROR
-DevmemIntHeapDestroy(
-                     DEVMEMINT_HEAP *psDevmemHeap
-                    );
+DevmemIntHeapDestroy(DEVMEMINT_HEAP *psDevmemHeap);
 
 /*
  * DevmemIntMapPMR()
@@ -378,7 +372,7 @@ DevmemIntIsVDevAddrValid(CONNECTION_DATA * psConnection,
 @Input          bRegister      If true, register. If false, de-register.
 @Return         PVRSRV_ERROR.
 */ /**************************************************************************/
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 DevmemIntRegisterPFNotifyKM(DEVMEMINT_CTX *psDevmemCtx,
                             IMG_INT32     ui32PID,
                             IMG_BOOL      bRegister);
@@ -402,8 +396,6 @@ PVRSRV_ERROR DevmemIntPFNotify(PVRSRV_DEVICE_NODE *psDevNode,
  * Writes out PDump "SAB" commands with the data found in memory at
  * the given virtual address.
  */
-/* FIXME: uiArraySize shouldn't be here, and is an
-   artefact of the bridging */
 extern PVRSRV_ERROR
 DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX *psDevmemCtx,
                                 IMG_DEV_VIRTADDR sDevAddrStart,
@@ -430,6 +422,26 @@ DevmemIntPDumpBitmap(CONNECTION_DATA * psConnection,
                      PDUMP_PIXEL_FORMAT ePixelFormat,
                      IMG_UINT32 ui32AddrMode,
                      IMG_UINT32 ui32PDumpFlags);
+
+extern PVRSRV_ERROR
+DevmemIntPdumpImageDescriptor(CONNECTION_DATA * psConnection,
+                              PVRSRV_DEVICE_NODE *psDeviceNode,
+                              DEVMEMINT_CTX *psDevMemContext,
+                              IMG_UINT32 ui32Size,
+                              const IMG_CHAR *pszFileName,
+                              IMG_DEV_VIRTADDR sData,
+                              IMG_UINT32 ui32DataSize,
+                              IMG_UINT32 ui32LogicalWidth,
+                              IMG_UINT32 ui32LogicalHeight,
+                              IMG_UINT32 ui32PhysicalWidth,
+                              IMG_UINT32 ui32PhysicalHeight,
+                              PDUMP_PIXEL_FORMAT ePixFmt,
+                              IMG_MEMLAYOUT eMemLayout,
+                              IMG_FB_COMPRESSION eFBCompression,
+                              const IMG_UINT32 *paui32FBCClearColour,
+                              IMG_DEV_VIRTADDR sHeader,
+                              IMG_UINT32 ui32HeaderSize,
+                              IMG_UINT32 ui32PDumpFlags);
 #else	/* PDUMP */
 
 #ifdef INLINE_IS_PRAGMA
@@ -441,8 +453,8 @@ DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX *psDevmemCtx,
                                 IMG_DEVMEM_SIZE_T uiSize,
                                 IMG_UINT32 uiArraySize,
                                 const IMG_CHAR *pszFilename,
-								IMG_UINT32 ui32FileOffset,
-								IMG_UINT32 ui32PDumpFlags)
+                                IMG_UINT32 ui32FileOffset,
+                                IMG_UINT32 ui32PDumpFlags)
 {
 	PVR_UNREFERENCED_PARAMETER(psDevmemCtx);
 	PVR_UNREFERENCED_PARAMETER(sDevAddrStart);
@@ -487,7 +499,55 @@ DevmemIntPDumpBitmap(CONNECTION_DATA * psConnection,
 	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
 	return PVRSRV_OK;
 }
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(DevmemIntPdumpImageDescriptor)
+#endif
+static INLINE PVRSRV_ERROR
+DevmemIntPdumpImageDescriptor(CONNECTION_DATA * psConnection,
+                              PVRSRV_DEVICE_NODE *psDeviceNode,
+                              DEVMEMINT_CTX *psDevMemContext,
+                              IMG_UINT32 ui32Size,
+                              const IMG_CHAR *pszFileName,
+                              IMG_DEV_VIRTADDR sData,
+                              IMG_UINT32 ui32DataSize,
+                              IMG_UINT32 ui32LogicalWidth,
+                              IMG_UINT32 ui32LogicalHeight,
+                              IMG_UINT32 ui32PhysicalWidth,
+                              IMG_UINT32 ui32PhysicalHeight,
+                              PDUMP_PIXEL_FORMAT ePixFmt,
+                              IMG_MEMLAYOUT eMemLayout,
+                              IMG_FB_COMPRESSION eFBCompression,
+                              const IMG_UINT32 *paui32FBCClearColour,
+                              IMG_DEV_VIRTADDR sHeader,
+                              IMG_UINT32 ui32HeaderSize,
+                              IMG_UINT32 ui32PDumpFlags)
+{
+	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
+	PVR_UNREFERENCED_PARAMETER(pszFileName);
+	PVR_UNREFERENCED_PARAMETER(sData);
+	PVR_UNREFERENCED_PARAMETER(ui32DataSize);
+	PVR_UNREFERENCED_PARAMETER(ui32LogicalWidth);
+	PVR_UNREFERENCED_PARAMETER(ui32LogicalHeight);
+	PVR_UNREFERENCED_PARAMETER(ui32PhysicalWidth);
+	PVR_UNREFERENCED_PARAMETER(ui32PhysicalHeight);
+	PVR_UNREFERENCED_PARAMETER(ePixFmt);
+	PVR_UNREFERENCED_PARAMETER(eMemLayout);
+	PVR_UNREFERENCED_PARAMETER(eFBCompression);
+	PVR_UNREFERENCED_PARAMETER(paui32FBCClearColour);
+	PVR_UNREFERENCED_PARAMETER(sHeader);
+	PVR_UNREFERENCED_PARAMETER(ui32HeaderSize);
+	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
+	return PVRSRV_OK;
+}
+
 #endif	/* PDUMP */
+
+PVRSRV_ERROR
+DevmemIntInit(void);
+
+PVRSRV_ERROR
+DevmemIntDeInit(void);
 
 PVRSRV_ERROR
 DevmemIntExportCtx(DEVMEMINT_CTX *psContext,
@@ -499,7 +559,7 @@ DevmemIntUnexportCtx(DEVMEMINT_CTX_EXPORT *psContextExport);
 
 PVRSRV_ERROR
 DevmemIntAcquireRemoteCtx(PMR *psPMR,
-						  DEVMEMINT_CTX **ppsContext,
-						  IMG_HANDLE *phPrivData);
+                          DEVMEMINT_CTX **ppsContext,
+                          IMG_HANDLE *phPrivData);
 
 #endif /* ifndef __DEVICEMEM_SERVER_H__ */

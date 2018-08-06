@@ -54,7 +54,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_server.h"
 #include "allocmem.h"
 #include "module_common.h"
-
+#include "osfunc.h"
 #if defined(PVR_DRM_USE_PRIME)
 #include "physmem_dmabuf.h"
 #endif
@@ -923,7 +923,7 @@ struct drm_gem_object *PVRSRVGEMGetObject(PMR *psPMR)
 {
 	PMR_GEM_PRIV *psGEMPriv;
 
-	psGEMPriv = PMRGetPrivateDataHack(psPMR, &gsPMRGEMFuncTab);
+	psGEMPriv = PMRGetPrivateData(psPMR, &gsPMRGEMFuncTab);
 	if (psGEMPriv != NULL)
 	{
 		return psGEMPriv->psObj;

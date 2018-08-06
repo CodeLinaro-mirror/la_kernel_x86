@@ -45,16 +45,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _ION_SYS_H_
 #define _ION_SYS_H_
 
+#include <linux/version.h>
+
 #include "pvrsrv_error.h"
 #include PVR_ANDROID_ION_HEADER
 
 
-PVRSRV_ERROR IonInit(void *phPrivateData);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
+PVRSRV_ERROR IonInit(void *pvPrivateData);
 
 struct ion_device *IonDevAcquire(void);
 
 void IonDevRelease(struct ion_device *psIonDev);
 
 void IonDeinit(void);
+#endif
 
 #endif /* _ION_SYS_H_ */

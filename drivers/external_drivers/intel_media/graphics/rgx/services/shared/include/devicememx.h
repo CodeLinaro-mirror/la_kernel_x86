@@ -141,7 +141,7 @@ DevmemXUnmapPhysicalToCPU(DEVMEMX_PHYSDESC *psMemAllocPhys);
  */
 
 PVRSRV_ERROR
-DevmemXCreateDevmemMemDesc(DEVMEMX_VIRTDESC *psVirtDesc,
+DevmemXCreateDevmemMemDesc(const IMG_DEV_VIRTADDR sVirtualAddress,
                             DEVMEM_MEMDESC **ppsMemDesc);
 
 /* DevmemXFreeDevmemMemDesc()

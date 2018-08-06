@@ -56,7 +56,6 @@ typedef struct _RGX_SERVER_KICKSYNC_CONTEXT_ RGX_SERVER_KICKSYNC_CONTEXT;
 @Description    Server-side implementation of RGXCreateKicksyncContext
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
  */ /**************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXCreateKickSyncContextKM(CONNECTION_DATA             * psConnection,
                                               PVRSRV_DEVICE_NODE          * psDeviceNode,
                                               IMG_HANDLE					hMemCtxPrivData,
@@ -69,7 +68,6 @@ PVRSRV_ERROR PVRSRVRGXCreateKickSyncContextKM(CONNECTION_DATA             * psCo
 @Description    Server-side implementation of RGXDestroyKicksyncContext
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
  */ /**************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXDestroyKickSyncContextKM(RGX_SERVER_KICKSYNC_CONTEXT * psKicksyncContext);
 
 
@@ -78,7 +76,6 @@ PVRSRV_ERROR PVRSRVRGXDestroyKickSyncContextKM(RGX_SERVER_KICKSYNC_CONTEXT * psK
 @Description    Kicks a sync only command
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
  */ /**************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXKickSyncKM(RGX_SERVER_KICKSYNC_CONTEXT * psKicksyncContext,
 
                                  IMG_UINT32                    ui32ClientCacheOpSeqNum,
@@ -97,10 +94,10 @@ PVRSRV_ERROR PVRSRVRGXKickSyncKM(RGX_SERVER_KICKSYNC_CONTEXT * psKicksyncContext
                                  IMG_UINT32                  * paui32ServerSyncFlags,
                                  SERVER_SYNC_PRIMITIVE      ** pasServerSyncs,
 
-                                 IMG_INT32                     i32CheckFenceFD,
-                                 IMG_INT32                     i32UpdateTimelineFD,
-                                 IMG_INT32                   * pi32UpdateFenceFD,
-                                 IMG_CHAR                      szFenceName[32],
+                                 PVRSRV_FENCE                  iCheckFence,
+                                 PVRSRV_TIMELINE               iUpdateTimeline,
+                                 PVRSRV_FENCE                * piUpdateFence,
+                                 IMG_CHAR                      szUpdateFenceName[32],
 
                                  IMG_UINT32                    ui32ExtJobRef);
 

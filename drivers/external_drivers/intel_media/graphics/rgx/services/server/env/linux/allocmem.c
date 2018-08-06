@@ -59,11 +59,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ALLOCMEM_MEMSTATS_PADDING sizeof(IMG_UINT32)
 #endif
 
-/* Ensure poison value is not divisible by 4.
- * Used to poison memory to trip up use after free in kernel-side code
- */
-#define OS_MEM_POISON_VALUE (0x6b)
-
 static inline void _pvr_vfree(const void* pvAddr)
 {
 #if defined(DEBUG)
@@ -71,7 +66,8 @@ static inline void _pvr_vfree(const void* pvAddr)
 			 * a whole number of pages, poison the minimum size known to have
 			 * been allocated.
 			 */
-			OSCachedMemSet((void*)pvAddr, OS_MEM_POISON_VALUE, PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD);
+			OSCachedMemSet((void*)pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE,
+			               PVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD);
 #endif
 			vfree(pvAddr);
 }
@@ -80,13 +76,14 @@ static inline void _pvr_kfree(const void* pvAddr)
 {
 #if defined(DEBUG)
 			/* Poison whole memory block */
-			OSCachedMemSet((void*)pvAddr, OS_MEM_POISON_VALUE, ksize(pvAddr));
+			OSCachedMemSet((void*)pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE,
+			               ksize(pvAddr));
 #endif
 			kfree(pvAddr);
 }
 
 #if !defined(PVRSRV_ENABLE_PROCESS_STATS)
-IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
+void *OSAllocMem(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -102,7 +99,7 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 	return pvRet;
 }
 
-IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
+void *OSAllocZMem(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -122,7 +119,7 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
  * The parentheses around OSFreeMem prevent the macro in allocmem.h from
  * applying, as it would break the function's definition.
  */
-IMG_INTERNAL void (OSFreeMem)(void *pvMem)
+void (OSFreeMem)(void *pvMem)
 {
 	if (pvMem != NULL)
 	{
@@ -138,7 +135,7 @@ IMG_INTERNAL void (OSFreeMem)(void *pvMem)
 }
 #else
 #if defined(PVRSRV_DEBUG_LINUX_MEMORY_STATS) && defined(DEBUG) && defined(PVRSRV_ENABLE_MEMORY_STATS)
-IMG_INTERNAL void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
+void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
 {
 	void *pvRet = NULL;
 
@@ -164,6 +161,7 @@ IMG_INTERNAL void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_U
 										  sCpuPAddr,
 										  ksize(pvRet),
 										  NULL,
+										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
 										  ui32AllocFromLine);
 		}
@@ -177,6 +175,7 @@ IMG_INTERNAL void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_U
 										  sCpuPAddr,
 										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
 										  NULL,
+										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
 										  ui32AllocFromLine);
 		}
@@ -184,7 +183,7 @@ IMG_INTERNAL void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_U
 	return pvRet;
 }
 
-IMG_INTERNAL void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
+void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine)
 {
 	void *pvRet = NULL;
 
@@ -209,6 +208,7 @@ IMG_INTERNAL void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_
 										  sCpuPAddr,
 										  ksize(pvRet),
 										  NULL,
+										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
 										  ui32AllocFromLine);
 		}
@@ -222,6 +222,7 @@ IMG_INTERNAL void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_
 										  sCpuPAddr,
 										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
 										  NULL,
+										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
 										  ui32AllocFromLine);
 		}
@@ -229,7 +230,7 @@ IMG_INTERNAL void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_
 	return pvRet;
 }
 #else
-IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
+void *OSAllocMem(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -255,7 +256,7 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
 				*puiTemp = OSGetCurrentProcessID();
 			}
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
+			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet), OSGetCurrentClientProcessIDKM());
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -264,7 +265,8 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 										 pvRet,
 										 sCpuPAddr,
 										 ksize(pvRet),
-										 NULL);
+										 NULL,
+										 OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 		}
@@ -274,7 +276,8 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
 			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											    (IMG_UINT64)(uintptr_t) pvRet);
+											    (IMG_UINT64)(uintptr_t) pvRet,
+												OSGetCurrentClientProcessIDKM());
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -283,7 +286,8 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 										 pvRet,
 										 sCpuPAddr,
 										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-										 NULL);
+										 NULL,
+										 OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 		}
@@ -291,7 +295,7 @@ IMG_INTERNAL void *OSAllocMem(IMG_UINT32 ui32Size)
 	return pvRet;
 }
 
-IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
+void *OSAllocZMem(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -316,7 +320,7 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvRet) + (ksize(pvRet) - ALLOCMEM_MEMSTATS_PADDING));
 				*puiTemp = OSGetCurrentProcessID();
 			}
-			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet));
+			PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_KMALLOC, ksize(pvRet), OSGetCurrentClientProcessIDKM());
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -325,7 +329,8 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 								 pvRet,
 								 sCpuPAddr,
 								 ksize(pvRet),
-								 NULL);
+								 NULL,
+								 OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 		}
@@ -335,7 +340,8 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
 			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-											    (IMG_UINT64)(uintptr_t) pvRet);
+											    (IMG_UINT64)(uintptr_t) pvRet,
+												OSGetCurrentClientProcessIDKM());
 #else
 			IMG_CPU_PHYADDR sCpuPAddr;
 			sCpuPAddr.uiAddr = 0;
@@ -344,7 +350,8 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
 										 pvRet,
 										 sCpuPAddr,
 										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
-										 NULL);
+										 NULL,
+										 OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 		}
@@ -357,7 +364,7 @@ IMG_INTERNAL void *OSAllocZMem(IMG_UINT32 ui32Size)
  * The parentheses around OSFreeMem prevent the macro in allocmem.h from
  * applying, as it would break the function's definition.
  */
-IMG_INTERNAL void (OSFreeMem)(void *pvMem)
+void (OSFreeMem)(void *pvMem)
 {
 	if (pvMem != NULL)
 	{
@@ -365,11 +372,14 @@ IMG_INTERNAL void (OSFreeMem)(void *pvMem)
 		{
 #if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
-			IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvMem) + (ksize(pvMem) - ALLOCMEM_MEMSTATS_PADDING));
-			PVRSRVStatsDecrMemKAllocStat(ksize(pvMem), *puiTemp);
+			{
+				IMG_UINT32 *puiTemp = (IMG_UINT32*) (((IMG_BYTE*)pvMem) + (ksize(pvMem) - ALLOCMEM_MEMSTATS_PADDING));
+				PVRSRVStatsDecrMemKAllocStat(ksize(pvMem), *puiTemp);
+			}
 #else
 			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_KMALLOC,
-			                                (IMG_UINT64)(uintptr_t) pvMem);
+			                                (IMG_UINT64)(uintptr_t) pvMem,
+											OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 			_pvr_kfree(pvMem);
@@ -382,7 +392,8 @@ IMG_INTERNAL void (OSFreeMem)(void *pvMem)
 			                                      (IMG_UINT64)(uintptr_t) pvMem);
 #else
 			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-			                                (IMG_UINT64)(uintptr_t) pvMem);
+			                                (IMG_UINT64)(uintptr_t) pvMem,
+											OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 			_pvr_vfree(pvMem);
@@ -392,7 +403,7 @@ IMG_INTERNAL void (OSFreeMem)(void *pvMem)
 #endif
 
 
-IMG_INTERNAL void *OSAllocMemNoStats(IMG_UINT32 ui32Size)
+void *OSAllocMemNoStats(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -408,7 +419,7 @@ IMG_INTERNAL void *OSAllocMemNoStats(IMG_UINT32 ui32Size)
 	return pvRet;
 }
 
-IMG_INTERNAL void *OSAllocZMemNoStats(IMG_UINT32 ui32Size)
+void *OSAllocZMemNoStats(IMG_UINT32 ui32Size)
 {
 	void *pvRet = NULL;
 
@@ -428,7 +439,7 @@ IMG_INTERNAL void *OSAllocZMemNoStats(IMG_UINT32 ui32Size)
  * The parentheses around OSFreeMemNoStats prevent the macro in allocmem.h from
  * applying, as it would break the function's definition.
  */
-IMG_INTERNAL void (OSFreeMemNoStats)(void *pvMem)
+void (OSFreeMemNoStats)(void *pvMem)
 {
 	if (pvMem != NULL)
 	{

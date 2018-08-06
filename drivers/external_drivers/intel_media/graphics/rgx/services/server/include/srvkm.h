@@ -69,15 +69,16 @@ void IMG_CALLCONV PVRSRVDriverDeInit(void);
 /*************************************************************************/ /*!
 @Function     PVRSRVDeviceCreate
 @Description  Creates a PVR Services device node for an OS native device.
-@Input        pvOSDevice     OS native device
-@Output       ppsDeviceNode  Points to the new device node on success
-@Return       PVRSRV_ERROR   PVRSRV_OK on success and an error otherwise
+@Input        pvOSDevice      OS native device
+@Input        i32UMIdentifier A unique identifier which helps recognize this
+                              Device in the UM space.
+@Output       ppsDeviceNode   Points to the new device node on success
+@Return       PVRSRV_ERROR    PVRSRV_OK on success and an error otherwise
 */ /**************************************************************************/
 PVRSRV_ERROR IMG_CALLCONV
-PVRSRVDeviceCreate(void *pvOSDevice,
+PVRSRVDeviceCreate(void *pvOSDevice, IMG_INT32 i32UMIdentifier,
 				   struct _PVRSRV_DEVICE_NODE_ **ppsDeviceNode);
 
-#if defined(SUPPORT_KERNEL_SRVINIT)
 /*************************************************************************/ /*!
 @Function     PVRSRVDeviceInitialise
 @Description  Initialises the given device, created by PVRSRVDeviceCreate, so
@@ -86,7 +87,6 @@ PVRSRVDeviceCreate(void *pvOSDevice,
 @Return       PVRSRV_ERROR  PVRSRV_OK on success and an error otherwise
 */ /**************************************************************************/
 PVRSRV_ERROR PVRSRVDeviceInitialise(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
-#endif
 
 /*************************************************************************/ /*!
 @Function     PVRSRVDeviceDestroy

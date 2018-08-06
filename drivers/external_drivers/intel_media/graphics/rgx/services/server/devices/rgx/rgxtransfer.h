@@ -72,11 +72,9 @@ FIXME fill this in
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVRGXCreateTransferContextKM(CONNECTION_DATA			*psConnection,
+PVRSRV_ERROR PVRSRVRGXCreateTransferContextKM(CONNECTION_DATA		*psConnection,
 										   PVRSRV_DEVICE_NODE		*psDeviceNode,
 										   IMG_UINT32				ui32Priority,
-										   IMG_DEV_VIRTADDR			sMCUFenceAddr,
 										   IMG_UINT32				ui32FrameworkCommandSize,
 										   IMG_PBYTE				pabyFrameworkCommand,
 										   IMG_HANDLE				hMemCtxPrivData,
@@ -96,7 +94,6 @@ PVRSRV_ERROR PVRSRVRGXCreateTransferContextKM(CONNECTION_DATA			*psConnection,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXDestroyTransferContextKM(RGX_SERVER_TQ_CONTEXT *psTransferContext);
 
 /*!
@@ -111,7 +108,6 @@ PVRSRV_ERROR PVRSRVRGXDestroyTransferContextKM(RGX_SERVER_TQ_CONTEXT *psTransfer
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXSubmitTransferKM(RGX_SERVER_TQ_CONTEXT	*psTransferContext,
 									IMG_UINT32				ui32ClientCacheOpSeqNum,
 									IMG_UINT32				ui32PrepareCount,
@@ -126,9 +122,11 @@ PVRSRV_ERROR PVRSRVRGXSubmitTransferKM(RGX_SERVER_TQ_CONTEXT	*psTransferContext,
 									IMG_UINT32				*paui32ServerSyncCount,
 									IMG_UINT32				**papaui32ServerSyncFlags,
 									SERVER_SYNC_PRIMITIVE	***papapsServerSyncs,
-									IMG_INT32				i32CheckFenceFD,
-									IMG_INT32				i32UpdateTimelineFD,
-									IMG_INT32				*pi32UpdateFenceFD,
+									PVRSRV_FENCE			iCheckFence,
+									PVRSRV_TIMELINE			i2DUpdateTimeline,
+									PVRSRV_FENCE			*pi2DUpdateFence,
+									PVRSRV_TIMELINE			i3DUpdateTimeline,
+									PVRSRV_FENCE			*pi3DUpdateFence,
 									IMG_CHAR				szFenceName[32],
 									IMG_UINT32				*paui32FWCommandSize,
 									IMG_UINT8				**papaui8FWCommand,
@@ -138,7 +136,6 @@ PVRSRV_ERROR PVRSRVRGXSubmitTransferKM(RGX_SERVER_TQ_CONTEXT	*psTransferContext,
 									IMG_UINT32				*paui32SyncPMRFlags,
 									PMR						**ppsSyncPMRs);
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXSetTransferContextPriorityKM(CONNECTION_DATA *psConnection,
                                                    PVRSRV_DEVICE_NODE * psDevNode,
 												   RGX_SERVER_TQ_CONTEXT *psTransferContext,

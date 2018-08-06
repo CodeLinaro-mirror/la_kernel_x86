@@ -62,6 +62,5 @@ PVRSRV_ERROR AwPostPowerState(IMG_HANDLE hSysData,
 							  PVRSRV_DEV_POWER_STATE eNewPowerState,
 							  PVRSRV_DEV_POWER_STATE eCurrentPowerState,
 							  IMG_BOOL bForced);
-void SetFrequency(IMG_UINT32 ui32Frequency);
-void SetVoltage(IMG_UINT32 ui32Voltage);
+
 #endif	/* __SUNXI_INIT__ */

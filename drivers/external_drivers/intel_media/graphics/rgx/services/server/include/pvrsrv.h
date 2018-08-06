@@ -44,13 +44,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_H
 
 
-#if defined(__KERNEL__) && defined(LINUX) && !defined(__GENKSYMS__)
-#define __pvrsrv_defined_struct_enum__
-#include <services_kernel_client.h>
-#endif
-
+#include "connection_server.h"
 #include "device.h"
 #include "power.h"
+#include "syscommon.h"
 #include "sysinfo.h"
 #include "physheap.h"
 #include "cache_ops.h"
@@ -59,12 +56,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(SUPPORT_RGX)
 #include "rgx_bridge.h"
 #endif
+#if defined(__KERNEL__) && defined(LINUX) && !defined(__GENKSYMS__)
+#define __pvrsrv_defined_struct_enum__
+#include <services_kernel_client.h>
+#endif
 
-#include "connection_server.h"
+#include "pvrsrv_pool.h"
 
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
 #include "virt_validation_defs.h"
 #endif
+
+#include "dma_support.h"
+#include "vz_support.h"
+#include "vz_physheap.h"
 
 /*!
  * For OSThreadDestroy(), which may require a retry
@@ -72,6 +77,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #define OS_THREAD_DESTROY_TIMEOUT_US 100000ULL
 #define OS_THREAD_DESTROY_RETRY_COUNT 10
+
+typedef enum _VMM_CONF_PARAM_
+{
+	VMM_CONF_PRIO_OSID0 = 0,
+	VMM_CONF_PRIO_OSID1 = 1,
+	VMM_CONF_PRIO_OSID2 = 2,
+	VMM_CONF_PRIO_OSID3 = 3,
+	VMM_CONF_PRIO_OSID4 = 4,
+	VMM_CONF_PRIO_OSID5 = 5,
+	VMM_CONF_PRIO_OSID6 = 6,
+	VMM_CONF_PRIO_OSID7 = 7,
+	VMM_CONF_ISOL_THRES = 8,
+	VMM_CONF_HCS_DEADLINE = 9
+} VMM_CONF_PARAM;
 
 typedef struct _BUILD_INFO_
 {
@@ -89,15 +108,24 @@ typedef struct _DRIVER_INFO_
 {
 	BUILD_INFO	sUMBuildInfo;
 	BUILD_INFO	sKMBuildInfo;
+	IMG_UINT8	ui8UMSupportedArch;
+	IMG_UINT8	ui8KMBitArch;
+
+#define	BUILD_ARCH_64BIT			(1 << 0)
+#define	BUILD_ARCH_32BIT			(1 << 1)
+#define	BUILD_ARCH_BOTH		(BUILD_ARCH_32BIT | BUILD_ARCH_64BIT)
 	IMG_BOOL	bIsNoMatch;
 }DRIVER_INFO;
 
 typedef struct PVRSRV_DATA_TAG
 {
+	PVRSRV_DRIVER_MODE			eDriverMode;				/*!< Driver mode (i.e. native, host or guest) */
 	DRIVER_INFO					sDriverInfo;
 	IMG_UINT32					ui32RegisteredDevices;
 	PVRSRV_DEVICE_NODE			*psDeviceNodeList;			/*!< List head of device nodes */
-
+	PVRSRV_DEVICE_NODE			*psHostMemDeviceNode;		/*!< DeviceNode to be used for device independent
+	                                                             host based memory allocations where the DevMem
+	                                                             framework is to be used e.g. TL */
 	PVRSRV_SERVICES_STATE		eServicesState;				/*!< global driver state */
 
 	HASH_TABLE					*psProcessHandleBase_Table; /*!< Hash table with process handle bases */
@@ -106,38 +134,43 @@ typedef struct PVRSRV_DATA_TAG
 	IMG_HANDLE					hGlobalEventObject;			/*!< OS Global Event Object */
 	IMG_UINT32					ui32GEOConsecutiveTimeouts;	/*!< OS Global Event Object Timeouts */
 
-	PVRSRV_CACHE_OP				uiCacheOp;					/*!< Pending cache operations in the system */
-#if (CACHEFLUSH_KM_TYPE == CACHEFLUSH_KM_RANGEBASED_DEFERRED)
-	IMG_HANDLE					hCacheOpThread;				/*!< CacheOp thread */
-	IMG_HANDLE					hCacheOpThreadEventObject;	/*!< Event object to drive CacheOp thread */
-	IMG_HANDLE					hCacheOpUpdateEventObject;	/*!< Update event object to drive CacheOp fencing */
-	POS_LOCK					hCacheOpThreadWorkListLock;	/*!< Lock protecting the cleanup thread work list */
-	DLLIST_NODE					sCacheOpThreadWorkList;		/*!< List of work for the cleanup thread */
-	IMG_PID						CacheOpThreadPid;			/*!< CacheOp thread process id */
-#endif
-
 	IMG_HANDLE					hCleanupThread;				/*!< Cleanup thread */
 	IMG_HANDLE					hCleanupEventObject;		/*!< Event object to drive cleanup thread */
 	POS_LOCK					hCleanupThreadWorkListLock;	/*!< Lock protecting the cleanup thread work list */
 	DLLIST_NODE					sCleanupThreadWorkList;		/*!< List of work for the cleanup thread */
 	IMG_PID						cleanupThreadPid;			/*!< Cleanup thread process id */
+	ATOMIC_T					i32NumCleanupItems;		/*!< Number of items in cleanup thread work list */
 
-	IMG_HANDLE					hDevicesWatchdogThread;		/*!< Devices Watchdog thread */
+	IMG_HANDLE					hDevicesWatchdogThread;		/*!< Devices watchdog thread */
 	IMG_HANDLE					hDevicesWatchdogEvObj;		/*! Event object to drive devices watchdog thread */
 	volatile IMG_UINT32			ui32DevicesWatchdogPwrTrans;/*! Number of off -> on power state transitions */
-	volatile IMG_UINT32			ui32DevicesWatchdogTimeout; /*! Timeout for the Devices Watchdog Thread */
+	volatile IMG_UINT32			ui32DevicesWatchdogTimeout; /*! Timeout for the Devices watchdog Thread */
 #ifdef PVR_TESTING_UTILS
 	volatile IMG_UINT32			ui32DevicesWdWakeupCounter;	/* Need this for the unit tests. */
 #endif
 
-#ifdef SUPPORT_PVRSRV_GPUVIRT
-	IMG_HANDLE					hVzData;					/*! Additional virtualization data */
-#endif
-	
+	IMG_HANDLE					hPvzConnection;				/*!< PVZ connection used for cross-VM hyper-calls */
+	POS_LOCK					hPvzConnectionLock;			/*!< Lock protecting PVZ connection */
+	IMG_BOOL					abVmOnline[RGXFW_NUM_OS];
+
 	IMG_BOOL					bUnload;					/*!< Driver unload is in progress */
+
+	IMG_HANDLE					hTLCtrlStream;				/*! Control plane for TL streams */
+
+	PVRSRV_POOL					*psBridgeBufferPool;			/*! Pool of bridge buffers */
+	IMG_HANDLE					hDriverThreadEventObject;		/*! Event object relating to multi-threading in the Server */
+	IMG_BOOL					bDriverSuspended;			/*! if TRUE, the driver is suspended and new threads should not enter */
+	ATOMIC_T					iNumActiveDriverThreads;			/*! Number of threads active in the Server */
+
+	PMR							*psInfoPagePMR;				/*! Handle to exportable PMR of the information page. */
+	IMG_UINT32					*pui32InfoPage;				/*! CPU memory mapping for information page. */
+	DEVMEM_MEMDESC				*psInfoPageMemDesc;			/*! Memory descriptor of the information page. */
+	POS_LOCK					hInfoPageLock;				/*! Lock guarding access to information page. */
+
+	POS_LOCK                    hConnectionsLock;           /*!< Lock protecting sConnections */
+	DLLIST_NODE                 sConnections;               /*!< The list of currently active connection objects */
 } PVRSRV_DATA;
 
-typedef IMG_BOOL (*PFN_LISR)(void *pvData);
 
 /*!
 ******************************************************************************
@@ -151,6 +184,44 @@ typedef IMG_BOOL (*PFN_LISR)(void *pvData);
 ******************************************************************************/
 PVRSRV_DATA *PVRSRVGetPVRSRVData(void);
 
+/*!
+******************************************************************************************
+@Note   Kernel code must always query the driver mode using the PVRSRV_VZ_MODE_IS() macro
+		_only_ and PVRSRV_DATA->eDriverMode should not be read directly as the field also
+		overloads as driver OSID (i.e. not to be confused with hardware kick register OSID)
+		when running on non-VZ capable BVNC as the driver has to simulate OSID propagation
+		to the firmware in the absence of the hardware kick register propagating this OSID
+		on any non-VZ BVNC.
+******************************************************************************************/
+#define PVRSRV_VZ_MODE_IS(_expr)              (((((IMG_INT)_expr)>0)&&((IMG_INT)PVRSRVGetPVRSRVData()->eDriverMode>0)) ? \
+                                                   (IMG_TRUE) : ((_expr) == (PVRSRVGetPVRSRVData()->eDriverMode)))
+#define PVRSRV_VZ_RETN_IF_MODE(_expr)         do { if (  PVRSRV_VZ_MODE_IS(_expr)) { return; } } while(0)
+#define PVRSRV_VZ_RETN_IF_NOT_MODE(_expr)     do { if (! PVRSRV_VZ_MODE_IS(_expr)) { return; } } while(0)
+#define PVRSRV_VZ_RET_IF_MODE(_expr, _rc)     do { if (  PVRSRV_VZ_MODE_IS(_expr)) { return (_rc); } } while(0)
+#define PVRSRV_VZ_RET_IF_NOT_MODE(_expr, _rc) do { if (! PVRSRV_VZ_MODE_IS(_expr)) { return (_rc); } } while(0)
+#define PVRSRV_VZ_DRIVER_OSID                 (((IMG_INT)PVRSRVGetPVRSRVData()->eDriverMode) > (0) ? \
+												   ((IMG_UINT32)(PVRSRVGetPVRSRVData()->eDriverMode)) : (0))
+
+/*!
+************************************************************************************************
+@Note	The driver execution mode AppHint (i.e. PVRSRV_APPHINT_DRIVERMODE) can be an override or
+		non-override 32-bit value. An override value has the MSB bit set & a non-override value
+		has this MSB bit cleared. Excluding this MSB bit & interpreting the remaining 31-bit as
+		a signed 31-bit integer, the mode values are [-1 native <default>: 0 host : +1 guest ].
+************************************************************************************************/
+#define PVRSRV_VZ_APPHINT_MODE_IS_OVERRIDE(_expr)   ((IMG_UINT32)(_expr)&(IMG_UINT32)(1<<31))
+#define PVRSRV_VZ_APPHINT_MODE(_expr)				\
+	((((IMG_UINT32)(_expr)&(IMG_UINT32)0x7FFFFFFF) == (IMG_UINT32)0x7FFFFFFF) ? DRIVER_MODE_NATIVE : \
+		!((IMG_UINT32)(_expr)&(IMG_UINT32)0x7FFFFFFF) ? DRIVER_MODE_HOST : \
+			((IMG_UINT32)((IMG_UINT32)(_expr)&(IMG_UINT)0x7FFFFFFF)==(IMG_UINT32)0x1) ? DRIVER_MODE_GUEST : \
+				((IMG_UINT32)(_expr)&(IMG_UINT32)0x7FFFFFFF))
+
+/*!
+******************************************************************************
+
+ @Function	LMA memory management API
+
+******************************************************************************/
 PVRSRV_ERROR LMA_PhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
 							PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr);
 
@@ -182,9 +253,10 @@ PVRSRV_ERROR LMA_PhyContigPagesClean(PVRSRV_DEVICE_NODE *psDevNode,
 
  @Return   PVRSRV_ERROR :
 ******************************************************************************/
-IMG_IMPORT PVRSRV_ERROR IMG_CALLCONV PVRSRVPollForValueKM(volatile IMG_UINT32	*pui32LinMemAddr,
-														  IMG_UINT32			ui32Value,
-														  IMG_UINT32			ui32Mask);
+PVRSRV_ERROR IMG_CALLCONV PVRSRVPollForValueKM(
+		volatile IMG_UINT32 __iomem *pui32LinMemAddr,
+		IMG_UINT32                   ui32Value,
+		IMG_UINT32                   ui32Mask);
 
 /*!
 ******************************************************************************
@@ -199,9 +271,10 @@ IMG_IMPORT PVRSRV_ERROR IMG_CALLCONV PVRSRVPollForValueKM(volatile IMG_UINT32	*p
 
  @Return   PVRSRV_ERROR :
 ******************************************************************************/
-IMG_IMPORT PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKM(volatile IMG_UINT32	*pui32LinMemAddr,
-														IMG_UINT32			ui32Value,
-														IMG_UINT32			ui32Mask);
+PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKM(
+		volatile IMG_UINT32 __iomem *pui32LinMemAddr,
+		IMG_UINT32                   ui32Value,
+		IMG_UINT32                   ui32Mask);
 
 /*!
 ******************************************************************************
@@ -217,9 +290,10 @@ IMG_IMPORT PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKM(volatile IMG_UINT32	*p
 
  @Return   PVRSRV_ERROR :
 ******************************************************************************/
-PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKMAndHoldBridgeLockKM(volatile IMG_UINT32 *pui32LinMemAddr,
-                                                                  IMG_UINT32          ui32Value,
-                                                                  IMG_UINT32          ui32Mask);
+PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKMAndHoldBridgeLockKM(
+		volatile IMG_UINT32 __iomem *pui32LinMemAddr,
+		IMG_UINT32                   ui32Value,
+		IMG_UINT32                   ui32Mask);
 
 /*!
 *****************************************************************************
@@ -230,6 +304,16 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKMAndHoldBridgeLockKM(volatile IMG_U
  @Return : IMG_TRUE if the system has cache snooping
 *****************************************************************************/
 IMG_BOOL PVRSRVSystemHasCacheSnooping(PVRSRV_DEVICE_CONFIG *psDevConfig);
+
+/*!
+*****************************************************************************
+ @Function	: PVRSRVSystemSnoopingIsEmulated
+
+ @Description : Returns whether system cache snooping support is emulated
+
+ @Return : IMG_TRUE if the system cache snooping is emulated in software
+*****************************************************************************/
+IMG_BOOL PVRSRVSystemSnoopingIsEmulated(PVRSRV_DEVICE_CONFIG *psDevConfig);
 
 /*!
 *****************************************************************************
@@ -364,7 +448,7 @@ PVRSRVSystemBIFTilingGetConfig(PVRSRV_DEVICE_CONFIG  *psDevConfig,
 						  for each OSid area
 ***********************************************************************************/
 
-void PopulateLMASubArenas(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_UINT32 aui32OSidMin[GPUVIRT_VALIDATION_NUM_OS][GPUVIRT_VALIDATION_NUM_REGIONS], IMG_UINT32 aui32OSidMax[GPUVIRT_VALIDATION_NUM_OS][GPUVIRT_VALIDATION_NUM_REGIONS]);
+void PopulateLMASubArenas(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_UINT32 aui32OSidMin[GPUVIRT_VALIDATION_NUM_REGIONS][GPUVIRT_VALIDATION_NUM_OS], IMG_UINT32 aui32OSidMax[GPUVIRT_VALIDATION_NUM_REGIONS][GPUVIRT_VALIDATION_NUM_OS]);
 
 #if defined(EMULATOR)
 	void SetAxiProtOSid(IMG_UINT32 ui32OSid, IMG_BOOL bState);
@@ -372,5 +456,33 @@ void PopulateLMASubArenas(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_UINT32 aui32OSid
 #endif
 
 #endif
+
+/*!
+******************************************************************************
+
+ @Function			PVRSRVVzRegisterFirmwarePhysHeap
+
+ @Description 		Request to map a physical heap to kernel FW memory context
+
+ @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
+									error code
+ ******************************************************************************/
+PVRSRV_ERROR PVRSRVVzRegisterFirmwarePhysHeap(PVRSRV_DEVICE_NODE *psDeviceNode,
+											  IMG_DEV_PHYADDR sDevPAddr,
+											  IMG_UINT64 ui64DevPSize,
+											  IMG_UINT32 uiOSID);
+
+/*!
+******************************************************************************
+
+ @Function			PVRSRVVzUnregisterFirmwarePhysHeap
+
+ @Description 		Request to unmap a physical heap from kernel FW memory context
+
+ @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
+									error code
+ ******************************************************************************/
+PVRSRV_ERROR PVRSRVVzUnregisterFirmwarePhysHeap(PVRSRV_DEVICE_NODE *psDeviceNode,
+												IMG_UINT32 uiOSID);
 
 #endif /* PVRSRV_H */

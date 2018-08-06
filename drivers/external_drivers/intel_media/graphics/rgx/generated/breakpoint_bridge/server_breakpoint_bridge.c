@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Server bridge for breakpoint
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,15 +39,13 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+********************************************************************************/
 
-#include <stddef.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include "img_defs.h"
 
 #include "rgxbreakpoint.h"
-
 
 #include "common_breakpoint_bridge.h"
 
@@ -55,349 +53,249 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_debug.h"
 #include "connection_server.h"
 #include "pvr_bridge.h"
+#if defined(SUPPORT_RGX)
 #include "rgx_bridge.h"
+#endif
 #include "srvcore.h"
 #include "handle.h"
 
 #include <linux/slab.h>
 
-
-
 #if !defined(EXCLUDE_BREAKPOINT_BRIDGE)
-
-
 
 /* ***************************************************************************
  * Server-side bridge entry points
  */
- 
+
 static IMG_INT
 PVRSRVBridgeRGXSetBreakpoint(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXSETBREAKPOINT *psRGXSetBreakpointIN,
-					  PVRSRV_BRIDGE_OUT_RGXSETBREAKPOINT *psRGXSetBreakpointOUT,
-					 CONNECTION_DATA *psConnection)
+			     PVRSRV_BRIDGE_IN_RGXSETBREAKPOINT *
+			     psRGXSetBreakpointIN,
+			     PVRSRV_BRIDGE_OUT_RGXSETBREAKPOINT *
+			     psRGXSetBreakpointOUT,
+			     CONNECTION_DATA * psConnection)
 {
 	IMG_HANDLE hPrivData = psRGXSetBreakpointIN->hPrivData;
 	IMG_HANDLE hPrivDataInt = NULL;
 
-
-
-
-
-
-
 	/* Lock over handle lookup. */
 	LockHandle();
 
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psRGXSetBreakpointOUT->eError =
-						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
-											(void **) &hPrivDataInt,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
-											IMG_TRUE);
-					if(psRGXSetBreakpointOUT->eError != PVRSRV_OK)
-					{
-						UnlockHandle();
-						goto RGXSetBreakpoint_exit;
-					}
-				}
+	/* Look up the address from the handle */
+	psRGXSetBreakpointOUT->eError =
+	    PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+				       (void **)&hPrivDataInt,
+				       hPrivData,
+				       PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
+				       IMG_TRUE);
+	if (psRGXSetBreakpointOUT->eError != PVRSRV_OK)
+	{
+		UnlockHandle();
+		goto RGXSetBreakpoint_exit;
+	}
 	/* Release now we have looked up handles. */
 	UnlockHandle();
 
 	psRGXSetBreakpointOUT->eError =
-		PVRSRVRGXSetBreakpointKM(psConnection, OSGetDevData(psConnection),
-					hPrivDataInt,
-					psRGXSetBreakpointIN->eFWDataMaster,
-					psRGXSetBreakpointIN->ui32BreakpointAddr,
-					psRGXSetBreakpointIN->ui32HandlerAddr,
-					psRGXSetBreakpointIN->ui32DM);
+	    PVRSRVRGXSetBreakpointKM(psConnection, OSGetDevData(psConnection),
+				     hPrivDataInt,
+				     psRGXSetBreakpointIN->eFWDataMaster,
+				     psRGXSetBreakpointIN->ui32BreakpointAddr,
+				     psRGXSetBreakpointIN->ui32HandlerAddr,
+				     psRGXSetBreakpointIN->ui32DM);
 
-
-
-
-RGXSetBreakpoint_exit:
+ RGXSetBreakpoint_exit:
 
 	/* Lock over handle lookup cleanup. */
 	LockHandle();
 
-
-
-
-
-
-				{
-					/* Unreference the previously looked up handle */
-						if(hPrivDataInt)
-						{
-							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
-						}
-				}
+	/* Unreference the previously looked up handle */
+	if (hPrivDataInt)
+	{
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+					    hPrivData,
+					    PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
+	}
 	/* Release now we have cleaned up look up handles. */
 	UnlockHandle();
-
 
 	return 0;
 }
 
-
 static IMG_INT
 PVRSRVBridgeRGXClearBreakpoint(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXCLEARBREAKPOINT *psRGXClearBreakpointIN,
-					  PVRSRV_BRIDGE_OUT_RGXCLEARBREAKPOINT *psRGXClearBreakpointOUT,
-					 CONNECTION_DATA *psConnection)
+			       PVRSRV_BRIDGE_IN_RGXCLEARBREAKPOINT *
+			       psRGXClearBreakpointIN,
+			       PVRSRV_BRIDGE_OUT_RGXCLEARBREAKPOINT *
+			       psRGXClearBreakpointOUT,
+			       CONNECTION_DATA * psConnection)
 {
 	IMG_HANDLE hPrivData = psRGXClearBreakpointIN->hPrivData;
 	IMG_HANDLE hPrivDataInt = NULL;
 
-
-
-
-
-
-
 	/* Lock over handle lookup. */
 	LockHandle();
 
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psRGXClearBreakpointOUT->eError =
-						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
-											(void **) &hPrivDataInt,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
-											IMG_TRUE);
-					if(psRGXClearBreakpointOUT->eError != PVRSRV_OK)
-					{
-						UnlockHandle();
-						goto RGXClearBreakpoint_exit;
-					}
-				}
+	/* Look up the address from the handle */
+	psRGXClearBreakpointOUT->eError =
+	    PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+				       (void **)&hPrivDataInt,
+				       hPrivData,
+				       PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
+				       IMG_TRUE);
+	if (psRGXClearBreakpointOUT->eError != PVRSRV_OK)
+	{
+		UnlockHandle();
+		goto RGXClearBreakpoint_exit;
+	}
 	/* Release now we have looked up handles. */
 	UnlockHandle();
 
 	psRGXClearBreakpointOUT->eError =
-		PVRSRVRGXClearBreakpointKM(psConnection, OSGetDevData(psConnection),
-					hPrivDataInt);
+	    PVRSRVRGXClearBreakpointKM(psConnection, OSGetDevData(psConnection),
+				       hPrivDataInt);
 
-
-
-
-RGXClearBreakpoint_exit:
+ RGXClearBreakpoint_exit:
 
 	/* Lock over handle lookup cleanup. */
 	LockHandle();
 
-
-
-
-
-
-				{
-					/* Unreference the previously looked up handle */
-						if(hPrivDataInt)
-						{
-							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
-						}
-				}
+	/* Unreference the previously looked up handle */
+	if (hPrivDataInt)
+	{
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+					    hPrivData,
+					    PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
+	}
 	/* Release now we have cleaned up look up handles. */
 	UnlockHandle();
-
 
 	return 0;
 }
 
-
 static IMG_INT
 PVRSRVBridgeRGXEnableBreakpoint(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXENABLEBREAKPOINT *psRGXEnableBreakpointIN,
-					  PVRSRV_BRIDGE_OUT_RGXENABLEBREAKPOINT *psRGXEnableBreakpointOUT,
-					 CONNECTION_DATA *psConnection)
+				PVRSRV_BRIDGE_IN_RGXENABLEBREAKPOINT *
+				psRGXEnableBreakpointIN,
+				PVRSRV_BRIDGE_OUT_RGXENABLEBREAKPOINT *
+				psRGXEnableBreakpointOUT,
+				CONNECTION_DATA * psConnection)
 {
 	IMG_HANDLE hPrivData = psRGXEnableBreakpointIN->hPrivData;
 	IMG_HANDLE hPrivDataInt = NULL;
 
-
-
-
-
-
-
 	/* Lock over handle lookup. */
 	LockHandle();
 
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psRGXEnableBreakpointOUT->eError =
-						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
-											(void **) &hPrivDataInt,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
-											IMG_TRUE);
-					if(psRGXEnableBreakpointOUT->eError != PVRSRV_OK)
-					{
-						UnlockHandle();
-						goto RGXEnableBreakpoint_exit;
-					}
-				}
+	/* Look up the address from the handle */
+	psRGXEnableBreakpointOUT->eError =
+	    PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+				       (void **)&hPrivDataInt,
+				       hPrivData,
+				       PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
+				       IMG_TRUE);
+	if (psRGXEnableBreakpointOUT->eError != PVRSRV_OK)
+	{
+		UnlockHandle();
+		goto RGXEnableBreakpoint_exit;
+	}
 	/* Release now we have looked up handles. */
 	UnlockHandle();
 
 	psRGXEnableBreakpointOUT->eError =
-		PVRSRVRGXEnableBreakpointKM(psConnection, OSGetDevData(psConnection),
+	    PVRSRVRGXEnableBreakpointKM(psConnection,
+					OSGetDevData(psConnection),
 					hPrivDataInt);
 
-
-
-
-RGXEnableBreakpoint_exit:
+ RGXEnableBreakpoint_exit:
 
 	/* Lock over handle lookup cleanup. */
 	LockHandle();
 
-
-
-
-
-
-				{
-					/* Unreference the previously looked up handle */
-						if(hPrivDataInt)
-						{
-							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
-						}
-				}
+	/* Unreference the previously looked up handle */
+	if (hPrivDataInt)
+	{
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+					    hPrivData,
+					    PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
+	}
 	/* Release now we have cleaned up look up handles. */
 	UnlockHandle();
-
 
 	return 0;
 }
 
-
 static IMG_INT
 PVRSRVBridgeRGXDisableBreakpoint(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXDISABLEBREAKPOINT *psRGXDisableBreakpointIN,
-					  PVRSRV_BRIDGE_OUT_RGXDISABLEBREAKPOINT *psRGXDisableBreakpointOUT,
-					 CONNECTION_DATA *psConnection)
+				 PVRSRV_BRIDGE_IN_RGXDISABLEBREAKPOINT *
+				 psRGXDisableBreakpointIN,
+				 PVRSRV_BRIDGE_OUT_RGXDISABLEBREAKPOINT *
+				 psRGXDisableBreakpointOUT,
+				 CONNECTION_DATA * psConnection)
 {
 	IMG_HANDLE hPrivData = psRGXDisableBreakpointIN->hPrivData;
 	IMG_HANDLE hPrivDataInt = NULL;
 
-
-
-
-
-
-
 	/* Lock over handle lookup. */
 	LockHandle();
 
-
-
-
-
-				{
-					/* Look up the address from the handle */
-					psRGXDisableBreakpointOUT->eError =
-						PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
-											(void **) &hPrivDataInt,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
-											IMG_TRUE);
-					if(psRGXDisableBreakpointOUT->eError != PVRSRV_OK)
-					{
-						UnlockHandle();
-						goto RGXDisableBreakpoint_exit;
-					}
-				}
+	/* Look up the address from the handle */
+	psRGXDisableBreakpointOUT->eError =
+	    PVRSRVLookupHandleUnlocked(psConnection->psHandleBase,
+				       (void **)&hPrivDataInt,
+				       hPrivData,
+				       PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
+				       IMG_TRUE);
+	if (psRGXDisableBreakpointOUT->eError != PVRSRV_OK)
+	{
+		UnlockHandle();
+		goto RGXDisableBreakpoint_exit;
+	}
 	/* Release now we have looked up handles. */
 	UnlockHandle();
 
 	psRGXDisableBreakpointOUT->eError =
-		PVRSRVRGXDisableBreakpointKM(psConnection, OSGetDevData(psConnection),
-					hPrivDataInt);
+	    PVRSRVRGXDisableBreakpointKM(psConnection,
+					 OSGetDevData(psConnection),
+					 hPrivDataInt);
 
-
-
-
-RGXDisableBreakpoint_exit:
+ RGXDisableBreakpoint_exit:
 
 	/* Lock over handle lookup cleanup. */
 	LockHandle();
 
-
-
-
-
-
-				{
-					/* Unreference the previously looked up handle */
-						if(hPrivDataInt)
-						{
-							PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
-											hPrivData,
-											PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
-						}
-				}
+	/* Unreference the previously looked up handle */
+	if (hPrivDataInt)
+	{
+		PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+					    hPrivData,
+					    PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA);
+	}
 	/* Release now we have cleaned up look up handles. */
 	UnlockHandle();
 
-
 	return 0;
 }
-
 
 static IMG_INT
 PVRSRVBridgeRGXOverallocateBPRegisters(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXOVERALLOCATEBPREGISTERS *psRGXOverallocateBPRegistersIN,
-					  PVRSRV_BRIDGE_OUT_RGXOVERALLOCATEBPREGISTERS *psRGXOverallocateBPRegistersOUT,
-					 CONNECTION_DATA *psConnection)
+				       PVRSRV_BRIDGE_IN_RGXOVERALLOCATEBPREGISTERS
+				       * psRGXOverallocateBPRegistersIN,
+				       PVRSRV_BRIDGE_OUT_RGXOVERALLOCATEBPREGISTERS
+				       * psRGXOverallocateBPRegistersOUT,
+				       CONNECTION_DATA * psConnection)
 {
 
-
-
-
-
-
-
-
 	psRGXOverallocateBPRegistersOUT->eError =
-		PVRSRVRGXOverallocateBPRegistersKM(psConnection, OSGetDevData(psConnection),
-					psRGXOverallocateBPRegistersIN->ui32TempRegs,
-					psRGXOverallocateBPRegistersIN->ui32SharedRegs);
-
-
-
-
-
-
-
+	    PVRSRVRGXOverallocateBPRegistersKM(psConnection,
+					       OSGetDevData(psConnection),
+					       psRGXOverallocateBPRegistersIN->
+					       ui32TempRegs,
+					       psRGXOverallocateBPRegistersIN->
+					       ui32SharedRegs);
 
 	return 0;
 }
-
-
-
 
 /* *************************************************************************** 
  * Server bridge dispatch related glue 
@@ -416,21 +314,26 @@ PVRSRV_ERROR DeinitBREAKPOINTBridge(void);
 PVRSRV_ERROR InitBREAKPOINTBridge(void)
 {
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT, PVRSRV_BRIDGE_BREAKPOINT_RGXSETBREAKPOINT, PVRSRVBridgeRGXSetBreakpoint,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+			      PVRSRV_BRIDGE_BREAKPOINT_RGXSETBREAKPOINT,
+			      PVRSRVBridgeRGXSetBreakpoint, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT, PVRSRV_BRIDGE_BREAKPOINT_RGXCLEARBREAKPOINT, PVRSRVBridgeRGXClearBreakpoint,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+			      PVRSRV_BRIDGE_BREAKPOINT_RGXCLEARBREAKPOINT,
+			      PVRSRVBridgeRGXClearBreakpoint, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT, PVRSRV_BRIDGE_BREAKPOINT_RGXENABLEBREAKPOINT, PVRSRVBridgeRGXEnableBreakpoint,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+			      PVRSRV_BRIDGE_BREAKPOINT_RGXENABLEBREAKPOINT,
+			      PVRSRVBridgeRGXEnableBreakpoint, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT, PVRSRV_BRIDGE_BREAKPOINT_RGXDISABLEBREAKPOINT, PVRSRVBridgeRGXDisableBreakpoint,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+			      PVRSRV_BRIDGE_BREAKPOINT_RGXDISABLEBREAKPOINT,
+			      PVRSRVBridgeRGXDisableBreakpoint, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT, PVRSRV_BRIDGE_BREAKPOINT_RGXOVERALLOCATEBPREGISTERS, PVRSRVBridgeRGXOverallocateBPRegisters,
-					NULL, bUseLock);
-
+	SetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+			      PVRSRV_BRIDGE_BREAKPOINT_RGXOVERALLOCATEBPREGISTERS,
+			      PVRSRVBridgeRGXOverallocateBPRegisters, NULL,
+			      bUseLock);
 
 	return PVRSRV_OK;
 }
@@ -440,6 +343,22 @@ PVRSRV_ERROR InitBREAKPOINTBridge(void)
  */
 PVRSRV_ERROR DeinitBREAKPOINTBridge(void)
 {
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+				PVRSRV_BRIDGE_BREAKPOINT_RGXSETBREAKPOINT);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+				PVRSRV_BRIDGE_BREAKPOINT_RGXCLEARBREAKPOINT);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+				PVRSRV_BRIDGE_BREAKPOINT_RGXENABLEBREAKPOINT);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+				PVRSRV_BRIDGE_BREAKPOINT_RGXDISABLEBREAKPOINT);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_BREAKPOINT,
+				PVRSRV_BRIDGE_BREAKPOINT_RGXOVERALLOCATEBPREGISTERS);
+
 	return PVRSRV_OK;
 }
 #else /* EXCLUDE_BREAKPOINT_BRIDGE */

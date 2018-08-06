@@ -88,7 +88,7 @@ endef
 define target-executable-from-o
 $(if $(V),,@echo "  LD      " $(call relative-to-top,$@))
 $(MODULE_CC) \
-	$(MODULE_LDFLAGS) -o $@ \
+	$(MODULE_TARGET_VARIANT_TYPE) $(MODULE_LDFLAGS) -o $@ \
 	$(MODULE_EXE_CRTBEGIN) $(MODULE_ALL_OBJECTS) $(MODULE_EXE_CRTEND) \
 	$(MODULE_LIBRARY_DIR_FLAGS) $(MODULE_LIBRARY_FLAGS) \
 	$(MODULE_EXE_LDFLAGS)
@@ -97,7 +97,7 @@ endef
 define target-executable-cxx-from-o
 $(if $(V),,@echo "  LD      " $(call relative-to-top,$@))
 $(MODULE_CXX) \
-	$(MODULE_LDFLAGS) -o $@ \
+	$(MODULE_TARGET_VARIANT_TYPE) $(MODULE_LDFLAGS) -o $@ \
 	$(MODULE_EXE_CRTBEGIN) $(MODULE_ALL_OBJECTS) $(MODULE_EXE_CRTEND) \
 	$(MODULE_LIBRARY_DIR_FLAGS) $(MODULE_LIBRARY_FLAGS) \
 	$(MODULE_EXE_LDFLAGS)
@@ -106,7 +106,7 @@ endef
 define target-shared-library-from-o
 $(if $(V),,@echo "  LD      " $(call relative-to-top,$@))
 $(MODULE_CC) -shared -Wl,-Bsymbolic \
-	$(MODULE_LDFLAGS) -o $@ \
+	$(MODULE_TARGET_VARIANT_TYPE) $(MODULE_LDFLAGS) -o $@ \
 	$(MODULE_LIB_CRTBEGIN) $(MODULE_ALL_OBJECTS) $(MODULE_LIB_CRTEND) \
 	$(MODULE_LIBRARY_DIR_FLAGS) $(MODULE_LIBRARY_FLAGS) \
 	$(MODULE_LIB_LDFLAGS)
@@ -159,7 +159,7 @@ endef
 define target-shared-library-cxx-from-o
 $(if $(V),,@echo "  LD      " $(call relative-to-top,$@))
 $(MODULE_CXX) -shared -Wl,-Bsymbolic \
-	$(MODULE_LDFLAGS) -o $@ \
+	$(MODULE_TARGET_VARIANT_TYPE) $(MODULE_LDFLAGS) -o $@ \
 	$(MODULE_LIB_CRTBEGIN) $(MODULE_ALL_OBJECTS) $(MODULE_LIB_CRTEND) \
 	$(MODULE_LIBRARY_DIR_FLAGS) $(MODULE_LIBRARY_FLAGS) \
 	$(MODULE_LIB_LDFLAGS)
@@ -274,15 +274,16 @@ CC_SECONDARY ?= $(CC)
 CROSS_COMPILE_SECONDARY ?= $(CROSS_COMPILE)
 CXX ?= g++
 CXX_SECONDARY ?= $(CXX)
+GLSLC ?= glslc
 HOST_CC ?= gcc
 HOST_CXX ?= g++
+INDENT ?= indent 
 JAR ?= jar
 JAVA ?= java
 JAVAC ?= javac
+PKG_CONFIG ?= pkg-config
 PYTHON ?= python
 ZIP ?= zip
-PKG_CONFIG ?= pkg-config
-GLSLC ?= glslc
 
 # Define CHMOD and CC_CHECK first so we can use cc-is-clang
 #
@@ -332,12 +333,14 @@ ifneq ($(CROSS_COMPILE_SECONDARY),)
    $(CC_SECONDARY) \
    -target $(__clang_target) \
    -B$(__gcc_bindir) \
-   -B$(__gcc_bindir)/../$(CROSS_TRIPLE_SECONDARY)/bin
+   -B$(__gcc_bindir)/../$(CROSS_TRIPLE_SECONDARY)/bin \
+   --gcc-toolchain=$(__gcc_bindir)/..
   override CXX_SECONDARY  := \
    $(CXX_SECONDARY) \
    -target $(__clang_target) \
    -B$(__gcc_bindir) \
-   -B$(__gcc_bindir)/../$(CROSS_TRIPLE_SECONDARY)/bin
+   -B$(__gcc_bindir)/../$(CROSS_TRIPLE_SECONDARY)/bin \
+   --gcc-toolchain=$(__gcc_bindir)/..
  else
   ifeq ($(origin CC_SECONDARY),file)
    override CC_SECONDARY  := $(CROSS_COMPILE_SECONDARY)$(CC_SECONDARY)
@@ -362,12 +365,14 @@ ifneq ($(CROSS_COMPILE),)
    $(CC) \
    -target $(CROSS_TRIPLE) \
    -B$(__gcc_bindir) \
-   -B$(__gcc_bindir)/../$(CROSS_TRIPLE)/bin
+   -B$(__gcc_bindir)/../$(CROSS_TRIPLE)/bin \
+   --gcc-toolchain=$(__gcc_bindir)/..
   override CXX  := \
    $(CXX) \
    -target $(CROSS_TRIPLE) \
    -B$(__gcc_bindir) \
-   -B$(__gcc_bindir)/../$(CROSS_TRIPLE)/bin
+   -B$(__gcc_bindir)/../$(CROSS_TRIPLE)/bin \
+   --gcc-toolchain=$(__gcc_bindir)/..
  else
   ifeq ($(origin CC),file)
    override CC  := $(CROSS_COMPILE)$(CC)
@@ -377,7 +382,7 @@ ifneq ($(CROSS_COMPILE),)
   endif
  endif
 else
- $(if $(CROSS_COMPILE_SECONDARY),$(error CROSS_COMPILE_SECONDARY is set but CROSS_COMPILE is empty))
+ $(if $(CROSS_COMPILE_SECONDARY),$(warning CROSS_COMPILE_SECONDARY is set but CROSS_COMPILE is empty))
 endif
 
 # Apply compiler wrappers and V=1 handling
@@ -386,6 +391,7 @@ override CXX    := $(if $(V),,@)$(strip $(CCACHE)$(DISTCC) $(CXX))
 
 override AR				:= $(if $(V),,@)$(CROSS_COMPILE)ar
 override BISON			:= $(if $(V),,@)$(BISON)
+override BVNCFW			:= $(if $(V),,@)$(HOST_OUT)/bvncfw
 override BZIP2			:= $(if $(V),,@)bzip2 -9
 override CAT			:= $(if $(V),,@)cat
 override CHECK			:= $(if $(CHECK),$(if $(V),,@)$(CHECK),)
@@ -393,6 +399,7 @@ override CP				:= $(if $(V),,@)cp
 override ECHO			:= $(if $(V),,@)$(shell which echo) -e
 override FLEX			:= $(if $(V),,@)flex
 override FLEXXX			:= $(if $(V),,@)flex++
+override GLSLC			:= $(if $(V),,@)$(GLSLC)
 override GREP			:= $(if $(V),,@)grep
 override HOST_AR		:= $(if $(V),,@)ar
 override HOST_CC		:= $(if $(V),,@)$(strip $(CCACHE) $(HOST_CC))
@@ -417,13 +424,11 @@ override RM				:= $(if $(V),,@)rm -f
 override ROGUEASM		:= $(if $(V),,@)$(HOST_OUT)/rogueasm
 override SED			:= $(if $(V),,@)sed
 override SIGNFW			:= $(if $(V),,@)$(HOST_OUT)/signfw
-override BVNCFW			:= $(if $(V),,@)$(HOST_OUT)/bvncfw
 override STRIP			:= $(if $(V),,@)$(CROSS_COMPILE)strip
 override TAR			:= $(if $(V),,@)tar
-override TOUCH			:= $(if $(V),,@)touch
 override TEST			:= $(if $(V),,@)test
+override TOUCH			:= $(if $(V),,@)touch
 override ZIP			:= $(if $(V),,@)$(ZIP)
-override GLSLC			:= $(if $(V),,@)$(GLSLC)
 
 ifeq ($(SUPPORT_NEUTRINO_PLATFORM),1)
 include $(MAKE_TOP)/common/neutrino/commands_neutrino.mk

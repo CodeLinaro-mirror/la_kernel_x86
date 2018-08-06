@@ -130,7 +130,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define UINT64_C		U64_C
 
 /* Format conversion of integer types <inttypes.h> */
-/* Only define PRIX64 for the moment, as this is the only format macro that
- * img_types.h needs.
- */
+
 #define PRIX64		"llX"
+#define PRIx64		"llx"
+#define PRIu64		"llu"
+#define PRId64		"lld"
+

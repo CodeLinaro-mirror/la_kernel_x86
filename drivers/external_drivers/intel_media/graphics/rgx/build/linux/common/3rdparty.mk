@@ -60,7 +60,7 @@ when the underlying Linux framebuffer driver does not ignore alpha_\
 meaning an alpha value of 0 results in nothing being displayed._\
 ))
 
-$(eval $(call TunableKernelConfigC,DC_FBDEV_NUM_PREFERRED_BUFFERS,,\
+$(eval $(call TunableBothConfigC,DC_FBDEV_NUM_PREFERRED_BUFFERS,,\
 The maximum number of display buffers the dc_fbdev display driver_\
 supports. The underlying Linux framebuffer driver must be capable_\
 of allocating sufficient memory for the number of buffers chosen._\

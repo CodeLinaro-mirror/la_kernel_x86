@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 #include "rgxmmuinit.h"
 #include "rgxmmudefs_km.h"
 
@@ -65,19 +65,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #define RGX_MMUCTRL_PTE_PROTMASK	(RGX_MMUCTRL_PT_DATA_PM_META_PROTECT_EN | \
-									 RGX_MMUCTRL_PT_DATA_ENTRY_PENDING_EN | \
-									 RGX_MMUCTRL_PT_DATA_PM_SRC_EN | \
-									 RGX_MMUCTRL_PT_DATA_SLC_BYPASS_CTRL_EN | \
-									 RGX_MMUCTRL_PT_DATA_CC_EN | \
-									 RGX_MMUCTRL_PT_DATA_READ_ONLY_EN | \
-									 RGX_MMUCTRL_PT_DATA_VALID_EN)
+		RGX_MMUCTRL_PT_DATA_ENTRY_PENDING_EN | \
+		RGX_MMUCTRL_PT_DATA_PM_SRC_EN | \
+		RGX_MMUCTRL_PT_DATA_SLC_BYPASS_CTRL_EN | \
+		RGX_MMUCTRL_PT_DATA_CC_EN | \
+		RGX_MMUCTRL_PT_DATA_READ_ONLY_EN | \
+		RGX_MMUCTRL_PT_DATA_VALID_EN)
 
 #define RGX_MMUCTRL_PDE_PROTMASK	(RGX_MMUCTRL_PD_DATA_ENTRY_PENDING_EN | \
-									 ~RGX_MMUCTRL_PD_DATA_PAGE_SIZE_CLRMSK | \
-									 RGX_MMUCTRL_PD_DATA_VALID_EN)
+		~RGX_MMUCTRL_PD_DATA_PAGE_SIZE_CLRMSK | \
+		RGX_MMUCTRL_PD_DATA_VALID_EN)
 
 #define RGX_MMUCTRL_PCE_PROTMASK	(RGX_MMUCTRL_PC_DATA_ENTRY_PENDING_EN | \
-									 RGX_MMUCTRL_PC_DATA_VALID_EN)
+		RGX_MMUCTRL_PC_DATA_VALID_EN)
 
 
 
@@ -167,10 +167,10 @@ static IMG_UINT64 RGXDerivePTEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
 static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags);
 
 static PVRSRV_ERROR RGXGetPageSizeConfigCB(IMG_UINT32 uiLog2DataPageSize,
-                                           const MMU_PxE_CONFIG **ppsMMUPDEConfig,
-                                           const MMU_PxE_CONFIG **ppsMMUPTEConfig,
-                                           const MMU_DEVVADDR_CONFIG **ppsMMUDevVAddrConfig,
-                                           IMG_HANDLE *phPriv);
+		const MMU_PxE_CONFIG **ppsMMUPDEConfig,
+		const MMU_PxE_CONFIG **ppsMMUPTEConfig,
+		const MMU_DEVVADDR_CONFIG **ppsMMUDevVAddrConfig,
+		IMG_HANDLE *phPriv);
 
 static PVRSRV_ERROR RGXPutPageSizeConfigCB(IMG_HANDLE hPriv);
 
@@ -201,29 +201,29 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	 *  | 31...4                      | 3...2      | 1             | 0     | 
 	 *  | Page Directory base address | (reserved) | Entry Pending | Valid | 
 	 * 
-     */
-    
-    
-    /* Example how to get the PD address from a PC entry. 
-     * The procedure is the same for PD and PT entries to retrieve PT and Page addresses: 
-     * 
-     * 1) sRGXMMUPCEConfig.uiAddrMask applied to PC entry with '&':
-     *  | 31...4   | 3...2      | 1             | 0     | 
+	 */
+
+
+	/* Example how to get the PD address from a PC entry.
+	 * The procedure is the same for PD and PT entries to retrieve PT and Page addresses:
+	 *
+	 * 1) sRGXMMUPCEConfig.uiAddrMask applied to PC entry with '&':
+	 *  | 31...4   | 3...2      | 1             | 0     |
 	 *  | PD Addr  | 0          | 0             | 0     | 
-     * 
-     * 2) sRGXMMUPCEConfig.uiAddrShift applied with '>>':
-     *  | 27...0   |
-     *  | PD Addr  |  
-     * 
-     * 3) sRGXMMUPCEConfig.uiAddrLog2Align applied with '<<':
-     *  | 39...0   |
-     *  | PD Addr  |
-     * 
-     */
-    
-	
+	 *
+	 * 2) sRGXMMUPCEConfig.uiAddrShift applied with '>>':
+	 *  | 27...0   |
+	 *  | PD Addr  |
+	 *
+	 * 3) sRGXMMUPCEConfig.uiAddrLog2Align applied with '<<':
+	 *  | 39...0   |
+	 *  | PD Addr  |
+	 *
+	 */
+
+
 	sRGXMMUDeviceAttributes.pszMMUPxPDumpMemSpaceName =
-		PhysHeapPDumpMemspaceName(psDeviceNode->apsPhysHeap[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL]);
+			PhysHeapPDumpMemspaceName(psDeviceNode->apsPhysHeap[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL]);
 
 	/*
 	 * Setup sRGXMMUPCEConfig
@@ -246,18 +246,18 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUTopLevelDevVAddrConfig.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK; /* Mask to get PC index applied to a 40 bit virt. device address */
 	sRGXMMUTopLevelDevVAddrConfig.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;  /* Shift a 40 bit virt. device address by this amount to get the PC index */
 	sRGXMMUTopLevelDevVAddrConfig.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUTopLevelDevVAddrConfig.uiPCIndexMask,
-																							   sRGXMMUTopLevelDevVAddrConfig.uiPCIndexShift));
+			sRGXMMUTopLevelDevVAddrConfig.uiPCIndexShift));
 
 	sRGXMMUTopLevelDevVAddrConfig.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK; /* Mask to get PD index applied to a 40 bit virt. device address */
 	sRGXMMUTopLevelDevVAddrConfig.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;  /* Shift a 40 bit virt. device address by this amount to get the PD index */
 	sRGXMMUTopLevelDevVAddrConfig.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUTopLevelDevVAddrConfig.uiPDIndexMask,
-																							   sRGXMMUTopLevelDevVAddrConfig.uiPDIndexShift));
+			sRGXMMUTopLevelDevVAddrConfig.uiPDIndexShift));
 
-/*
- *
- *  Configuration for heaps with 4kB Data-Page size
- *
- */
+	/*
+	 *
+	 *  Configuration for heaps with 4kB Data-Page size
+	 *
+	 */
 
 	/*
 	 * Setup sRGXMMUPDEConfig_4KBDP
@@ -298,17 +298,17 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_4KBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_4KBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_4KBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_4KBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_4KBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_4KBDP.uiPCIndexShift));
 
 	sRGXMMUDevVAddrConfig_4KBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_4KBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_4KBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_4KBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_4KBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_4KBDP.uiPDIndexShift));
 
 	sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexMask = ~RGX_MMUCTRL_VADDR_PT_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift = RGX_MMUCTRL_VADDR_PT_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_4KBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift));
 
 	sRGXMMUDevVAddrConfig_4KBDP.uiPageOffsetMask = IMG_UINT64_C(0x0000000fff);
 	sRGXMMUDevVAddrConfig_4KBDP.uiPageOffsetShift = 0;
@@ -321,14 +321,14 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	gsPageSizeConfig4KB.psPTEConfig = &sRGXMMUPTEConfig_4KBDP;
 	gsPageSizeConfig4KB.psDevVAddrConfig = &sRGXMMUDevVAddrConfig_4KBDP;
 	gsPageSizeConfig4KB.uiRefCount = 0;
- 	gsPageSizeConfig4KB.uiMaxRefCount = 0;
+	gsPageSizeConfig4KB.uiMaxRefCount = 0;
 
 
-/*
- *
- *  Configuration for heaps with 16kB Data-Page size
- *
- */
+	/*
+	 *
+	 *  Configuration for heaps with 16kB Data-Page size
+	 *
+	 */
 
 	/*
 	 * Setup sRGXMMUPDEConfig_16KBDP
@@ -336,8 +336,8 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUPDEConfig_16KBDP.uiBytesPerEntry = 8;
 
 	sRGXMMUPDEConfig_16KBDP.uiAddrMask = IMG_UINT64_C(0xfffffffff0);
-	sRGXMMUPDEConfig_16KBDP.uiAddrShift = 10; 
-	sRGXMMUPDEConfig_16KBDP.uiAddrLog2Align = 10; 
+	sRGXMMUPDEConfig_16KBDP.uiAddrShift = 10;
+	sRGXMMUPDEConfig_16KBDP.uiAddrLog2Align = 10;
 
 	sRGXMMUPDEConfig_16KBDP.uiVarCtrlMask = IMG_UINT64_C(0x000000000e);
 	sRGXMMUPDEConfig_16KBDP.uiVarCtrlShift = 1;
@@ -369,19 +369,19 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_16KBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_16KBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_16KBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_16KBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_16KBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_16KBDP.uiPCIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_16KBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_16KBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_16KBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_16KBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_16KBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_16KBDP.uiPDIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_16KBDP.uiPTIndexMask = IMG_UINT64_C(0x00001fc000);
 	sRGXMMUDevVAddrConfig_16KBDP.uiPTIndexShift = 14;
 	sRGXMMUDevVAddrConfig_16KBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_16KBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_16KBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_16KBDP.uiPTIndexShift));
 
 	sRGXMMUDevVAddrConfig_16KBDP.uiPageOffsetMask = IMG_UINT64_C(0x0000003fff);
 	sRGXMMUDevVAddrConfig_16KBDP.uiPageOffsetShift = 0;
@@ -397,11 +397,11 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	gsPageSizeConfig16KB.uiMaxRefCount = 0;
 
 
-/*
- *
- *  Configuration for heaps with 64kB Data-Page size
- *
- */
+	/*
+	 *
+	 *  Configuration for heaps with 64kB Data-Page size
+	 *
+	 */
 
 	/*
 	 * Setup sRGXMMUPDEConfig_64KBDP
@@ -442,19 +442,19 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_64KBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_64KBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_64KBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_64KBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_64KBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_64KBDP.uiPCIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_64KBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_64KBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_64KBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_64KBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_64KBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_64KBDP.uiPDIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_64KBDP.uiPTIndexMask = IMG_UINT64_C(0x00001f0000);
 	sRGXMMUDevVAddrConfig_64KBDP.uiPTIndexShift = 16;
 	sRGXMMUDevVAddrConfig_64KBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_64KBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_64KBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_64KBDP.uiPTIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_64KBDP.uiPageOffsetMask = IMG_UINT64_C(0x000000ffff);
@@ -471,11 +471,11 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	gsPageSizeConfig64KB.uiMaxRefCount = 0;
 
 
-/*
- *
- *  Configuration for heaps with 256kB Data-Page size
- *
- */
+	/*
+	 *
+	 *  Configuration for heaps with 256kB Data-Page size
+	 *
+	 */
 
 	/*
 	 * Setup sRGXMMUPDEConfig_256KBDP
@@ -516,19 +516,19 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_256KBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_256KBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_256KBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_256KBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_256KBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_256KBDP.uiPCIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_256KBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_256KBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_256KBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_256KBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_256KBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_256KBDP.uiPDIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_256KBDP.uiPTIndexMask = IMG_UINT64_C(0x00001c0000);
 	sRGXMMUDevVAddrConfig_256KBDP.uiPTIndexShift = 18;
 	sRGXMMUDevVAddrConfig_256KBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_256KBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_256KBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_256KBDP.uiPTIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_256KBDP.uiPageOffsetMask = IMG_UINT64_C(0x000003ffff);
@@ -550,8 +550,12 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUPDEConfig_1MBDP.uiBytesPerEntry = 8;
 
 	sRGXMMUPDEConfig_1MBDP.uiAddrMask = IMG_UINT64_C(0xfffffffff0);
-	sRGXMMUPDEConfig_1MBDP.uiAddrShift = 4;
-	sRGXMMUPDEConfig_1MBDP.uiAddrLog2Align = 4;
+	/*
+	 * The hardware requires that PT tables need be 1<<6 = 64 byte aligned even
+	 * if they contain fewer entries.
+	 */
+	sRGXMMUPDEConfig_1MBDP.uiAddrShift = 6;
+	sRGXMMUPDEConfig_1MBDP.uiAddrLog2Align = 6;
 
 	sRGXMMUPDEConfig_1MBDP.uiVarCtrlMask = IMG_UINT64_C(0x000000000e);
 	sRGXMMUPDEConfig_1MBDP.uiVarCtrlShift = 1;
@@ -583,19 +587,19 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_1MBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_1MBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_1MBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_1MBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_1MBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_1MBDP.uiPCIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_1MBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_1MBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_1MBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_1MBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_1MBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_1MBDP.uiPDIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_1MBDP.uiPTIndexMask = IMG_UINT64_C(0x0000100000);
 	sRGXMMUDevVAddrConfig_1MBDP.uiPTIndexShift = 20;
 	sRGXMMUDevVAddrConfig_1MBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_1MBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_1MBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_1MBDP.uiPTIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_1MBDP.uiPageOffsetMask = IMG_UINT64_C(0x00000fffff);
@@ -617,8 +621,12 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUPDEConfig_2MBDP.uiBytesPerEntry = 8;
 
 	sRGXMMUPDEConfig_2MBDP.uiAddrMask = IMG_UINT64_C(0xfffffffff0);
-	sRGXMMUPDEConfig_2MBDP.uiAddrShift = 4;
-	sRGXMMUPDEConfig_2MBDP.uiAddrLog2Align = 4;
+	/*
+	 * The hardware requires that PT tables need be 1<<6 = 64 byte aligned even
+	 * if they contain fewer entries.
+	 */
+	sRGXMMUPDEConfig_2MBDP.uiAddrShift = 6;
+	sRGXMMUPDEConfig_2MBDP.uiAddrLog2Align = 6;
 
 	sRGXMMUPDEConfig_2MBDP.uiVarCtrlMask = IMG_UINT64_C(0x000000000e);
 	sRGXMMUPDEConfig_2MBDP.uiVarCtrlShift = 1;
@@ -650,19 +658,19 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	sRGXMMUDevVAddrConfig_2MBDP.uiPCIndexMask = ~RGX_MMUCTRL_VADDR_PC_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_2MBDP.uiPCIndexShift = RGX_MMUCTRL_VADDR_PC_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_2MBDP.uiNumEntriesPC = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_2MBDP.uiPCIndexMask,
-																							   sRGXMMUDevVAddrConfig_2MBDP.uiPCIndexShift));
+			sRGXMMUDevVAddrConfig_2MBDP.uiPCIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_2MBDP.uiPDIndexMask = ~RGX_MMUCTRL_VADDR_PD_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_2MBDP.uiPDIndexShift = RGX_MMUCTRL_VADDR_PD_INDEX_SHIFT;
 	sRGXMMUDevVAddrConfig_2MBDP.uiNumEntriesPD = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_2MBDP.uiPDIndexMask,
-																							   sRGXMMUDevVAddrConfig_2MBDP.uiPDIndexShift));
+			sRGXMMUDevVAddrConfig_2MBDP.uiPDIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_2MBDP.uiPTIndexMask = IMG_UINT64_C(0x0000000000);
 	sRGXMMUDevVAddrConfig_2MBDP.uiPTIndexShift = 21;
 	sRGXMMUDevVAddrConfig_2MBDP.uiNumEntriesPT = TRUNCATE_64BITS_TO_32BITS(UNITS_IN_BITFIELD(sRGXMMUDevVAddrConfig_2MBDP.uiPTIndexMask,
-																							   sRGXMMUDevVAddrConfig_2MBDP.uiPTIndexShift));
+			sRGXMMUDevVAddrConfig_2MBDP.uiPTIndexShift));
 
 
 	sRGXMMUDevVAddrConfig_2MBDP.uiPageOffsetMask = IMG_UINT64_C(0x00001fffff);
@@ -710,65 +718,65 @@ PVRSRV_ERROR RGXMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 PVRSRV_ERROR RGXMMUInit_Unregister(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    eError = PVRSRV_OK;
+	eError = PVRSRV_OK;
 
 #if defined(PDUMP)
-    psDeviceNode->pfnMMUGetContextID = NULL;
+	psDeviceNode->pfnMMUGetContextID = NULL;
 #endif
 
-    psDeviceNode->psMMUDevAttrs = NULL;
+	psDeviceNode->psMMUDevAttrs = NULL;
 
 #if defined(DEBUG)
-    PVR_DPF((PVR_DBG_MESSAGE, "Variable Page Size Heap Stats:"));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 4K page heaps: %d",
-             gsPageSizeConfig4KB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 4K page heaps (should be 0): %d",
-             gsPageSizeConfig4KB.uiRefCount));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 16K page heaps: %d",
-             gsPageSizeConfig16KB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 16K page heaps (should be 0): %d",
-             gsPageSizeConfig16KB.uiRefCount));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 64K page heaps: %d",
-             gsPageSizeConfig64KB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 64K page heaps (should be 0): %d",
-             gsPageSizeConfig64KB.uiRefCount));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 256K page heaps: %d",
-             gsPageSizeConfig256KB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 256K page heaps (should be 0): %d",
-             gsPageSizeConfig256KB.uiRefCount));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 1M page heaps: %d",
-             gsPageSizeConfig1MB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 1M page heaps (should be 0): %d",
-             gsPageSizeConfig1MB.uiRefCount));
-    PVR_DPF((PVR_DBG_MESSAGE, "Max 2M page heaps: %d",
-             gsPageSizeConfig2MB.uiMaxRefCount));
-    PVR_DPF((PVR_DBG_VERBOSE, "Current 2M page heaps (should be 0): %d",
-             gsPageSizeConfig2MB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Variable Page Size Heap Stats:"));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 4K page heaps: %d",
+			gsPageSizeConfig4KB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 4K page heaps (should be 0): %d",
+			gsPageSizeConfig4KB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 16K page heaps: %d",
+			gsPageSizeConfig16KB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 16K page heaps (should be 0): %d",
+			gsPageSizeConfig16KB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 64K page heaps: %d",
+			gsPageSizeConfig64KB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 64K page heaps (should be 0): %d",
+			gsPageSizeConfig64KB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 256K page heaps: %d",
+			gsPageSizeConfig256KB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 256K page heaps (should be 0): %d",
+			gsPageSizeConfig256KB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 1M page heaps: %d",
+			gsPageSizeConfig1MB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 1M page heaps (should be 0): %d",
+			gsPageSizeConfig1MB.uiRefCount));
+	PVR_DPF((PVR_DBG_MESSAGE, "Max 2M page heaps: %d",
+			gsPageSizeConfig2MB.uiMaxRefCount));
+	PVR_DPF((PVR_DBG_VERBOSE, "Current 2M page heaps (should be 0): %d",
+			gsPageSizeConfig2MB.uiRefCount));
 #endif
-    if (gsPageSizeConfig4KB.uiRefCount > 0 ||
-        gsPageSizeConfig16KB.uiRefCount > 0 ||
-        gsPageSizeConfig64KB.uiRefCount > 0 ||
-        gsPageSizeConfig256KB.uiRefCount > 0 ||
-        gsPageSizeConfig1MB.uiRefCount > 0 ||
-        gsPageSizeConfig2MB.uiRefCount > 0
-        )
-    {
-        PVR_DPF((PVR_DBG_ERROR, "RGXMMUInit_Unregister: Unbalanced MMU API Usage (Internal error)"));
-    }
+	if (gsPageSizeConfig4KB.uiRefCount > 0 ||
+			gsPageSizeConfig16KB.uiRefCount > 0 ||
+			gsPageSizeConfig64KB.uiRefCount > 0 ||
+			gsPageSizeConfig256KB.uiRefCount > 0 ||
+			gsPageSizeConfig1MB.uiRefCount > 0 ||
+			gsPageSizeConfig2MB.uiRefCount > 0
+	)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "RGXMMUInit_Unregister: Unbalanced MMU API Usage (Internal error)"));
+	}
 
-    return eError;
+	return eError;
 }
 
 /*************************************************************************/ /*!
 @Function       RGXDerivePCEProt4
 @Description    calculate the PCE protection flags based on a 4 byte entry
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT32 RGXDerivePCEProt4(IMG_UINT32 uiProtFlags)
 {
-    return (uiProtFlags & MMU_PROTFLAGS_INVALID)?0:RGX_MMUCTRL_PC_DATA_VALID_EN;
+	return (uiProtFlags & MMU_PROTFLAGS_INVALID)?0:RGX_MMUCTRL_PC_DATA_VALID_EN;
 }
 
 
@@ -776,7 +784,7 @@ static IMG_UINT32 RGXDerivePCEProt4(IMG_UINT32 uiProtFlags)
 @Function       RGXDerivePCEProt8
 @Description    calculate the PCE protection flags based on an 8 byte entry
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT64 RGXDerivePCEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2DataPageSize)
 {
 	PVR_UNREFERENCED_PARAMETER(uiProtFlags);
@@ -791,10 +799,10 @@ static IMG_UINT64 RGXDerivePCEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
 @Function       RGXDerivePDEProt4
 @Description    derive the PDE protection flags based on a 4 byte entry
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT32 RGXDerivePDEProt4(IMG_UINT32 uiProtFlags)
 {
-    PVR_UNREFERENCED_PARAMETER(uiProtFlags);
+	PVR_UNREFERENCED_PARAMETER(uiProtFlags);
 	PVR_DPF((PVR_DBG_ERROR, "4-byte PDE not supported on this device"));
 	return 0;
 }
@@ -809,37 +817,37 @@ static IMG_UINT32 RGXDerivePDEProt4(IMG_UINT32 uiProtFlags)
                 For 2MiB pages, it must be set to 21.
 
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT64 RGXDerivePDEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2DataPageSize)
 {
 	IMG_UINT64 ret_value = 0; // 0 means invalid
 
-    if (! (uiProtFlags & MMU_PROTFLAGS_INVALID)) // if not invalid
+	if (! (uiProtFlags & MMU_PROTFLAGS_INVALID)) // if not invalid
 	{
 		switch (uiLog2DataPageSize)
 		{
-			case RGX_HEAP_4KB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_4KB;
-				break;
-			case RGX_HEAP_16KB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_16KB;
-				break;
-			case RGX_HEAP_64KB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_64KB;
-				break;
-			case RGX_HEAP_256KB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_256KB;
-				break;
-			case RGX_HEAP_1MB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_1MB;
-				break;
-			case RGX_HEAP_2MB_PAGE_SHIFT:
-				ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_2MB;
-				break;
-			default:
-				PVR_DPF((PVR_DBG_ERROR,
-						 "%s:%d: in function<%s>: Invalid parameter log2_page_size. Expected {12, 14, 16, 18, 20, 21}. Got [%u]",
-						 __FILE__, __LINE__, __FUNCTION__, uiLog2DataPageSize));
+		case RGX_HEAP_4KB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_4KB;
+			break;
+		case RGX_HEAP_16KB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_16KB;
+			break;
+		case RGX_HEAP_64KB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_64KB;
+			break;
+		case RGX_HEAP_256KB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_256KB;
+			break;
+		case RGX_HEAP_1MB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_1MB;
+			break;
+		case RGX_HEAP_2MB_PAGE_SHIFT:
+			ret_value = RGX_MMUCTRL_PD_DATA_VALID_EN | RGX_MMUCTRL_PD_DATA_PAGE_SIZE_2MB;
+			break;
+		default:
+			PVR_DPF((PVR_DBG_ERROR,
+					"%s:%d: in function<%s>: Invalid parameter log2_page_size. Expected {12, 14, 16, 18, 20, 21}. Got [%u]",
+					__FILE__, __LINE__, __FUNCTION__, uiLog2DataPageSize));
 		}
 	}
 	return ret_value;
@@ -850,10 +858,10 @@ static IMG_UINT64 RGXDerivePDEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
 @Function       RGXDerivePTEProt4
 @Description    calculate the PTE protection flags based on a 4 byte entry
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags)
 {
-    PVR_UNREFERENCED_PARAMETER(uiProtFlags);
+	PVR_UNREFERENCED_PARAMETER(uiProtFlags);
 	PVR_DPF((PVR_DBG_ERROR, "4-byte PTE not supported on this device"));
 
 	return 0;
@@ -863,7 +871,7 @@ static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags)
 @Function       RGXDerivePTEProt8
 @Description    calculate the PTE protection flags based on an 8 byte entry
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static IMG_UINT64 RGXDerivePTEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2DataPageSize)
 {
 	IMG_UINT64 ui64MMUFlags=0;
@@ -882,12 +890,12 @@ static IMG_UINT64 RGXDerivePTEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
 	else if(MMU_PROTFLAGS_WRITEABLE & uiProtFlags)
 	{
 		/* write only */
-        PVR_DPF((PVR_DBG_ERROR, "RGXDerivePTEProt8: write-only is not possible on this device"));
+		PVR_DPF((PVR_DBG_ERROR, "RGXDerivePTEProt8: write-only is not possible on this device"));
 	}
-    else if ((MMU_PROTFLAGS_INVALID & uiProtFlags) == 0)
-    {
-        PVR_DPF((PVR_DBG_ERROR, "RGXDerivePTEProt8: neither read nor write specified..."));
-    }
+	else if ((MMU_PROTFLAGS_INVALID & uiProtFlags) == 0)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "RGXDerivePTEProt8: neither read nor write specified..."));
+	}
 
 	/* cache coherency */
 	if(MMU_PROTFLAGS_CACHE_COHERENT & uiProtFlags)
@@ -901,10 +909,10 @@ static IMG_UINT64 RGXDerivePTEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
 		ui64MMUFlags |= RGX_MMUCTRL_PT_DATA_SLC_BYPASS_CTRL_EN;
 	}
 
-    if ((uiProtFlags & MMU_PROTFLAGS_INVALID) == 0)
-    {
-        ui64MMUFlags |= RGX_MMUCTRL_PT_DATA_VALID_EN;
-    }
+	if ((uiProtFlags & MMU_PROTFLAGS_INVALID) == 0)
+	{
+		ui64MMUFlags |= RGX_MMUCTRL_PT_DATA_VALID_EN;
+	}
 
 	if (MMU_PROTFLAGS_DEVICE(PMMETA_PROTECT) & uiProtFlags)
 	{
@@ -921,62 +929,62 @@ static IMG_UINT64 RGXDerivePTEProt8(IMG_UINT32 uiProtFlags, IMG_UINT32 uiLog2Dat
                 RGXPutPageSizeConfigCB has to be called to ensure correct
                 refcounting.
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static PVRSRV_ERROR RGXGetPageSizeConfigCB(IMG_UINT32 uiLog2DataPageSize,
-                                           const MMU_PxE_CONFIG **ppsMMUPDEConfig,
-                                           const MMU_PxE_CONFIG **ppsMMUPTEConfig,
-                                           const MMU_DEVVADDR_CONFIG **ppsMMUDevVAddrConfig,
-                                           IMG_HANDLE *phPriv)
+		const MMU_PxE_CONFIG **ppsMMUPDEConfig,
+		const MMU_PxE_CONFIG **ppsMMUPTEConfig,
+		const MMU_DEVVADDR_CONFIG **ppsMMUDevVAddrConfig,
+		IMG_HANDLE *phPriv)
 {
 	MMU_PAGESIZECONFIG *psPageSizeConfig;
 
-    switch (uiLog2DataPageSize)
-    {
-    case RGX_HEAP_4KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig4KB;
-        break;
-    case RGX_HEAP_16KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig16KB;
-        break;
-    case RGX_HEAP_64KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig64KB;
-        break;
-    case RGX_HEAP_256KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig256KB;
-        break;
-    case RGX_HEAP_1MB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig1MB;
-        break;
-    case RGX_HEAP_2MB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig2MB;
-        break;
-    default:
-        PVR_DPF((PVR_DBG_ERROR,
-                 "RGXGetPageSizeConfigCB: Invalid Data Page Size 1<<0x%x",
-                 uiLog2DataPageSize));
-        return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
-    }
-    
-    /* Refer caller's pointers to the data */
-    *ppsMMUPDEConfig = psPageSizeConfig->psPDEConfig;
-    *ppsMMUPTEConfig = psPageSizeConfig->psPTEConfig;
-    *ppsMMUDevVAddrConfig = psPageSizeConfig->psDevVAddrConfig;
+	switch (uiLog2DataPageSize)
+	{
+	case RGX_HEAP_4KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig4KB;
+		break;
+	case RGX_HEAP_16KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig16KB;
+		break;
+	case RGX_HEAP_64KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig64KB;
+		break;
+	case RGX_HEAP_256KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig256KB;
+		break;
+	case RGX_HEAP_1MB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig1MB;
+		break;
+	case RGX_HEAP_2MB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig2MB;
+		break;
+	default:
+		PVR_DPF((PVR_DBG_ERROR,
+				"RGXGetPageSizeConfigCB: Invalid Data Page Size 1<<0x%x",
+				uiLog2DataPageSize));
+		return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
+	}
+
+	/* Refer caller's pointers to the data */
+	*ppsMMUPDEConfig = psPageSizeConfig->psPDEConfig;
+	*ppsMMUPTEConfig = psPageSizeConfig->psPTEConfig;
+	*ppsMMUDevVAddrConfig = psPageSizeConfig->psDevVAddrConfig;
 
 #if defined(SUPPORT_MMU_PAGESIZECONFIG_REFCOUNT)
-    /* Increment ref-count - not that we're allocating anything here
+	/* Increment ref-count - not that we're allocating anything here
        (I'm using static structs), but one day we might, so we want
        the Get/Put code to be balanced properly */
-    psPageSizeConfig->uiRefCount ++;
+	psPageSizeConfig->uiRefCount ++;
 
-    /* This is purely for debug statistics */
-    psPageSizeConfig->uiMaxRefCount = MAX(psPageSizeConfig->uiMaxRefCount,
-                                          psPageSizeConfig->uiRefCount);
+	/* This is purely for debug statistics */
+	psPageSizeConfig->uiMaxRefCount = MAX(psPageSizeConfig->uiMaxRefCount,
+			psPageSizeConfig->uiRefCount);
 #endif
 
-    *phPriv = (IMG_HANDLE)(uintptr_t)uiLog2DataPageSize;
+	*phPriv = (IMG_HANDLE)(uintptr_t)uiLog2DataPageSize;
 	PVR_ASSERT (uiLog2DataPageSize == (IMG_UINT32)(uintptr_t)*phPriv);
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 }
 
 /*************************************************************************/ /*!
@@ -986,55 +994,55 @@ static PVRSRV_ERROR RGXGetPageSizeConfigCB(IMG_UINT32 uiLog2DataPageSize,
                 be a no-op.
                 Called after RGXGetPageSizeConfigCB.
 @Return         PVRSRV_ERROR
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 static PVRSRV_ERROR RGXPutPageSizeConfigCB(IMG_HANDLE hPriv)
 {
 #if defined(SUPPORT_MMU_PAGESIZECONFIG_REFCOUNT)
 	MMU_PAGESIZECONFIG *psPageSizeConfig;
-    IMG_UINT32 uiLog2DataPageSize;
+	IMG_UINT32 uiLog2DataPageSize;
 
-    uiLog2DataPageSize = (IMG_UINT32)(uintptr_t) hPriv;
+	uiLog2DataPageSize = (IMG_UINT32)(uintptr_t) hPriv;
 
-    switch (uiLog2DataPageSize)
-    {
-    case RGX_HEAP_4KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig4KB;
-        break;
-    case RGX_HEAP_16KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig16KB;
-        break;
-    case RGX_HEAP_64KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig64KB;
-        break;
-    case RGX_HEAP_256KB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig256KB;
-        break;
-    case RGX_HEAP_1MB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig1MB;
-        break;
-    case RGX_HEAP_2MB_PAGE_SHIFT:
-        psPageSizeConfig = &gsPageSizeConfig2MB;
-        break;
-    default:
-        PVR_DPF((PVR_DBG_ERROR,
-                 "RGXPutPageSizeConfigCB: Invalid Data Page Size 1<<0x%x",
-                 uiLog2DataPageSize));
-        return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
-    }
+	switch (uiLog2DataPageSize)
+	{
+	case RGX_HEAP_4KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig4KB;
+		break;
+	case RGX_HEAP_16KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig16KB;
+		break;
+	case RGX_HEAP_64KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig64KB;
+		break;
+	case RGX_HEAP_256KB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig256KB;
+		break;
+	case RGX_HEAP_1MB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig1MB;
+		break;
+	case RGX_HEAP_2MB_PAGE_SHIFT:
+		psPageSizeConfig = &gsPageSizeConfig2MB;
+		break;
+	default:
+		PVR_DPF((PVR_DBG_ERROR,
+				"RGXPutPageSizeConfigCB: Invalid Data Page Size 1<<0x%x",
+				uiLog2DataPageSize));
+		return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
+	}
 
-    /* Ref-count here is not especially useful, but it's an extra
+	/* Ref-count here is not especially useful, but it's an extra
        check that the API is being used correctly */
-    psPageSizeConfig->uiRefCount --;
+	psPageSizeConfig->uiRefCount --;
 #else
-    PVR_UNREFERENCED_PARAMETER(hPriv);
+	PVR_UNREFERENCED_PARAMETER(hPriv);
 #endif
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 }
 
 static PVRSRV_ERROR RGXGetPageSizeFromPDE4(IMG_UINT32 ui32PDE, IMG_UINT32 *pui32Log2PageSize)
 {
-    PVR_UNREFERENCED_PARAMETER(ui32PDE);
-    PVR_UNREFERENCED_PARAMETER(pui32Log2PageSize);
+	PVR_UNREFERENCED_PARAMETER(ui32PDE);
+	PVR_UNREFERENCED_PARAMETER(pui32Log2PageSize);
 	PVR_DPF((PVR_DBG_ERROR, "4-byte PDE not supported on this device"));
 	return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
 }
@@ -1043,26 +1051,26 @@ static PVRSRV_ERROR RGXGetPageSizeFromPDE8(IMG_UINT64 ui64PDE, IMG_UINT32 *pui32
 {
 	switch (ui64PDE & (~RGX_MMUCTRL_PD_DATA_PAGE_SIZE_CLRMSK))
 	{
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_4KB:
-			*pui32Log2PageSize = RGX_HEAP_4KB_PAGE_SHIFT;
-			break;
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_16KB:
-			*pui32Log2PageSize = RGX_HEAP_16KB_PAGE_SHIFT;
-			break;
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_64KB:
-			*pui32Log2PageSize = RGX_HEAP_64KB_PAGE_SHIFT;
-			break;
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_256KB:
-			*pui32Log2PageSize = RGX_HEAP_256KB_PAGE_SHIFT;
-			break;
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_1MB:
-			*pui32Log2PageSize = RGX_HEAP_1MB_PAGE_SHIFT;
-			break;
-		case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_2MB:
-			*pui32Log2PageSize = RGX_HEAP_2MB_PAGE_SHIFT;
-			break;
-		default:
-			return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_4KB:
+		*pui32Log2PageSize = RGX_HEAP_4KB_PAGE_SHIFT;
+		break;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_16KB:
+		*pui32Log2PageSize = RGX_HEAP_16KB_PAGE_SHIFT;
+		break;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_64KB:
+		*pui32Log2PageSize = RGX_HEAP_64KB_PAGE_SHIFT;
+		break;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_256KB:
+		*pui32Log2PageSize = RGX_HEAP_256KB_PAGE_SHIFT;
+		break;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_1MB:
+		*pui32Log2PageSize = RGX_HEAP_1MB_PAGE_SHIFT;
+		break;
+	case RGX_MMUCTRL_PD_DATA_PAGE_SIZE_2MB:
+		*pui32Log2PageSize = RGX_HEAP_2MB_PAGE_SHIFT;
+		break;
+	default:
+		return PVRSRV_ERROR_MMU_INVALID_PAGE_SIZE_FOR_DEVICE;
 	}
 	return PVRSRV_OK;
 }

@@ -44,6 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(_ENV_CONNECTION_H_)
 #define _ENV_CONNECTION_H_
 
+#include <linux/version.h>
 #include <linux/list.h>
 #include <linux/types.h>
 
@@ -63,7 +64,7 @@ typedef struct _ENV_CONNECTION_PRIVATE_DATA_
 	PVRSRV_DEVICE_NODE *psDevNode;
 } ENV_CONNECTION_PRIVATE_DATA;
 
-#if defined(SUPPORT_ION)
+#if defined(SUPPORT_ION) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
 #define ION_CLIENT_NAME_SIZE	50
 
 typedef struct _ENV_ION_CONNECTION_DATA_
@@ -71,7 +72,6 @@ typedef struct _ENV_ION_CONNECTION_DATA_
 	IMG_CHAR azIonClientName[ION_CLIENT_NAME_SIZE];
 	struct ion_device *psIonDev;
 	struct ion_client *psIonClient;
-	IMG_UINT32 ui32IonClientRefCount;
 } ENV_ION_CONNECTION_DATA;
 #endif
 
@@ -82,37 +82,12 @@ typedef struct _ENV_CONNECTION_DATA_
 	struct file *psFile;
 	PVRSRV_DEVICE_NODE *psDevNode;
 
-#if defined(SUPPORT_ION)
+#if defined(SUPPORT_ION) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
 	ENV_ION_CONNECTION_DATA *psIonData;
 #endif
 #if defined(SUPPORT_DRM_EXT)
 	void *pPriv;
 #endif
 } ENV_CONNECTION_DATA;
-
-#if defined(SUPPORT_ION)
-static inline struct ion_client *EnvDataIonClientAcquire(ENV_CONNECTION_DATA *psEnvData)
-{
-	PVR_ASSERT(psEnvData->psIonData != NULL);
-	PVR_ASSERT(psEnvData->psIonData->psIonClient != NULL);
-	PVR_ASSERT(psEnvData->psIonData->ui32IonClientRefCount > 0);
-	psEnvData->psIonData->ui32IonClientRefCount++;
-	return psEnvData->psIonData->psIonClient;
-}
-
-static inline void EnvDataIonClientRelease(ENV_ION_CONNECTION_DATA *psIonData)
-{
-	PVR_ASSERT(psIonData != NULL);
-	PVR_ASSERT(psIonData->psIonClient != NULL);
-	PVR_ASSERT(psIonData->ui32IonClientRefCount > 0);
-	if (--psIonData->ui32IonClientRefCount == 0)
-	{
-		ion_client_destroy(psIonData->psIonClient);
-		IonDevRelease(psIonData->psIonDev);
-		OSFreeMem(psIonData);
-		psIonData = NULL;
-	}
-}
-#endif /* defined(SUPPORT_ION) */
 
 #endif /* !defined(_ENV_CONNECTION_H_) */

@@ -88,9 +88,9 @@ static long validate(struct adf_device *dev,
 
 	post_ext_size = sizeof(struct adf_post_ext) +
 		data.n_bufs * sizeof(struct adf_buffer_config_ext);
-	
+
 	if (!access_ok(VERIFY_READ, data.bufs,
-	               sizeof(*data.bufs) * data.n_bufs)) {
+		       sizeof(*data.bufs) * data.n_bufs)) {
 		err = -EFAULT;
 		goto err_out;
 	}
@@ -113,7 +113,7 @@ static long validate(struct adf_device *dev,
 
 	if (data.n_interfaces) {
 		if (!access_ok(VERIFY_READ, data.interfaces,
-		     sizeof(*data.interfaces) *data.n_interfaces)) {
+		     sizeof(*data.interfaces) * data.n_interfaces)) {
 			err = -EFAULT;
 			goto err_out;
 		}
@@ -127,6 +127,7 @@ static long validate(struct adf_device *dev,
 
 	for (i = 0; i < data.n_interfaces; i++) {
 		u32 intf_id;
+
 		if (get_user(intf_id, &data.interfaces[i])) {
 			err = -EFAULT;
 			goto err_out;
@@ -148,7 +149,7 @@ static long validate(struct adf_device *dev,
 
 	for (i = 0; i < data.n_bufs; i++) {
 		struct adf_buffer_config config;
-		
+
 		if (copy_from_user(&config, &data.bufs[i], sizeof(config))) {
 			err = -EFAULT;
 			goto err_out;
@@ -550,7 +551,7 @@ bool adf_img_buffer_sanity_check(const struct adf_interface *intf,
 			buf_ext->crop.x2, buf_ext->crop.y2,
 			intf->current_mode.hdisplay,
 			intf->current_mode.vdisplay);
-	    return false;
+		return false;
 	}
 
 	switch (buf_ext->transform) {

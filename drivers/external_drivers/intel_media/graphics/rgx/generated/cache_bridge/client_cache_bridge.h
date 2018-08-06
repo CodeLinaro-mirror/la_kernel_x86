@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for cache
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_CACHE_BRIDGE_H
 #define CLIENT_CACHE_BRIDGE_H
@@ -55,32 +55,50 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "common_cache_bridge.h"
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeCacheOpQueue(IMG_HANDLE hBridge,
-							  IMG_UINT32 ui32NumCacheOps,
-							  IMG_HANDLE *phPMR,
-							  IMG_DEVMEM_OFFSET_T *puiOffset,
-							  IMG_DEVMEM_SIZE_T *puiSize,
-							  PVRSRV_CACHE_OP *piuCacheOp,
-							  IMG_UINT32 *pui32CacheOpSeqNum);
+							  IMG_UINT32
+							  ui32NumCacheOps,
+							  IMG_HANDLE * phPMR,
+							  IMG_UINT64 *
+							  pui64Address,
+							  IMG_DEVMEM_OFFSET_T *
+							  puiOffset,
+							  IMG_DEVMEM_SIZE_T *
+							  puiSize,
+							  PVRSRV_CACHE_OP *
+							  piuCacheOp,
+							  IMG_UINT32
+							  ui32OpTimeline,
+							  IMG_UINT32
+							  ui32OpInfoPgGFSeqNum,
+							  IMG_UINT32
+							  ui32CurrentFenceSeqNum,
+							  IMG_UINT32 *
+							  pui32NextFenceSeqNum);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeCacheOpExec(IMG_HANDLE hBridge,
 							 IMG_HANDLE hPMR,
-							 IMG_DEVMEM_OFFSET_T uiOffset,
-							 IMG_DEVMEM_SIZE_T uiSize,
-							 PVRSRV_CACHE_OP iuCacheOp);
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeCacheOpSetTimeline(IMG_HANDLE hBridge,
-								IMG_INT32 i32OpTimeline);
+							 IMG_UINT64 ui64Address,
+							 IMG_DEVMEM_OFFSET_T
+							 uiOffset,
+							 IMG_DEVMEM_SIZE_T
+							 uiSize,
+							 PVRSRV_CACHE_OP
+							 iuCacheOp);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeCacheOpLog(IMG_HANDLE hBridge,
 							IMG_HANDLE hPMR,
-							IMG_DEVMEM_OFFSET_T uiOffset,
-							IMG_DEVMEM_SIZE_T uiSize,
-							IMG_INT64 i64QueuedTimeUs,
-							IMG_INT64 i64ExecuteTimeUs,
-							PVRSRV_CACHE_OP iuCacheOp);
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeCacheOpGetLineSize(IMG_HANDLE hBridge,
-								IMG_UINT32 *pui32L1DataCacheLineSize);
-
+							IMG_UINT64 ui64Address,
+							IMG_DEVMEM_OFFSET_T
+							uiOffset,
+							IMG_DEVMEM_SIZE_T
+							uiSize,
+							IMG_INT64
+							i64QueuedTimeUs,
+							IMG_INT64
+							i64ExecuteTimeUs,
+							IMG_INT32 i32NumRBF,
+							IMG_BOOL bIsDiscard,
+							PVRSRV_CACHE_OP
+							iuCacheOp);
 
 #endif /* CLIENT_CACHE_BRIDGE_H */

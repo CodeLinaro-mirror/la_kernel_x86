@@ -42,15 +42,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 #ifndef PVRSRV_SYNC_KM_H
 #define PVRSRV_SYNC_KM_H
+
+#include <powervr/pvrsrv_sync_ext.h>
+
 #if defined (__cplusplus)
 extern "C" {
 #endif
 
-/* Implementation independent types for passing fence/timeline to KM */
-typedef int32_t PVRSRV_TIMELINE_KM;
-typedef int32_t PVRSRV_FENCE_KM;
+/*! Possible states for a PVRSRV_FENCE */
+typedef enum
+{
+    PVRSRV_FENCE_NOT_SIGNALLED,             /*!< fence has not yet signalled (not all components have signalled) */
+    PVRSRV_FENCE_SIGNALLED                  /*!< fence has signalled (all components have signalled/errored) */
+} PVRSRV_FENCE_STATE;
+
+/* Typedefs for opaque pointers to implementation-specific structures
+ */
+typedef void *SYNC_TIMELINE_OBJ;
+typedef void *SYNC_FENCE_OBJ;
 
 #if defined (__cplusplus)
 }
 #endif
 #endif	/* PVRSRV_SYNC_KM_H */
+

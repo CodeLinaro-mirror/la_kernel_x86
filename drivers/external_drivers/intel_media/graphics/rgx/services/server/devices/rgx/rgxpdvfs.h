@@ -44,12 +44,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifndef RGXPDVFS_H
 #define RGXPDVFS_H
+
 #include "img_types.h"
 #include "rgxdevice.h"
+
 #define PDVFS_REACTIVE_INTERVAL_MS 16
 
 
-IMG_INTERNAL
 PVRSRV_ERROR PDVFSLimitMaxFrequency(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32MaxOPPPoint);
 
 void PDVFSRequestReactiveUpdate(PVRSRV_RGXDEV_INFO *psDevInfo);
@@ -57,7 +58,6 @@ void PDVFSRequestReactiveUpdate(PVRSRV_RGXDEV_INFO *psDevInfo);
 PVRSRV_ERROR PDVFSProcessCoreClkRateChange(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate);
 
 #if defined (RGXFW_META_SUPPORT_2ND_THREAD)
-IMG_INTERNAL
 void RGXPDVFSCheckCoreClkRateChange(PVRSRV_RGXDEV_INFO *psDevInfo);
 #endif
 

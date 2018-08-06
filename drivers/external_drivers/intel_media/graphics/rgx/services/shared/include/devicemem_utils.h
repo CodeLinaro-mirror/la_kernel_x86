@@ -55,13 +55,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "lock.h"
 #include "osmmap.h"
 #include "devicemem_utils.h"
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-#include "mm_common.h"
-#include "devicemem_history_shared.h"
-#endif
 
 #define DEVMEM_HEAPNAME_MAXLENGTH 160
-
 
 #if defined(DEVMEM_DEBUG) && defined(REFCOUNT_DEBUG)
 #define DEVMEM_REFCOUNT_PRINT(fmt, ...) PVRSRVDebugPrintf(PVR_DBG_ERROR, __FILE__, __LINE__, fmt, __VA_ARGS__)
@@ -79,6 +74,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
    things go wrong. */
 #define LACK_OF_MAPPING_POISON ((IMG_HANDLE)0x6116dead)
 #define LACK_OF_RESERVATION_POISON ((IMG_HANDLE)0x7117dead)
+
+#define DEVICEMEM_HISTORY_ALLOC_INDEX_NONE 0xFFFFFFFF
 
 struct _DEVMEM_CONTEXT_ {
 
@@ -108,6 +105,9 @@ struct _DEVMEM_CONTEXT_ {
 
 	/* Private data handle for device specific data */
 	IMG_HANDLE hPrivData;
+
+	/* Memory allocated to be used for MCU fences */
+	DEVMEM_MEMDESC		*psMCUFenceMemDesc;
 };
 
 
@@ -173,14 +173,15 @@ struct _DEVMEM_HEAP_ {
 	IMG_HANDLE hDevMemServerHeap;
 };
 
-typedef IMG_UINT32 DEVMEM_PROPERTIES_T;                 /*!< Typedef for Devicemem properties */
-#define DEVMEM_PROPERTIES_EXPORTABLE        (1UL<<0)    /*!< Is it exportable? */
-#define DEVMEM_PROPERTIES_IMPORTED          (1UL<<1)    /*!< Is it imported from another process? */
-#define DEVMEM_PROPERTIES_SUBALLOCATABLE    (1UL<<2)    /*!< Is it suballocatable? */
-#define DEVMEM_PROPERTIES_UNPINNED          (1UL<<3)    /*!< Is it currently pinned? */
-#define DEVMEM_PROPERTIES_IMPORT_IS_ZEROED  (1UL<<4)	/*!< Is the memory fully zeroed? */
-#define DEVMEM_PROPERTIES_IMPORT_IS_CLEAN   (1UL<<5)	/*!< Is the memory clean, i.e. not been used before? */
-#define DEVMEM_PROPERTIES_SECURE            (1UL<<6)    /*!< Is it a special secure buffer? No CPU maps allowed! */
+typedef IMG_UINT32 DEVMEM_PROPERTIES_T;                  /*!< Typedef for Devicemem properties */
+#define DEVMEM_PROPERTIES_EXPORTABLE         (1UL<<0)    /*!< Is it exportable? */
+#define DEVMEM_PROPERTIES_IMPORTED           (1UL<<1)    /*!< Is it imported from another process? */
+#define DEVMEM_PROPERTIES_SUBALLOCATABLE     (1UL<<2)    /*!< Is it suballocatable? */
+#define DEVMEM_PROPERTIES_UNPINNED           (1UL<<3)    /*!< Is it currently pinned? */
+#define DEVMEM_PROPERTIES_IMPORT_IS_ZEROED   (1UL<<4)    /*!< Is the memory fully zeroed? */
+#define DEVMEM_PROPERTIES_IMPORT_IS_CLEAN    (1UL<<5)    /*!< Is the memory clean, i.e. not been used before? */
+#define DEVMEM_PROPERTIES_SECURE             (1UL<<6)    /*!< Is it a special secure buffer? No CPU maps allowed! */
+#define DEVMEM_PROPERTIES_IMPORT_IS_POISONED (1UL<<7)    /*!< Is the memory fully poisoned? */
 
 
 typedef struct _DEVMEM_DEVICE_IMPORT_ {
@@ -213,9 +214,6 @@ typedef struct _DEVMEM_IMPORT_ {
 
 	DEVMEM_DEVICE_IMPORT sDeviceImport;	/*!< Device specifics of the import */
 	DEVMEM_CPU_IMPORT sCPUImport;		/*!< CPU specifics of the import */
-#if defined(PDUMP)
-	IMG_CHAR *pszAnnotation;
-#endif
 } DEVMEM_IMPORT;
 
 typedef struct _DEVMEM_DEVICE_MEMDESC_ {
@@ -240,8 +238,11 @@ struct _DEVMEM_MEMDESC_ {
 
 	DEVMEM_DEVICE_MEMDESC sDeviceMemDesc;	/*!< Device specifics of the memdesc */
 	DEVMEM_CPU_MEMDESC sCPUMemDesc;		/*!< CPU specifics of the memdesc */
+
+	IMG_CHAR szText[DEVMEM_ANNOTATION_MAX_LEN]; /*!< Annotation for this memdesc */
+
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	DEVICEMEM_HISTORY_MEMDESC_DATA sTraceData;
+	IMG_UINT32 ui32AllocationIndex;
 #endif
 
 #if defined(PVR_RI_DEBUG)
@@ -269,8 +270,10 @@ struct _DEVMEMX_VIRT_MEMDESC_ {
 	DEVMEMX_PHYSDESC **apsPhysDescTable;		/*!< Table to store links to physical descs */
 	DEVMEM_DEVICE_IMPORT sDeviceImport;		/*!< Device specifics of the memdesc */
 
+	IMG_CHAR szText[DEVMEM_ANNOTATION_MAX_LEN]; /*!< Annotation for this virt memdesc */
+
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	DEVICEMEM_HISTORY_MEMDESC_DATA sTraceData;	/*!< To track mappings in this range */
+	IMG_UINT32 ui32AllocationIndex;         /*!< To track mappings in this range */
 #endif
 
 #if defined(PVR_RI_DEBUG)
@@ -391,7 +394,7 @@ void _DevmemImportStructAcquire(DEVMEM_IMPORT *psImport);
                 to it.
 @return         A boolean to signal if the import was destroyed. True = yes.
 ******************************************************************************/
-void _DevmemImportStructRelease(DEVMEM_IMPORT *psImport);
+IMG_BOOL _DevmemImportStructRelease(DEVMEM_IMPORT *psImport);
 
 /******************************************************************************
 @Function       _DevmemImportDiscard
@@ -438,8 +441,9 @@ void _DevmemMemDescAcquire(DEVMEM_MEMDESC *psMemDesc);
                 Destroy the import struct the MemDesc is on if that was the
                 last MemDesc on the import, probably following the destruction
                 of the underlying PMR.
+@return         A boolean to signal if the MemDesc was destroyed. True = yes.
 ******************************************************************************/
-void _DevmemMemDescRelease(DEVMEM_MEMDESC *psMemDesc);
+IMG_BOOL _DevmemMemDescRelease(DEVMEM_MEMDESC *psMemDesc);
 
 /******************************************************************************
 @Function       _DevmemMemDescDiscard

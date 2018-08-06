@@ -45,11 +45,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _SYNC_CHECKPOINT_EXTERNAL_
 #define _SYNC_CHECKPOINT_EXTERNAL_
 
-#define SYNC_CHECKPOINT_MAX_CLASS_NAME_LEN 32
-
+#ifndef _CHECKPOINT_TYPES_
+#define _CHECKPOINT_TYPES_
 typedef struct _SYNC_CHECKPOINT_CONTEXT *PSYNC_CHECKPOINT_CONTEXT;
 
 typedef struct _SYNC_CHECKPOINT *PSYNC_CHECKPOINT;
+#endif
 
 /* PVRSRV_SYNC_CHECKPOINT states.
  * The OS native sync implementation should call pfnIsSignalled() to determine if a
@@ -59,15 +60,20 @@ typedef struct _SYNC_CHECKPOINT *PSYNC_CHECKPOINT;
  */
 typedef enum
 {
-    PVRSRV_SYNC_CHECKPOINT_NOT_SIGNALLED = 0x0,  /*!< checkpoint has not signalled */
-    PVRSRV_SYNC_CHECKPOINT_SIGNALLED     = 0x1,  /*!< checkpoint has signalled */
-    PVRSRV_SYNC_CHECKPOINT_ERRORED       = 0x3   /*!< checkpoint has been errored */
+    PVRSRV_SYNC_CHECKPOINT_NOT_SIGNALLED = 0x000,  /*!< checkpoint has not signalled */
+    PVRSRV_SYNC_CHECKPOINT_SIGNALLED     = 0x519,  /*!< checkpoint has signalled */
+    PVRSRV_SYNC_CHECKPOINT_ERRORED       = 0xeff   /*!< checkpoint has been errored */
 } PVRSRV_SYNC_CHECKPOINT_STATE;
 
-#if defined(PVR_USE_SYNC_CHECKPOINTS)
-#if defined(__KERNEL__) && defined(LINUX) && !defined(__GENKSYMS__)
-#define __pvrsrv_defined_struct_enum__
-#include <services_kernel_client.h>
-#endif
-#endif
+#define PVRSRV_UFO_IS_SYNC_CHECKPOINT(ufoptr)	(((ufoptr)->puiAddrUFO.ui32Addr) & 0x1)
+
+/* Maximum number of sync checkpoints the firmware supports in one fence */
+#define MAX_SYNC_CHECKPOINTS_PER_FENCE 32
+
+/*!
+ * Define to be used with SyncCheckpointAlloc() to indicate a checkpoint which
+ * represents a foreign sync point or collection of foreign sync points.
+ */
+#define SYNC_CHECKPOINT_FOREIGN_CHECKPOINT ((PVRSRV_TIMELINE) -2)
+
 #endif /* _SYNC_CHECKPOINT_EXTERNAL_ */

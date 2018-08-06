@@ -66,6 +66,166 @@ static INLINE IMG_BOOL IsPower2_64(uint64_t n)
 	return (IMG_BOOL)((n & (n - 1)) == 0);
 }
 
+/* Code using GNU GCC intrinsics */
+#if (defined(__GNUC__) || defined(__GNUG__)) && !(defined(__clang__) || defined(__INTEL_COMPILER))
+
+/* CHAR_BIT is typically found in <limits.h>. For all the platforms where
+ * CHAR_BIT is not available, defined it here with the assumption that there
+ * are 8 bits in a byte */
+#ifndef CHAR_BIT
+#define CHAR_BIT 8U
+#endif
+
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
+/**************************************************************************/ /*!
+@Description    Compute floor(log2(n))
+@Input          n
+@Return         log2(n) rounded down to the nearest integer. Returns 0 if n == 0
+*/ /***************************************************************************/
+static INLINE uint32_t FloorLog2(uint32_t n)
+{
+	if(unlikely(n == 0))
+	{
+		return 0;
+	}
+	else
+	{
+		uint32_t uNumBits = CHAR_BIT * sizeof(n);
+		return uNumBits - (uint32_t)__builtin_clz(n) - 1U;
+	}
+}
+
+/**************************************************************************/ /*!
+@Description    Compute floor(log2(n))
+@Input          n
+@Return         log2(n) rounded down to the nearest integer. Returns 0 if n == 0
+*/ /***************************************************************************/
+static INLINE uint32_t FloorLog2_64(uint64_t n)
+{
+	if(unlikely(n == 0))
+	{
+		return 0;
+	}
+	else
+	{
+		uint32_t uNumBits = CHAR_BIT * sizeof(n);
+		return uNumBits - (uint32_t)__builtin_clzll(n) - 1U;
+	}
+}
+
+/**************************************************************************/ /*!
+@Description    Compute ceil(log2(n))
+@Input          n
+@Return         log2(n) rounded up to the nearest integer. Returns 0 if n == 0
+*/ /***************************************************************************/
+static INLINE uint32_t CeilLog2(uint32_t n)
+{
+	if(unlikely(n == 0 || n == 1))
+	{
+		return 0;
+	}
+	else
+	{
+		uint32_t uNumBits = CHAR_BIT * sizeof(n);
+
+		n--; /* Handle powers of 2 */
+		return uNumBits - (uint32_t)__builtin_clz(n);
+	}
+}
+
+/**************************************************************************/ /*!
+@Description    Compute ceil(log2(n))
+@Input          n
+@Return         log2(n) rounded up to the nearest integer. Returns 0 if n == 0
+*/ /***************************************************************************/
+static INLINE uint32_t CeilLog2_64(uint64_t n)
+{
+	if(unlikely(n == 0 || n == 1))
+	{
+		return 0;
+	}
+	else
+	{
+		uint32_t uNumBits = CHAR_BIT * sizeof(n);
+
+		n--; /* Handle powers of 2 */
+		return uNumBits - (uint32_t)__builtin_clzll(n);
+	}
+}
+
+/**************************************************************************/ /*!
+@Description    Compute log2(n) for exact powers of two only
+@Input          n                   Must be a power of two
+@Return         log2(n)
+*/ /***************************************************************************/
+static INLINE uint32_t ExactLog2(uint32_t n)
+{
+	return (uint32_t)(CHAR_BIT * sizeof(n)) - (uint32_t)__builtin_clz(n) - 1U;
+}
+
+/**************************************************************************/ /*!
+@Description    Compute log2(n) for exact powers of two only
+@Input          n                   Must be a power of two
+@Return         log2(n)
+*/ /***************************************************************************/
+static INLINE uint32_t ExactLog2_64(uint64_t n)
+{
+	return (uint32_t)(CHAR_BIT * sizeof(n)) - (uint32_t)__builtin_clzll(n) - 1U;
+}
+
+/**************************************************************************/ /*!
+@Description    Round a non-power-of-two number up to the next power of two.
+@Input          n
+@Return         n rounded up to the next power of two. If n is zero or
+                already a power of two, return n unmodified.
+*/ /***************************************************************************/
+static INLINE uint32_t RoundUpToNextPowerOfTwo(uint32_t n)
+{
+	/* Cases with n greater than 2^31 needs separate handling
+	 * as result of (1<<32) is undefined. */
+	if( unlikely( n == 0 || n > (uint32_t)1 << (CHAR_BIT * sizeof(n) - 1) ))
+	{
+		return 0;
+	}
+
+	/* Return n if it is already a power of 2 */
+	if((IMG_BOOL)((n & (n - 1)) == 0))
+	{
+		return n;
+	}
+
+	return (uint32_t)1 << ((uint32_t)(CHAR_BIT * sizeof(n)) - (uint32_t)__builtin_clz(n));
+}
+
+/**************************************************************************/ /*!
+@Description    Round a non-power-of-two number up to the next power of two.
+@Input          n
+@Return         n rounded up to the next power of two. If n is zero or
+                already a power of two, return n unmodified.
+*/ /***************************************************************************/
+static INLINE uint64_t RoundUpToNextPowerOfTwo_64(uint64_t n)
+{
+	/* Cases with n greater than 2^63 needs separate handling
+	 * as result of (1<<64) is undefined. */
+	if( unlikely( n == 0 || n > (uint64_t)1 << (CHAR_BIT * sizeof(n) - 1) ))
+	{
+		return 0;
+	}
+
+	/* Return n if it is already a power of 2 */
+	if((IMG_BOOL)((n & (n - 1)) == 0))
+	{
+		return n;
+	}
+
+	return (uint64_t)1 << ((uint32_t)(CHAR_BIT * sizeof(n)) - (uint32_t)__builtin_clzll(n));
+}
+
+#else /* #if (defined(__GNUC__) || defined(__GNUG__)) && !(defined(__clang__) || defined(__INTEL_COMPILER)) */
+
 /**************************************************************************/ /*!
 @Description    Round a non-power-of-two number up to the next power of two.
 @Input          n
@@ -221,5 +381,34 @@ static INLINE uint32_t ExactLog2_64(uint64_t n)
 
 	return r;
 }
+
+#endif /* #if (defined(__GNUC__) || defined(__GNUG__)) && !(defined(__clang__) || defined(__INTEL_COMPILER)) */
+
+/**************************************************************************/ /*!
+@Description    Compute floor(log2(size)) , where size is the max of 3 sizes
+				This is almost always the ONLY EVER valid use of FloorLog2.
+				Usually CeilLog2() should be used instead.
+				For a 5x5x1 texture, the 3 miplevels are:
+					0:  5x5x1
+					1:	2x2x1
+					2:	1x1x1
+
+				For an 8x8x1 texture, the 4 miplevels are:
+					0:  8x8x1
+					1:	4x4x1
+					2:  2x2x1
+					3:  1x1x1
+
+
+@Input          sizeX, sizeY, sizeZ
+@Return         Count of mipmap levels for given dimensions
+*/ /***************************************************************************/
+static INLINE uint32_t NumMipLevels(uint32_t sizeX, uint32_t sizeY, uint32_t sizeZ)
+{
+
+	uint32_t maxSize = MAX(MAX(sizeX, sizeY), sizeZ);
+	return FloorLog2(maxSize) + 1;
+}
+
 
 #endif /* LOG2_H */

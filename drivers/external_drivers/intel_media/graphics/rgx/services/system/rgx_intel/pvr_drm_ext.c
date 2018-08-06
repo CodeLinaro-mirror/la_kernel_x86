@@ -119,14 +119,14 @@ static PVRSRV_DEVICE_NODE *gpsDeviceNode;
 
 int PVRCore_Init(void)
 {
-	int error = 0;
+	int error = 0, deviceId = 0;
 
 	if ((error = PVRSRVCommonDriverInit()) != 0)
 	{
 		return error;
 	}
 
-	error = PVRSRVDeviceCreate(&gpsPVRLDMDev->dev, &gpsDeviceNode);
+	error = PVRSRVDeviceCreate(&gpsPVRLDMDev->dev, deviceId, &gpsDeviceNode);
 	if (error != 0)
 	{
 		DRM_DEBUG("%s: unable to init PVR service (%d)", __FUNCTION__, error);

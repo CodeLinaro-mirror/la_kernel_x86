@@ -74,10 +74,7 @@ PVRSRV_ERROR SysDmaAllocMem(DMA_ALLOC *psDmaAlloc)
 								   (size_t) psDmaAlloc->ui64Size,
 								   (dma_addr_t *)&psDmaAlloc->sBusAddr.uiAddr,
 								   GFP_KERNEL);
-		if (psDmaAlloc->pvVirtAddr == NULL)
-		{
-			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		}
+		PVR_LOGR_IF_FALSE((NULL != psDmaAlloc->pvVirtAddr), "dma_alloc_coherent() failed", PVRSRV_ERROR_FAILED_TO_ALLOC_PAGES);
 #else
 		#error "Provide OS implementation of DMA allocation";
 #endif
@@ -124,10 +121,9 @@ PVRSRV_ERROR SysDmaRegisterForIoRemapping(DMA_ALLOC *psDmaAlloc)
 	IMG_BOOL bTabEntryFound = IMG_TRUE;
 	PVRSRV_ERROR eError = PVRSRV_ERROR_TOO_FEW_BUFFERS;
 
-	PVR_ASSERT(psDmaAlloc != NULL);
-
-	if (psDmaAlloc->ui64Size == 0 ||
-		psDmaAlloc->pvVirtAddr == 0 ||
+	if (psDmaAlloc == NULL ||
+		psDmaAlloc->ui64Size == 0 ||
+		psDmaAlloc->pvVirtAddr == NULL ||
 		psDmaAlloc->sBusAddr.uiAddr == 0)
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -203,10 +199,9 @@ void SysDmaDeregisterForIoRemapping(DMA_ALLOC *psDmaAlloc)
 {
 	IMG_UINT32 ui32Idx;
 
-	PVR_ASSERT(psDmaAlloc != NULL);
-
-	if (psDmaAlloc->ui64Size == 0 ||
-		psDmaAlloc->pvVirtAddr == 0 ||
+	if (psDmaAlloc == NULL ||
+		psDmaAlloc->ui64Size == 0 ||
+		psDmaAlloc->pvVirtAddr == NULL ||
 		psDmaAlloc->sBusAddr.uiAddr == 0)
 	{
 		return;
@@ -274,7 +269,7 @@ IMG_CPU_VIRTADDR SysDmaDevPAddrToCpuVAddr(IMG_UINT64 uiAddr, IMG_UINT64 ui64Size
 		{
 			IMG_UINT64 uiSpan = psHeapDmaAlloc->ui64Size;
 			IMG_UINT64 uiOffset = uiAddr - psHeapDmaAlloc->sBusAddr.uiAddr;
-	
+
 			if (uiOffset < uiSpan)
 			{
 				PVR_ASSERT((uiOffset+ui64Size-1) < uiSpan);
@@ -318,7 +313,7 @@ IMG_UINT64 SysDmaCpuVAddrToDevPAddr(IMG_CPU_VIRTADDR pvDMAVirtAddr)
 		{
 			IMG_UINT64 uiSpan = psHeapDmaAlloc->ui64Size;
 			IMG_UINT64 uiOffset = pvDMAVirtAddr - psHeapDmaAlloc->pvVirtAddr;
-	
+
 			if (uiOffset < uiSpan)
 			{
 				uiAddr = psHeapDmaAlloc->sBusAddr.uiAddr + uiOffset;

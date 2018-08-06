@@ -44,42 +44,18 @@ PVRSRVKM_NAME = $(PVRSRV_MODNAME)
 $(PVRSRVKM_NAME)-y += \
  services/system/$(PVR_SYSTEM)/sunxi_init.o \
  services/system/$(PVR_SYSTEM)/sysconfig.o  \
- services/system/common/env/linux/interrupt_support.o
+ services/system/common/env/linux/interrupt_support.o \
+ services/system/common/env/linux/dma_support.o \
+ services/system/common/vz_physheap_generic.o \
+ services/system/common/vz_physheap_common.o \
+ services/system/common/vmm_pvz_client.o \
+ services/system/common/vmm_pvz_server.o \
+ services/system/common/vz_vmm_pvz.o \
+ services/system/common/vz_vmm_vm.o \
+ services/system/common/vz_support.o \
+ services/system/common/vmm_type_$(VMM_TYPE).o
 
 ifeq ($(SUPPORT_ION),1)
 $(PVRSRVKM_NAME)-y += \
  services/system/$(PVR_SYSTEM)/ion_support_sunxi.o
-endif
-
-ifneq ($(SUPPORT_PVRSRV_GPUVIRT),)
-$(PVRSRVKM_NAME)-y += \
- services/system/common/env/linux/dma_support.o \
- services/system/common/vz_physheap_common.o \
- services/system/common/vz_physheap_generic.o \
- services/system/common/vz_vmm_pvz.o
-  ifneq ($(PVRSRV_GPUVIRT_GUESTDRV),)
-    $(PVRSRVKM_NAME)-y += \
-     services/system/common/vz_generic_guest.o \
-     services/system/common/vz_physheap_guest.o \
-     services/system/common/vmm_pvz_client.o
-  else
-    $(PVRSRVKM_NAME)-y += \
-     services/system/common/vz_generic_host.o \
-     services/system/common/vz_physheap_host.o \
-     services/system/common/vmm_pvz_server.o \
-     services/system/common/vz_vm_host.o
-  endif
-  ifneq ($(PVRSRV_GPUVIRT_MULTIDRV_MODEL),)
-    $(PVRSRVKM_NAME)-y += \
-     services/system/common/vmm_type_mdm.o
-    ifneq ($(PVRSRV_GPUVIRT_GUESTDRV),)
-      $(PVRSRVKM_NAME)-y += \
-       services/system/common/vz_mdm_guest.o \
-       services/system/common/vmm_pvz_mdm_client.o
-    else
-      $(PVRSRVKM_NAME)-y += \
-       services/system/common/vz_mdm_host.o \
-       services/system/common/vmm_pvz_mdm_server.o
-    endif
-  endif
 endif

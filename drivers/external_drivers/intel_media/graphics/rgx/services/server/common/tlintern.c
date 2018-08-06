@@ -2,7 +2,7 @@
 @File
 @Title          Transport Layer kernel side API implementation.
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Transport Layer functions available to driver components in 
+@Description    Transport Layer functions available to driver components in
                 the driver.
 @License        Dual MIT/GPLv2
 
@@ -89,37 +89,24 @@ TLMakeSNode(IMG_HANDLE f2, TL_STREAM *f3, TL_STREAM_DESC *f4)
 /*
  * Transport Layer Global top variables and functions
  */
-static TL_GLOBAL_DATA  sTLGlobalData = { 0 };
+static TL_GLOBAL_DATA sTLGlobalData;
 
 TL_GLOBAL_DATA *TLGGD(void)	// TLGetGlobalData()
 {
 	return &sTLGlobalData;
 }
 
-/* TLInit must only be called once at driver initialisation for one device.
+/* TLInit must only be called once at driver initialisation.
  * An assert is provided to check this condition on debug builds.
  */
 PVRSRV_ERROR
-TLInit(PVRSRV_DEVICE_NODE *psDevNode)
+TLInit(void)
 {
 	PVRSRV_ERROR eError;
 
 	PVR_DPF_ENTERED;
 
-	PVR_ASSERT(psDevNode);
-
-	/*
-	 * The Transport Layer is designed to work in a single device system but
-	 * this function will be called multiple times in a multi-device system.
-	 * Return an error in this case.
-	 */
-	if (sTLGlobalData.psRgxDevNode)
-	{
-		return PVRSRV_ERROR_INIT_FAILURE;
-	}
-
-	/* Store the RGX device node for later use in devmem buffer allocations */
-	sTLGlobalData.psRgxDevNode = (void*)psDevNode;
+	PVR_ASSERT (sTLGlobalData.hTLGDLock == NULL && sTLGlobalData.hTLEventObj == NULL);
 
 	/* Allocate a lock for TL global data, to be used while updating the TL data.
 	 * This is for making TL global data muti-thread safe */
@@ -128,7 +115,7 @@ TLInit(PVRSRV_DEVICE_NODE *psDevNode)
 	{
 		goto e0;
 	}
-	
+
 	/* Allocate the event object used to signal global TL events such as
 	 * new stream created */
 	eError = OSEventObjectCreate("TLGlobalEventObj", &sTLGlobalData.hTLEventObj);
@@ -136,7 +123,7 @@ TLInit(PVRSRV_DEVICE_NODE *psDevNode)
 	{
 		goto e1;
 	}
-	
+
 	PVR_DPF_RETURN_OK;
 
 /* Don't allow the driver to start up on error */
@@ -156,14 +143,14 @@ static void RemoveAndFreeStreamNode(PTL_SNODE psRemove)
 
 	PVR_DPF_ENTERED;
 
-	// Unlink the stream node from the master list
+	/* Unlink the stream node from the master list */
 	PVR_ASSERT(psGD->psHead);
 	last = &psGD->psHead;
 	for (psn = psGD->psHead; psn; psn=psn->psNext)
 	{
 		if (psn == psRemove)
 		{
-			/* Other calling code may have freed and zero'd the pointers */
+			/* Other calling code may have freed and zeroed the pointers */
 			if (psn->psRDesc)
 			{
 				OSFreeMem(psn->psRDesc);
@@ -180,7 +167,7 @@ static void RemoveAndFreeStreamNode(PTL_SNODE psRemove)
 		last = &psn->psNext;
 	}
 
-	// Release the event list object owned by the stream node
+	/* Release the event list object owned by the stream node */
 	if (psRemove->hReadEventObj)
 	{
 		eError = OSEventObjectDestroy(psRemove->hReadEventObj);
@@ -189,21 +176,16 @@ static void RemoveAndFreeStreamNode(PTL_SNODE psRemove)
 		psRemove->hReadEventObj = NULL;
 	}
 
-	// Release the memory of the stream node
+	/* Release the memory of the stream node */
 	OSFreeMem(psRemove);
 
 	PVR_DPF_RETURN;
 }
 
 void
-TLDeInit(PVRSRV_DEVICE_NODE *psDevNode)
+TLDeInit(void)
 {
 	PVR_DPF_ENTERED;
-
-	if (sTLGlobalData.psRgxDevNode != psDevNode)
-	{
-		PVR_DPF_RETURN;
-	}
 
 	if (sTLGlobalData.uiClientCnt)
 	{
@@ -235,22 +217,7 @@ TLDeInit(PVRSRV_DEVICE_NODE *psDevNode)
 		sTLGlobalData.hTLGDLock = NULL;
 	}
 
-	sTLGlobalData.psRgxDevNode = NULL;
-
 	PVR_DPF_RETURN;
-}
-
-PVRSRV_DEVICE_NODE*
-TLGetGlobalRgxDevice(void)
-{
-	PVRSRV_DEVICE_NODE *p = (PVRSRV_DEVICE_NODE*)(TLGGD()->psRgxDevNode);
-	if (!p)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "TLGetGlobalRgxDevice() NULL node ptr, TL " \
-				"can not be used when no RGX device has been found"));
-		PVR_ASSERT(p);
-	}
-	return p;
 }
 
 void TLAddStreamNode(PTL_SNODE psAdd)
@@ -260,7 +227,7 @@ void TLAddStreamNode(PTL_SNODE psAdd)
 	PVR_ASSERT(psAdd);
 	psAdd->psNext = TLGGD()->psHead;
 	TLGGD()->psHead = psAdd;
-	
+
 	PVR_DPF_RETURN;
 }
 
@@ -334,54 +301,36 @@ static inline IMG_BOOL ReadNumber(const IMG_CHAR *pszBuffer,
 	return IMG_TRUE;
 }
 
-/**
- * Matches pszPattern against pszName and stores results in pui32Numbers.
- *
- * @Input pszPattern this is a beginning part of the name string that should
- *                   be followed by a number.
- * @Input pszName name of the stream
- * @Output pui32Number will contain numbers from stream's name end e.g.
- *                     1234 for name abc_1234
- * @Return IMG_TRUE when a stream was found or IMG_FALSE if not
- */
-static IMG_BOOL MatchNamePattern(const IMG_CHAR *pszNamePattern,
-                                 const IMG_CHAR *pszName,
-                                 IMG_UINT32 *pui32Number)
-{
-	IMG_UINT uiPatternLen;
-
-	uiPatternLen = OSStringLength(pszNamePattern);
-
-	if (OSStringNCompare(pszNamePattern, pszName, uiPatternLen) != 0)
-		return IMG_FALSE;
-
-	return ReadNumber(pszName + uiPatternLen, pui32Number);
-}
-
 IMG_UINT32 TLDiscoverStreamNodes(const IMG_CHAR *pszNamePattern,
-                                 IMG_UINT32 *pui32Streams,
-                                 IMG_UINT32 ui32Max)
+                          IMG_CHAR aaszStreams[][PRVSRVTL_MAX_STREAM_NAME_SIZE],
+                          IMG_UINT32 ui32Max)
 {
 	TL_GLOBAL_DATA *psGD = TLGGD();
 	PTL_SNODE psn;
 	IMG_UINT32 ui32Count = 0;
+	size_t uiLen;
 
 	PVR_ASSERT(pszNamePattern);
 
+	if ((uiLen = OSStringLength(pszNamePattern)) == 0)
+		return 0;
+
 	for (psn = psGD->psHead; psn; psn = psn->psNext)
 	{
-		IMG_UINT32 ui32Number = 0;
-
-		if (!MatchNamePattern(pszNamePattern, psn->psStream->szName,
-		                      &ui32Number))
+		if (OSStringNCompare(pszNamePattern, psn->psStream->szName, uiLen) != 0)
 			continue;
 
-		if (pui32Streams != NULL)
+		/* If aaszStreams is NULL we only count how many string match
+		 * the given pattern. If it's a valid pointer we also return
+		 * the names. */
+		if (aaszStreams != NULL)
 		{
-			if (ui32Count > ui32Max)
+			if (ui32Count >= ui32Max)
 				break;
 
-			pui32Streams[ui32Count] = ui32Number;
+			/* all of names are shorter than MAX and null terminated */
+			OSStringNCopy(aaszStreams[ui32Count], psn->psStream->szName,
+			              PRVSRVTL_MAX_STREAM_NAME_SIZE);
 		}
 
 		ui32Count++;
@@ -429,7 +378,7 @@ IMG_BOOL TLTryRemoveStreamAndFreeStreamNode(PTL_SNODE psRemove)
 		PVR_DPF_RETURN_VAL (IMG_FALSE);
 	}
 
-	/* Remove stream from TL_GLOBAL_DATA's list and free stream node */	
+	/* Remove stream from TL_GLOBAL_DATA's list and free stream node */
 	psRemove->psStream = NULL;
 	RemoveAndFreeStreamNode(psRemove);
 
@@ -482,6 +431,6 @@ IMG_BOOL TLUnrefDescAndTryFreeStreamNode(PTL_SNODE psNodeToRemove,
 	 * context */
 	psNodeToRemove->psStream = NULL;
 	RemoveAndFreeStreamNode(psNodeToRemove);
-	
+
 	PVR_DPF_RETURN_VAL (IMG_TRUE);
 }

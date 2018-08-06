@@ -52,7 +52,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem_server.h"
 #include "osfunc.h"
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVDebugMiscSLCSetBypassStateKM(
 	CONNECTION_DATA * psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -91,7 +91,7 @@ PVRSRVDebugMiscSLCSetBypassStateKM(
 	return PVRSRV_OK;
 }
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscQueryFWLogKM(
 	const CONNECTION_DATA *psConnection,
 	const PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -100,13 +100,8 @@ PVRSRVRGXDebugMiscQueryFWLogKM(
 	PVRSRV_RGXDEV_INFO *psDevInfo;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+	PVRSRV_VZ_RET_IF_MODE(DRIVER_MODE_GUEST, PVRSRV_ERROR_NOT_IMPLEMENTED);
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	/* Guest drivers do not support tracebuf */
-	PVR_UNREFERENCED_PARAMETER(psDevInfo);
-	PVR_UNREFERENCED_PARAMETER(pui32RGXFWLogType);
-	return PVRSRV_ERROR_NOT_IMPLEMENTED;
-#else
 	if (!psDeviceNode || !pui32RGXFWLogType)
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -121,70 +116,117 @@ PVRSRVRGXDebugMiscQueryFWLogKM(
 
 	*pui32RGXFWLogType = psDevInfo->psRGXFWIfTraceBuf->ui32LogType;
 	return PVRSRV_OK;
-#endif
 }
 
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscSetFWLogKM(
 	const CONNECTION_DATA * psConnection,
 	const PVRSRV_DEVICE_NODE *psDeviceNode,
 	IMG_UINT32  ui32RGXFWLogType)
 {
 	RGXFWIF_KCCB_CMD sLogTypeUpdateCmd;
+	PVRSRV_DEV_POWER_STATE ePowerState;
 	PVRSRV_ERROR eError = PVRSRV_OK;
 	PVRSRV_RGXDEV_INFO* psDevInfo = psDeviceNode->pvDevice;
+	IMG_UINT32 ui32OldRGXFWLogTpe = psDevInfo->psRGXFWIfTraceBuf->ui32LogType;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+	PVRSRV_VZ_RET_IF_MODE(DRIVER_MODE_GUEST, PVRSRV_ERROR_NOT_IMPLEMENTED);
+
 	/* check log type is valid */
 	if (ui32RGXFWLogType & ~RGXFWIF_LOG_TYPE_MASK)
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	/* Guest drivers do not support tracebuf */
-	PVR_UNREFERENCED_PARAMETER(psDevInfo);
-	PVR_UNREFERENCED_PARAMETER(sLogTypeUpdateCmd);
-	eError = PVRSRV_ERROR_NOT_IMPLEMENTED;
-#else
-	/* set the new log type */
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hRGXFWIfBufInitLock);
+#endif  /* !defined(PVRSRV_USE_BRIDGE_LOCK) */
+
+	/* set the new log type and ensure the new log type is written to memory
+	 * before requesting the FW to read it
+	 */
 	psDevInfo->psRGXFWIfTraceBuf->ui32LogType = ui32RGXFWLogType;
+	OSMemoryBarrier();
 
 	/* Allocate firmware trace buffer resource(s) if not already done */
 	if (RGXTraceBufferIsInitRequired(psDevInfo))
 	{
-		RGXTraceBufferInitOnDemandResources(psDevInfo);
+		eError = RGXTraceBufferInitOnDemandResources(psDevInfo);
 	}
-
-	/* Ask the FW to update its cached version of logType value */
-	sLogTypeUpdateCmd.eCmdType = RGXFWIF_KCCB_CMD_LOGTYPE_UPDATE;
-	eError = RGXScheduleCommand(psDevInfo,
-	                            RGXFWIF_DM_GP,
-	                            &sLogTypeUpdateCmd,
-	                            sizeof(sLogTypeUpdateCmd),
-	                            0,
-	                            PDUMP_FLAGS_CONTINUOUS);
-	if(eError != PVRSRV_OK)
+	/* Check if LogType is TBI then allocate resource on demand and copy
+	 * SFs to it
+	 */
+	else if(RGXTBIBufferIsInitRequired(psDevInfo))
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: RGXScheduleCommandfailed. Error:%u", __FUNCTION__, eError));
-	}
-	else
-	{
-		/* Wait for the LogType value to be updated */
-		eError = RGXWaitForFWOp(psDevInfo, RGXFWIF_DM_GP, psDeviceNode->psSyncPrim, PDUMP_FLAGS_CONTINUOUS);
-		if (eError != PVRSRV_OK)
+		eError = RGXTBIBufferInitOnDemandResources(psDevInfo);
+		if (eError == PVRSRV_OK)
 		{
-			PVR_DPF((PVR_DBG_ERROR,"%s: Waiting for value aborted with error (%u)", __FUNCTION__, eError));
+			sLogTypeUpdateCmd.uCmdData.sTBIBuffer = psDevInfo->sRGXFWIfTBIBuffer;
 		}
 	}
-#endif
 
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"%s: Failed to allocate resource on-demand. Reverting to old value", __func__));
+		psDevInfo->psRGXFWIfTraceBuf->ui32LogType = ui32OldRGXFWLogTpe;
+		OSMemoryBarrier();
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psDevInfo->hRGXFWIfBufInitLock);
+#endif /* !defined(PVRSRV_USE_BRIDGE_LOCK) */
+
+		return eError;
+	}
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hRGXFWIfBufInitLock);
+#endif /* !defined(PVRSRV_USE_BRIDGE_LOCK) */
+
+	eError = PVRSRVPowerLock((const PPVRSRV_DEVICE_NODE) psDeviceNode);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"%s: Failed to acquire power lock (%u)", __func__, eError));
+		return eError;
+	}
+
+	eError = PVRSRVGetDevicePowerState((const PPVRSRV_DEVICE_NODE) psDeviceNode, &ePowerState);
+
+	if ((eError == PVRSRV_OK) && (ePowerState != PVRSRV_DEV_POWER_STATE_OFF))
+	{
+		/* Ask the FW to update its cached version of logType value */
+		sLogTypeUpdateCmd.eCmdType = RGXFWIF_KCCB_CMD_LOGTYPE_UPDATE;
+
+		eError = RGXSendCommand(psDevInfo,
+		                        RGXFWIF_DM_GP,
+		                        &sLogTypeUpdateCmd,
+		                        sizeof(sLogTypeUpdateCmd),
+		                        PDUMP_FLAGS_CONTINUOUS);
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: RGXSendCommand failed. Error:%u", __func__, eError));
+		}
+		else
+		{
+			/* Give up the power lock as its acquired in RGXWaitForFWOp */
+			PVRSRVPowerUnlock((const PPVRSRV_DEVICE_NODE) psDeviceNode);
+
+			/* Wait for the LogType value to be updated */
+			eError = RGXWaitForFWOp(psDevInfo, RGXFWIF_DM_GP, psDeviceNode->psSyncPrim, PDUMP_FLAGS_CONTINUOUS);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"%s: Waiting for value aborted with error (%u)", __func__, eError));
+			}
+			return eError;
+		}
+	}
+
+	PVRSRVPowerUnlock((const PPVRSRV_DEVICE_NODE) psDeviceNode);
 	return eError;
 }
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscSetHCSDeadlineKM(
 	CONNECTION_DATA *psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -196,7 +238,7 @@ PVRSRVRGXDebugMiscSetHCSDeadlineKM(
 	return RGXFWSetHCSDeadline(psDevInfo, ui32HCSDeadlineMS);
 }
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscSetOSidPriorityKM(
 	CONNECTION_DATA *psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -209,7 +251,7 @@ PVRSRVRGXDebugMiscSetOSidPriorityKM(
 	return RGXFWChangeOSidPriority(psDevInfo, ui32OSid, ui32OSidPriority);
 }
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscSetOSNewOnlineStateKM(
 	CONNECTION_DATA *psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -227,7 +269,7 @@ PVRSRVRGXDebugMiscSetOSNewOnlineStateKM(
 	return RGXFWSetVMOnlineState(psDevInfo, ui32OSid, RGXFWIF_OS_OFFLINE);
 }
 
-IMG_EXPORT PVRSRV_ERROR
+PVRSRV_ERROR
 PVRSRVRGXDebugMiscDumpFreelistPageListKM(
 	CONNECTION_DATA * psConnection,
 	PVRSRV_DEVICE_NODE *psDeviceNode)

@@ -54,16 +54,29 @@ MODULE_INCLUDE_FLAGS := \
 
 ifneq ($(SUPPORT_ANDROID_PLATFORM),)
 
+MODULE_EXE_LDFLAGS := \
+ -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker -lc
+
+MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC_SECONDARY)
+
+ifeq ($(NDK_ROOT),)
+
 _obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_x86,)
 
-# Linker flags used to find system libraries.
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
  -L$(_obj)/lib \
  -Xlinker -rpath-link=$(_obj)/lib \
  -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib \
  -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib
-
-ifeq ($(NDK_ROOT),)
+ifneq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib
+else
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib
+endif
 
 MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libc/arch-x86/include \
@@ -71,22 +84,63 @@ MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libm/include/i387 \
  $(MODULE_INCLUDE_FLAGS)
 
+MODULE_ARCH_TAG := $(_obj)
+
 else # NDK_ROOT
 
-_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-x86/usr
+MODULE_INCLUDE_FLAGS := \
+ -isystem $(NDK_SYSROOT)/usr/include/$(patsubst x86_64-%,i686-%,$(CROSS_TRIPLE)) \
+ $(MODULE_INCLUDE_FLAGS)
+
+MODULE_LIBRARY_FLAGS_SUBST := \
+ art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libart.so \
+ RScpp:$(NDK_ROOT)/toolchains/renderscript/prebuilt/$(HOST_OS)-$(HOST_ARCH)/platform/x86/libRScpp_static.a
+
+ifeq ($(wildcard $(NDK_ROOT)/out/local/x86/libc++.so),)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/x86/libc++_static.a$$(space)$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/x86/libc++abi.a \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+else
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/out/local/x86/libc++.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -Xlinker -rpath-link=$(NDK_ROOT)/out/local/x86
+endif
+
+ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
+
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib
+
+# Substitutions performed on MODULE_LIBRARY_FLAGS (NDK workarounds)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ nativewindow:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libnativewindow.so \
+ sync:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libsync.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+
+endif # !VNDK
+
+_obj := $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-x86/usr
 
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS := \
- -L$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/x86 \
+ -L$(_obj)/lib \
+ -Xlinker -rpath-link=$(_obj)/lib \
  $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
+
+# Workaround; the VNDK platforms root lacks the crt files
+_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-x86/usr
+
+MODULE_EXE_LDFLAGS := $(MODULE_EXE_LDFLAGS) $(LIBGCC_SECONDARY) -Wl,--as-needed -ldl
+
+MODULE_ARCH_TAG := x86
 
 endif # NDK_ROOT
 
-MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
-
-MODULE_EXE_LDFLAGS := \
- -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker -lc
-
 MODULE_LIB_LDFLAGS := $(MODULE_EXE_LDFLAGS)
+
+MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
 
 MODULE_EXE_CRTBEGIN := $(_obj)/lib/crtbegin_dynamic.o
 MODULE_EXE_CRTEND := $(_obj)/lib/crtend_android.o
@@ -94,11 +148,20 @@ MODULE_EXE_CRTEND := $(_obj)/lib/crtend_android.o
 MODULE_LIB_CRTBEGIN := $(_obj)/lib/crtbegin_so.o
 MODULE_LIB_CRTEND := $(_obj)/lib/crtend_so.o
 
-MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC_SECONDARY)
-
-MODULE_ARCH_TAG := $(_obj)
-
 endif # SUPPORT_ANDROID_PLATFORM
+
+# Ubuntu doesn't allow the (gcc|g++)-multilib and gcc-(arm|aarch64)-* packages
+# to be installed at the same time. This is due to the multilib packages
+# creating a symlink from /usr/include/asm to /usr/include/x86_64-linux-gnu/asm,
+# which is invalid for anything other than x86. Work around this by removing the
+# need to install the multilib packages.
+ifneq ($(SUPPORT_BUILD_LWS),)
+MODULE_INCLUDE_FLAGS += \
+ -isystem /usr/include/x86_64-linux-gnu
+else ifeq ($(SYSROOT),/)
+MODULE_INCLUDE_FLAGS += \
+ -isystem /usr/include/x86_64-linux-gnu
+endif
 
 ifneq ($(BUILD),debug)
 ifeq ($(USE_LTO),1)

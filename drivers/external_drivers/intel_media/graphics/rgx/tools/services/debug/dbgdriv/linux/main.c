@@ -48,7 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/list.h>
 #include <linux/init.h>
 #include <linux/vmalloc.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <drm/drmP.h>
 
 #include "img_types.h"
@@ -78,8 +78,6 @@ void DBGDrvGetServiceTable(void **fn_table);
 
 void DBGDrvGetServiceTable(void **fn_table)
 {
-	extern DBGKM_SERVICE_TABLE g_sDBGKMServices;
-
 	*fn_table = &g_sDBGKMServices;
 }
 
@@ -129,7 +127,8 @@ static IMG_INT dbgdrv_ioctl_work(void *arg, IMG_BOOL bCompat)
 	struct drm_pvr_dbgdrv_cmd *psDbgdrvCmd = (struct drm_pvr_dbgdrv_cmd *) arg;
 	char *buffer, *in, *out;
 	unsigned int cmd;
-	void *pBufferIn, *pBufferOut;
+	void __user *pBufferIn;
+	void __user *pBufferOut;
 
 	if (psDbgdrvCmd->pad)
 	{
@@ -154,8 +153,8 @@ static IMG_INT dbgdrv_ioctl_work(void *arg, IMG_BOOL bCompat)
 	in = buffer;
 	out = buffer + (PAGE_SIZE >>1);
 
-	pBufferIn = (void *)(uintptr_t) psDbgdrvCmd->in_data_ptr;
-	pBufferOut = (void *)(uintptr_t) psDbgdrvCmd->out_data_ptr;
+	pBufferIn = (void __user *)(uintptr_t) psDbgdrvCmd->in_data_ptr;
+	pBufferOut = (void __user *)(uintptr_t) psDbgdrvCmd->out_data_ptr;
 
 	if (pvr_copy_from_user(in, pBufferIn, psDbgdrvCmd->in_data_size) != 0)
 	{
@@ -170,7 +169,7 @@ static IMG_INT dbgdrv_ioctl_work(void *arg, IMG_BOOL bCompat)
 		IMG_UINT32 *pui32BytesCopied = (IMG_UINT32 *)out;
 		DBG_OUT_READ *psReadOutParams = (DBG_OUT_READ *)out;
 		DBG_IN_READ *psReadInParams = (DBG_IN_READ *)in;
-		void *pvOutBuffer;
+		void __user *pvOutBuffer;
 		PDBG_STREAM psStream;
 
 		psStream = SID2PStream(psReadInParams->hStream);
@@ -247,7 +246,3 @@ int dbgdrv_ioctl_compat(struct file *file, unsigned int ioctlCmd, unsigned long 
 {
 	return dbgdrv_ioctl_work((void *) arg, IMG_TRUE);
 }
-
-
-
-EXPORT_SYMBOL(DBGDrvGetServiceTable);

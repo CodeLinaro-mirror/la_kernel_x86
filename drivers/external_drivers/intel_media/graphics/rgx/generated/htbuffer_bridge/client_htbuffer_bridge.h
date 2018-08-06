@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for htbuffer
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_HTBUFFER_BRIDGE_H
 #define CLIENT_HTBUFFER_BRIDGE_H
@@ -55,15 +55,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "common_htbuffer_bridge.h"
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBConfigure(IMG_HANDLE hBridge,
-							  IMG_UINT32 ui32NameSize,
-							  const IMG_CHAR *puiName,
-							  IMG_UINT32 ui32BufferSize);
+							  IMG_UINT32
+							  ui32NameSize,
+							  const IMG_CHAR *
+							  puiName,
+							  IMG_UINT32
+							  ui32BufferSize);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBControl(IMG_HANDLE hBridge,
-							IMG_UINT32 ui32NumGroups,
-							IMG_UINT32 *pui32GroupEnable,
+							IMG_UINT32
+							ui32NumGroups,
+							IMG_UINT32 *
+							pui32GroupEnable,
 							IMG_UINT32 ui32LogLevel,
-							IMG_UINT32 ui32EnablePID,
+							IMG_UINT32
+							ui32EnablePID,
 							IMG_UINT32 ui32LogMode,
 							IMG_UINT32 ui32OpMode);
 
@@ -72,7 +78,6 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBLog(IMG_HANDLE hBridge,
 						    IMG_UINT32 ui32TimeStamp,
 						    IMG_UINT32 ui32SF,
 						    IMG_UINT32 ui32NumArgs,
-						    IMG_UINT32 *pui32Args);
-
+						    IMG_UINT32 * pui32Args);
 
 #endif /* CLIENT_HTBUFFER_BRIDGE_H */

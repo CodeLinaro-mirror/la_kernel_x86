@@ -54,11 +54,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* The mutex is defined as a pointer to be compatible with the other code. This
  * isn't ideal and usually you wouldn't do that in kernel code. */
 typedef struct mutex *POS_LOCK;
+typedef struct rw_semaphore *POSWR_LOCK;
 typedef atomic_t ATOMIC_T;
 
 #else /* defined(LINUX) && defined(__KERNEL__) */
 #include "img_types.h" /* needed for IMG_INT */
 typedef struct _OS_LOCK_ *POS_LOCK;
+
+#if defined(LINUX) || defined(__QNXNTO__) || defined (INTEGRITY_OS)
+typedef struct _OSWR_LOCK_ *POSWR_LOCK;
+#else /* defined(LINUX) || defined(__QNXNTO__) || defined (INTEGRITY_OS) */
+typedef struct _OSWR_LOCK_ {
+	IMG_UINT32 ui32Dummy;
+} *POSWR_LOCK;
+#endif /* defined(LINUX) || defined(__QNXNTO__) || defined (INTEGRITY_OS) */
+
 #if defined(LINUX)
 	typedef struct _OS_ATOMIC {IMG_INT counter;} ATOMIC_T;
 #elif defined(__QNXNTO__)

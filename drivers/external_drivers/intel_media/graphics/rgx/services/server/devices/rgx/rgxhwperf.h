@@ -51,8 +51,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "device.h"
 #include "connection_server.h"
 #include "rgxdevice.h"
-#include "rgx_hwperf_km.h"
+#include "rgx_hwperf.h"
 
+/* HWPerf host buffer size constraints in KBs */
+#define HWPERF_HOST_TL_STREAM_SIZE_DEFAULT PVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB
+#define HWPERF_HOST_TL_STREAM_SIZE_MIN     (32U)
+#define HWPERF_HOST_TL_STREAM_SIZE_MAX     (3072U)
 
 /******************************************************************************
  * RGX HW Performance Data Transport Routines
@@ -60,10 +64,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 PVRSRV_ERROR RGXHWPerfDataStoreCB(PVRSRV_DEVICE_NODE* psDevInfo);
 
-PVRSRV_ERROR RGXHWPerfInit(PVRSRV_DEVICE_NODE *psRgxDevInfo);
-PVRSRV_ERROR RGXHWPerfInitOnDemandResources(void);
-void RGXHWPerfDeinit(void);
+PVRSRV_ERROR RGXHWPerfInit(PVRSRV_RGXDEV_INFO *psRgxDevInfo);
+PVRSRV_ERROR RGXHWPerfInitOnDemandResources(PVRSRV_RGXDEV_INFO* psRgxDevInfo);
+void RGXHWPerfDeinit(PVRSRV_RGXDEV_INFO *psRgxDevInfo);
 void RGXHWPerfInitAppHintCallbacks(const PVRSRV_DEVICE_NODE *psDeviceNode);
+void RGXHWPerfClientInitAppHintCallbacks(void);
 
 /******************************************************************************
  * RGX HW Performance Profiling API(s)
@@ -101,105 +106,94 @@ PVRSRV_ERROR PVRSRVRGXConfigCustomCountersKM(
  * RGX HW Performance Host Stream API
  *****************************************************************************/
 
-PVRSRV_ERROR RGXHWPerfHostInit(IMG_UINT32 ui32BufSizeKB);
-PVRSRV_ERROR RGXHWPerfHostInitOnDemandResources(void);
-void RGXHWPerfHostDeInit(void);
+PVRSRV_ERROR RGXHWPerfHostInit(PVRSRV_RGXDEV_INFO *psRgxDevInfo, IMG_UINT32 ui32BufSizeKB);
+PVRSRV_ERROR RGXHWPerfHostInitOnDemandResources(PVRSRV_RGXDEV_INFO* psRgxDevInfo);
+void RGXHWPerfHostDeInit(PVRSRV_RGXDEV_INFO	*psRgxDevInfo);
 
-void RGXHWPerfHostSetEventFilter(IMG_UINT32 ui32Filter);
+void RGXHWPerfHostSetEventFilter(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                                 IMG_UINT32 ui32Filter);
 
-void RGXHWPerfHostPostCtrlEvent(RGX_HWPERF_HOST_CTRL_TYPE eEvType,
-                                IMG_UINT32 ui32Pid);
-
-void RGXHWPerfHostPostEnqEvent(RGX_HWPERF_KICK_TYPE eEnqType,
+void RGXHWPerfHostPostEnqEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                               RGX_HWPERF_KICK_TYPE eEnqType,
                                IMG_UINT32 ui32Pid,
                                IMG_UINT32 ui32FWDMContext,
                                IMG_UINT32 ui32ExtJobRef,
-                               IMG_UINT32 ui32IntJobRef);
+                               IMG_UINT32 ui32IntJobRef,
+                               IMG_UINT64 ui64CheckFenceUID,
+                               IMG_UINT64 ui64UpdateFenceUID,
+                               IMG_UINT64 ui64DeadlineInus,
+                               IMG_UINT64 ui64CycleEstimate);
 
-void RGXHWPerfHostPostAllocEvent(RGX_HWPERF_HOST_RESOURCE_TYPE eAllocType,
+void RGXHWPerfHostPostAllocEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                                 RGX_HWPERF_HOST_RESOURCE_TYPE eAllocType,
+                                 IMG_UINT64 ui64UID,
+                                 IMG_UINT32 ui32PID,
                                  IMG_UINT32 ui32FWAddr,
                                  const IMG_CHAR *psName,
                                  IMG_UINT32 ui32NameSize);
 
-void RGXHWPerfHostPostFreeEvent(RGX_HWPERF_HOST_RESOURCE_TYPE eFreeType,
+void RGXHWPerfHostPostFreeEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                                RGX_HWPERF_HOST_RESOURCE_TYPE eFreeType,
+                                IMG_UINT64 ui64UID,
+                                IMG_UINT32 ui32PID,
                                 IMG_UINT32 ui32FWAddr);
 
-void RGXHWPerfHostPostUfoEvent(RGX_HWPERF_UFO_EV eUfoType,
-                               RGX_HWPERF_UFO_DATA_ELEMENT psUFOData[],
-                               IMG_UINT uiNoOfUFOs);
+void RGXHWPerfHostPostModifyEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                                  RGX_HWPERF_HOST_RESOURCE_TYPE eModifyType,
+                                  IMG_UINT64 ui64NewUID,
+                                  IMG_UINT64 ui64UID1,
+                                  IMG_UINT64 ui64UID2,
+                                  const IMG_CHAR *psName,
+                                  IMG_UINT32 ui32NameSize);
 
-void RGXHWPerfHostPostClkSyncEvent(void);
+void RGXHWPerfHostPostUfoEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                               RGX_HWPERF_UFO_EV eUfoType,
+                               RGX_HWPERF_UFO_DATA_ELEMENT *psUFOData,
+							   const IMG_BOOL bSleepAllowed);
 
-IMG_BOOL RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_EVENT_TYPE eEvent);
+void RGXHWPerfHostPostClkSyncEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo);
+
+IMG_BOOL RGXHWPerfHostIsEventEnabled(PVRSRV_RGXDEV_INFO *psRgxDevInfo, RGX_HWPERF_HOST_EVENT_TYPE eEvent);
 
 #define _RGX_HWPERF_HOST_FILTER(CTX, EV) \
 		(((PVRSRV_RGXDEV_INFO *)CTX->psDeviceNode->pvDevice)->ui32HWPerfHostFilter \
 		& RGX_HWPERF_EVENT_MASK_VALUE(EV))
 
+#define _RGX_DEVICE_INFO_FROM_CTX(CTX) \
+		((PVRSRV_RGXDEV_INFO *)CTX->psDeviceNode->pvDevice)
+
+#define _RGX_DEVICE_INFO_FROM_NODE(DEVNODE) \
+		((PVRSRV_RGXDEV_INFO *)DEVNODE->pvDevice)
+
+/* Deadline and cycle estimate is not supported for all ENQ events */
+#define NO_DEADLINE 0
+#define NO_CYCEST   0
+
+
+#if defined(SUPPORT_RGX)
+
 /**
  * This macro checks if HWPerfHost and the event are enabled and if they are
  * it posts event to the HWPerfHost stream.
  *
- * @param C context
- * @param P process id (PID)
- * @param X firmware context
- * @param E ExtJobRef
- * @param I IntJobRef
- * @param K kick type
+ * @param C      Kick context
+ * @param P      Pid of kicking process
+ * @param X      Related FW context
+ * @param E      External job reference
+ * @param I      Job ID
+ * @param K      Kick type
+ * @param CHKUID Check fence UID
+ * @param UPDUID Update fence UID
+ * @param D      Deadline
+ * @param CE     Cycle estimate
  */
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-#define RGX_HWPERF_HOST_CTRL(E, P) \
-		do { \
-			PVR_UNREFERENCED_PARAMETER(P); \
-		} while (0)
-
-#define RGX_HWPERF_HOST_ENQ(C, P, X, E, I, K) \
-		do { \
-			PVR_UNREFERENCED_PARAMETER(X); \
-			PVR_UNREFERENCED_PARAMETER(E); \
-			PVR_UNREFERENCED_PARAMETER(I); \
-		} while (0)
-
-#define RGX_HWPERF_HOST_UFO(T, D, N) \
-		do { \
-			PVR_UNREFERENCED_PARAMETER(T); \
-			PVR_UNREFERENCED_PARAMETER(D); \
-			PVR_UNREFERENCED_PARAMETER(N); \
-		} while (0)
-
-#define RGX_HWPERF_HOST_ALLOC(T, F, N, Z) \
-		do { \
-			PVR_UNREFERENCED_PARAMETER(RGX_HWPERF_HOST_RESOURCE_TYPE_##T); \
-			PVR_UNREFERENCED_PARAMETER(F); \
-			PVR_UNREFERENCED_PARAMETER(N); \
-			PVR_UNREFERENCED_PARAMETER(Z); \
-		} while (0)
-
-#define RGX_HWPERF_HOST_FREE(T, F) \
-		do { \
-			PVR_UNREFERENCED_PARAMETER(RGX_HWPERF_HOST_RESOURCE_TYPE_##T); \
-			PVR_UNREFERENCED_PARAMETER(F); \
-		} while (0)
-
-#define RGX_HWPERF_HOST_CLK_SYNC()
-#else
-/**
- * @param E event type
- * @param P PID
- */
-#define RGX_HWPERF_HOST_CTRL(E, P) \
-		do { \
-			if (RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_CTRL)) \
-			{ \
-				RGXHWPerfHostPostCtrlEvent(RGX_HWPERF_CTRL_TYPE_##E, (P)); \
-			} \
-		} while (0)
-
-#define RGX_HWPERF_HOST_ENQ(C, P, X, E, I, K) \
+#define RGX_HWPERF_HOST_ENQ(C, P, X, E, I, K, CHKUID, UPDUID, D, CE) \
 		do { \
 			if (_RGX_HWPERF_HOST_FILTER(C, RGX_HWPERF_HOST_ENQ)) \
 			{ \
-				RGXHWPerfHostPostEnqEvent((K), (P), (X), (E), (I)); \
+				RGXHWPerfHostPostEnqEvent(_RGX_DEVICE_INFO_FROM_CTX(C), \
+				                          (K), (P), (X), (E), (I), \
+				                          (CHKUID), (UPDUID), (D), (CE)); \
 			} \
 		} while (0)
 
@@ -207,15 +201,16 @@ IMG_BOOL RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_EVENT_TYPE eEvent);
  * This macro checks if HWPerfHost and the event are enabled and if they are
  * it posts event to the HWPerfHost stream.
  *
+ * @param I Device Info pointer
  * @param T Host UFO event type
- * @param D UFO data array
- * @param N number of syncs in data array
+ * @param D Pointer to UFO data
+ * @param S Is sleeping allowed?
  */
-#define RGX_HWPERF_HOST_UFO(T, D, N) \
+#define RGX_HWPERF_HOST_UFO(I, T, D, S) \
 		do { \
-			if (RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_UFO)) \
+			if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_UFO)) \
 			{ \
-				RGXHWPerfHostPostUfoEvent((T), (D), (N)); \
+				RGXHWPerfHostPostUfoEvent((I), (T), (D), (S)); \
 			} \
 		} while (0)
 
@@ -223,17 +218,19 @@ IMG_BOOL RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_EVENT_TYPE eEvent);
  * This macro checks if HWPerfHost and the event are enabled and if they are
  * it posts event to the HWPerfHost stream.
  *
- * @param F sync firmware address
- * @param S boolean value telling if this is a server sync
+ * @param D Device node pointer
+ * @param T Host ALLOC event type
+ * @param FWADDR sync firmware address
  * @param N string containing sync name
  * @param Z string size including null terminating character
  */
-#define RGX_HWPERF_HOST_ALLOC(T, F, N, Z) \
+#define RGX_HWPERF_HOST_ALLOC(D, T, FWADDR, N, Z) \
 		do { \
-			if (RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_ALLOC)) \
+			if (RGXHWPerfHostIsEventEnabled(_RGX_DEVICE_INFO_FROM_NODE(D), RGX_HWPERF_HOST_ALLOC)) \
 			{ \
-				RGXHWPerfHostPostAllocEvent(RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
-				                            (F), (N), (Z)); \
+				RGXHWPerfHostPostAllocEvent(_RGX_DEVICE_INFO_FROM_NODE(D), \
+				                            RGX_HWPERF_HOST_RESOURCE_TYPE_##T, 0, 0, \
+				                            (FWADDR), (N), (Z)); \
 			} \
 		} while (0)
 
@@ -241,29 +238,113 @@ IMG_BOOL RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_EVENT_TYPE eEvent);
  * This macro checks if HWPerfHost and the event are enabled and if they are
  * it posts event to the HWPerfHost stream.
  *
- * @param F sync firmware address
+ * @param D Device Node pointer
+ * @param T Host ALLOC event type
+ * @param UID ID of input object
+ * @param PID ID of allocating process
+ * @param FWADDR sync firmware address
+ * @param N string containing sync name
+ * @param Z string size including null terminating character
  */
-#define RGX_HWPERF_HOST_FREE(T, F) \
+#define RGX_HWPERF_HOST_ALLOC_FENCE_SYNC(D, T, UID, PID, FWADDR, N, Z)  \
 		do { \
-			if (RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_FREE)) \
+			if (RGXHWPerfHostIsEventEnabled(_RGX_DEVICE_INFO_FROM_NODE(D), RGX_HWPERF_HOST_ALLOC)) \
 			{ \
-				RGXHWPerfHostPostFreeEvent(RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
-				                           (F)); \
+				RGXHWPerfHostPostAllocEvent(_RGX_DEVICE_INFO_FROM_NODE(D), \
+				                            RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
+				                            (UID), (PID), (FWADDR), (N), (Z)); \
 			} \
 		} while (0)
 
 /**
  * This macro checks if HWPerfHost and the event are enabled and if they are
  * it posts event to the HWPerfHost stream.
+ *
+ * @param D Device Node pointer
+ * @param T Host ALLOC event type
+ * @param FWADDR sync firmware address
  */
-#define RGX_HWPERF_HOST_CLK_SYNC() \
+#define RGX_HWPERF_HOST_FREE(D, T, FWADDR) \
 		do { \
-			if (RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_CLK_SYNC)) \
+			if (RGXHWPerfHostIsEventEnabled(_RGX_DEVICE_INFO_FROM_NODE(D), RGX_HWPERF_HOST_FREE)) \
 			{ \
-				RGXHWPerfHostPostClkSyncEvent(); \
+				RGXHWPerfHostPostFreeEvent(_RGX_DEVICE_INFO_FROM_NODE(D), \
+				                           RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
+				                           (0), (0), (FWADDR)); \
 			} \
 		} while (0)
+
+/**
+ * This macro checks if HWPerfHost and the event are enabled and if they are
+ * it posts event to the HWPerfHost stream.
+ *
+ * @param D Device Node pointer
+ * @param T Host ALLOC event type
+ * @param UID ID of input object
+ * @param PID ID of allocating process
+ * @param FWADDR sync firmware address
+ */
+#define RGX_HWPERF_HOST_FREE_FENCE_SYNC(D, T, UID, PID, FWADDR) \
+		do { \
+			if (RGXHWPerfHostIsEventEnabled(_RGX_DEVICE_INFO_FROM_NODE(D), RGX_HWPERF_HOST_FREE)) \
+			{ \
+				RGXHWPerfHostPostFreeEvent(_RGX_DEVICE_INFO_FROM_NODE(D), \
+				                           RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
+				                           (UID), (PID), (FWADDR)); \
+			} \
+		} while (0)
+
+/**
+ * This macro checks if HWPerfHost and the event are enabled and if they are
+ * it posts event to the HWPerfHost stream.
+ *
+ * @param D Device Node pointer
+ * @param T Host ALLOC event type
+ * @param NEWUID ID of output object
+ * @param UID1 ID of first input object
+ * @param UID2 ID of second input object
+ * @param N string containing new object's name
+ * @param Z string size including null terminating character
+ */
+#define RGX_HWPERF_HOST_MODIFY_FENCE_SYNC(D, T, NEWUID, UID1, UID2, N, Z) \
+		do { \
+			if (RGXHWPerfHostIsEventEnabled(_RGX_DEVICE_INFO_FROM_NODE(D), RGX_HWPERF_HOST_MODIFY)) \
+			{ \
+				RGXHWPerfHostPostModifyEvent(_RGX_DEVICE_INFO_FROM_NODE(D), \
+				                             RGX_HWPERF_HOST_RESOURCE_TYPE_##T, \
+				                             (NEWUID), (UID1), (UID2), N, Z); \
+			} \
+		} while (0)
+
+
+/**
+ * This macro checks if HWPerfHost and the event are enabled and if they are
+ * it posts event to the HWPerfHost stream.
+ *
+ * @param I Device info pointer
+ */
+#define RGX_HWPERF_HOST_CLK_SYNC(I) \
+		do { \
+			if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_CLK_SYNC)) \
+			{ \
+				RGXHWPerfHostPostClkSyncEvent((I)); \
+			} \
+		} while (0)
+
+
+#else
+
+#define RGX_HWPERF_HOST_ENQ(C, P, X, E, I, K, CHKUID, UPDUID, D, CE)
+#define RGX_HWPERF_HOST_UFO(I, T, D, S)
+#define RGX_HWPERF_HOST_ALLOC(D, T, FWADDR, N, Z)
+#define RGX_HWPERF_HOST_ALLOC_FENCE_SYNC(D, T, UID, PID, FWADDR, N, Z)
+#define RGX_HWPERF_HOST_FREE(D, T, FWADDR)
+#define RGX_HWPERF_HOST_FREE_FENCE_SYNC(D, T, UID, PID, FWADDR)
+#define RGX_HWPERF_HOST_MODIFY_FENCE_SYNC(D, T, NEWUID, UID1, UID2, N, Z)
+#define RGX_HWPERF_HOST_CLK_SYNC(I)
+
 #endif
+
 
 /******************************************************************************
  * RGX HW Performance To FTrace Profiling API(s)
@@ -271,14 +352,17 @@ IMG_BOOL RGXHWPerfHostIsEventEnabled(RGX_HWPERF_HOST_EVENT_TYPE eEvent);
 
 #if defined(SUPPORT_GPUTRACE_EVENTS)
 
-PVRSRV_ERROR RGXHWPerfFTraceGPUInit(PVRSRV_DEVICE_NODE *psDeviceNode);
-void RGXHWPerfFTraceGPUDeInit(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR RGXHWPerfFTraceGPUInitSupport(void);
+void RGXHWPerfFTraceGPUDeInitSupport(void);
+
+PVRSRV_ERROR RGXHWPerfFTraceGPUInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
+void RGXHWPerfFTraceGPUDeInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 void RGXHWPerfFTraceGPUEnqueueEvent(PVRSRV_RGXDEV_INFO *psDevInfo,
 		IMG_UINT32 ui32ExternalJobRef, IMG_UINT32 ui32InternalJobRef,
 		RGX_HWPERF_KICK_TYPE eKickType);
 
-PVRSRV_ERROR RGXHWPerfFTraceGPUEventsEnabledSet(IMG_BOOL bNewValue);
+PVRSRV_ERROR RGXHWPerfFTraceGPUEventsEnabledSet(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_BOOL bNewValue);
 
 void RGXHWPerfFTraceGPUThread(void *pvData);
 

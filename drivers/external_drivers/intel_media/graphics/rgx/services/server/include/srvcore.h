@@ -57,12 +57,12 @@ PVRSRV_ERROR
 CopyFromUserWrapper(CONNECTION_DATA *psConnection,
 					IMG_UINT32 ui32DispatchTableEntry,
 					void *pvDest,
-					void *pvSrc,
+					void __user *pvSrc,
 					IMG_UINT32 ui32Size);
 PVRSRV_ERROR
 CopyToUserWrapper(CONNECTION_DATA *psConnection, 
 				  IMG_UINT32 ui32DispatchTableEntry,
-				  void *pvDest,
+				  void __user *pvDest,
 				  void *pvSrc,
 				  IMG_UINT32 ui32Size);
 
@@ -119,6 +119,9 @@ _SetDispatchTableEntry(IMG_UINT32 ui32BridgeGroup,
 					   POS_LOCK hBridgeLock,
 					   const IMG_CHAR* pszBridgeLockName,
 					   IMG_BOOL bUseLock );
+void
+UnsetDispatchTableEntry(IMG_UINT32 ui32BridgeGroup,
+					   	IMG_UINT32 ui32Index);
 
 
 /* PRQA S 0884,3410 2*/ /* macro relies on the lack of brackets */
@@ -137,6 +140,9 @@ typedef struct _PVRSRV_BRIDGE_GLOBAL_STATS
 	IMG_UINT32 ui32TotalCopyFromUserBytes;
 	IMG_UINT32 ui32TotalCopyToUserBytes;
 } PVRSRV_BRIDGE_GLOBAL_STATS;
+
+void BridgeGlobalStatsLock(void);
+void BridgeGlobalStatsUnlock(void);
 
 /* OS specific code may want to report the stats held here and within the
  * BRIDGE_DISPATCH_TABLE_ENTRYs (E.g. on Linux we report these via a
@@ -167,12 +173,6 @@ PVRSRV_ERROR
 PVRSRVDisconnectKM(void);
 
 PVRSRV_ERROR
-PVRSRVInitSrvDisconnectKM(CONNECTION_DATA *psConnection,
-                          PVRSRV_DEVICE_NODE *psDeviceNode,
-                          IMG_BOOL bInitSuccesful,
-                          IMG_UINT32 ui32ClientBuildOptions);
-
-PVRSRV_ERROR
 PVRSRVAcquireGlobalEventObjectKM(IMG_HANDLE *phGlobalEventObject);
 
 PVRSRV_ERROR
@@ -200,6 +200,11 @@ PVRSRV_ERROR PVRSRVAlignmentCheckKM(CONNECTION_DATA *psConnection,
 PVRSRV_ERROR PVRSRVGetDeviceStatusKM(CONNECTION_DATA *psConnection,
                                      PVRSRV_DEVICE_NODE *psDeviceNode,
                                      IMG_UINT32 *pui32DeviceStatus);
+
+PVRSRV_ERROR PVRSRVFindProcessMemStatsKM(IMG_PID pid,
+                                         IMG_UINT32 ui32ArrSize,
+                                         IMG_BOOL bAllProcessStats,
+                                         IMG_UINT32 *ui32MemoryStats);
 
 #endif /* __BRIDGED_PVR_BRIDGE_H__ */
 

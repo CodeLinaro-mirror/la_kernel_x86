@@ -72,11 +72,9 @@ typedef struct _RGX_SERVER_COMPUTE_CONTEXT_ RGX_SERVER_COMPUTE_CONTEXT;
 
  @Return   PVRSRV_ERROR
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXCreateComputeContextKM(CONNECTION_DATA			*psConnection,
 											 PVRSRV_DEVICE_NODE			*psDeviceNode,
 											 IMG_UINT32					ui32Priority,
-											 IMG_DEV_VIRTADDR			sMCUFenceAddr,
 											 IMG_UINT32					ui32FrameworkRegisterSize,
 											 IMG_PBYTE					pbyFrameworkRegisters,
 											 IMG_HANDLE					hMemCtxPrivData,
@@ -94,7 +92,6 @@ PVRSRV_ERROR PVRSRVRGXCreateComputeContextKM(CONNECTION_DATA			*psConnection,
 
  @Return   PVRSRV_ERROR
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXDestroyComputeContextKM(RGX_SERVER_COMPUTE_CONTEXT *psComputeContext);
 
 
@@ -111,28 +108,28 @@ PVRSRV_ERROR PVRSRVRGXDestroyComputeContextKM(RGX_SERVER_COMPUTE_CONTEXT *psComp
 
  @Return   PVRSRV_ERROR
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXKickCDMKM(RGX_SERVER_COMPUTE_CONTEXT	*psComputeContext,
 								IMG_UINT32					ui32ClientCacheOpSeqNum,
 								IMG_UINT32					ui32ClientFenceCount,
-								SYNC_PRIMITIVE_BLOCK			**pauiClientFenceUFOSyncPrimBlock,
+								SYNC_PRIMITIVE_BLOCK		**pauiClientFenceUFOSyncPrimBlock,
 								IMG_UINT32					*paui32ClientFenceSyncOffset,
 								IMG_UINT32					*paui32ClientFenceValue,
 								IMG_UINT32					ui32ClientUpdateCount,
-								SYNC_PRIMITIVE_BLOCK			**pauiClientUpdateUFOSyncPrimBlock,
+								SYNC_PRIMITIVE_BLOCK		**pauiClientUpdateUFOSyncPrimBlock,
 								IMG_UINT32					*paui32ClientUpdateSyncOffset,
 								IMG_UINT32					*paui32ClientUpdateValue,
 								IMG_UINT32					ui32ServerSyncPrims,
 								IMG_UINT32					*paui32ServerSyncFlags,
 								SERVER_SYNC_PRIMITIVE		**pasServerSyncs,
-								IMG_INT32					i32CheckFenceFd,
-								IMG_INT32					i32UpdateTimelineFd,
-								IMG_INT32					*pi32UpdateFenceFd,
+								PVRSRV_FENCE				iCheckFence,
+								PVRSRV_TIMELINE				iUpdateTimeline,
+								PVRSRV_FENCE				*piUpdateFence,
 								IMG_CHAR					pcszUpdateFenceName[32],
 								IMG_UINT32					ui32CmdSize,
 								IMG_PBYTE					pui8DMCmd,
 								IMG_UINT32					ui32PDumpFlags,
-								IMG_UINT32					ui32ExtJobRef);
+								IMG_UINT32					ui32ExtJobRef,
+								IMG_DEV_VIRTADDR			sRobustnessResetReason);
 
 /*!
 *******************************************************************************
@@ -145,7 +142,6 @@ PVRSRV_ERROR PVRSRVRGXKickCDMKM(RGX_SERVER_COMPUTE_CONTEXT	*psComputeContext,
 
  @Return   PVRSRV_ERROR
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXFlushComputeDataKM(RGX_SERVER_COMPUTE_CONTEXT *psComputeContext);
 
 /*!
@@ -160,7 +156,6 @@ PVRSRV_ERROR PVRSRVRGXFlushComputeDataKM(RGX_SERVER_COMPUTE_CONTEXT *psComputeCo
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXNotifyComputeWriteOffsetUpdateKM(RGX_SERVER_COMPUTE_CONTEXT *psComputeContext);
 
 PVRSRV_ERROR PVRSRVRGXSetComputeContextPriorityKM(CONNECTION_DATA *psConnection,

@@ -44,7 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "physheap.h"
 #include "rgxdevice.h"
 #include "pvrsrv_device.h"
-#include "rgxfwutils_vz.h"
+#include "rgxfwutils.h"
 
 #include "dma_support.h"
 #include "vz_support.h"
@@ -63,21 +63,21 @@ SysVzCreateDmaPhysHeap(PHYS_HEAP_CONFIG *psPhysHeapConfig)
 	PHYS_HEAP_REGION *psPhysHeapRegion;
 
 	psPhysHeapRegion = &psPhysHeapConfig->pasRegions[0];
-	PVR_ASSERT(psPhysHeapRegion->hPrivData != NULL);
+	PVR_LOGR_IF_FALSE((NULL != psPhysHeapRegion->hPrivData), "DMA physheap already created", PVRSRV_ERROR_INVALID_PARAMS);
 
 	psDmaAlloc = (DMA_ALLOC*)psPhysHeapRegion->hPrivData;
 	psDmaAlloc->ui64Size = psPhysHeapRegion->uiSize;
 
 	eError = SysDmaAllocMem(psDmaAlloc);
-	if (eError == PVRSRV_OK)
+	if (eError != PVRSRV_OK)
+	{
+		psPhysHeapConfig->eType = PHYS_HEAP_TYPE_UMA;
+	}
+	else
 	{
 		psPhysHeapRegion->sStartAddr.uiAddr = psDmaAlloc->sBusAddr.uiAddr;
 		psPhysHeapRegion->sCardBase.uiAddr = psDmaAlloc->sBusAddr.uiAddr;
 		psPhysHeapConfig->eType = PHYS_HEAP_TYPE_DMA;
-	}
-	else
-	{
-		psPhysHeapConfig->eType = PHYS_HEAP_TYPE_UMA;
 	}
 
 	return eError;
@@ -94,9 +94,9 @@ SysVzDestroyDmaPhysHeap(PHYS_HEAP_CONFIG *psPhysHeapConfig)
 
 	if (psDmaAlloc != NULL)
 	{
-		PVR_ASSERT(psPhysHeapRegion->sStartAddr.uiAddr);
-		PVR_ASSERT(psPhysHeapRegion->sCardBase.uiAddr);	
-		PVR_ASSERT(psPhysHeapRegion->uiSize);
+		PVR_LOG_IF_FALSE((0 != psPhysHeapRegion->sStartAddr.uiAddr), "Invalid DMA physheap start address");
+		PVR_LOG_IF_FALSE((0 != psPhysHeapRegion->sCardBase.uiAddr), "Invalid DMA physheap card address");
+		PVR_LOG_IF_FALSE((0 != psPhysHeapRegion->uiSize), "Invalid DMA physheap size");
 
 		SysDmaFreeMem(psDmaAlloc);
 
@@ -119,35 +119,22 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 
 	/* Lookup GPU/FW physical heap config, allocate primary region */
 	psPhysHeapConfig = SysVzGetPhysHeapConfig(psDevConfig, ePhysHeap);
-	PVR_ASSERT (psPhysHeapConfig != NULL);
+	PVR_LOGR_IF_FALSE((NULL != psPhysHeapConfig), "Invalid physheap config", PVRSRV_ERROR_INVALID_PARAMS);
 
 	if (psPhysHeapConfig->pasRegions == NULL)
 	{
 		psPhysHeapConfig->pasRegions = OSAllocZMem(sizeof(PHYS_HEAP_REGION));
-		if (psPhysHeapConfig->pasRegions == NULL)
-		{
-			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-			PVR_ASSERT(0);
-			goto e0;
-		}
+		PVR_LOGG_IF_NOMEM(psPhysHeapConfig->pasRegions, "OSAllocZMem", eError, e0);
 
-		psPhysHeapConfig->pasRegions[0].bDynAlloc = IMG_TRUE;
+		PVR_ASSERT(! psPhysHeapConfig->bDynAlloc);
+		psPhysHeapConfig->bDynAlloc = IMG_TRUE;
 		psPhysHeapConfig->ui32NumOfRegions++;
-	}
-	else
-	{
-		psPhysHeapConfig->pasRegions[0].bDynAlloc = IMG_FALSE;
 	}
 
 	if (psPhysHeapConfig->pasRegions[0].hPrivData == NULL)
 	{
 		DMA_ALLOC *psDmaAlloc = OSAllocZMem(sizeof(DMA_ALLOC));
-		if (psDmaAlloc == NULL)
-		{
-			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-			PVR_ASSERT(0);
-			goto e0;
-		}
+		PVR_LOGG_IF_NOMEM(psDmaAlloc, "OSAllocZMem", eError, e0);
 
 		psDmaAlloc->pvOSDevice = psDevConfig->pvOSDevice;
 		psPhysHeapConfig->pasRegions[0].hPrivData = psDmaAlloc;
@@ -159,7 +146,7 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 									  PHYS_HEAP_TYPE_UMA,
 								 	  &sHeapAddr,
 								 	  &ui64HeapSize);
-	PVR_ASSERT(eError == PVRSRV_OK);
+	PVR_LOGG_IF_ERROR(eError, "SysVzGetPhysHeapAddrSize", e0);
 
 	/* Initialise physical heap and region state */
 	psPhysHeapRegion = &psPhysHeapConfig->pasRegions[0];
@@ -180,7 +167,7 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 	eError = SysVzGetPhysHeapOrigin(psDevConfig,
 									ePhysHeap,
 									&eHeapOrigin);
-	PVR_ASSERT(eError == PVRSRV_OK);
+	PVR_LOGG_IF_ERROR(eError, "SysVzGetPhysHeapOrigin", e0);
 
 	if (psPhysHeapRegion->sStartAddr.uiAddr == 0)
 	{
@@ -189,21 +176,22 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 			if (eHeapOrigin == PVRSRV_DEVICE_PHYS_HEAP_ORIGIN_HOST)
 			{
 				/* Scale DMA size by the number of OSIDs */
+				psPhysHeapRegion->uiSize += RGX_FIRMWARE_CONFIG_HEAP_SIZE;
 				psPhysHeapRegion->uiSize *= RGXFW_NUM_OS;
 			}
 
 			eError = SysVzCreateDmaPhysHeap(psPhysHeapConfig);
 			if (eError != PVRSRV_OK)
 			{
-				eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-				PVR_ASSERT(0);
-				goto e0;
+				PVR_LOGG_IF_ERROR(eError, "SysVzCreateDmaPhysHeap", e0);
 			}
 
 			/* Verify the validity of DMA physheap region */
-			PVR_ASSERT(psPhysHeapRegion->sStartAddr.uiAddr);
-			PVR_ASSERT(psPhysHeapRegion->sCardBase.uiAddr);
-			PVR_ASSERT(psPhysHeapRegion->uiSize);
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->sStartAddr.uiAddr), "Invalid DMA physheap start address", e0);
+			PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->sCardBase.uiAddr), "Invalid DMA physheap card address", e0);
+			PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->uiSize), "Invalid DMA physheap size", e0);
+			eError = PVRSRV_OK;
 
 			/* Services managed DMA physheap setup complete */
 			psPhysHeapConfig->eType = PHYS_HEAP_TYPE_DMA;
@@ -212,14 +200,14 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 			eError = SysVzRegisterPhysHeap(psDevConfig, ePhysHeap);
 			if (eError != PVRSRV_OK)
 			{
-				PVR_ASSERT(0);
-				goto e0;
+				PVR_LOGG_IF_ERROR(eError, "SysVzRegisterPhysHeap", e0);
 			}
 
 			if (eHeapOrigin == PVRSRV_DEVICE_PHYS_HEAP_ORIGIN_HOST)
 			{
 				/* Restore original physheap size */
 				psPhysHeapRegion->uiSize /= RGXFW_NUM_OS;
+				psPhysHeapRegion->uiSize -= RGX_FIRMWARE_CONFIG_HEAP_SIZE;
 			}
 		}
 		else
@@ -230,12 +218,13 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 				psPhysHeapConfig->pasRegions[0].hPrivData = NULL;
 			}
 
-			if (psPhysHeapConfig->pasRegions[0].bDynAlloc)
+			if (psPhysHeapConfig->bDynAlloc)
 			{
 				OSFreeMem(psPhysHeapConfig->pasRegions);
 				psPhysHeapConfig->pasRegions = NULL;
 				psPhysHeapConfig->ui32NumOfRegions--;
-				PVR_ASSERT(psPhysHeapConfig->ui32NumOfRegions == 0);
+				psPhysHeapConfig->bDynAlloc = IMG_FALSE;
+				PVR_LOGG_IF_FALSE((psPhysHeapConfig->ui32NumOfRegions == 0), "Invalid refcount", e0);
 			}
 
 			/* Kernel managed UMA physheap setup complete */
@@ -244,24 +233,32 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 	}
 	else
 	{
-		/* Verify the validity of carve-out physical heap region */
-		PVR_ASSERT(psPhysHeapConfig->pasRegions[0].hPrivData != NULL);
-		PVR_ASSERT(psPhysHeapConfig->pasRegions != NULL);
-		PVR_ASSERT(psPhysHeapRegion->uiSize);
+		/* Verify the validity of the UMA carve-out physheap region */
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->sStartAddr.uiAddr), "Invalid UMA carve-out physheap start address", e0);
+		PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->sCardBase.uiAddr), "Invalid UMA carve-out physheap card address", e0);
+		PVR_LOGG_IF_FALSE((0 != psPhysHeapRegion->uiSize), "Invalid UMA carve-out physheap size", e0);
+		eError = PVRSRV_OK;
+
+		if (psPhysHeapConfig->pasRegions[0].hPrivData)
+		{
+			/* Need regions but don't require the DMA priv. data */
+			OSFreeMem(psPhysHeapConfig->pasRegions[0].hPrivData);
+			psPhysHeapConfig->pasRegions[0].hPrivData = NULL;
+		}
 
 #if defined(CONFIG_L4)
 		{
 			IMG_UINT64 ui64Offset;
 			IMG_UINT64 ui64BaseAddr;
 			IMG_CPU_VIRTADDR pvCpuVAddr;
-			PVR_ASSERT(psPhysHeapRegion->uiSize);
 
 			/* On Fiasco.OC/l4linux, ioremap physheap now (might fail) */
 			gahPhysHeapIoRemap[ePhysHeap] = 
 							OSMapPhysToLin(psPhysHeapRegion->sStartAddr,
 										   psPhysHeapRegion->uiSize,
 										   PVRSRV_MEMALLOCFLAG_CPU_UNCACHED);
-			PVR_ASSERT(gahPhysHeapIoRemap[ePhysHeap] != NULL);
+			PVR_LOGG_IF_FALSE((NULL != gahPhysHeapIoRemap[ePhysHeap]), "OSMapPhysToLin", e0);
 
 			for (ui64Offset = 0;
 				 ui64Offset < psPhysHeapRegion->uiSize;
@@ -279,8 +276,7 @@ SysVzCreatePhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 		}
 #endif
 
-		/* Services managed UMA carve-out physheap 
-		   setup complete */
+		/* Services managed UMA carve-out physheap setup complete */
 		psPhysHeapConfig->eType = PHYS_HEAP_TYPE_UMA;
 	}
 
@@ -297,16 +293,16 @@ e0:
 			psPhysHeapConfig->pasRegions[0].hPrivData = NULL;
 		}
 
-		if (psPhysHeapConfig->pasRegions[0].bDynAlloc)
+		if (psPhysHeapConfig->bDynAlloc)
 		{
 			OSFreeMem(psPhysHeapConfig->pasRegions);
 			psPhysHeapConfig->pasRegions = NULL;
 			psPhysHeapConfig->ui32NumOfRegions--;
-			PVR_ASSERT(psPhysHeapConfig->ui32NumOfRegions == 0);
+			psPhysHeapConfig->bDynAlloc = IMG_FALSE;
+			PVR_LOG_IF_FALSE((psPhysHeapConfig->ui32NumOfRegions == 0), "Invalid refcount");
 		}
 	}
 
-	PVR_ASSERT(0);
 	return  eError;
 }
 
@@ -343,12 +339,13 @@ SysVzDestroyPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 		psPhysHeapConfig->pasRegions[0].hPrivData = NULL;
 	}
 
-	if (psPhysHeapConfig->pasRegions[0].bDynAlloc)
+	if (psPhysHeapConfig->bDynAlloc)
 	{
 		OSFreeMem(psPhysHeapConfig->pasRegions);
 		psPhysHeapConfig->pasRegions = NULL;
 		psPhysHeapConfig->ui32NumOfRegions--;
-		PVR_ASSERT(psPhysHeapConfig->ui32NumOfRegions == 0);
+		psPhysHeapConfig->bDynAlloc = IMG_FALSE;
+		PVR_LOG_IF_FALSE((psPhysHeapConfig->ui32NumOfRegions == 0), "Invalid refcount");
 	}
 }
 

@@ -50,6 +50,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "srvkm.h"
 #include "lock.h"
+
+/* services/include */
+#include "pvr_ricommon.h"
+
 /* services/server/include/ */
 #include "ri_server.h"
 
@@ -59,6 +63,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "dllist.h"
 
 #include "pmr.h"
+
+/* include/device.h */
+#include "device.h"
+
+#if !defined(RI_UNIT_TEST)
+#include "pvrsrv.h"
+#endif
+
 
 #if defined(PVR_RI_DEBUG)
 
@@ -93,48 +105,54 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 typedef IMG_UINT64 _RI_BASE_T;
 
-/*
- *  Length of string used for process name
- */
-#define TASK_COMM_LEN 				16
-/*
- *  Length of string used for process ID
- */
-#define TASK_PID_LEN 				11
-/*
- *  Length of string used for "[{PID}:_{process_name}]"
- */
-#define RI_PROC_TAG_CHAR_LEN 		(1+TASK_PID_LEN+2+TASK_COMM_LEN+1)
 
-/*
- *  Length of string used for address
- */
-#define RI_ADDR_CHAR_LEN			12
-/*
- *  Length of string used for size
- */
-#define RI_SIZE_CHAR_LEN			12
-/*
- *  Length of string used for "{Imported from PID nnnnnnnnnn}"
- */
-#define RI_IMPORT_TAG_CHAR_LEN 		32
-/*
- *  Total length of string returned to debugfs
- *  {0xaddr}_{annotation_text}_{0xsize}_{import_tag}
- */
-#define RI_MAX_DEBUGFS_ENTRY_LEN	(RI_ADDR_CHAR_LEN+1+RI_MAX_TEXT_LEN+1+RI_SIZE_CHAR_LEN+1+RI_IMPORT_TAG_CHAR_LEN+1)
-/*
- *  Total length of string output to _RIOutput()
- *  for MEMDESC RI sub-list entries
- *  {0xaddr}_{annotation_text}_[{PID}:_{process_name}]_{0xsize}_bytes_{import_tag}
- */
-#define RI_MAX_MEMDESC_RI_ENTRY_LEN	(RI_ADDR_CHAR_LEN+1+RI_MAX_TEXT_LEN+1+RI_PROC_TAG_CHAR_LEN+1+RI_SIZE_CHAR_LEN+7+RI_IMPORT_TAG_CHAR_LEN+1)
-/*
- *  Total length of string output to _RIOutput()
- *  for PMR RI list entries
- *  {annotation_text}_{pmr_handle}_suballocs:{num_suballocs}_{0xsize}
- */
-#define RI_MAX_PMR_RI_ENTRY_LEN		(RI_MAX_TEXT_LEN+1+RI_ADDR_CHAR_LEN+11+10+1+RI_SIZE_CHAR_LEN)
+
+
+/* No +1 in SIZE macros since sizeof includes \0 byte in size */
+
+#define RI_PROC_BUF_SIZE    16
+
+#define RI_MEMDESC_SUM_FRMT     "PID %d %s MEMDESCs Alloc'd:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K) + "\
+                                                  "Imported:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K) = "\
+                                                     "Total:0x%010" IMG_UINT64_FMTSPECx " (%" IMG_UINT64_FMTSPEC "K)\n"
+#define RI_MEMDESC_SUM_BUF_SIZE (sizeof(RI_MEMDESC_SUM_FRMT)+5+RI_PROC_BUF_SIZE+60)
+
+
+#define RI_PMR_SUM_FRMT     "PID %d %s PMRs Alloc'd:0x%010" IMG_UINT64_FMTSPECx ", %" IMG_UINT64_FMTSPEC "K  "\
+                                        "[Physical: 0x%010" IMG_UINT64_FMTSPECx ", %" IMG_UINT64_FMTSPEC "K]\n"
+#define RI_PMR_SUM_BUF_SIZE (sizeof(RI_PMR_SUM_FRMT)+(40))
+
+
+#define RI_PMR_ENTRY_FRMT      "%%s<%%p>\t%%-%ds\t0x%%010" IMG_UINT64_FMTSPECx "\t[0x%%010" IMG_UINT64_FMTSPECx "]\t%%c"
+#define RI_PMR_ENTRY_BUF_SIZE  (sizeof(RI_PMR_ENTRY_FRMT)+(3+16+PVR_ANNOTATION_MAX_LEN+10+10))
+#define RI_PMR_ENTRY_FRMT_SIZE (sizeof(RI_PMR_ENTRY_FRMT))
+
+/* Use %5d rather than %d so the output aligns in server/kernel.log, debugFS sees extra spaces */
+#define RI_MEMDESC_ENTRY_PROC_FRMT        "[%5d:%s]"
+#define RI_MEMDESC_ENTRY_PROC_BUF_SIZE    (sizeof(RI_MEMDESC_ENTRY_PROC_FRMT)+5+16)
+
+#define RI_SYS_ALLOC_IMPORT_FRMT      "{Import from PID %d}"
+#define RI_SYS_ALLOC_IMPORT_FRMT_SIZE (sizeof(RI_SYS_ALLOC_IMPORT_FRMT)+5)
+static IMG_CHAR g_szSysAllocImport[RI_SYS_ALLOC_IMPORT_FRMT_SIZE];
+
+#define RI_MEMDESC_ENTRY_IMPORT_FRMT     "{Import from PID %d}"
+#define RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE (sizeof(RI_MEMDESC_ENTRY_IMPORT_FRMT)+5)
+
+#define RI_MEMDESC_ENTRY_UNPINNED_FRMT     "{Unpinned}"
+#define RI_MEMDESC_ENTRY_UNPINNED_BUF_SIZE (sizeof(RI_MEMDESC_ENTRY_UNPINNED_FRMT))
+
+#define RI_MEMDESC_ENTRY_FRMT      "%%s0x%%010" IMG_UINT64_FMTSPECx "\t%%-%ds %%s\t0x%%010" IMG_UINT64_FMTSPECx "\t<%%p> %%s%%s%%s%%c"
+#define RI_MEMDESC_ENTRY_BUF_SIZE  (sizeof(RI_MEMDESC_ENTRY_FRMT)+(3+10+PVR_ANNOTATION_MAX_LEN+RI_MEMDESC_ENTRY_PROC_BUF_SIZE+16+\
+                                               RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE+RI_SYS_ALLOC_IMPORT_FRMT_SIZE+RI_MEMDESC_ENTRY_UNPINNED_BUF_SIZE))
+#define RI_MEMDESC_ENTRY_FRMT_SIZE (sizeof(RI_MEMDESC_ENTRY_FRMT))
+
+
+#define RI_FRMT_SIZE_MAX (MAX(RI_MEMDESC_ENTRY_BUF_SIZE,\
+                              MAX(RI_PMR_ENTRY_BUF_SIZE,\
+                                  MAX(RI_MEMDESC_SUM_BUF_SIZE,\
+                                      RI_PMR_SUM_BUF_SIZE))))
+
+
 
 
 /*
@@ -147,15 +165,13 @@ struct _RI_SUBLIST_ENTRY_
 	struct _RI_LIST_ENTRY_	*psRI;
 	IMG_UINT32 				valid;
 	IMG_BOOL				bIsImport;
-	IMG_BOOL				bIsExportable;
-	IMG_BOOL				bIsPinned;
+	IMG_BOOL				bIsSuballoc;
 	IMG_PID					pid;
-	IMG_CHAR				ai8ProcName[TASK_COMM_LEN];
+	IMG_CHAR				ai8ProcName[RI_PROC_BUF_SIZE];
 	IMG_DEV_VIRTADDR 		sVAddr;
 	IMG_UINT64				ui64Offset;
 	IMG_UINT64				ui64Size;
-	IMG_UINT64				ui64BackedSize;
-	IMG_CHAR				ai8TextB[RI_MAX_TEXT_LEN+1];
+	IMG_CHAR				ai8TextB[DEVMEM_ANNOTATION_MAX_LEN+1];
 	DLLIST_NODE				sProcListNode;
 };
 
@@ -167,26 +183,33 @@ struct _RI_SUBLIST_ENTRY_
 struct _RI_LIST_ENTRY_
 {
 	DLLIST_NODE				sListNode;
+	DLLIST_NODE				sSysAllocListNode;
 	DLLIST_NODE				sSubListFirst;
 	IMG_UINT32 				valid;
-	PMR						*hPMR;
-	IMG_UINT64 				ui64LogicalSize;
+	PMR						*psPMR;
 	IMG_PID					pid;
-	IMG_CHAR				ai8ProcName[TASK_COMM_LEN];
-	IMG_CHAR				ai8TextA[RI_MAX_TEXT_LEN+1];
+	IMG_CHAR				ai8ProcName[RI_PROC_BUF_SIZE];
 	IMG_UINT16 				ui16SubListCount;
 	IMG_UINT16 				ui16MaxSubListCount;
+	IMG_UINT32				ui32RIPMRFlags; /* Flags used to indicate the type of allocation */
+	IMG_UINT32				ui32Flags; /* Flags used to indicate if PMR appears in ri debugfs output */
 };
 
 typedef struct _RI_LIST_ENTRY_ RI_LIST_ENTRY;
 typedef struct _RI_SUBLIST_ENTRY_ RI_SUBLIST_ENTRY;
 
-static IMG_UINT16 	g_ui16RICount = 0;
-static HASH_TABLE 	*g_pRIHashTable = NULL;
-static IMG_UINT16 	g_ui16ProcCount = 0;
-static HASH_TABLE 	*g_pProcHashTable = NULL;
+static IMG_UINT16 	g_ui16RICount;
+static HASH_TABLE 	*g_pRIHashTable;
+static IMG_UINT16 	g_ui16ProcCount;
+static HASH_TABLE 	*g_pProcHashTable;
 
 static POS_LOCK		g_hRILock;
+
+/* linked list of PMR allocations made against the PVR_SYS_ALLOC_PID and
+   lock to prevent concurrent access to it */
+static POS_LOCK		g_hSysAllocPidListLock;
+static DLLIST_NODE	g_sSysAllocPidListHead;
+
 /*
  * Flag used to indicate if RILock should be destroyed when final PMR entry
  * is deleted, i.e. if RIDeInitKM() has already been called before that point
@@ -203,16 +226,23 @@ static DLLIST_NODE	sListFirst;
 
 /* Function used to produce string containing info for MEMDESC RI entries (used for both debugfs and kernel log output) */
 static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry, IMG_BOOL bDebugFs, IMG_UINT16 ui16MaxStrLen, IMG_CHAR *pszEntryString);
+/* Function used to produce string containing info for PMR RI entries (used for both debugfs and kernel log output) */
+static void _GeneratePMREntryString(RI_LIST_ENTRY *psRIEntry, IMG_BOOL bDebugFs, IMG_UINT16 ui16MaxStrLen, IMG_CHAR *pszEntryString);
 
 static PVRSRV_ERROR _DumpAllEntries (uintptr_t k, uintptr_t v);
 static PVRSRV_ERROR _DeleteAllEntries (uintptr_t k, uintptr_t v);
 static PVRSRV_ERROR _DeleteAllProcEntries (uintptr_t k, uintptr_t v);
-static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid);
+static PVRSRV_ERROR _DumpList(PMR *psPMR, IMG_PID pid);
 #define _RIOutput(x) PVR_LOG(x)
 
-IMG_INTERNAL IMG_UINT32
+#define RI_FLAG_PARSED_BY_DEBUGFS			0x1
+#define RI_FLAG_PMR_PHYS_COUNTED_BY_DEBUGFS	0x2
+#define RI_FLAG_SYSALLOC_PMR				0x4
+
+static IMG_UINT32
 _ProcHashFunc (size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen);
-IMG_INTERNAL IMG_UINT32
+
+static IMG_UINT32
 _ProcHashFunc (size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen)
 {
 	IMG_UINT32 *p = (IMG_UINT32 *)pKey;
@@ -240,9 +270,11 @@ _ProcHashFunc (size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen)
 
 	return uHashKey;
 }
-IMG_INTERNAL IMG_BOOL
+
+static IMG_BOOL
 _ProcHashComp (size_t uKeySize, void *pKey1, void *pKey2);
-IMG_INTERNAL IMG_BOOL
+
+static IMG_BOOL
 _ProcHashComp (size_t uKeySize, void *pKey1, void *pKey2)
 {
 	IMG_UINT32 *p1 = (IMG_UINT32 *)pKey1;
@@ -273,16 +305,38 @@ static void _RIUnlock(void)
 #endif
 }
 
+/* This value maintains a count of the number of PMRs attributed to the
+ * PVR_SYS_ALLOC_PID. Access to this value is protected by g_hRILock,
+ * so it does not need to be an ATOMIC_T.
+ */
+static IMG_UINT32 g_ui32SysAllocPMRCount;
+
+
 PVRSRV_ERROR RIInitKM(void)
 {
 	PVRSRV_ERROR eError = PVRSRV_OK;
+	IMG_INT iCharsWritten;
 
 	bRIDeInitDeferred = IMG_FALSE;
+
+	iCharsWritten = OSSNPrintf(g_szSysAllocImport,
+	            RI_SYS_ALLOC_IMPORT_FRMT_SIZE+1,
+	            RI_SYS_ALLOC_IMPORT_FRMT,
+	            PVR_SYS_ALLOC_PID);
+	PVR_LOG_IF_FALSE((iCharsWritten>0 && iCharsWritten<(IMG_INT32)RI_SYS_ALLOC_IMPORT_FRMT_SIZE), \
+			"OSSNPrintf failed to initialise g_szSysAllocImport");
+
+	eError = OSLockCreate(&g_hSysAllocPidListLock, LOCK_TYPE_PASSIVE);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: OSLockCreate (g_hSysAllocPidListLock) failed (returned %d)",__func__,eError));
+	}
+	dllist_init(&(g_sSysAllocPidListHead));
 #if (USE_RI_LOCK == 1)
 	eError = OSLockCreate(&g_hRILock, LOCK_TYPE_PASSIVE);
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: OSLockCreate failed (returned %d)",__func__,eError));
+		PVR_DPF((PVR_DBG_ERROR, "%s: OSLockCreate (g_hRILock) failed (returned %d)",__func__,eError));
 	}
 #endif
 	return eError;
@@ -298,6 +352,7 @@ void RIDeInitKM(void)
 	else
 	{
 		OSLockDestroy(g_hRILock);
+		OSLockDestroy(g_hSysAllocPidListLock);
 	}
 #endif
 }
@@ -305,30 +360,65 @@ void RIDeInitKM(void)
 /*!
 ******************************************************************************
 
- @Function	RIWritePMREntryKM
+ @Function	RILockAcquireKM
+
+ @Description
+            Acquires the RI Lock (which protects the integrity of the RI
+            linked lists). Caller will be suspended until lock is acquired.
+
+ @Return	None
+
+******************************************************************************/
+void RILockAcquireKM(void)
+{
+	_RILock();
+}
+
+/*!
+******************************************************************************
+
+ @Function	RILockReleaseKM
+
+ @Description
+            Releases the RI Lock (which protects the integrity of the RI
+            linked lists).
+
+ @Return	None
+
+******************************************************************************/
+void RILockReleaseKM(void)
+{
+	_RIUnlock();
+}
+
+/*!
+******************************************************************************
+
+ @Function	RIWritePMREntryWithOwnerKM
 
  @Description
             Writes a new Resource Information list entry.
             The new entry will be inserted at the head of the list of
             PMR RI entries and assigned the values provided.
 
- @input     hPMR - Reference (handle) to the PMR to which this reference relates
- @input     ai8TextA - String describing this PMR (may be null)
- @input     uiLogicalSize - Size of PMR
+ @input     psPMR - Reference (handle) to the PMR to which this reference relates
+
+ @input     ui32Owner - PID of the process which owns the allocation. This
+                        may not be the current process (e.g. a request to
+                        grow a buffer may happen in the context of a kernel
+                        thread, or we may import further resource for a
+                        suballocation made from the FW heap which can then
+                        also be utilized by other processes)
 
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
-					   	       IMG_UINT32 ui32TextASize,
-					   	       const IMG_CHAR *psz8TextA,
-					   	       IMG_UINT64 ui64LogicalSize)
+PVRSRV_ERROR RIWritePMREntryWithOwnerKM(PMR *psPMR,
+                                        IMG_PID ui32Owner)
 {
 	uintptr_t hashData = 0;
-	PMR			*pPMRHashKey = hPMR;
-	IMG_PCHAR pszText = (IMG_PCHAR)psz8TextA;
+	PMR			*pPMRHashKey = psPMR;
 	RI_LIST_ENTRY *psRIEntry = NULL;
-
 
 	/* if Hash table has not been created, create it now */
 	if (!g_pRIHashTable)
@@ -341,7 +431,7 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
 		/* Error - no memory to allocate for Hash table(s) */
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
-	if (!hPMR)
+	if (!psPMR)
 	{
 		/* NULL handle provided */
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -351,7 +441,7 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
 		/* Acquire RI Lock */
 		_RILock();
 
-		/* look-up hPMR in Hash Table */
+		/* look-up psPMR in Hash Table */
 		hashData = HASH_Retrieve_Extended (g_pRIHashTable, (void *)&pPMRHashKey);
 		psRIEntry = (RI_LIST_ENTRY *)hashData;
 		if (!psRIEntry)
@@ -359,7 +449,7 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
 			/*
 			 * If failed to find a matching existing entry, create a new one
 			 */
-			psRIEntry = (RI_LIST_ENTRY *)OSAllocZMem(sizeof(RI_LIST_ENTRY));
+			psRIEntry = (RI_LIST_ENTRY *)OSAllocZMemNoStats(sizeof(RI_LIST_ENTRY));
 			if (!psRIEntry)
 			{
 				/* Release RI Lock */
@@ -369,6 +459,9 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
 			}
 			else
 			{
+				IMG_UINT32 ui32PMRFlags = PMR_Flags(psPMR);
+				PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)PMR_DeviceNode(psPMR);
+
 				/*
 				 * Add new RI Entry
 				 */
@@ -379,46 +472,84 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
 				}
 				g_ui16RICount++;
 
+				dllist_init (&(psRIEntry->sSysAllocListNode));
 				dllist_init (&(psRIEntry->sSubListFirst));
 				psRIEntry->ui16SubListCount = 0;
 				psRIEntry->ui16MaxSubListCount = 0;
 				psRIEntry->valid = _VALID_RI_LIST_ENTRY;
-				psRIEntry->pid = OSGetCurrentClientProcessIDKM();
-				OSSNPrintf((IMG_CHAR *)psRIEntry->ai8ProcName, TASK_COMM_LEN, "%s", OSGetCurrentClientProcessNameKM());
-				/* Add PMR entry to linked-list of PMR entries */
+
+				/* Check if this PMR should be accounted for under the
+				 * PVR_SYS_ALLOC_PID debugFS entry. This should happen if
+				 * we are in the driver init phase, the flags indicate
+				 * this is a FW local allocation (made from FW heap)
+				 * or the owner PID is PVR_SYS_ALLOC_PID.
+				 * Also record host dev node allocs on the system PID.
+				 */
+				if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_INIT ||
+				    PVRSRV_CHECK_FW_LOCAL(ui32PMRFlags) ||
+				    ui32Owner == PVR_SYS_ALLOC_PID ||
+				    psDeviceNode == PVRSRVGetPVRSRVData()->psHostMemDeviceNode)
+				{
+					psRIEntry->ui32RIPMRFlags = RI_FLAG_SYSALLOC_PMR;
+					OSSNPrintf(psRIEntry->ai8ProcName,
+							RI_PROC_BUF_SIZE,
+							"SysProc");
+					psRIEntry->pid = PVR_SYS_ALLOC_PID;
+					OSLockAcquire(g_hSysAllocPidListLock);
+					/* Add this psRIEntry to the list of entries for PVR_SYS_ALLOC_PID */
+					dllist_add_to_tail(&g_sSysAllocPidListHead,(PDLLIST_NODE)&(psRIEntry->sSysAllocListNode));
+					OSLockRelease(g_hSysAllocPidListLock);
+					g_ui32SysAllocPMRCount++;
+				}
+				else
+				{
+					psRIEntry->ui32RIPMRFlags = 0;
+					psRIEntry->pid = ui32Owner;
+				}
+
+				OSSNPrintf(psRIEntry->ai8ProcName,
+						RI_PROC_BUF_SIZE,
+						"%s",
+						OSGetCurrentClientProcessNameKM());
+				/* Add PMR entry to linked-list of all PMR entries */
 				dllist_init (&(psRIEntry->sListNode));
 				dllist_add_to_tail(&sListFirst,(PDLLIST_NODE)&(psRIEntry->sListNode));
 			}
 
-			if (pszText)
-			{
-				if (ui32TextASize > RI_MAX_TEXT_LEN)
-					ui32TextASize = RI_MAX_TEXT_LEN;
-
-				/* copy ai8TextA field data */
-				OSSNPrintf((IMG_CHAR *)psRIEntry->ai8TextA, ui32TextASize+1, "%s", pszText);
-
-				/* ensure string is NUL-terminated */
-				psRIEntry->ai8TextA[ui32TextASize] = '\0';
-			}
-			else
-			{
-				/* ensure string is NUL-terminated */
-				psRIEntry->ai8TextA[0] = '\0';
-			}
-			psRIEntry->hPMR = hPMR;
-			psRIEntry->ui64LogicalSize = ui64LogicalSize;
+			psRIEntry->psPMR = psPMR;
+			psRIEntry->ui32Flags = 0;
 
 			/* Create index entry in Hash Table */
 			HASH_Insert_Extended (g_pRIHashTable, (void *)&pPMRHashKey, (uintptr_t)psRIEntry);
 
 			/* Store phRIHandle in PMR structure, so it can delete the associated RI entry when it destroys the PMR */
-			PMRStoreRIHandle(hPMR, psRIEntry);
+			PMRStoreRIHandle(psPMR, psRIEntry);
 		}
 		/* Release RI Lock */
 		_RIUnlock();
 	}
 	return PVRSRV_OK;
+}
+
+/*!
+******************************************************************************
+
+ @Function	RIWritePMREntryKM
+
+ @Description
+            Writes a new Resource Information list entry.
+            The new entry will be inserted at the head of the list of
+            PMR RI entries and assigned the values provided.
+
+ @input     psPMR - Reference (handle) to the PMR to which this reference relates
+
+ @Return	PVRSRV_ERROR
+
+******************************************************************************/
+PVRSRV_ERROR RIWritePMREntryKM(PMR *psPMR)
+{
+	return RIWritePMREntryWithOwnerKM(psPMR,
+	                                  OSGetCurrentClientProcessIDKM());
 }
 
 /*!
@@ -431,42 +562,40 @@ PVRSRV_ERROR RIWritePMREntryKM(PMR *hPMR,
             The new entry will be inserted at the head of the sublist of
             the indicated PMR list entry, and assigned the values provided.
 
- @input     hPMR - Reference (handle) to the PMR to which this MEMDESC RI entry relates
- @input     ai8TextB - String describing this secondary reference (may be null)
+ @input     psPMR - Reference (handle) to the PMR to which this MEMDESC RI entry relates
+ @input     ui32TextBSize - Length of string provided in psz8TextB parameter
+ @input     psz8TextB - String describing this secondary reference (may be null)
  @input     uiOffset - Offset from the start of the PMR at which this allocation begins
  @input     uiSize - Size of this allocation
- @input     ui64BackedSize - How much of uiSize is actually physically backed?
  @input     bIsImport - Flag indicating if this is an allocation or an import
- @input     bIsExportable - Flag indicating if this allocation is exportable
+ @input     bIsSuballoc - Flag indicating if this is a sub-allocation
  @output    phRIHandle - Handle to the created RI entry
 
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
+PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *psPMR,
 					   	   	   	   IMG_UINT32 ui32TextBSize,
 					   	   	   	   const IMG_CHAR *psz8TextB,
 					   	   	   	   IMG_UINT64 ui64Offset,
 					   	   	   	   IMG_UINT64 ui64Size,
-					   	   	   	   IMG_UINT64 ui64BackedSize,
 					   	   	   	   IMG_BOOL bIsImport,
-					   	   	   	   IMG_BOOL bIsExportable,
+					               IMG_BOOL bIsSuballoc,
 					   	   	   	   RI_HANDLE *phRIHandle)
 {
 	uintptr_t hashData = 0;
-	PMR 		*pPMRHashKey = hPMR;
+	PMR 		*pPMRHashKey = psPMR;
 	IMG_PID		pid;
 	IMG_PCHAR pszText = (IMG_PCHAR)psz8TextB;
 	RI_LIST_ENTRY *psRIEntry = NULL;
 	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
-
 
 	/* check Hash tables have been created (meaning at least one PMR has been defined) */
 	if (!g_pRIHashTable || !g_pProcHashTable)
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
-	if (!hPMR || !phRIHandle)
+	if (!psPMR || !phRIHandle)
 	{
 		/* NULL handle provided */
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -478,7 +607,7 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 
 		*phRIHandle = NULL;
 
-		/* look-up hPMR in Hash Table */
+		/* look-up psPMR in Hash Table */
 		hashData = HASH_Retrieve_Extended (g_pRIHashTable, (void *)&pPMRHashKey);
 		psRIEntry = (RI_LIST_ENTRY *)hashData;
 		if (!psRIEntry)
@@ -488,7 +617,7 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 			return PVRSRV_ERROR_INVALID_PARAMS;
 		}
 
-		psRISubEntry = (RI_SUBLIST_ENTRY *)OSAllocZMem(sizeof(RI_SUBLIST_ENTRY));
+		psRISubEntry = (RI_SUBLIST_ENTRY *)OSAllocZMemNoStats(sizeof(RI_SUBLIST_ENTRY));
 		if (!psRISubEntry)
 		{
 			/* Release RI Lock */
@@ -523,10 +652,27 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 			psRISubEntry->valid = _VALID_RI_SUBLIST_ENTRY;
 		}
 
-		psRISubEntry->pid = OSGetCurrentClientProcessIDKM();
+		/* If allocation is made during device or driver initialisation,
+		 * track the MEMDESC entry under PVR_SYS_ALLOC_PID, otherwise use
+		 * the current PID.
+		 * Record host dev node allocations on the system PID.
+		 */
+		{
+			PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE *)PMR_DeviceNode(psRISubEntry->psRI->psPMR);
 
-		if (ui32TextBSize > RI_MAX_TEXT_LEN)
-			ui32TextBSize = RI_MAX_TEXT_LEN;
+			if (psDeviceNode->eDevState == PVRSRV_DEVICE_STATE_INIT ||
+				psDeviceNode == PVRSRVGetPVRSRVData()->psHostMemDeviceNode)
+			{
+				psRISubEntry->pid = psRISubEntry->psRI->pid;
+			}
+			else
+			{
+				psRISubEntry->pid = OSGetCurrentClientProcessIDKM();
+			}
+		}
+
+		if (ui32TextBSize > DEVMEM_ANNOTATION_MAX_LEN)
+			ui32TextBSize = DEVMEM_ANNOTATION_MAX_LEN - 1;
 		/* copy ai8TextB field data */
 		OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8TextB, ui32TextBSize+1, "%s", pszText);
 		/* ensure string is NUL-terminated */
@@ -534,11 +680,9 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 
 		psRISubEntry->ui64Offset = ui64Offset;
 		psRISubEntry->ui64Size = ui64Size;
-		psRISubEntry->ui64BackedSize = ui64BackedSize;
 		psRISubEntry->bIsImport = bIsImport;
-		psRISubEntry->bIsExportable = bIsExportable;
-		psRISubEntry->bIsPinned = IMG_TRUE;
-		OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, TASK_COMM_LEN, "%s", OSGetCurrentClientProcessNameKM());
+		psRISubEntry->bIsSuballoc = bIsSuballoc;
+		OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, RI_PROC_BUF_SIZE, "%s", OSGetCurrentClientProcessNameKM());
 		dllist_init (&(psRISubEntry->sProcListNode));
 
 		/*
@@ -599,7 +743,6 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 
  @input     ai8TextB - String describing this secondary reference (may be null)
  @input     uiSize - Size of this allocation
- @input     ui64BackedSize - How much of uiSize is actually physically backed?
  @input     ui64DevVAddr - Virtual address of this entry
  @output    phRIHandle - Handle to the created RI entry
 
@@ -609,7 +752,6 @@ PVRSRV_ERROR RIWriteMEMDESCEntryKM(PMR *hPMR,
 PVRSRV_ERROR RIWriteProcListEntryKM(IMG_UINT32 ui32TextBSize,
                                     const IMG_CHAR *psz8TextB,
                                     IMG_UINT64 ui64Size,
-                                    IMG_UINT64 ui64BackedSize,
                                     IMG_UINT64 ui64DevVAddr,
                                     RI_HANDLE *phRIHandle)
 {
@@ -635,7 +777,7 @@ PVRSRV_ERROR RIWriteProcListEntryKM(IMG_UINT32 ui32TextBSize,
 
 	*phRIHandle = NULL;
 
-	psRISubEntry = (RI_SUBLIST_ENTRY *)OSAllocZMem(sizeof(RI_SUBLIST_ENTRY));
+	psRISubEntry = (RI_SUBLIST_ENTRY *)OSAllocZMemNoStats(sizeof(RI_SUBLIST_ENTRY));
 	if (!psRISubEntry)
 	{
 		/* Release RI Lock */
@@ -649,8 +791,8 @@ PVRSRV_ERROR RIWriteProcListEntryKM(IMG_UINT32 ui32TextBSize,
 
 	psRISubEntry->pid = OSGetCurrentClientProcessIDKM();
 
-	if (ui32TextBSize > RI_MAX_TEXT_LEN)
-		ui32TextBSize = RI_MAX_TEXT_LEN;
+	if (ui32TextBSize > DEVMEM_ANNOTATION_MAX_LEN)
+		ui32TextBSize = DEVMEM_ANNOTATION_MAX_LEN - 1;
 	/* copy ai8TextB field data */
 	OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8TextB, ui32TextBSize+1, "%s", pszText);
 	/* ensure string is NUL-terminated */
@@ -658,12 +800,10 @@ PVRSRV_ERROR RIWriteProcListEntryKM(IMG_UINT32 ui32TextBSize,
 
 	psRISubEntry->ui64Offset = 0;
 	psRISubEntry->ui64Size = ui64Size;
-	psRISubEntry->ui64BackedSize = ui64BackedSize;
 	psRISubEntry->sVAddr.uiAddr = ui64DevVAddr;
 	psRISubEntry->bIsImport = IMG_FALSE;
-	psRISubEntry->bIsExportable = IMG_FALSE;
-	psRISubEntry->bIsPinned = IMG_TRUE;
-	OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, TASK_COMM_LEN, "%s", OSGetCurrentClientProcessNameKM());
+	psRISubEntry->bIsSuballoc = IMG_FALSE;
+	OSSNPrintf((IMG_CHAR *)psRISubEntry->ai8ProcName, RI_PROC_BUF_SIZE, "%s", OSGetCurrentClientProcessNameKM());
 	dllist_init (&(psRISubEntry->sProcListNode));
 
 	/*
@@ -745,91 +885,6 @@ PVRSRV_ERROR RIUpdateMEMDESCAddrKM(RI_HANDLE hRIHandle,
 /*!
 ******************************************************************************
 
- @Function	RIUpdateMEMDESCPinningKM
-
- @Description
-            Update a Resource Information entry.
-
- @input     hRIHandle - Handle of object whose reference info is to be updated
- @input     bIsPinned - The new pinning state
-
- @Return	PVRSRV_ERROR
-
-******************************************************************************/
-PVRSRV_ERROR RIUpdateMEMDESCPinningKM(RI_HANDLE hRIHandle,
-								   IMG_BOOL bIsPinned)
-{
-	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
-
-	if (!hRIHandle)
-	{
-		/* NULL handle provided */
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-	psRISubEntry = (RI_SUBLIST_ENTRY *)hRIHandle;
-	if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
-	{
-		/* Pointer does not point to valid structure */
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-    /* Acquire RI lock*/
-	_RILock();
-
-	psRISubEntry->bIsPinned = bIsPinned;
-
-	/* Release RI lock */
-	_RIUnlock();
-
-	return PVRSRV_OK;
-}
-
-/*!
-******************************************************************************
-
- @Function	RIUpdateMEMDESCBackingKM
-
- @Description
-            Update a Resource Information entry.
-
- @input     hRIHandle       Handle of object whose reference info is to be updated
- @input     iSizeAdjustment The change of backed physical memory for this
-                            allocation in bytes.
-
- @Return	PVRSRV_ERROR
-
-******************************************************************************/
-PVRSRV_ERROR RIUpdateMEMDESCBackingKM(RI_HANDLE hRIHandle,
-                                      IMG_INT32 iSizeAdjustment)
-{
-	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
-
-	if (!hRIHandle)
-	{
-		/* NULL handle provided */
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-	psRISubEntry = (RI_SUBLIST_ENTRY *)hRIHandle;
-	if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
-	{
-		/* Pointer does not point to valid structure */
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	/* Acquire RI lock*/
-	_RILock();
-
-	psRISubEntry->ui64BackedSize += iSizeAdjustment;
-
-	/* Release RI lock */
-	_RIUnlock();
-
-	return PVRSRV_OK;
-}
-
-/*!
-******************************************************************************
-
  @Function	RIDeletePMREntryKM
 
  @Description
@@ -864,11 +919,11 @@ PVRSRV_ERROR RIDeletePMREntryKM(RI_HANDLE hRIHandle)
 
 		if(psRIEntry->ui16SubListCount == 0)
 		{
-		    /* Acquire RI lock*/
+			/* Acquire RI lock*/
 			_RILock();
 
 			/* Remove the HASH table index entry */
-			pPMRHashKey = psRIEntry->hPMR;
+			pPMRHashKey = psRIEntry->psPMR;
 			HASH_Remove_Extended(g_pRIHashTable, (void *)&pPMRHashKey);
 
 			psRIEntry->valid = _INVALID;
@@ -876,12 +931,15 @@ PVRSRV_ERROR RIDeletePMREntryKM(RI_HANDLE hRIHandle)
 			/* Remove PMR entry from linked-list of PMR entries */
 			dllist_remove_node((PDLLIST_NODE)&(psRIEntry->sListNode));
 
-			/* Now, free the memory used to store the RI entry */
-			OSFreeMem(psRIEntry);
-			psRIEntry = NULL;
+			if (psRIEntry->ui32RIPMRFlags & RI_FLAG_SYSALLOC_PMR)
+			{
+				dllist_remove_node((PDLLIST_NODE)&(psRIEntry->sSysAllocListNode));
+				g_ui32SysAllocPMRCount--;
+			}
 
-		    /* Release RI lock*/
-			_RIUnlock();
+			/* Now, free the memory used to store the RI entry */
+			OSFreeMemNoStats(psRIEntry);
+			psRIEntry = NULL;
 
 			/*
 			 * Decrement number of RI entries - if this is now zero,
@@ -891,11 +949,19 @@ PVRSRV_ERROR RIDeletePMREntryKM(RI_HANDLE hRIHandle)
 			{
 				HASH_Delete(g_pRIHashTable);
 				g_pRIHashTable = NULL;
+
+				_RIUnlock();
+
 				/* If deInit has been deferred, we can now destroy the RI Lock */
 				if (bRIDeInitDeferred)
 				{
 					OSLockDestroy(g_hRILock);
 				}
+			}
+			else
+			{
+				/* Release RI lock*/
+				_RIUnlock();
 			}
 			/*
 			 * Make the handle NULL once PMR RI entry is deleted
@@ -986,7 +1052,7 @@ PVRSRV_ERROR RIDeleteMEMDESCEntryKM(RI_HANDLE hRIHandle)
 	dllist_remove_node(&(psRISubEntry->sProcListNode));
 
 	/* Now, free the memory used to store the sublist entry */
-	OSFreeMem(psRISubEntry);
+	OSFreeMemNoStats(psRISubEntry);
 	psRISubEntry = NULL;
 
 	/*
@@ -1024,6 +1090,7 @@ PVRSRV_ERROR RIDeleteListKM(void)
 {
 	PVRSRV_ERROR eResult = PVRSRV_OK;
 
+	_RILock();
 
 	if (g_pRIHashTable)
 	{
@@ -1057,6 +1124,8 @@ PVRSRV_ERROR RIDeleteListKM(void)
 		}
 	}
 
+	_RIUnlock();
+
 	return eResult;
 }
 
@@ -1072,19 +1141,19 @@ PVRSRV_ERROR RIDeleteListKM(void)
             At present, output is directed to Kernel log
             via PVR_DPF.
 
- @input     hPMR - PMR for which RI entry details are to be output
+ @input     psPMR - PMR for which RI entry details are to be output
 
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RIDumpListKM(PMR *hPMR)
+PVRSRV_ERROR RIDumpListKM(PMR *psPMR)
 {
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	/* Acquire RI lock*/
 	_RILock();
 
-	eError = _DumpList(hPMR,0);
+	eError = _DumpList(psPMR,0);
 
     /* Release RI lock*/
 	_RIUnlock();
@@ -1117,181 +1186,373 @@ IMG_BOOL RIGetListEntryKM(IMG_PID pid,
 						  IMG_CHAR **ppszEntryString)
 {
 	RI_SUBLIST_ENTRY  *psRISubEntry = NULL;
-	uintptr_t     hashData      = 0;
-	IMG_PID      	  hashKey  = pid;
+	RI_LIST_ENTRY  *psRIEntry = NULL;
+	uintptr_t     hashData = 0;
+	IMG_PID       hashKey  = pid;
 
-	static IMG_CHAR	  ai8DebugfsSummaryString[RI_MAX_DEBUGFS_ENTRY_LEN+1];
-	static IMG_UINT64 ui64TotalAlloc = 0;
-	static IMG_UINT64 ui64TotalBacked = 0;
-	static IMG_UINT64 ui64TotalImport = 0;
-	static IMG_UINT64 ui64TotalUnpinned = 0;
-	static IMG_BOOL bDisplaySummary = IMG_FALSE;
-	static IMG_BOOL bTerminateNextCall = IMG_FALSE;
+	static IMG_CHAR acStringBuffer[RI_FRMT_SIZE_MAX];
 
-	if (bDisplaySummary)
+	static IMG_UINT64 ui64TotalMemdescAlloc;
+	static IMG_UINT64 ui64TotalImport;
+	static IMG_UINT64 ui64TotalPMRAlloc;
+	static IMG_UINT64 ui64TotalPMRBacked;
+	static enum {
+		RI_GET_STATE_MEMDESCS_LIST_START,
+		RI_GET_STATE_MEMDESCS_SUMMARY,
+		RI_GET_STATE_PMR_LIST,
+		RI_GET_STATE_PMR_SUMMARY,
+		RI_GET_STATE_END,
+		RI_GET_STATE_LAST
+	} g_bNextGetState = RI_GET_STATE_MEMDESCS_LIST_START;
+
+	static DLLIST_NODE *psNode;
+	static DLLIST_NODE *psSysAllocNode;
+	static IMG_CHAR szProcName[RI_PROC_BUF_SIZE];
+	static IMG_UINT32 ui32ProcessedSysAllocPMRCount;
+
+	acStringBuffer[0] = '\0';
+
+	switch (g_bNextGetState)
 	{
-		OSSNPrintf((IMG_CHAR *)&ai8DebugfsSummaryString[0],
-		            RI_MAX_TEXT_LEN,
-		            "Alloc:0x%llx + Imports:0x%llx = Total:0x%llx [Physical: 0x%llx] {Unpinned:0x%llx}\n",
-		            (unsigned long long) ui64TotalAlloc,
-		            (unsigned long long) ui64TotalImport,
-		            (unsigned long long) (ui64TotalAlloc + ui64TotalImport),
-		            (unsigned long long) ui64TotalBacked,
-		            (unsigned long long) ui64TotalUnpinned);
+	case RI_GET_STATE_MEMDESCS_LIST_START:
+		/* look-up pid in Hash Table, to obtain first entry for pid */
+		hashData = HASH_Retrieve_Extended(g_pProcHashTable, (void *)&hashKey);
+		if (hashData)
+		{
+			if (*ppHandle)
+			{
+				psRISubEntry = (RI_SUBLIST_ENTRY *)*ppHandle;
+				if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
+				{
+					psRISubEntry = NULL;
+				}
+			}
+			else
+			{
+				psRISubEntry = IMG_CONTAINER_OF((PDLLIST_NODE)hashData, RI_SUBLIST_ENTRY, sProcListNode);
+				if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
+				{
+					psRISubEntry = NULL;
+				}
+			}
+		}
 
-		*ppszEntryString = &ai8DebugfsSummaryString[0];
-		ui64TotalAlloc = 0;
+		if (psRISubEntry)
+		{
+			PDLLIST_NODE  psNextProcListNode = dllist_get_next_node(&psRISubEntry->sProcListNode);
+
+			if (psRISubEntry->bIsImport)
+			{
+				ui64TotalImport += psRISubEntry->ui64Size;
+			}
+			else
+			{
+				ui64TotalMemdescAlloc += psRISubEntry->ui64Size;
+			}
+
+			_GenerateMEMDESCEntryString(psRISubEntry,
+										IMG_TRUE,
+										RI_MEMDESC_ENTRY_BUF_SIZE,
+										acStringBuffer);
+
+			/* If not an imported PMR, flag 'parent' PMR has having been listed in MEMDESCs */
+			if (!psRISubEntry->bIsImport && !(psRISubEntry->psRI->ui32RIPMRFlags & RI_FLAG_SYSALLOC_PMR))
+			{
+				psRISubEntry->psRI->ui32RIPMRFlags |= RI_FLAG_PARSED_BY_DEBUGFS;
+			}
+
+			if (szProcName[0] == '\0')
+			{
+				OSStringCopy(szProcName, (pid == PVR_SYS_ALLOC_PID) ?
+						PVRSRV_MODNAME : psRISubEntry->ai8ProcName);
+			}
+
+
+			*ppszEntryString = acStringBuffer;
+			*ppHandle        = (IMG_HANDLE)IMG_CONTAINER_OF(psNextProcListNode, RI_SUBLIST_ENTRY, sProcListNode);
+
+			if (psNextProcListNode == NULL  ||
+				psNextProcListNode == (PDLLIST_NODE)hashData)
+			{
+				g_bNextGetState = RI_GET_STATE_MEMDESCS_SUMMARY;
+			}
+			/* else continue to list MEMDESCs */
+		}
+		else
+		{
+			if (ui64TotalMemdescAlloc == 0)
+			{
+				acStringBuffer[0] = '\0';
+				*ppszEntryString =acStringBuffer;
+				g_bNextGetState = RI_GET_STATE_MEMDESCS_SUMMARY;
+			}
+			/* else continue to list MEMDESCs */
+		}
+		break;
+
+	case RI_GET_STATE_MEMDESCS_SUMMARY:
+		OSSNPrintf( acStringBuffer,
+		            RI_MEMDESC_SUM_BUF_SIZE,
+		            RI_MEMDESC_SUM_FRMT,
+		            pid,
+		            szProcName,
+		            ui64TotalMemdescAlloc,
+		            ui64TotalMemdescAlloc >> 10,
+		            ui64TotalImport,
+		            ui64TotalImport >> 10,
+		            (ui64TotalMemdescAlloc + ui64TotalImport),
+		            (ui64TotalMemdescAlloc + ui64TotalImport) >> 10);
+
+		*ppszEntryString = acStringBuffer;
+		ui64TotalMemdescAlloc = 0;
 		ui64TotalImport = 0;
-		ui64TotalUnpinned = 0;
-		ui64TotalBacked = 0;
-		bTerminateNextCall = IMG_TRUE;
-		bDisplaySummary = IMG_FALSE;
-		return IMG_TRUE;
-	}
+		szProcName[0] = '\0';
 
-	if (bTerminateNextCall)
-	{
+		g_bNextGetState = RI_GET_STATE_PMR_LIST;
+		break;
+
+	case RI_GET_STATE_PMR_LIST:
+		if (pid == PVR_SYS_ALLOC_PID)
+		{
+			OSLockAcquire(g_hSysAllocPidListLock);
+			acStringBuffer[0] = '\0';
+			if (!psSysAllocNode)
+			{
+				psSysAllocNode = &g_sSysAllocPidListHead;
+				ui32ProcessedSysAllocPMRCount = 0;
+			}
+			psSysAllocNode = dllist_get_next_node(psSysAllocNode);
+
+			if (szProcName[0] == '\0')
+			{
+				OSStringCopy(szProcName, PVRSRV_MODNAME);
+			}
+			if (psSysAllocNode != NULL && psSysAllocNode != &g_sSysAllocPidListHead)
+			{
+				IMG_DEVMEM_SIZE_T uiPMRPhysicalBacking, uiPMRLogicalSize = 0;
+
+				psRIEntry = IMG_CONTAINER_OF((PDLLIST_NODE)psSysAllocNode, RI_LIST_ENTRY, sSysAllocListNode);
+				_GeneratePMREntryString(psRIEntry,
+										IMG_TRUE,
+										RI_PMR_ENTRY_BUF_SIZE,
+										acStringBuffer);
+				PMR_LogicalSize(psRIEntry->psPMR,
+								&uiPMRLogicalSize);
+				ui64TotalPMRAlloc += uiPMRLogicalSize;
+				PMR_PhysicalSize(psRIEntry->psPMR, &uiPMRPhysicalBacking);
+				ui64TotalPMRBacked += uiPMRPhysicalBacking;
+
+				ui32ProcessedSysAllocPMRCount++;
+				if (ui32ProcessedSysAllocPMRCount > g_ui32SysAllocPMRCount+1)
+				{
+					g_bNextGetState = RI_GET_STATE_PMR_SUMMARY;
+				}
+				/* else continue to list PMRs */
+			}
+			else
+			{
+				g_bNextGetState = RI_GET_STATE_PMR_SUMMARY;
+			}
+			*ppszEntryString = (IMG_CHAR *)acStringBuffer;
+			OSLockRelease(g_hSysAllocPidListLock);
+		}
+		else
+		{
+			IMG_BOOL bPMRToDisplay = IMG_FALSE;
+
+			/* Iterate through the 'touched' PMRs and display details */
+			if (!psNode)
+			{
+				psNode = dllist_get_next_node(&sListFirst);
+			}
+			else
+			{
+				psNode = dllist_get_next_node(psNode);
+			}
+
+			while ((psNode != NULL && psNode != &sListFirst)  &&
+					!bPMRToDisplay)
+			{
+				psRIEntry =	IMG_CONTAINER_OF(psNode, RI_LIST_ENTRY, sListNode);
+				if (psRIEntry->ui32RIPMRFlags & RI_FLAG_PARSED_BY_DEBUGFS)
+				{
+					IMG_DEVMEM_SIZE_T uiPMRPhysicalBacking, uiPMRLogicalSize = 0;
+
+					/* This PMR was 'touched', so display details and unflag it*/
+					_GeneratePMREntryString(psRIEntry,
+											IMG_TRUE,
+											RI_PMR_ENTRY_BUF_SIZE,
+											acStringBuffer);
+					psRIEntry->ui32RIPMRFlags &= ~RI_FLAG_PARSED_BY_DEBUGFS;
+					PMR_LogicalSize(psRIEntry->psPMR, &uiPMRLogicalSize);
+					ui64TotalPMRAlloc += uiPMRLogicalSize;
+					PMR_PhysicalSize(psRIEntry->psPMR, &uiPMRPhysicalBacking);
+					ui64TotalPMRBacked += uiPMRPhysicalBacking;
+
+					/* Remember the name of the process for 1 PMR for the summary */
+					if (szProcName[0] == '\0')
+					{
+						OSStringCopy(szProcName, psRIEntry->ai8ProcName);
+					}
+					bPMRToDisplay = IMG_TRUE;
+				}
+				else
+				{
+					psNode = dllist_get_next_node(psNode);
+				}
+			}
+
+			if (psNode == NULL || (psNode == &sListFirst))
+			{
+				g_bNextGetState = RI_GET_STATE_PMR_SUMMARY;
+			}
+			/* else continue listing PMRs */
+		}
+		break;
+
+	case RI_GET_STATE_PMR_SUMMARY:
+		OSSNPrintf( acStringBuffer,
+		            RI_PMR_SUM_BUF_SIZE,
+		            RI_PMR_SUM_FRMT,
+		            pid,
+		            szProcName,
+		            ui64TotalPMRAlloc,
+		            ui64TotalPMRAlloc >> 10,
+		            ui64TotalPMRBacked,
+		            ui64TotalPMRBacked >> 10);
+
+		*ppszEntryString = acStringBuffer;
+		ui64TotalPMRAlloc = 0;
+		ui64TotalPMRBacked = 0;
+		szProcName[0] = '\0';
+		psSysAllocNode = NULL;
+
+		g_bNextGetState = RI_GET_STATE_END;
+		break;
+
+	default:
+		PVR_DPF((PVR_DBG_ERROR, "%s: Bad %d)",__func__, g_bNextGetState));
+
+	case RI_GET_STATE_END:
+		/* Reset state ready for the next ri_mem_area file to display */
 		*ppszEntryString = NULL;
 		*ppHandle        = NULL;
-		bTerminateNextCall = IMG_FALSE;
+		psNode = NULL;
+		szProcName[0] = '\0';
+
+		g_bNextGetState = RI_GET_STATE_MEMDESCS_LIST_START;
 		return IMG_FALSE;
+		break;
 	}
-
-    /* Acquire RI lock*/
-	_RILock();
-
-	/* look-up pid in Hash Table, to obtain first entry for pid */
-	hashData = HASH_Retrieve_Extended(g_pProcHashTable, (void *)&hashKey);
-	if (hashData)
-	{
-		if (*ppHandle)
-		{
-			psRISubEntry = (RI_SUBLIST_ENTRY *)*ppHandle;
-			if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
-			{
-				psRISubEntry = NULL;
-			}
-		}
-		else
-		{
-			psRISubEntry = IMG_CONTAINER_OF((PDLLIST_NODE)hashData, RI_SUBLIST_ENTRY, sProcListNode);
-			if (psRISubEntry->valid != _VALID_RI_SUBLIST_ENTRY)
-			{
-				psRISubEntry = NULL;
-			}
-		}
-	}
-
-	if (psRISubEntry)
-	{
-		PDLLIST_NODE  psNextProcListNode = dllist_get_next_node(&psRISubEntry->sProcListNode);
-
-		if (psNextProcListNode == NULL  ||
-		    psNextProcListNode == (PDLLIST_NODE)hashData)
-		{
-			bDisplaySummary = IMG_TRUE;
-		}
-
-
-		ui64TotalBacked += psRISubEntry->ui64BackedSize;
-
-		if (psRISubEntry->bIsImport)
-		{
-			/* If it is a local import we set backed size to 0
-			 * so we don't account twice for the same allocation */
-			ui64TotalImport += psRISubEntry->ui64BackedSize;
-		}
-		else
-		{
-			ui64TotalAlloc += psRISubEntry->ui64Size;
-		}
-
-
-		if (!psRISubEntry->bIsPinned)
-		{
-			ui64TotalUnpinned += psRISubEntry->ui64Size;
-		}
-
-		_GenerateMEMDESCEntryString(psRISubEntry,
-		                            IMG_TRUE,
-		                            RI_MAX_DEBUGFS_ENTRY_LEN,
-		                            (IMG_CHAR *)&ai8DebugfsSummaryString);
-		ai8DebugfsSummaryString[RI_MAX_DEBUGFS_ENTRY_LEN] = '\0';
-
-		*ppszEntryString = (IMG_CHAR *)&ai8DebugfsSummaryString;
-		*ppHandle        = (IMG_HANDLE)IMG_CONTAINER_OF(psNextProcListNode, RI_SUBLIST_ENTRY, sProcListNode);
-
-	}
-	else
-	{
-		bDisplaySummary = IMG_TRUE;
-		if (ui64TotalAlloc == 0)
-		{
-			ai8DebugfsSummaryString[0] = '\0';
-			*ppszEntryString = (IMG_CHAR *)&ai8DebugfsSummaryString;
-		}
-	}
-
-    /* Release RI lock*/
-	_RIUnlock();
 
 	return IMG_TRUE;
 }
 
 /* Function used to produce string containing info for MEMDESC RI entries (used for both debugfs and kernel log output) */
 static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
-                                            IMG_BOOL bDebugFs,
-                                            IMG_UINT16 ui16MaxStrLen,
-                                            IMG_CHAR *pszEntryString)
+                                        IMG_BOOL bDebugFs,
+                                        IMG_UINT16 ui16MaxStrLen,
+                                        IMG_CHAR *pszEntryString)
 {
-	IMG_CHAR 	szProc[RI_PROC_TAG_CHAR_LEN];
-	IMG_CHAR 	szImport[RI_IMPORT_TAG_CHAR_LEN];
-	IMG_PCHAR   pszAnnotationText = NULL;
+	IMG_CHAR    szProc[RI_MEMDESC_ENTRY_PROC_BUF_SIZE];
+	IMG_CHAR    szImport[RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE];
+	const IMG_CHAR *pszAnnotationText;
+	IMG_CHAR    szEntryFormat[RI_MEMDESC_ENTRY_FRMT_SIZE];
+
+	OSSNPrintf(szEntryFormat,
+			RI_MEMDESC_ENTRY_FRMT_SIZE,
+			RI_MEMDESC_ENTRY_FRMT,
+			DEVMEM_ANNOTATION_MAX_LEN);
 
 	if (!bDebugFs)
 	{
 		/* we don't include process ID info for debugfs output */
-		OSSNPrintf( (IMG_CHAR *)&szProc,
-		            RI_PROC_TAG_CHAR_LEN,
-		            "[%d: %s]",
-		            psRISubEntry->pid,
-		            (IMG_CHAR *)psRISubEntry->ai8ProcName);
+		OSSNPrintf(szProc,
+				RI_MEMDESC_ENTRY_PROC_BUF_SIZE,
+				RI_MEMDESC_ENTRY_PROC_FRMT,
+				psRISubEntry->pid,
+				psRISubEntry->ai8ProcName);
 	}
+
 	if (psRISubEntry->bIsImport)
 	{
 		OSSNPrintf( (IMG_CHAR *)&szImport,
-		            RI_IMPORT_TAG_CHAR_LEN,
-		            "{Import from PID %d}",
+		            RI_MEMDESC_ENTRY_IMPORT_BUF_SIZE,
+		            RI_MEMDESC_ENTRY_IMPORT_FRMT,
 		            psRISubEntry->psRI->pid);
 		/* Set pszAnnotationText to that of the 'parent' PMR RI entry */
-		pszAnnotationText = (IMG_PCHAR)psRISubEntry->psRI->ai8TextA;
+		pszAnnotationText = PMR_GetAnnotation(psRISubEntry->psRI->psPMR);
+	}
+	else if (!psRISubEntry->bIsSuballoc)
+	{
+		/* Set pszAnnotationText to that of the 'parent' PMR RI entry */
+		pszAnnotationText = PMR_GetAnnotation(psRISubEntry->psRI->psPMR);
 	}
 	else
 	{
-		if (psRISubEntry->bIsExportable)
-		{
-			/* Set pszAnnotationText to that of the 'parent' PMR RI entry */
-			pszAnnotationText = (IMG_PCHAR)psRISubEntry->psRI->ai8TextA;
-		}
-		else
-		{
-			/* Set pszAnnotationText to that of the MEMDESC RI entry */
-			pszAnnotationText = (IMG_PCHAR)psRISubEntry->ai8TextB;
-		}
+		/* Set pszAnnotationText to that of the MEMDESC RI entry */
+		pszAnnotationText = psRISubEntry->ai8TextB;
 	}
 
+	/* Don't print memdescs if they are local imports
+	 * (i.e. imported PMRs allocated by this process)
+	 */
+	if (bDebugFs &&
+		((psRISubEntry->sVAddr.uiAddr + psRISubEntry->ui64Offset) == 0) &&
+		(psRISubEntry->bIsImport && ((psRISubEntry->pid == psRISubEntry->psRI->pid) || (psRISubEntry->psRI->pid == PVR_SYS_ALLOC_PID))))
+	{
+		/* Don't print this entry */
+		pszEntryString[0] = '\0';
+	}
+	else
+	{
+		OSSNPrintf(pszEntryString,
+				   ui16MaxStrLen,
+				   szEntryFormat,
+				   (bDebugFs ? "" : "   "),
+				   (psRISubEntry->sVAddr.uiAddr + psRISubEntry->ui64Offset),
+				   pszAnnotationText,
+				   (bDebugFs ? "" : (char *)szProc),
+				   psRISubEntry->ui64Size,
+				   psRISubEntry->psRI->psPMR,
+				   (psRISubEntry->bIsImport ? (char *)&szImport : ""),
+				   (!psRISubEntry->bIsImport && (psRISubEntry->psRI->ui32RIPMRFlags & RI_FLAG_SYSALLOC_PMR) && (psRISubEntry->pid != PVR_SYS_ALLOC_PID)) ? g_szSysAllocImport : "",
+				   (PMR_IsUnpinned(psRISubEntry->psRI->psPMR) ? RI_MEMDESC_ENTRY_UNPINNED_FRMT : ""),
+				   (bDebugFs ? '\n' : ' '));
+	}
+}
+
+/* Function used to produce string containing info for PMR RI entries (used for debugfs and kernel log output) */
+static void _GeneratePMREntryString(RI_LIST_ENTRY *psRIEntry,
+                                    IMG_BOOL bDebugFs,
+                                    IMG_UINT16 ui16MaxStrLen,
+                                    IMG_CHAR *pszEntryString)
+{
+	const IMG_CHAR*   pszAnnotationText;
+	IMG_DEVMEM_SIZE_T uiLogicalSize = 0;
+	IMG_DEVMEM_SIZE_T uiPhysicalSize = 0;
+	IMG_CHAR          szEntryFormat[RI_PMR_ENTRY_FRMT_SIZE];
+
+	PMR_LogicalSize(psRIEntry->psPMR, &uiLogicalSize);
+
+	PMR_PhysicalSize(psRIEntry->psPMR, &uiPhysicalSize);
+
+	OSSNPrintf(szEntryFormat,
+			RI_PMR_ENTRY_FRMT_SIZE,
+			RI_PMR_ENTRY_FRMT,
+			DEVMEM_ANNOTATION_MAX_LEN);
+
+	/* Set pszAnnotationText to that PMR RI entry */
+	pszAnnotationText = (IMG_PCHAR) PMR_GetAnnotation(psRIEntry->psPMR);
 
 	OSSNPrintf(pszEntryString,
 	           ui16MaxStrLen,
-	           "%s 0x%010llx\t%-80s %s\t0x%010llx [0x%010llx] %s%s%c",
-	           (bDebugFs ? "" : "  "),
-	           (unsigned long long) (psRISubEntry->sVAddr.uiAddr + psRISubEntry->ui64Offset),
+	           szEntryFormat,
+	           (bDebugFs ? "" : "   "),
+	           (void*)psRIEntry->psPMR,
 	           pszAnnotationText,
-	           (bDebugFs ? "" : (char *)szProc),
-	           (unsigned long long) psRISubEntry->ui64Size,
-	           (unsigned long long) psRISubEntry->ui64BackedSize,
-	           (psRISubEntry->bIsImport ? (char *)&szImport : ""),
-	           (psRISubEntry->bIsPinned ? "" : "{Unpinned}"),
+	           uiLogicalSize,
+	           uiPhysicalSize,
 	           (bDebugFs ? '\n' : ' '));
 }
 
@@ -1302,7 +1563,7 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
  @Description
             Dumps out RI List entries according to parameters passed.
 
- @input     hPMR - If not NULL, function will output the RI entries for
+ @input     psPMR - If not NULL, function will output the RI entries for
                    the specified PMR only
  @input     pid - If non-zero, the function will only output MEMDESC RI
   	  	  	  	  entries made by the process with ID pid.
@@ -1311,18 +1572,19 @@ static void _GenerateMEMDESCEntryString(RI_SUBLIST_ENTRY *psRISubEntry,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
+static PVRSRV_ERROR _DumpList(PMR *psPMR, IMG_PID pid)
 {
 	RI_LIST_ENTRY *psRIEntry = NULL;
 	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
 	IMG_UINT16 ui16SubEntriesParsed = 0;
 	uintptr_t hashData = 0;
-	IMG_PID		  hashKey;
-	PMR			*pPMRHashKey = hPMR;
-	IMG_BOOL 	bDisplayedThisPMR = IMG_FALSE;
+	IMG_PID hashKey;
+	PMR *pPMRHashKey = psPMR;
+	IMG_BOOL bDisplayedThisPMR = IMG_FALSE;
+	IMG_UINT64 ui64LogicalSize = 0;
 
 
-	if (!hPMR)
+	if (!psPMR)
 	{
 		/* NULL handle provided */
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -1345,7 +1607,7 @@ static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
 		}
 		else
 		{
-			/* look-up hPMR in Hash Table */
+			/* look-up psPMR in Hash Table */
 			hashData = HASH_Retrieve_Extended (g_pRIHashTable, (void *)&pPMRHashKey);
 			psRIEntry = (RI_LIST_ENTRY *)hashData;
 		}
@@ -1360,18 +1622,20 @@ static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
 			/* Output details for RI entry */
 			if (!pid)
 			{
-				_RIOutput (("%s (0x%p) suballocs:%d size:0x%llx",
-				            psRIEntry->ai8TextA,
-				            psRIEntry->hPMR,
+				PMR_LogicalSize(psPMR, (IMG_DEVMEM_SIZE_T*)&ui64LogicalSize);
+
+				_RIOutput (("%s <%p> suballocs:%d size:0x%010" IMG_UINT64_FMTSPECx,
+				            PMR_GetAnnotation(psRIEntry->psPMR),
+				            psRIEntry->psPMR,
 				            (IMG_UINT)psRIEntry->ui16SubListCount,
-				            (unsigned long long)psRIEntry->ui64LogicalSize));
+				            ui64LogicalSize));
 				bDisplayedThisPMR = IMG_TRUE;
 			}
 			ui16SubEntriesParsed = 0;
 			if(psRIEntry->ui16SubListCount)
 			{
 #if _DUMP_LINKEDLIST_INFO
-				_RIOutput (("RI LIST: {sSubListFirst.psNextNode:0x%x}",
+				_RIOutput (("RI LIST: {sSubListFirst.psNextNode:0x%x}\n",
 				            (IMG_UINT)psRIEntry->sSubListFirst.psNextNode));
 #endif /* _DUMP_LINKEDLIST_INFO */
 				if (!pid)
@@ -1384,32 +1648,33 @@ static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
 				{
 					if (!bDisplayedThisPMR)
 					{
-						_RIOutput (("%s (0x%p) suballocs:%d size:0x%llx",
-						            psRIEntry->ai8TextA,
-						            psRIEntry->hPMR,
+						PMR_LogicalSize(psPMR, (IMG_DEVMEM_SIZE_T*)&ui64LogicalSize);
+
+						_RIOutput (("%s <%p> suballocs:%d size:0x%010" IMG_UINT64_FMTSPECx,
+						            PMR_GetAnnotation(psRIEntry->psPMR),
+						            psRIEntry->psPMR,
 						            (IMG_UINT)psRIEntry->ui16SubListCount,
-						            (unsigned long long)psRIEntry->ui64LogicalSize));
+						            ui64LogicalSize));
 						bDisplayedThisPMR = IMG_TRUE;
 					}
 #if _DUMP_LINKEDLIST_INFO
-					_RIOutput (("RI LIST:    [this subentry:0x%x]",(IMG_UINT)psRISubEntry));
-					_RIOutput (("RI LIST:     psRI:0x%x",(IMG_UINT32)psRISubEntry->psRI));
+					_RIOutput (("RI LIST:    [this subentry:0x%x]\n",(IMG_UINT)psRISubEntry));
+					_RIOutput (("RI LIST:     psRI:0x%x\n",(IMG_UINT32)psRISubEntry->psRI));
 #endif /* _DUMP_LINKEDLIST_INFO */
 
 					{
-						IMG_CHAR szEntryString[RI_MAX_MEMDESC_RI_ENTRY_LEN];
+						IMG_CHAR szEntryString[RI_MEMDESC_ENTRY_BUF_SIZE];
 
 						_GenerateMEMDESCEntryString(psRISubEntry,
 						                            IMG_FALSE,
-						                            RI_MAX_MEMDESC_RI_ENTRY_LEN,
-						                            (IMG_CHAR *)&szEntryString);
-						szEntryString[RI_MAX_MEMDESC_RI_ENTRY_LEN-1] = '\0';
-						_RIOutput (("%s",(IMG_CHAR *)&szEntryString));
+						                            RI_MEMDESC_ENTRY_BUF_SIZE,
+						                            szEntryString);
+						_RIOutput (("%s",szEntryString));
 					}
 
 					if (pid)
 					{
-						if((dllist_get_next_node(&(psRISubEntry->sProcListNode)) == 0) ||
+						if((dllist_get_next_node(&(psRISubEntry->sProcListNode)) == NULL) ||
 						   (dllist_get_next_node(&(psRISubEntry->sProcListNode)) == (PDLLIST_NODE)hashData))
 						{
 							psRISubEntry = NULL;
@@ -1447,7 +1712,7 @@ static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
 					 * Output error message as sublist does not contain the
 					 * number of entries indicated by sublist count
 					 */
-					_RIOutput (("RI ERROR: RI sublist contains %d entries, not %d entries",
+					_RIOutput (("RI ERROR: RI sublist contains %d entries, not %d entries\n",
 					            ui16SubEntriesParsed,psRIEntry->ui16SubListCount));
 				}
 				else if (psRIEntry->ui16SubListCount && !dllist_get_next_node(&(psRIEntry->sSubListFirst)))
@@ -1456,7 +1721,7 @@ static PVRSRV_ERROR _DumpList(PMR *hPMR, IMG_PID pid)
 					 * Output error message as sublist is empty but sublist count
 					 * is not zero
 					 */
-					_RIOutput (("RI ERROR: ui16SubListCount=%d for empty RI sublist",
+					_RIOutput (("RI ERROR: ui16SubListCount=%d for empty RI sublist\n",
 					            psRIEntry->ui16SubListCount));
 				}
 			}
@@ -1505,20 +1770,186 @@ PVRSRV_ERROR RIDumpAllKM(void)
 ******************************************************************************/
 PVRSRV_ERROR RIDumpProcessKM(IMG_PID pid)
 {
-	PVRSRV_ERROR eError = PVRSRV_OK;
+	PVRSRV_ERROR eError;
 	IMG_UINT32  dummyPMR;
+
+	if (!g_pProcHashTable)
+	{
+		return PVRSRV_OK;		
+	}
+
+	/* Acquire RI lock*/
+	_RILock();
+
+	eError = _DumpList((PMR *)&dummyPMR,pid);
+
+	/* Release RI lock*/
+	_RIUnlock();
+
+	return eError;
+}
+
+/*!
+******************************************************************************
+
+ @Function	_TotalAllocsForProcess
+ @Description
+            Totals all PMR physical backing for given process.
+
+ @input     pid - ID of process.
+
+ @input     ePhysHeapType - type of Physical Heap for which to total allocs
+
+ @Return	Size of all physical backing for PID's PMRs allocated from the
+            specified heap type (in bytes).
+
+******************************************************************************/
+static IMG_INT32 _TotalAllocsForProcess(IMG_PID pid, PHYS_HEAP_TYPE ePhysHeapType)
+{
+	RI_LIST_ENTRY *psRIEntry = NULL;
+	RI_SUBLIST_ENTRY *psInitialRISubEntry = NULL;
+	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
+	uintptr_t hashData = 0;
+	IMG_PID hashKey;
+	IMG_INT32 i32TotalPhysical = 0;
+
+
+	if (g_pRIHashTable && g_pProcHashTable)
+	{
+		if (pid == PVR_SYS_ALLOC_PID)
+		{
+			IMG_UINT32 ui32ProcessedSysAllocPMRCount = 0;
+			DLLIST_NODE *psSysAllocNode = NULL;
+
+			OSLockAcquire(g_hSysAllocPidListLock);
+			psSysAllocNode = dllist_get_next_node(&g_sSysAllocPidListHead);
+			while (psSysAllocNode && psSysAllocNode != &g_sSysAllocPidListHead)
+			{
+				psRIEntry = IMG_CONTAINER_OF((PDLLIST_NODE)psSysAllocNode, RI_LIST_ENTRY, sSysAllocListNode);
+				ui32ProcessedSysAllocPMRCount++;
+				if (PhysHeapGetType(PMR_PhysHeap(psRIEntry->psPMR)) == ePhysHeapType)
+				{
+					IMG_UINT64 ui64PhysicalSize;
+
+					PMR_PhysicalSize(psRIEntry->psPMR, (IMG_DEVMEM_SIZE_T*)&ui64PhysicalSize);
+					if (((IMG_UINT64)i32TotalPhysical + ui64PhysicalSize > 0x7fffffff))
+					{
+						PVR_DPF((PVR_DBG_WARNING, "%s: i32TotalPhysical exceeding size for i32",__func__));
+					}
+					i32TotalPhysical += (IMG_INT32)(ui64PhysicalSize & 0x00000000ffffffff);
+				}
+				psSysAllocNode = dllist_get_next_node(psSysAllocNode);
+			}
+			OSLockRelease(g_hSysAllocPidListLock);
+		}
+		else
+		{
+			if (pid != 0)
+			{
+				/* look-up pid in Hash Table */
+				hashKey = pid;
+				hashData = HASH_Retrieve_Extended (g_pProcHashTable, (void *)&hashKey);
+				if (hashData)
+				{
+					psInitialRISubEntry = IMG_CONTAINER_OF((PDLLIST_NODE)hashData, RI_SUBLIST_ENTRY, sProcListNode);
+					psRISubEntry = psInitialRISubEntry;
+					if (psRISubEntry)
+					{
+						psRIEntry = psRISubEntry->psRI;
+					}
+				}
+			}
+
+			while (psRISubEntry && psRIEntry)
+			{
+				if (!psRISubEntry->bIsImport && !(psRIEntry->ui32RIPMRFlags & RI_FLAG_PMR_PHYS_COUNTED_BY_DEBUGFS) &&
+					(pid == PVR_SYS_ALLOC_PID || !(psRIEntry->ui32RIPMRFlags & RI_FLAG_SYSALLOC_PMR)) &&
+					(PhysHeapGetType(PMR_PhysHeap(psRIEntry->psPMR)) == ePhysHeapType))
+				{
+					IMG_UINT64 ui64PhysicalSize;
+
+
+					PMR_PhysicalSize(psRIEntry->psPMR, (IMG_DEVMEM_SIZE_T*)&ui64PhysicalSize);
+					if (((IMG_UINT64)i32TotalPhysical + ui64PhysicalSize > 0x7fffffff))
+					{
+						PVR_DPF((PVR_DBG_WARNING, "%s: i32TotalPhysical exceeding size for i32",__func__));
+					}
+					i32TotalPhysical += (IMG_INT32)(ui64PhysicalSize & 0x00000000ffffffff);
+					psRIEntry->ui32RIPMRFlags |= RI_FLAG_PMR_PHYS_COUNTED_BY_DEBUGFS;
+				}
+				if((dllist_get_next_node(&(psRISubEntry->sProcListNode)) == NULL) ||
+				   (dllist_get_next_node(&(psRISubEntry->sProcListNode)) == (PDLLIST_NODE)hashData))
+				{
+					psRISubEntry = NULL;
+					psRIEntry = NULL;
+				}
+				else
+				{
+					psRISubEntry = IMG_CONTAINER_OF(dllist_get_next_node(&(psRISubEntry->sProcListNode)),
+					                                RI_SUBLIST_ENTRY, sProcListNode);
+					if (psRISubEntry)
+					{
+						psRIEntry = psRISubEntry->psRI;
+					}
+				}
+			}
+			psRISubEntry = psInitialRISubEntry;
+			if (psRISubEntry)
+			{
+				psRIEntry = psRISubEntry->psRI;
+			}
+			while (psRISubEntry && psRIEntry)
+			{
+				psRIEntry->ui32RIPMRFlags &= ~RI_FLAG_PMR_PHYS_COUNTED_BY_DEBUGFS;
+				if((dllist_get_next_node(&(psRISubEntry->sProcListNode)) == NULL) ||
+				   (dllist_get_next_node(&(psRISubEntry->sProcListNode)) == (PDLLIST_NODE)hashData))
+				{
+					psRISubEntry = NULL;
+					psRIEntry = NULL;
+				}
+				else
+				{
+					psRISubEntry = IMG_CONTAINER_OF(dllist_get_next_node(&(psRISubEntry->sProcListNode)),
+					                                RI_SUBLIST_ENTRY, sProcListNode);
+					if (psRISubEntry)
+					{
+						psRIEntry = psRISubEntry->psRI;
+					}
+				}
+			}
+		}
+	}
+	return i32TotalPhysical;
+}
+
+/*!
+******************************************************************************
+
+ @Function	RITotalAllocProcessKM
+
+ @Description
+            Returns the total of allocated GPU memory (backing for PMRs)
+            which has been allocated from the specific heap by the specified
+            process only.
+
+ @Return	Amount of physical backing allocated (in bytes)
+
+******************************************************************************/
+IMG_INT32 RITotalAllocProcessKM(IMG_PID pid, PHYS_HEAP_TYPE ePhysHeapType)
+{
+	IMG_INT32  i32BackingTotal = 0;
 
 	if (g_pProcHashTable)
 	{
 		/* Acquire RI lock*/
 		_RILock();
 
-		eError = _DumpList((PMR *)&dummyPMR,pid);
+		i32BackingTotal = _TotalAllocsForProcess(pid, ePhysHeapType);
 
-	    /* Release RI lock*/
+		/* Release RI lock*/
 		_RIUnlock();
 	}
-	return eError;
+	return i32BackingTotal;
 }
 
 #if defined(DEBUG)
@@ -1529,7 +1960,7 @@ PVRSRV_ERROR RIDumpProcessKM(IMG_PID pid)
  @Description
             Dumps out RI List entries according to parameters passed.
 
- @input     hPMR - If not NULL, function will output the RI entries for
+ @input     psPMR - If not NULL, function will output the RI entries for
                    the specified PMR only
  @input     pid - If non-zero, the function will only output MEMDESC RI
   	  	  	  	  entries made by the process with ID pid.
@@ -1538,7 +1969,7 @@ PVRSRV_ERROR RIDumpProcessKM(IMG_PID pid)
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-static PVRSRV_ERROR _DumpProcessList(PMR *hPMR,
+static PVRSRV_ERROR _DumpProcessList(PMR *psPMR,
 									 IMG_PID pid,
 									 IMG_UINT64 ui64Offset,
 									 IMG_DEV_VIRTADDR *psDevVAddr)
@@ -1547,22 +1978,21 @@ static PVRSRV_ERROR _DumpProcessList(PMR *hPMR,
 	RI_SUBLIST_ENTRY *psRISubEntry = NULL;
 	IMG_UINT16 ui16SubEntriesParsed = 0;
 	uintptr_t hashData = 0;
-	PMR *pPMRHashKey = hPMR;
-	PVRSRV_ERROR eError = PVRSRV_ERROR_INVALID_PARAMS;
+	PMR *pPMRHashKey = psPMR;
 
 	psDevVAddr->uiAddr = 0;
 
-	if (!hPMR)
+	if (!psPMR)
 	{
 		/* NULL handle provided */
-		return eError;
+		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
 	if (g_pRIHashTable && g_pProcHashTable)
 	{
-		PVR_ASSERT(hPMR && pid);
+		PVR_ASSERT(psPMR && pid);
 
-		/* look-up hPMR in Hash Table */
+		/* look-up psPMR in Hash Table */
 		hashData = HASH_Retrieve_Extended (g_pRIHashTable, (void *)&pPMRHashKey);
 		psRIEntry = (RI_LIST_ENTRY *)hashData;
 
@@ -1599,7 +2029,7 @@ static PVRSRV_ERROR _DumpProcessList(PMR *hPMR,
 		}
 	}
 
-	return eError;
+	return PVRSRV_ERROR_INVALID_PARAMS;
 }
 
 /*!
@@ -1614,26 +2044,28 @@ static PVRSRV_ERROR _DumpProcessList(PMR *hPMR,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RIDumpProcessListKM(PMR *hPMR,
+PVRSRV_ERROR RIDumpProcessListKM(PMR *psPMR,
 								 IMG_PID pid,
 								 IMG_UINT64 ui64Offset,
 								 IMG_DEV_VIRTADDR *psDevVAddr)
 {
-	PVRSRV_ERROR eError = PVRSRV_OK;
+	PVRSRV_ERROR eError;
 
-	if (g_pProcHashTable)
+	if (!g_pProcHashTable)
 	{
-		/* Acquire RI lock*/
-		_RILock();
-
-		eError = _DumpProcessList(hPMR,
-								  pid,
-								  ui64Offset,
-								  psDevVAddr);
-
-		/* Release RI lock*/
-		_RIUnlock();
+		return PVRSRV_OK;
 	}
+
+	/* Acquire RI lock*/
+	_RILock();
+
+	eError = _DumpProcessList(psPMR,
+							  pid,
+							  ui64Offset,
+							  psDevVAddr);
+
+	/* Release RI lock*/
+	_RIUnlock();
 
 	return eError;
 }
@@ -1645,7 +2077,7 @@ static PVRSRV_ERROR _DumpAllEntries (uintptr_t k, uintptr_t v)
 
 	PVR_UNREFERENCED_PARAMETER (k);
 
-	return RIDumpListKM(psRIEntry->hPMR);
+	return RIDumpListKM(psRIEntry->psPMR);
 }
 
 static PVRSRV_ERROR _DeleteAllEntries (uintptr_t k, uintptr_t v)
@@ -1679,7 +2111,7 @@ static PVRSRV_ERROR _DeleteAllEntries (uintptr_t k, uintptr_t v)
 static PVRSRV_ERROR _DeleteAllProcEntries (uintptr_t k, uintptr_t v)
 {
 	RI_SUBLIST_ENTRY *psRISubEntry = (RI_SUBLIST_ENTRY *)v;
-	PVRSRV_ERROR eResult = PVRSRV_OK;
+	PVRSRV_ERROR eResult;
 
 	PVR_UNREFERENCED_PARAMETER (k);
 

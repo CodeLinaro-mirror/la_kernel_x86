@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for rgxpdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_RGXPDUMP_BRIDGE_H
 #define CLIENT_RGXPDUMP_BRIDGE_H
@@ -54,11 +54,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "common_rgxpdump_bridge.h"
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpTraceBuffer(IMG_HANDLE hBridge,
-							      IMG_UINT32 ui32PDumpFlags);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpTraceBuffer(IMG_HANDLE
+							      hBridge,
+							      IMG_UINT32
+							      ui32PDumpFlags);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpSignatureBuffer(IMG_HANDLE hBridge,
-								  IMG_UINT32 ui32PDumpFlags);
-
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpSignatureBuffer(IMG_HANDLE
+								  hBridge,
+								  IMG_UINT32
+								  ui32PDumpFlags);
 
 #endif /* CLIENT_RGXPDUMP_BRIDGE_H */

@@ -57,7 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pmr.h"
 
-IMG_INTERNAL PVRSRV_ERROR
+PVRSRV_ERROR
 OSMMapPMR(IMG_HANDLE hBridge,
           IMG_HANDLE hPMR,
           IMG_DEVMEM_SIZE_T uiPMRSize,
@@ -113,7 +113,7 @@ OSMMapPMR(IMG_HANDLE hBridge,
     return eError;
 }
 
-IMG_INTERNAL void
+void
 OSMUnmapPMR(IMG_HANDLE hBridge,
             IMG_HANDLE hPMR,
             IMG_HANDLE hOSMMapPrivData,

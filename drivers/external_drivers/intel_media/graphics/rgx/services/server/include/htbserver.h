@@ -104,6 +104,16 @@ HTBDeviceDestroy(
 
 
 /************************************************************************/ /*!
+ @Function      HTBInit
+ @Description   Initialise the Host Trace Buffer and allocate all resources
+
+ @Return        eError          Internal services call returned eError error
+                                number
+*/ /**************************************************************************/
+PVRSRV_ERROR
+HTBInit( void );
+
+/************************************************************************/ /*!
  @Function      HTBDeInit
  @Description   Close the Host Trace Buffer and free all resources
 

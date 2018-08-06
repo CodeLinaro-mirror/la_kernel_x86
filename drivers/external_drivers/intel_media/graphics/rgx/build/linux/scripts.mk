@@ -40,12 +40,6 @@
 
 ifeq ($(SUPPORT_ANDROID_PLATFORM),)
 
-define if-component
- ifneq ($$(filter $(1),$$(COMPONENTS)),)
-  M4DEFS += $(2)
- endif
-endef
-
 define if-kernel-component
  ifneq ($$(filter $(1),$$(KERNEL_COMPONENTS)),)
   M4DEFS_K += $(2)
@@ -56,14 +50,16 @@ endef
 #
 M4FLAGS := -I$(MAKE_TOP)/scripts
 
-# These defs are required for both KM and UM install script.
+# These defs are required for the init script
 M4DEFS_K := \
  -DPVRVERSION="$(PVRVERSION)" \
  -DPVR_BUILD_DIR=$(PVR_BUILD_DIR) \
- -DPVRSRV_MODNAME=$(PVRSRV_MODNAME)
+ -DPVRSRV_MODNAME=$(PVRSRV_MODNAME) \
+ -DSUPPORT_NATIVE_FENCE_SYNC=$(SUPPORT_NATIVE_FENCE_SYNC) \
+ -DPVRSYNC_MODNAME=$(PVRSYNC_MODNAME)
 
-ifeq ($(PDUMP),1)
- M4DEFS_K += -DPDUMP=1
+ifneq ($(filter plato,$(PVR_BUILD_DIR)),) # This requires load time delay
+ M4DEFS += -DSUPPORT_LOAD_DELAY=1
 endif
 
 ifneq ($(DISPLAY_CONTROLLER),)
@@ -76,162 +72,56 @@ ifneq ($(HDMI_CONTROLLER),)
   -DHDMI_CONTROLLER=$(HDMI_CONTROLLER)))
 endif
 
-# These defs are not derived from user variables
-#
-M4DEFS := \
- -DSOLIB_VERSION=$(PVRVERSION_MAJ).$(PVRVERSION_MIN).$(PVRVERSION_BUILD)
-
-ifeq ($(SUPPORT_KERNEL_SRVINIT),1)
-M4DEFS += \
-  -DSUPPORT_KERNEL_SRVINIT=1
-endif
-M4DEFS += \
-  -DRGX_FW_FILENAME=$(RGX_FW_FILENAME)
-
-ifeq ($(MESA_EGL),1)
- M4DEFS += -DSUPPORT_MESA=1
-endif
-
-ifeq ($(SUPPORT_BUILD_LWS),1)
- M4DEFS += -DLWS_INSTALL_TREE=1
-endif
-
-ifeq ($(SUPPORT_RAY_TRACING),1)
- M4DEFS += -DSUPPORT_RAY_TRACING=1
-endif
-
-# XOrg support options are convoluted, so don't bother with if-component.
 ifneq ($(filter pvr_video,$(COMPONENTS)),) # This is an X build
  M4DEFS += -DSUPPORT_XORG=1
- M4DEFS += -DXORG_EXPLICIT_PVR_SERVICES_LOAD=$(XORG_EXPLICIT_PVR_SERVICES_LOAD)
-
- ifneq ($(MESA_EGL),1)
-  $(eval $(call if-component,opengl_mesa,-DSUPPORT_MESA=1))
- endif
 
  M4DEFS += -DPVR_XORG_DESTDIR=$(LWS_PREFIX)/bin
+ M4DEFS += -DPVR_CONF_DESTDIR=$(XORG_CONFDIR)
 
- ifeq ($(LWS_PREFIX),/usr)
-  # Install into the standard place.
-  M4DEFS += -DPVR_CONF_DESTDIR=/etc/X11
- else
-  M4DEFS += -DPVR_CONF_DESTDIR=$(LWS_PREFIX)/etc/X11
- endif
-
- ifneq ($(SUPPORT_BUILD_LWS),)
-  $(eval $(call if-component,pvr_input,-DSUPPORT_DDX_INPUT=1))
-  $(eval $(call if-component,opengl_mesa,-DSUPPORT_LIBGL=1))
- endif
-else # This is a non-X build
- ifeq ($(WINDOW_SYSTEM),wayland)
-  M4DEFS += -DSUPPORT_WAYLAND=1
- else # This is a non-X and Wayland build
-  ifeq ($(WINDOW_SYSTEM),surfaceless)
-   M4DEFS += -DSUPPORT_SURFACELESS=1
-  else # This is a non-X, Wayland and Surfaceless build
-   $(eval $(call if-component,opengl,-DSUPPORT_LIBGL=1))
-  endif
- endif
+else ifeq ($(WINDOW_SYSTEM),wayland)
+ M4DEFS += -DSUPPORT_WAYLAND=1
 endif
 
-# Map other COMPONENTS on to SUPPORT_ defs
-#
-$(eval $(call if-component,opengles1,\
- -DSUPPORT_OPENGLES1=1 -DOGLES1_MODULE=$(opengles1_target) \
- -DSUPPORT_OPENGLES1_V1_ONLY=0))
-$(eval $(call if-component,opengles3,\
- -DSUPPORT_OPENGLES3=1 -DOGLES3_MODULE=$(opengles3_target)))
-$(eval $(call if-component,egl,\
- -DSUPPORT_LIBEGL=1 -DEGL_MODULE=$(egl_target)))
-$(eval $(call if-component,libglslcompiler,\
- -DSUPPORT_SOURCE_SHADER=1))
-$(eval $(call if-component,opencl,\
- -DSUPPORT_OPENCL=1 -DOPENCL_MODULE=$(opencl_target)))
-$(eval $(call if-component,pvrcldnn,\
- -DSUPPORT_CLDNN=1))
-$(eval $(call if-component,openrl,\
- -DSUPPORT_OPENRL=1))
-$(eval $(call if-component,renderscript,\
- -DSUPPORT_RSC=1))
-$(eval $(call if-component,renderscript_sha1,\
- -DSUPPORT_RSC_SHA1=1))
-$(eval $(call if-component,vulkan,\
- -DSUPPORT_UF_WRITER=1))
-$(eval $(call if-component,libufwriter,\
- -DSUPPORT_UF_WRITER=1))
-$(eval $(call if-component,rscompiler,\
- -DSUPPORT_RS_COMPILER=1))
-$(eval $(call if-component,rscreplay,\
- -DSUPPORT_RSC_REPLAY=1))
-$(eval $(call if-component,opengl opengl_mesa,\
- -DSUPPORT_OPENGL=1))
-$(eval $(call if-component,vulkan,\
-	-DSUPPORT_VULKAN=1))
-$(eval $(call if-component,pvr_vk_loader,\
- -DSUPPORT_VK_LOADER=internal))
-$(eval $(call if-component,vklayer_img_systrace,\
- -DSUPPORT_VKLAYER_IMG_SYSTRACE=1))
-$(eval $(call if-component,trace_layer,\
- -DSUPPORT_VK_TRACING_EXT=1))
-$(eval $(call if-component,null_ws,\
- -DSUPPORT_NULL_WS=1))
-$(eval $(call if-component,gigacluster_gles,\
- -DSUPPORT_GIGACLUSTER=1 -DSUPPORT_GIGACLUSTER_GLES=1, -DGIGACLUSTER_GLES_MODULE=$(gigacluster_gles_target)))
-$(eval $(call if-component,gigacluster_egl,\
- -DSUPPORT_GIGACLUSTER=1 -DSUPPORT_GIGACLUSTER_EGL=1 -DGIGACLUSTER_EGL_MODULE=$(gigacluster_egl_target)))
-$(eval $(call if-component,gigacluster_ws,\
- -DSUPPORT_GIGACLUSTER=1 -DSUPPORT_GIGACLUSTER_WS=1))
-$(eval $(call if-component,null_drm_ws,\
- -DSUPPORT_NULL_DRM_WS=1))
-$(eval $(call if-component,null_remote,\
- -DSUPPORT_NULL_REMOTE=1))
-$(eval $(call if-component,ews_ws,\
- -DSUPPORT_EWS=1))
-$(eval $(call if-component,ews_wm,\
- -DSUPPORT_LUA=1))
-$(eval $(call if-component,graphicshal,\
- -DSUPPORT_GRAPHICS_HAL=1))
-$(eval $(call if-component,xeglinfo,\
- -DSUPPORT_XUNITTESTS=1))
-$(eval $(call if-component,rgx_compute_test,\
- -DSUPPORT_COMPUTE=1))
-$(eval $(call if-component,libpvrdebugger,\
- -DSUPPORT_DEBUGGER=1))
+init_script_install_path := $${RC_DESTDIR}
 
-M4DEFS += -DINSTALL_VK_ICDCONFIG=1 
-
-ifeq ($(PVR_REMOTE),1)
- M4DEFS += -DPVR_REMOTE=1
-endif
-
-ifeq ($(PVR_REMVIEW),1)
- M4DEFS += -DPVR_REMVIEW=1
-endif
-
-# Build UM script using old scheme using M4
-define create-install-um-script-m4
-$(RELATIVE_OUT)/$(1)/install_um.sh: $(PVRVERSION_H) $(CONFIG_MK) \
- $(MAKE_TOP)/scripts/common.m4 \
- $(MAKE_TOP)/$(PVR_BUILD_DIR)/install_um.sh.m4 \
- | $(RELATIVE_OUT)/$(1)
-	$$(if $(V),,@echo "  GEN     " $$(call relative-to-top,$$@))
-	$(M4) $(M4FLAGS) $(M4DEFS) $(M4DEFS_K) \
-	  $(MAKE_TOP)/scripts/common.m4 \
-	  $(MAKE_TOP)/$(PVR_BUILD_DIR)/install_um.sh.m4 > $$@
-install_script: $(RELATIVE_OUT)/$(1)/install_um.sh
-endef
-
-$(foreach _t,$(TARGET_ALL_ARCH),$(eval $(call create-install-um-script-m4,$(_t))))
-
-$(TARGET_PRIMARY_OUT)/rc.pvr: $(PVRVERSION_H) $(CONFIG_MK) $(CONFIG_KERNEL_MK) \
+$(TARGET_NEUTRAL_OUT)/rc.pvr: $(PVRVERSION_H) $(CONFIG_MK) \
  $(MAKE_TOP)/scripts/rc.pvr.m4 $(MAKE_TOP)/scripts/common.m4 \
  $(MAKE_TOP)/$(PVR_BUILD_DIR)/rc.pvr.m4 \
- | $(TARGET_PRIMARY_OUT)
+ | $(TARGET_NEUTRAL_OUT)
 	$(if $(V),,@echo "  GEN     " $(call relative-to-top,$@))
 	$(M4) $(M4FLAGS) $(M4DEFS) $(M4DEFS_K) $(MAKE_TOP)/scripts/rc.pvr.m4 \
 		$(MAKE_TOP)/$(PVR_BUILD_DIR)/rc.pvr.m4 > $@
 	$(CHMOD) +x $@
-init_script: $(TARGET_PRIMARY_OUT)/rc.pvr
+
+.PHONY: init_script
+init_script: $(TARGET_NEUTRAL_OUT)/rc.pvr
+
+$(GENERATED_CODE_OUT)/init_script:
+	$(make-directory)
+
+$(GENERATED_CODE_OUT)/init_script/.install: init_script_install_path := $(init_script_install_path)
+$(GENERATED_CODE_OUT)/init_script/.install: | $(GENERATED_CODE_OUT)/init_script
+	@echo 'install_file rc.pvr $(init_script_install_path)/rc.pvr "boot script" 0755 0:0' >$@
+
+# Generate udev rules file
+udev_rules_install_path := $${UDEV_DESTDIR}
+
+$(TARGET_NEUTRAL_OUT)/udev.pvr: $(CONFIG_MK) \
+ $(MAKE_TOP)/scripts/udev.pvr.m4 \
+ | $(TARGET_NEUTRAL_OUT)
+	$(if $(V),,@echo "  GEN     " $(call relative-to-top,$@))
+	$(M4) $(M4FLAGS) $(M4DEFS) $(M4DEFS_K) $(MAKE_TOP)/scripts/udev.pvr.m4 > $@
+	$(CHMOD) +x $@
+
+.PHONY: udev_rules
+udev_rules: $(TARGET_NEUTRAL_OUT)/udev.pvr
+
+$(GENERATED_CODE_OUT)/udev_rules:
+	$(make-directory)
+
+$(GENERATED_CODE_OUT)/udev_rules/.install: udev_rules_install_path := $(udev_rules_install_path)
+$(GENERATED_CODE_OUT)/udev_rules/.install: | $(GENERATED_CODE_OUT)/udev_rules
+	@echo 'install_file udev.pvr $(udev_rules_install_path)/99-pvr.rules "udev rules" 0644 0:0' >$@
 
 endif # ifeq ($(SUPPORT_ANDROID_PLATFORM),)
 
@@ -241,17 +131,17 @@ endif # ifeq ($(SUPPORT_ANDROID_PLATFORM),)
 #
 ifneq ($(MAKECMDGOALS),)
 BUILT_UM := $(MAKECMDGOALS)
-ifneq ($(filter build services_all components,$(MAKECMDGOALS)),)
+ifneq ($(filter build services_all components uninstall,$(MAKECMDGOALS)),)
 BUILT_UM += $(COMPONENTS)
 endif
-BUILT_UM := $(sort $(filter $(ALL_MODULES) xorg wl,$(BUILT_UM)))
+BUILT_UM := $(sort $(filter $(ALL_MODULES) init_script udev_rules,$(BUILT_UM)))
 else
 BUILT_UM := $(sort $(COMPONENTS))
 endif
 
 ifneq ($(MAKECMDGOALS),)
 BUILT_KM := $(MAKECMDGOALS)
-ifneq ($(filter build services_all kbuild,$(MAKECMDGOALS)),)
+ifneq ($(filter build services_all kbuild uninstall,$(MAKECMDGOALS)),)
 BUILT_KM += $(KERNEL_COMPONENTS)
 endif
 BUILT_KM := $(sort $(filter $(ALL_MODULES),$(BUILT_KM)))
@@ -261,10 +151,16 @@ endif
 
 INSTALL_UM_MODULES := \
  $(strip $(foreach _m,$(BUILT_UM),\
-  $(if $(filter doc module_group,$($(_m)_type)),,\
+  $(if $(filter $(doc_types) module_group,$($(_m)_type)),,\
    $(if $(filter host_%,$($(_m)_arch)),,\
     $(if $($(_m)_install_path),$(_m),\
      $(warning WARNING: UM $(_m)_install_path not defined))))))
+
+INSTALL_UM_MODULES := \
+ $(sort $(INSTALL_UM_MODULES) \
+  $(strip $(foreach _m,$(BUILT_UM),\
+   $(if $(filter module_group,$($(_m)_type)),\
+    $($(_m)_install_dependencies)))))
 
 # Build up a list of installable shared libraries. The shared_library module
 # type is specially guaranteed to define $(_m)_target, even if the Linux.mk
@@ -306,6 +202,14 @@ endef
 
 $(foreach _t,$(TARGET_ALL_ARCH) target_neutral,$(eval $(call calculate-um-fragments,$(_t))))
 
+ifneq ($(filter init_script, $(INSTALL_UM_MODULES)),)
+ INSTALL_UM_FRAGMENTS_target_neutral += $(GENERATED_CODE_OUT)/init_script/.install
+endif
+
+ifneq ($(filter udev_rules, $(INSTALL_UM_MODULES)),)
+ INSTALL_UM_FRAGMENTS_target_neutral += $(GENERATED_CODE_OUT)/udev_rules/.install
+endif
+
 INSTALL_KM_FRAGMENTS := \
  $(strip $(foreach _m,$(BUILT_KM),\
   $(if $(filter-out kernel_module,$($(_m)_type)),,\
@@ -329,8 +233,7 @@ endif
 install_script_km: $(TARGET_PRIMARY_OUT)/install_km.sh
 endif
 
-# Build UM script using new scheme which does not use M4 for anything
-# (Only works for Android and target_neutral right now.)
+# Build UM arch scripts
 define create-install-um-script
 ifneq ($$(INSTALL_UM_FRAGMENTS_$(1)),)
 $(RELATIVE_OUT)/$(1)/install_um.sh: $$(INSTALL_UM_FRAGMENTS_$(1)) | $(RELATIVE_OUT)/$(1)
@@ -339,11 +242,8 @@ $(RELATIVE_OUT)/$(1)/install_um.sh: $$(INSTALL_UM_FRAGMENTS_$(1)) | $(RELATIVE_O
 install_script: $(RELATIVE_OUT)/$(1)/install_um.sh
 endif
 endef
-$(eval $(call create-install-um-script,target_neutral))
 
-ifneq ($(SUPPORT_ANDROID_PLATFORM),)
-$(foreach _t,$(TARGET_ALL_ARCH),$(eval $(call create-install-um-script,$(_t))))
-endif
+$(foreach _t,$(TARGET_ALL_ARCH) target_neutral,$(eval $(call create-install-um-script,$(_t))))
 
 # Build the top-level install script that drives the install.
 ifneq ($(SUPPORT_ANDROID_PLATFORM),)
@@ -374,6 +274,7 @@ $(RELATIVE_OUT)/install.sh: $(install_sh_template)
 	$(ECHO) 's/\[FW_DESTDIR\]/$(subst /,\/,$(FW_DESTDIR))/g;'           >> $(RELATIVE_OUT)/install.sh.sed
 	$(ECHO) 's/\[SHLIB_DESTDIR\]/$(subst /,\/,$(SHLIB_DESTDIR))/g;'     >> $(RELATIVE_OUT)/install.sh.sed
 	$(ECHO) 's/\[INCLUDE_DESTDIR\]/$(subst /,\/,$(INCLUDE_DESTDIR))/g;' >> $(RELATIVE_OUT)/install.sh.sed
+	$(ECHO) 's/\[TEST_DESTDIR\]/$(subst /,\/,$(TEST_DESTDIR))/g;'       >> $(RELATIVE_OUT)/install.sh.sed
 	@sed -f $(RELATIVE_OUT)/install.sh.sed $< > $@
 	$(CHMOD) +x $@
 	$(RM) $(RELATIVE_OUT)/install.sh.sed

@@ -40,9 +40,11 @@
 
 ccflags-y := \
  -I$(TOP)/kernel/drivers/staging/imgtec \
- -I$(TOP)/kernel/drivers/staging/imgtec/apollo \
+ -I$(TOP)/kernel/drivers/staging/imgtec/tc \
  -I$(TOP)/kernel/drivers/staging/imgtec/rk3368 \
  -I$(TOP)/kernel/drivers/staging/imgtec/plato \
+ -I$(TOP)/kernel/drivers/staging/imgtec/plato/hdmi \
+ -I$(TOP)/kernel/drivers/staging/imgtec/sunxi \
  -I$(TOP)/include/system/rgx_tc \
  -I$(TOP)/include/drm \
  -I$(TOP)/hwdefs \
@@ -53,25 +55,29 @@ adf_fbdev-y += \
  kernel/drivers/staging/imgtec/adf_common.o
 
 adf_pdp-y += \
- kernel/drivers/staging/imgtec/apollo/adf_pdp.o \
+ kernel/drivers/staging/imgtec/tc/adf_pdp.o \
  kernel/drivers/staging/imgtec/adf_common.o \
  kernel/drivers/staging/imgtec/debugfs_dma_buf.o
 
-adf_tc5_pdp-y += \
- kernel/drivers/staging/imgtec/apollo/adf_tc5_pdp.o \
- kernel/drivers/staging/imgtec/adf_common.o \
- kernel/drivers/staging/imgtec/debugfs_dma_buf.o
+tc-y += \
+ kernel/drivers/staging/imgtec/tc/tc_apollo.o \
+ kernel/drivers/staging/imgtec/tc/tc_odin.o \
+ kernel/drivers/staging/imgtec/tc/tc_drv.o
 
-apollo-y += \
- kernel/drivers/staging/imgtec/apollo/apollo_drv.o
+ifeq ($(SUPPORT_APOLLO_FPGA),1)
+tc-y += \
+ kernel/drivers/staging/imgtec/tc/tc_apollo_debugfs.o
+endif
 
 ifeq ($(SUPPORT_ION),1)
-apollo-y += \
- kernel/drivers/staging/imgtec/apollo/ion_lma_heap.o
+tc-y += \
+ kernel/drivers/staging/imgtec/tc/tc_ion.o \
+ kernel/drivers/staging/imgtec/tc/ion_lma_heap.o \
+ kernel/drivers/staging/imgtec/ion_fbcdc_clear.o
 endif
 
 adf_sunxi-y += \
- kernel/drivers/staging/imgtec/adf_sunxi.o \
+ kernel/drivers/staging/imgtec/sunxi/adf_sunxi.o \
  kernel/drivers/staging/imgtec/adf_common.o
 
 drm_nulldisp-y += \
@@ -81,29 +87,33 @@ drm_nulldisp-y += \
 
 ifeq ($(LMA),1)
 drm_nulldisp-y += \
- kernel/drivers/staging/imgtec/drm_pdp_gem.o
+ kernel/drivers/staging/imgtec/tc/drm_pdp_gem.o
 else
 drm_nulldisp-y += \
  kernel/drivers/staging/imgtec/drm_nulldisp_gem.o
 endif
 
 drm_pdp-y += \
- kernel/drivers/staging/imgtec/drm_pdp_debugfs.o \
- kernel/drivers/staging/imgtec/drm_pdp_drv.o \
- kernel/drivers/staging/imgtec/drm_pdp_fence.o \
- kernel/drivers/staging/imgtec/drm_pdp_gem.o \
- kernel/drivers/staging/imgtec/drm_pdp_modeset.o \
- kernel/drivers/staging/imgtec/drm_pdp_crtc.o \
- kernel/drivers/staging/imgtec/drm_pdp_dvi.o \
- kernel/drivers/staging/imgtec/drm_pdp_tmds.o
+ kernel/drivers/staging/imgtec/tc/drm_pdp_debugfs.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_drv.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_gem.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_modeset.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_crtc.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_dvi.o \
+ kernel/drivers/staging/imgtec/tc/drm_pdp_tmds.o
 
 plato-y += \
  kernel/drivers/staging/imgtec/plato/plato_drv.o \
  kernel/drivers/staging/imgtec/plato/plato_init.o
 
+drm_pdp2_hdmi-y += \
+ kernel/drivers/staging/imgtec/plato/hdmi/hdmi_core.o \
+ kernel/drivers/staging/imgtec/plato/hdmi/hdmi_video.o \
+ kernel/drivers/staging/imgtec/plato/hdmi/hdmi_i2c.o \
+ kernel/drivers/staging/imgtec/plato/hdmi/hdmi_phy.o
+
 drm_rk-y += \
   kernel/drivers/staging/imgtec/rk3368/drm_rk_drv.o \
-  kernel/drivers/staging/imgtec/rk3368/drm_rk_fence.o \
   kernel/drivers/staging/imgtec/rk3368/drm_rk_gem.o \
   kernel/drivers/staging/imgtec/rk3368/drm_rk_modeset.o \
   kernel/drivers/staging/imgtec/rk3368/drm_rk_crtc.o \

@@ -46,7 +46,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __RGX_FWIF_ALIGNCHECKS_H__
 
 /* for the offsetof macro */
-#include <stddef.h> 
+#if defined(__KERNEL__) && defined(LINUX)
+#include <linux/stddef.h>
+#else
+#include <stddef.h>
+#endif
 
 /*!
  ******************************************************************************
@@ -153,29 +157,35 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * Alignment KM checks array
  *****************************************************************************/
 
-#define RGXFW_ALIGN_CHECKS_INIT_KM                          \
-		sizeof(RGXFWIF_INIT),                               \
-		offsetof(RGXFWIF_INIT, sFaultPhysAddr),             \
-		offsetof(RGXFWIF_INIT, sPDSExecBase),               \
-		offsetof(RGXFWIF_INIT, sUSCExecBase),               \
-		offsetof(RGXFWIF_INIT, psKernelCCBCtl),             \
-		offsetof(RGXFWIF_INIT, psKernelCCB),                \
-		offsetof(RGXFWIF_INIT, psFirmwareCCBCtl),           \
-		offsetof(RGXFWIF_INIT, psFirmwareCCB),              \
-		offsetof(RGXFWIF_INIT, asSigBufCtl),                \
-		offsetof(RGXFWIF_INIT, sTraceBufCtl),              \
-		offsetof(RGXFWIF_INIT, sRGXCompChecks),             \
-		                                                    \
-		/* RGXFWIF_FWRENDERCONTEXT checks */                \
-		sizeof(RGXFWIF_FWRENDERCONTEXT),                    \
-		offsetof(RGXFWIF_FWRENDERCONTEXT, sTAContext),      \
-		offsetof(RGXFWIF_FWRENDERCONTEXT, s3DContext),      \
-		                                                    \
-		sizeof(RGXFWIF_FWCOMMONCONTEXT),                    \
-		offsetof(RGXFWIF_FWCOMMONCONTEXT, psFWMemContext),  \
-		offsetof(RGXFWIF_FWCOMMONCONTEXT, sRunNode),        \
-		offsetof(RGXFWIF_FWCOMMONCONTEXT, psCCB),           \
-		offsetof(RGXFWIF_FWCOMMONCONTEXT, ui64MCUFenceAddr)
+#define RGXFW_ALIGN_CHECKS_INIT_KM                                           \
+		sizeof(RGXFWIF_INIT),                                        \
+		offsetof(RGXFWIF_INIT, sFaultPhysAddr),                      \
+		offsetof(RGXFWIF_INIT, sPDSExecBase),                        \
+		offsetof(RGXFWIF_INIT, sUSCExecBase),                        \
+		offsetof(RGXFWIF_INIT, psKernelCCBCtl),                      \
+		offsetof(RGXFWIF_INIT, psKernelCCB),                         \
+		offsetof(RGXFWIF_INIT, psFirmwareCCBCtl),                    \
+		offsetof(RGXFWIF_INIT, psFirmwareCCB),                       \
+		offsetof(RGXFWIF_INIT, asSigBufCtl),                         \
+		offsetof(RGXFWIF_INIT, sTraceBufCtl),                        \
+		offsetof(RGXFWIF_INIT, sRGXCompChecks),                      \
+		                                                             \
+		/* RGXFWIF_FWRENDERCONTEXT checks */                         \
+		sizeof(RGXFWIF_FWRENDERCONTEXT),                             \
+		offsetof(RGXFWIF_FWRENDERCONTEXT, sTAContext),               \
+		offsetof(RGXFWIF_FWRENDERCONTEXT, s3DContext),               \
+		                                                             \
+		sizeof(RGXFWIF_FWCOMMONCONTEXT),                             \
+		offsetof(RGXFWIF_FWCOMMONCONTEXT, psFWMemContext),           \
+		offsetof(RGXFWIF_FWCOMMONCONTEXT, sRunNode),                 \
+		offsetof(RGXFWIF_FWCOMMONCONTEXT, psCCB),                    \
+		                                                             \
+		sizeof(RGXFWIF_MMUCACHEDATA),                                \
+		offsetof(RGXFWIF_MMUCACHEDATA,sMemoryContext),               \
+		offsetof(RGXFWIF_MMUCACHEDATA,ui32Flags),                    \
+		offsetof(RGXFWIF_MMUCACHEDATA,sMMUCacheSync),                \
+		offsetof(RGXFWIF_MMUCACHEDATA,ui16MMUCacheSyncUpdateValue)
+
 
 #endif /*  __RGX_FWIF_ALIGNCHECKS_H__ */
 

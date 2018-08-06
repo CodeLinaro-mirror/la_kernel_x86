@@ -168,25 +168,6 @@ PVRSRV_ERROR RGXSetDeviceFlags(PVRSRV_RGXDEV_INFO *psDevInfo,
 /*!
 ******************************************************************************
 
- @Function	RGXRunScript
-
- @Description Execute the commands in the script
-
- @Input 
-
- @Return   PVRSRV_ERROR
-
-******************************************************************************/
-PVRSRV_ERROR RGXRunScript(PVRSRV_RGXDEV_INFO *psDevInfo,
-				RGX_INIT_COMMAND *psScript,
-				IMG_UINT32 ui32NumCommands,
-				IMG_UINT32 ui32PdumpFlags,
-				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-				void *pvDumpDebugFile);
-
-/*!
-******************************************************************************
-
  @Function    RGXStringifyKickTypeDM
 
  @Description Gives the kick type DM name stringified

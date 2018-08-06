@@ -74,23 +74,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*!
 *******************************************************************************
 
- @Function	RGXPanic
-
- @Description
-
- Called when an unrecoverable situation is detected. Dumps RGX debug
- information and tells the OS to panic.
-
- @Input psDevInfo - RGX device info
-
- @Return void
-
-******************************************************************************/
-void RGXPanic(PVRSRV_RGXDEV_INFO	*psDevInfo);
-
-/*!
-*******************************************************************************
-
  @Function	RGXDumpDebugInfo
 
  @Description
@@ -133,6 +116,26 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				void *pvDumpDebugFile,
 				PVRSRV_RGXDEV_INFO *psDevInfo,
 				IMG_UINT32 ui32VerbLevel);
+/*!
+*******************************************************************************
+
+ @Function	RGXDumpRGXRegisters
+
+ @Description
+
+ Dumps an extensive list of RGX registers required for debugging
+
+ @Input pfnDumpDebugPrintf  - Optional replacement print function
+ @Input pvDumpDebugFile     - Optional file identifier to be passed to the
+                              'printf' function if required
+ @Input psDevInfo           - RGX device info
+
+ @Return PVRSRV_ERROR         PVRSRV_OK on success, error code otherwise
+
+******************************************************************************/
+PVRSRV_ERROR RGXDumpRGXRegisters(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+								 void *pvDumpDebugFile,
+								 PVRSRV_RGXDEV_INFO *psDevInfo);
 
 /*!
 *******************************************************************************
@@ -164,12 +167,32 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
  Reads data from a memory location (FW memory map) using the META Slave Port
 
+ @Input  psDevInfo  - Pointer to RGX DevInfo to be used while reading
+ @Input  ui32FWAddr - 32 bit FW address
+ @Input  pui32Value - When the read is successful, value at above FW address
+                      is returned at this location
+
+ @Return PVRSRV_ERROR PVRSRV_OK if read success, error code otherwise.
+******************************************************************************/
+PVRSRV_ERROR RGXReadWithSP(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32FWAddr, IMG_UINT32 *pui32Value);
+
+/*!
+*******************************************************************************
+
+ @Function	RGXWriteWithSP
+
+ @Description
+
+ Writes data to a memory location (FW memory map) using the META Slave Port
+
+ @Input  psDevInfo  - Pointer to RGX DevInfo to be used while writing
  @Input  ui32FWAddr - 32 bit FW address
 
- @Return IMG_UINT32
-******************************************************************************/
-IMG_UINT32 RGXReadWithSP(IMG_UINT32 ui32FWAddr);
+ @Input  ui32Value  - 32 bit Value to write
 
+ @Return PVRSRV_ERROR PVRSRV_OK if write success, error code otherwise.
+******************************************************************************/
+PVRSRV_ERROR RGXWriteWithSP(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32FWAddr, IMG_UINT32 ui32Value);
 
 #if defined(SUPPORT_EXTRA_METASP_DEBUG)
 /*!
@@ -186,5 +209,28 @@ IMG_UINT32 RGXReadWithSP(IMG_UINT32 ui32FWAddr);
 ******************************************************************************/
 PVRSRV_ERROR ValidateFWImageWithSP(PVRSRV_RGXDEV_INFO *psDevInfo);
 #endif /* defined(SUPPORT_EXTRA_METASP_DEBUG) */
+
+/*!
+*******************************************************************************
+
+ @Function	RGXDumpRGXDebugSummary
+
+ @Description
+
+ Dump a summary in human readable form with the RGX state
+
+ @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
+ @Input psDevInfo	     - RGX device info
+ @Input bRGXPoweredON        - IMG_TRUE if RGX device is on
+
+ @Return   void
+
+******************************************************************************/
+void RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile,
+					PVRSRV_RGXDEV_INFO *psDevInfo,
+					IMG_BOOL bRGXPoweredON);
 
 #endif /* __RGXDEBUG_H__ */

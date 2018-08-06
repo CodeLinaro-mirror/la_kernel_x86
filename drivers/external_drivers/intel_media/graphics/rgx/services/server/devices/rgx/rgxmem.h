@@ -49,10 +49,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "mmu_common.h"
 #include "rgxdevice.h"
 
-#define RGXMEM_SERVER_MMU_CONTEXT_MAX_NAME 40
+#define RGXMEM_SERVER_MMU_CONTEXT_MAX_NAME 16
 
 /* this PID denotes the firmware */
 #define RGXMEM_SERVER_PID_FIRMWARE 0xFFFFFFFF
+
+/* this PID denotes the PM */
+#define RGXMEM_SERVER_PID_PM 0xEFFFFFFF
 
 typedef struct _RGXMEM_PROCESS_INFO_
 {
@@ -72,13 +75,41 @@ void RGXMMUCacheInvalidate(PVRSRV_DEVICE_NODE *psDeviceNode,
 						   MMU_LEVEL eMMULevel,
 						   IMG_BOOL bUnmap);
 
+/*************************************************************************/ /*!
+@Function       RGXMMUCacheInvalidateKick
+
+@Description    Sends a flush command to a particular DM but first takes
+                the power lock. 
+
+@Input          psDevInfo   Device Info
+@Input          pui16NextMMUInvalidateUpdate
+@Input          bInterrupt  Should the firmware signal command completion to
+                the host
+
+@Return			PVRSRV_ERROR
+*/ /**************************************************************************/
 PVRSRV_ERROR RGXMMUCacheInvalidateKick(PVRSRV_DEVICE_NODE *psDevInfo,
-                                       IMG_UINT32 *pui32NextMMUInvalidateUpdate,
+                                       IMG_UINT16 *pui16NextMMUInvalidateUpdate,
                                        IMG_BOOL bInterrupt);
 
+/*************************************************************************/ /*!
+@Function       RGXPreKickCacheCommand
+
+@Description    Sends a cache flush command to a particular DM without
+                honouring the power lock. It's caller's responsibility 
+                to ensure power lock is held before calling this function.
+
+@Input          psDevInfo   Device Info
+@Input          eDM			To which DM the cmd is sent.
+@Input          pui16MMUInvalidateUpdate
+@Input          bInterrupt  Should the firmware signal command completion to
+                the host
+
+@Return			PVRSRV_ERROR
+*/ /**************************************************************************/
 PVRSRV_ERROR RGXPreKickCacheCommand(PVRSRV_RGXDEV_INFO *psDevInfo,
                                     RGXFWIF_DM eDM,
-                                    IMG_UINT32 *pui32MMUInvalidateUpdate,
+                                    IMG_UINT16 *pui16MMUInvalidateUpdate,
                                     IMG_BOOL bInterrupt);
 
 void RGXUnregisterMemoryContext(IMG_HANDLE hPrivData);
@@ -92,7 +123,8 @@ void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo,
 				IMG_DEV_VIRTADDR *psDevVAddr,
 				IMG_DEV_PHYADDR *psDevPAddr,
 				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-				void *pvDumpDebugFile);
+				void *pvDumpDebugFile,
+				MMU_FAULT_DATA *psOutFaultData);
 
 IMG_BOOL RGXPCAddrToProcessInfo(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_PHYADDR sPCAddress,
 								RGXMEM_PROCESS_INFO *psInfo);

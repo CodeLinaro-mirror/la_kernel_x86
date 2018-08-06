@@ -1604,18 +1604,6 @@ static void _DCDisplayContextFlush(PDLLIST_NODE psNode)
 		{
 			PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting NULL flip"));
 
-			/* Check if we need to do any CPU cache operations before sending the NULL flip */
-			if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-			{
-				psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-			}
-			else
-			{
-				PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
-				PVR_ASSERT(0);
-			}
-
-
 			/* The next Config may be dependent on the single Config currently in the DC */
 			/* Issue a NULL flip to free it */
 			_DCDisplayContextAcquireRef(psDisplayContext);
@@ -1633,17 +1621,6 @@ static void _DCDisplayContextFlush(PDLLIST_NODE psNode)
 	}
 
 	PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting final NULL flip"));
-
-	/* Check if we need to do any CPU cache operations before sending the NULL flip */
-	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-	{
-		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-	}
-	else
-	{
-		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
-		PVR_ASSERT(0);
-	}
 
 	/* The next Config may be dependent on the single Config currently in the DC */
 	/* Issue a NULL flip to free it */
@@ -1842,17 +1819,6 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 		{
 			psCompleteData->apsBuffer[i] = papsBuffers[i];
 		}
-	}
-
-	/* Check if we need to do any CPU cache operations before sending the config */
-	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-	{
-		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-	}
-	else
-	{
-		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextConfigure: OSCPUOperation failed"));
-		PVR_ASSERT(0);
 	}
 
 	/* Submit the command */

@@ -59,8 +59,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVR_SYNC_IOC_FORCE_SW_ONLY \
  _IO(PVR_SYNC_IOC_MAGIC,   5)
 
-#define PVRSYNC_MODNAME "pvr_sync"
-
 struct pvr_sync_pt_info {
 	/* Output */
 	__u32 id;

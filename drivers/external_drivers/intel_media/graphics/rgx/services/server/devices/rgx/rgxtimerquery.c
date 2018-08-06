@@ -62,6 +62,10 @@ PVRSRVRGXBeginTimerQueryKM(CONNECTION_DATA    * psConnection,
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hTimerQueryLock);
+#endif
+
 	psDevInfo->bSaveStart = IMG_TRUE;
 	psDevInfo->bSaveEnd   = IMG_TRUE;
 
@@ -71,6 +75,10 @@ PVRSRVRGXBeginTimerQueryKM(CONNECTION_DATA    * psConnection,
 
 	/* save of the active query index */
 	psDevInfo->ui32ActiveQueryId = ui32QueryId;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hTimerQueryLock);
+#endif
 
 	return PVRSRV_OK;
 }
@@ -83,12 +91,20 @@ PVRSRVRGXEndTimerQueryKM(CONNECTION_DATA    * psConnection,
 	PVRSRV_RGXDEV_INFO * psDevInfo = (PVRSRV_RGXDEV_INFO *)psDeviceNode->pvDevice;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hTimerQueryLock);
+#endif
+
 	/* clear off the flags set by Begin(). Note that _START_TIME is
 	 * probably already cleared by Kick()
 	 */
 	psDevInfo->bSaveStart = IMG_FALSE;
 	psDevInfo->bSaveEnd   = IMG_FALSE;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hTimerQueryLock);
+#endif
 
 	return PVRSRV_OK;
 }
@@ -104,6 +120,7 @@ PVRSRVRGXQueryTimerKM(CONNECTION_DATA    * psConnection,
 	PVRSRV_RGXDEV_INFO * psDevInfo = (PVRSRV_RGXDEV_INFO *)psDeviceNode->pvDevice;
 	IMG_UINT32         ui32Scheduled;
 	IMG_UINT32         ui32Completed;
+	PVRSRV_ERROR       eError;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 	
@@ -111,6 +128,10 @@ PVRSRVRGXQueryTimerKM(CONNECTION_DATA    * psConnection,
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hTimerQueryLock);
+#endif
 
 	ui32Scheduled = psDevInfo->aui32ScheduledOnId[ui32QueryId];
 	ui32Completed = psDevInfo->pui32CompletedById[ui32QueryId];
@@ -124,12 +145,17 @@ PVRSRVRGXQueryTimerKM(CONNECTION_DATA    * psConnection,
 		* pui64StartTime = psDevInfo->pui64StartTimeById[ui32QueryId];
 		* pui64EndTime   = psDevInfo->pui64EndTimeById[ui32QueryId];
 
-		return PVRSRV_OK;
+		eError = PVRSRV_OK;
 	}
 	else
 	{
-		return PVRSRV_ERROR_RESOURCE_UNAVAILABLE;
+		eError = PVRSRV_ERROR_RESOURCE_UNAVAILABLE;
 	}
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hTimerQueryLock);
+#endif
+	return eError;
 }
 
 
@@ -141,7 +167,7 @@ PVRSRVRGXCurrentTime(CONNECTION_DATA    * psConnection,
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
 
-	*pui64Time = RGXGPUFreqCalibrateClockns64();
+	*pui64Time = RGXTimeCorrGetClockns64();
 
 	return PVRSRV_OK;
 }

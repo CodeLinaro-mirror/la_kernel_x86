@@ -24,7 +24,6 @@ ccflags-y += \
 	-I$(RGXINC)/generated/rgxcmp_bridge \
 	-I$(RGXINC)/generated/pdumpmm_bridge \
 	-I$(RGXINC)/generated/dc_bridge \
-	-I$(RGXINC)/generated/hostportio_bridge \
 	-I$(RGXINC)/generated/rgxtq_bridge \
 	-I$(RGXINC)/generated/rgxtq2_bridge \
 	-I$(RGXINC)/generated/mm_bridge \
@@ -67,9 +66,7 @@ ccflags-y += \
 	-I$(RGXINC)/services/system/common/env/linux \
 	-I$(RGXINC)/services/shared/devices/rgx \
 	-I$(RGXINC)/services/shared/include \
-	-I$(RGXINC)/services/srvinit/devices \
-	-I$(RGXINC)/services/srvinit/devices/rgx \
-	-I$(RGXINC)/services/srvinit/include \
+	-I$(RGXINC)/services/server/devices \
 	-I$(RGXINC)/services/server/env/linux \
 	-I$(RGXINC)/services/server/include \
 	-I$(RGXINC)/services/server/devices/rgx \
@@ -146,7 +143,8 @@ ccflags-y += \
 		-DPVRSRV_APPHINT_TIMECORRCLOCK=2	\
 		-DDMABUF_IMPORT_PHYSHEAP_ID=0		\
 		-DPVRSRV_GPUVIRT_NUM_OSID=2			\
-		-DSUPPORT_KERNEL_SRVINIT=1                      \
+		-DSUPPORT_KERNEL_SRVINIT=1			 \
+		-DPVRSRV_USE_BRIDGE_LOCK	\
 		-DPVRSRV_APPHINT_HWRDEBUGDUMPLIMIT=APPHNT_BLDVAR_DBGDUMPLIMIT			\
 		-DSAPPHNT_BLDVAR_DBGDUMPLIMITPPORT_KERNEL_SRVINIT=1			\
 		-DPVRSRV_APPHINT_ENABLETRUSTEDDEVICEACECONFIG=IMG_FALSE	\
@@ -161,8 +159,8 @@ ccflags-y += \
 		-DPVRSRV_APPHINT_FIRMWAREPERF=FW_PERF_CONF_NONE							\
 		-DPVRSRV_APPHINT_FWCONTEXTSWITCHPROFILE=RGXFWIF_CTXSWITCH_PROFILE_MEDIUM_EN				\
 		-DPVRSRV_APPHINT_HWPERFDISABLECUSTOMCOUNTERFILTER=0		\
-		-DPVRSRV_APPHINT_HWPERFFWBUFSIZEINKB=RGXFW_HWPERF_L1_SIZE_DEFAULT		\
-		-DPVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB=HWPERF_HOST_TL_STREAM_SIZE_DEFAULT				\
+		-DPVRSRV_APPHINT_HWPERFFWBUFSIZEINKB=2048		\
+		-DPVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB=128				\
 		-DPVRSRV_APPHINT_JONESDISABLEMASK=0						\
 		-DPVRSRV_APPHINT_NEWFILTERINGMODE=1						\
 		-DPVRSRV_APPHINT_TRUNCATEMODE=0							\
@@ -181,6 +179,20 @@ ccflags-y += \
 		-DPVRSRV_APPHINT_ZEROFREELIST=IMG_FALSE			\
 		-DPVRSRV_APPHINT_DUSTREQUESTINJECT=IMG_FALSE	\
 		-DPVRSRV_APPHINT_DISABLEPDUMPPANIC=IMG_FALSE	\
+		-DPVRSRV_APPHINT_VDMCONTEXTSWITCHMODE=RGXFWIF_INICFG_VDM_CTX_STORE_MODE_INDEX	\
+		-DPVRSRV_APPHINT_DRIVERMODE=0x7FFFFFFF		\
+		-DPVRSRV_APPHINT_EMUMAXFREQ=0			\
+		-DPVRSRV_APPHINT_GPIOVALIDATIONMODE=0		\
+		-DPVRSRV_APPHINT_OSIDREGION0MIN="\"0x00000000 0x04000000 0x10000000 0x18000000 0x20000000 0x28000000 0x30000000 0x38000000\""	\
+		-DPVRSRV_APPHINT_OSIDREGION0MAX="\"0x3FFFFFFF 0x0FFFFFFF 0x17FFFFFF 0x1FFFFFFF 0x27FFFFFF 0x2FFFFFFF 0x37FFFFFF 0x3FFFFFFF\""		\
+		-DPVRSRV_APPHINT_OSIDREGION1MIN="\"0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000\""		\
+		-DPVRSRV_APPHINT_OSIDREGION1MAX="\"0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF\""		\
+		-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_SERVICES=0		\
+		-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_EGL=0		\
+		-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENGLES=0		\
+		-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENCL=0		\
+		-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENRL=0		\
+		-DPVRSRV_APPHINT_CACHEOPCONFIG=0			\
 		-DRGX_FW_FILENAME="\"rgx.fw.signed\""		\
 		-DPVR_LINUX_PHYSMEM_MAX_EXCESS_POOL_PAGES=32768	\
 		-DCACHEFLUSH_UM_TYPE=CACHEFLUSH_UM_X86_ONLY		\
@@ -195,6 +207,14 @@ ccflags-y += \
 		-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO=1					\
 		-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO_THRESHOLD=90					\
 		-DDEVICE_MEMSETCPY_ALIGN_IN_BYTES=8			\
+		-DPVRSRV_USE_SYNC_CHECKPOINTS		\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TQ3D=14			\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TQ2D=14			\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_CDM=13			\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TA=15			\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_3D=16			\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_KICKSYNC=13		\
+		-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_RTU=15			\
 		$(NULL)
 
 #	-DPVRSRV_ENABLE_FW_TRACE_DEBUGFS \
@@ -262,6 +282,9 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/common/process_stats.o \
 	$(RGXDIR)/services/server/common/cache_km.o \
 	$(RGXDIR)/services/server/common/htbserver.o \
+	$(RGXDIR)/services/server/common/info_page_km.o \
+	$(RGXDIR)/services/server/common/pvrsrv_pool.o \
+	$(RGXDIR)/services/server/common/physmem_hostmem.o \
 	$(RGXDIR)/services/server/common/physmem_tdsecbuf.o \
 	$(RGXDIR)/services/server/common/pvr_notifier.o \
 	$(RGXDIR)/services/server/common/sync_checkpoint.o \
@@ -282,6 +305,7 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/env/linux/pmr_os.o \
 	$(RGXDIR)/services/server/env/linux/km_apphint.o \
 	$(RGXDIR)/services/server/env/linux/osmmap_stub.o \
+	$(RGXDIR)/services/server/env/linux/sync_native_server.o \
 	$(RGXDIR)/services/shared/common/devicemem.o \
 	$(RGXDIR)/services/shared/common/hash.o \
 	$(RGXDIR)/services/shared/common/devicemem_utils.o \
@@ -298,8 +322,11 @@ $(DRIVER_NAME)-y += \
 
 # SUPPORT_NATIVE_FENCE_SYNC
 $(DRIVER_NAME)-y += \
-	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync.o	\
+	$(RGXDIR)/services/server/env/linux/sync_native_server.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync2.o		\
 	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_drm.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_fence.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sw_fence.o		\
 	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_platform_drv.o	\
 
 $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
@@ -340,7 +367,6 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/devices/rgx/rgxhwperf.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxtimecorr.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxkicksync.o	\
-	$(RGXDIR)/services/server/devices/rgx/rgxlayer_km_impl.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxmipsmmuinit.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxray.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxsignals.o	\
@@ -366,7 +392,6 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/pdump_bridge/server_pdump_bridge.o \
 	$(RGXDIR)/generated/pdump_bridge/client_pdump_direct_bridge.o \
 	$(RGXDIR)/generated/srvcore_bridge/server_srvcore_bridge.o \
-	$(RGXDIR)/generated/rgxinit_bridge/client_rgxinit_direct_bridge.o \
 	$(RGXDIR)/generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/server_pdumpmm_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/client_pdumpmm_direct_bridge.o \
@@ -433,16 +458,15 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/3rdparty/intel_drm/dc_mrfld.o \
 	$(RGXDIR)/services/system/common/env/linux/pci_support.o	\
 	$(RGXDIR)/services/system/common/env/linux/dma_support.o	\
-	$(RGXDIR)/services/system/common/env/linux/interrupt_support.o	\
+	$(RGXDIR)/services/system/common/env/linux/interrupt_support.o \
 
 # server initialization
 $(DRIVER_NAME)-y += \
-	$(RGXDIR)/services/srvinit/common/srvinit_pdump.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxfwimageutils.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxlayer_impl.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit_script.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/env/linux/km/rgxfwload.o	
+	$(RGXDIR)/services/server/devices/rgx/rgxfwimageutils.o		\
+	$(RGXDIR)/services/server/devices/rgx/rgxlayer_impl.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxsrvinit.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxsrvinit_script.o	\
+	$(RGXDIR)/services/server/devices/rgx/env/linux/km/rgxfwload.o
 
 # for SUPPORT_PVRSRV_GPUVIRT
 $(DRIVER_NAME)-$(SUPPORT_PVRSRV_GPUVIRT) += \

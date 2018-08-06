@@ -66,9 +66,7 @@ typedef struct _SYS_INTERRUPT_DATA_
 	PFN_SYS_LISR	pfnLISR;
 	void			*pvData;
 	IMG_UINT32		ui32InterruptFlag;
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
 	IMG_UINT32		ui32IRQ;
-#endif
 } SYS_INTERRUPT_DATA;
 
 /*************************************************************************/ /*!

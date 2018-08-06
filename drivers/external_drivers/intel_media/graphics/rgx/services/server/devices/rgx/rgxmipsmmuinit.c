@@ -51,17 +51,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_error.h"
 #include "rgx_memallocflags.h"
 #include "pdump_km.h"
-#include "rgx_mips.h"
+#include "rgxdevice.h"
 
 /*
  * Bits of PT, PD and PC not involving addresses
  */
 
-/* Position of the MIPS PT entry indicating entry validity */
-#define RGX_MIPS_MMUCTRL_PTE_PROTMASK	   (RGX_MIPS_MMUCTRL_PT_DATA_VALID_EN | \
-                                            RGX_MIPS_MMUCTRL_PT_DATA_GLOBAL_EN | \
-                                            RGX_MIPS_MMUCTRL_PT_DATA_WRITABLE_EN | \
-                                            ~RGX_MIPS_MMUCTRL_PT_CACHE_POLICY_CLRMSK);
 /* Currently there is no page directory for MIPS MMU */
 #define RGX_MIPS_MMUCTRL_PDE_PROTMASK        0
 /* Currently there is no page catalog for MIPS MMU */
@@ -166,8 +161,19 @@ static PVRSRV_ERROR RGXGetPageSizeFromPDE8(IMG_UINT64 ui64PDE, IMG_UINT32 *pui32
 
 static MMU_DEVICEATTRIBS sRGXMMUDeviceAttributes;
 
+/* Cached policy */
+static IMG_UINT32 gui32CachedPolicy;
+
 PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+	IMG_BOOL bPhysBusAbove32Bit = 0;
+
+	if (RGX_IS_FEATURE_VALUE_SUPPORTED(psDevInfo, PHYS_BUS_WIDTH))
+	{
+		bPhysBusAbove32Bit = RGX_GET_FEATURE_VALUE(psDevInfo, PHYS_BUS_WIDTH) > 32;
+	}
+
 	sRGXMMUDeviceAttributes.pszMMUPxPDumpMemSpaceName =
 		PhysHeapPDumpMemspaceName(psDeviceNode->apsPhysHeap[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL]);
 
@@ -199,7 +205,7 @@ PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	sRGXMMUTopLevelDevVAddrConfig.uiPTIndexMask = IMG_UINT64_C(0xfffffff000); /* Get the PT address bits from a 40 bit virt. address (in a 64bit UINT) */
 	sRGXMMUTopLevelDevVAddrConfig.uiPTIndexShift = (IMG_UINT32)RGXMIPSFW_LOG2_PAGE_SIZE;
-	sRGXMMUTopLevelDevVAddrConfig.uiNumEntriesPT = RGX_FIRMWARE_HEAP_SIZE >> sRGXMMUTopLevelDevVAddrConfig.uiPTIndexShift;
+	sRGXMMUTopLevelDevVAddrConfig.uiNumEntriesPT = RGX_FIRMWARE_RAW_HEAP_SIZE >> sRGXMMUTopLevelDevVAddrConfig.uiPTIndexShift;
 
 /*
  *
@@ -231,15 +237,26 @@ PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 	 */
 	sRGXMMUPTEConfig_4KBDP.uiBytesPerEntry = 1 << RGXMIPSFW_LOG2_PTE_ENTRY_SIZE;
 
-	sRGXMMUPTEConfig_4KBDP.uiAddrMask = IMG_UINT64_C(0xffffffffc0);
-	sRGXMMUPTEConfig_4KBDP.uiAddrShift = RGX_MIPS_MMUCTRL_PT_PFN_SHIFT;
+
+	if (bPhysBusAbove32Bit)
+	{
+		sRGXMMUPTEConfig_4KBDP.uiAddrMask = RGXMIPSFW_ENTRYLO_PFN_MASK_ABOVE_32BIT;
+		gui32CachedPolicy = RGXMIPSFW_CACHED_POLICY_ABOVE_32BIT;
+	}
+	else
+	{
+		sRGXMMUPTEConfig_4KBDP.uiAddrMask = RGXMIPSFW_ENTRYLO_PFN_MASK;
+		gui32CachedPolicy = RGXMIPSFW_CACHED_POLICY;
+	}
+
+	sRGXMMUPTEConfig_4KBDP.uiAddrShift = RGXMIPSFW_ENTRYLO_PFN_SHIFT;
 	sRGXMMUPTEConfig_4KBDP.uiAddrLog2Align = (IMG_UINT32)RGXMIPSFW_LOG2_PAGE_SIZE;
 
-	sRGXMMUPTEConfig_4KBDP.uiProtMask = RGX_MIPS_MMUCTRL_PTE_PROTMASK;
+	sRGXMMUPTEConfig_4KBDP.uiProtMask = RGXMIPSFW_ENTRYLO_DVG | ~RGXMIPSFW_ENTRYLO_CACHE_POLICY_CLRMSK;
 	sRGXMMUPTEConfig_4KBDP.uiProtShift = 0;
 
-	sRGXMMUPTEConfig_4KBDP.uiValidEnMask = RGX_MIPS_MMUCTRL_PT_DATA_VALID_EN;
-	sRGXMMUPTEConfig_4KBDP.uiValidEnShift = RGX_MIPS_MMUCTRL_PT_DATA_VALID_SHIFT;
+	sRGXMMUPTEConfig_4KBDP.uiValidEnMask = RGXMIPSFW_ENTRYLO_VALID_EN;
+	sRGXMMUPTEConfig_4KBDP.uiValidEnShift = RGXMIPSFW_ENTRYLO_VALID_SHIFT;
 
 	/*
 	 * Setup sRGXMMUDevVAddrConfig_4KBDP
@@ -255,12 +272,12 @@ PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexMask = ~RGX_MIPS_MMUCTRL_VADDR_PT_INDEX_CLRMSK;
 	sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift = RGX_MIPS_MMUCTRL_VADDR_PT_INDEX_SHIFT;
-	sRGXMMUDevVAddrConfig_4KBDP.uiNumEntriesPT = RGX_FIRMWARE_HEAP_SIZE >> sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift;
+	sRGXMMUDevVAddrConfig_4KBDP.uiNumEntriesPT = RGX_FIRMWARE_RAW_HEAP_SIZE >> sRGXMMUDevVAddrConfig_4KBDP.uiPTIndexShift;
 
 
 	sRGXMMUDevVAddrConfig_4KBDP.uiPageOffsetMask = IMG_UINT64_C(0x0000000fff);
 	sRGXMMUDevVAddrConfig_4KBDP.uiPageOffsetShift = 0;
-	sRGXMMUDevVAddrConfig_4KBDP.uiOffsetInBytes = RGX_FIRMWARE_HEAP_BASE & IMG_UINT64_C(0x00ffffffff);
+	sRGXMMUDevVAddrConfig_4KBDP.uiOffsetInBytes = RGX_FIRMWARE_RAW_HEAP_BASE & IMG_UINT64_C(0x00ffffffff);
 
 	/*
 	 * Setup gsPageSizeConfig4KB
@@ -753,7 +770,7 @@ static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags)
 	if(((MMU_PROTFLAGS_READABLE|MMU_PROTFLAGS_WRITEABLE) & uiProtFlags) == (MMU_PROTFLAGS_READABLE|MMU_PROTFLAGS_WRITEABLE))
 	{
 		/* read/write */
-		ui32MMUFlags |= RGX_MIPS_MMUCTRL_PT_DATA_WRITABLE_EN;
+		ui32MMUFlags |= RGXMIPSFW_ENTRYLO_DIRTY_EN;
 	}
 	else if(MMU_PROTFLAGS_READABLE & uiProtFlags)
 	{
@@ -762,7 +779,7 @@ static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags)
 	else if(MMU_PROTFLAGS_WRITEABLE & uiProtFlags)
 	{
 		/* write only */
-		ui32MMUFlags |= RGX_MIPS_MMUCTRL_PT_DATA_READ_INHIBIT_EN;
+		ui32MMUFlags |= RGXMIPSFW_ENTRYLO_READ_INHIBIT_EN;
 	}
 	else if ((MMU_PROTFLAGS_INVALID & uiProtFlags) == 0)
 	{
@@ -778,19 +795,18 @@ static IMG_UINT32 RGXDerivePTEProt4(IMG_UINT32 uiProtFlags)
 	/* cache setup */
 	if ((MMU_PROTFLAGS_CACHED & uiProtFlags) == 0)
 	{
-		ui32MMUFlags |= (RGX_MIPS_MMUCTRL_PT_UNCACHED_POLICY <<
-						 RGX_MIPS_MMUCTRL_PT_CACHE_POLICY_SHIFT);
+		ui32MMUFlags |= RGXMIPSFW_ENTRYLO_UNCACHED;
 	}
 	else
 	{
-		ui32MMUFlags |= (RGX_MIPS_MMUCTRL_PT_CACHED_POLICY <<
-						 RGX_MIPS_MMUCTRL_PT_CACHE_POLICY_SHIFT);
+		ui32MMUFlags |= gui32CachedPolicy <<
+		                RGXMIPSFW_ENTRYLO_CACHE_POLICY_SHIFT;
 	}
 
 	if ((uiProtFlags & MMU_PROTFLAGS_INVALID) == 0)
 	{
-		ui32MMUFlags |= RGX_MIPS_MMUCTRL_PT_DATA_VALID_EN;
-		ui32MMUFlags |= RGX_MIPS_MMUCTRL_PT_DATA_GLOBAL_EN;
+		ui32MMUFlags |= RGXMIPSFW_ENTRYLO_VALID_EN;
+		ui32MMUFlags |= RGXMIPSFW_ENTRYLO_GLOBAL_EN;
 	}
 
 	if (MMU_PROTFLAGS_DEVICE(PMMETA_PROTECT) & uiProtFlags)

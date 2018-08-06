@@ -42,10 +42,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #if defined(PDUMP)
-
+#include "pvrsrv.h"
 #include "devicemem_pdump.h"
 #include "rgxpdump.h"
 #include "rgx_bvnc_defs_km.h"
+#include <pdumpdesc.h>
 
 /*
  * There are two different set of functions one for META and one for MIPS
@@ -77,8 +78,8 @@ static PVRSRV_ERROR _MetaDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
 								 "out.3dsig",
 								 0,
 								 ui32PDumpFlags);
-
-	if(psDevInfo->sDevFeatureCfg.ui64Features & RGX_FEATURE_RAY_TRACING_BIT_MASK)
+#if defined(RGX_FEATURE_RAY_TRACING)
+	if(RGX_IS_FEATURE_SUPPORTED(psDevInfo, RAY_TRACING_DEPRECATED))
 	{
 		/* RT signatures */
 		PDumpCommentWithFlags(ui32PDumpFlags, "** Dump RTU signatures and checksums Buffer");
@@ -97,6 +98,7 @@ static PVRSRV_ERROR _MetaDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
 									 0,
 									 ui32PDumpFlags);
 	}
+#endif
 
 	return PVRSRV_OK;
 }
@@ -108,13 +110,8 @@ static PVRSRV_ERROR _MetaDumpTraceBufferKM(CONNECTION_DATA * psConnection,
 	IMG_UINT32 		ui32ThreadNum, ui32Size, ui32OutFileOffset;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+	PVRSRV_VZ_RET_IF_MODE(DRIVER_MODE_GUEST, PVRSRV_OK);
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	PVR_UNREFERENCED_PARAMETER(ui32Size);
-	PVR_UNREFERENCED_PARAMETER(psDevInfo);
-	PVR_UNREFERENCED_PARAMETER(ui32ThreadNum);
-	PVR_UNREFERENCED_PARAMETER(ui32OutFileOffset);
-#else
 	/* Dump trace buffers */
 	PDumpCommentWithFlags(ui32PDumpFlags, "** Dump trace buffers");
 	for(ui32ThreadNum = 0, ui32OutFileOffset = 0; ui32ThreadNum < RGXFW_THREAD_NUM; ui32ThreadNum++)
@@ -174,7 +171,6 @@ static PVRSRV_ERROR _MetaDumpTraceBufferKM(CONNECTION_DATA * psConnection,
 								 "out.hwperf",
 								 0,
 								 ui32PDumpFlags);
-#endif
 
 	return PVRSRV_OK;
 
@@ -205,8 +201,8 @@ static PVRSRV_ERROR _MipsDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
 								 psDevInfo->ui32Sig3DChecksSize,
 								 "out.3dsig",
 								 0);
-
-	if(psDevInfo->sDevFeatureCfg.ui64Features & RGX_FEATURE_RAY_TRACING_BIT_MASK)
+#if defined(RGX_FEATURE_RAY_TRACING)
+	if(RGX_IS_FEATURE_SUPPORTED(psDevInfo, RAY_TRACING_DEPRECATED))
 	{
 		/* RT signatures */
 		PDumpCommentWithFlags(ui32PDumpFlags, "** Dump RTU signatures and checksums Buffer");
@@ -224,6 +220,7 @@ static PVRSRV_ERROR _MipsDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
 									 "out.shsig",
 									 0);
 	}
+#endif
 
 	return PVRSRV_OK;
 
@@ -233,15 +230,11 @@ static PVRSRV_ERROR _MipsDumpTraceBufferKM(CONNECTION_DATA *psConnection,
                                            PVRSRV_DEVICE_NODE *psDeviceNode,
                                            IMG_UINT32 ui32PDumpFlags)
 {
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	PVR_UNREFERENCED_PARAMETER(psConnection);
-	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
-	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
-#else
-
 	IMG_UINT32 		ui32ThreadNum, ui32Size, ui32OutFileOffset;
 	PVRSRV_RGXDEV_INFO	*psDevInfo = psDeviceNode->pvDevice;
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+	PVRSRV_VZ_RET_IF_MODE(DRIVER_MODE_GUEST, PVRSRV_OK);
+
 	/* Dump trace buffers */
 	PDumpCommentWithFlags(ui32PDumpFlags, "** Dump trace buffers");
 	for(ui32ThreadNum = 0, ui32OutFileOffset = 0; ui32ThreadNum < RGXFW_THREAD_NUM; ui32ThreadNum++)
@@ -296,7 +289,6 @@ static PVRSRV_ERROR _MipsDumpTraceBufferKM(CONNECTION_DATA *psConnection,
 								 psDevInfo->ui32RGXFWIfHWPerfBufSize,
 								 "out.hwperf",
 								 0);
-#endif
 
 	return PVRSRV_OK;
 
@@ -310,8 +302,8 @@ PVRSRV_ERROR PVRSRVPDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
                                           PVRSRV_DEVICE_NODE	*psDeviceNode,
                                           IMG_UINT32			ui32PDumpFlags)
 {	
-	if( (psDeviceNode->pfnCheckDeviceFeature) && \
-			psDeviceNode->pfnCheckDeviceFeature(psDeviceNode, RGX_FEATURE_MIPS_BIT_MASK))
+	if( (psDeviceNode->pfnCheckDeviceFeature) &&
+			PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, MIPS))
 	{
 		return _MipsDumpSignatureBufferKM(psConnection,
 										  psDeviceNode,
@@ -326,13 +318,12 @@ PVRSRV_ERROR PVRSRVPDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
 }
 
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVPDumpTraceBufferKM(CONNECTION_DATA *psConnection,
                                       PVRSRV_DEVICE_NODE *psDeviceNode,
                                       IMG_UINT32 ui32PDumpFlags)
 {	
-	if( (psDeviceNode->pfnCheckDeviceFeature) && \
-			psDeviceNode->pfnCheckDeviceFeature(psDeviceNode, RGX_FEATURE_MIPS_BIT_MASK))
+	if( (psDeviceNode->pfnCheckDeviceFeature) &&
+			PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, MIPS))
 	{
 		return _MipsDumpTraceBufferKM(psConnection, psDeviceNode, ui32PDumpFlags);
 	}else
@@ -341,6 +332,105 @@ PVRSRV_ERROR PVRSRVPDumpTraceBufferKM(CONNECTION_DATA *psConnection,
 	}
 }
 
+PVRSRV_ERROR RGXPDumpOutputImageHdr(PVRSRV_DEVICE_NODE *psDeviceNode,
+									IMG_UINT32 ui32HeaderSize,
+									IMG_UINT32 ui32DataSize,
+									IMG_UINT32 ui32LogicalWidth,
+									IMG_UINT32 ui32LogicalHeight,
+									IMG_UINT32 ui32PhysicalWidth,
+									IMG_UINT32 ui32PhysicalHeight,
+									PDUMP_PIXEL_FORMAT ePixFmt,
+									IMG_MEMLAYOUT eMemLayout,
+									IMG_FB_COMPRESSION eFBCompression,
+									const IMG_UINT32 *paui32FBCClearColour,
+									IMG_PBYTE pbyPDumpImageHdr)
+{
+	IMG_PUINT32 pui32Word;
+	IMG_UINT32 ui32HeaderDataSize;
+
+	pui32Word = (IMG_PUINT32) pbyPDumpImageHdr;
+	pui32Word[0] = (IMAGE_HEADER_TYPE << HEADER_WORD0_TYPE_SHIFT);
+	pui32Word[1] = (IMAGE_HEADER_SIZE << HEADER_WORD1_SIZE_SHIFT) |
+				   (IMAGE_HEADER_VERSION << HEADER_WORD1_VERSION_SHIFT);
+
+	ui32HeaderDataSize = ui32DataSize;
+	if (eFBCompression != IMG_FB_COMPRESSION_NONE)
+	{
+		ui32HeaderDataSize += ui32HeaderSize;
+	}
+	pui32Word[2] = ui32HeaderDataSize << HEADER_WORD2_DATA_SIZE_SHIFT;
+	
+	pui32Word[3] = ui32LogicalWidth << IMAGE_HEADER_WORD3_LOGICAL_WIDTH_SHIFT;
+	pui32Word[4] = ui32LogicalHeight << IMAGE_HEADER_WORD4_LOGICAL_HEIGHT_SHIFT;
+	
+	pui32Word[5] = ePixFmt << IMAGE_HEADER_WORD5_FORMAT_SHIFT;
+	
+	pui32Word[6] = ui32PhysicalWidth << IMAGE_HEADER_WORD6_PHYSICAL_WIDTH_SHIFT;
+	pui32Word[7] = ui32PhysicalHeight << IMAGE_HEADER_WORD7_PHYSICAL_HEIGHT_SHIFT;
+	
+	pui32Word[8] = IMAGE_HEADER_WORD8_STRIDE_POSITIVE | IMAGE_HEADER_WORD8_BIFTYPE_NONE;
+
+	switch (eMemLayout)
+	{
+	case IMG_MEMLAYOUT_STRIDED:
+		pui32Word[8] |= IMAGE_HEADER_WORD8_TWIDDLING_STRIDED;
+		break;
+	case IMG_MEMLAYOUT_TWIDDLED:
+		pui32Word[8] |= IMAGE_HEADER_WORD8_TWIDDLING_NTWIDDLE;
+		break;
+	default:
+		PVR_DPF((PVR_DBG_ERROR, "Unsupported memory layout - %d", eMemLayout));
+		return PVRSRV_ERROR_UNSUPPORTED_MEMORY_LAYOUT;
+	}
+
+	pui32Word[9] = 0;
+	if (eFBCompression != IMG_FB_COMPRESSION_NONE)
+	{
+		switch (PVRSRV_GET_DEVICE_FEATURE_VALUE(psDeviceNode, FBCDC_ALGORITHM))
+		{
+		case 1:
+			pui32Word[9] |= IMAGE_HEADER_WORD9_FBCCOMPAT_BASE;
+			break;
+		case 2:
+			pui32Word[9] |= IMAGE_HEADER_WORD9_FBCCOMPAT_V2;
+			break;
+		case 3:
+			pui32Word[9] |= IMAGE_HEADER_WORD9_FBCCOMPAT_V3_REMAP;
+			break;
+		default:
+			PVR_DPF((PVR_DBG_ERROR, "Unsupported algorithm - %d",
+					PVRSRV_GET_DEVICE_FEATURE_VALUE(psDeviceNode, FBCDC_ALGORITHM)));
+			return PVRSRV_ERROR_NOT_ENABLED;
+		}
+	}
+
+	switch (eFBCompression)
+	{
+	case IMG_FB_COMPRESSION_NONE:
+		break;
+	case IMG_FB_COMPRESSION_DIRECT_8x8:
+		pui32Word[8] |= IMAGE_HEADER_WORD8_FBCTYPE_8X8;
+		pui32Word[9] |= IMAGE_HEADER_WORD9_FBCDECOR_ENABLE;
+		break;
+	case IMG_FB_COMPRESSION_DIRECT_16x4:
+		pui32Word[8] |= IMAGE_HEADER_WORD8_FBCTYPE_16x4;
+		pui32Word[9] |= IMAGE_HEADER_WORD9_FBCDECOR_ENABLE;
+		break;
+	case IMG_FB_COMPRESSION_DIRECT_32x2:
+		pui32Word[9] |= IMAGE_HEADER_WORD9_FBCDECOR_ENABLE;
+		break;
+	default:
+		PVR_DPF((PVR_DBG_ERROR, "Unsupported compression mode - %d", eFBCompression));
+		return PVRSRV_ERROR_UNSUPPORTED_FB_COMPRESSION_MODE;
+	}
+
+	pui32Word[10] = paui32FBCClearColour[0];
+	pui32Word[11] = paui32FBCClearColour[1];
+	pui32Word[12] = paui32FBCClearColour[2];
+	pui32Word[13] = paui32FBCClearColour[3];
+	
+	return PVRSRV_OK;
+}
 #endif /* PDUMP */
 
 /******************************************************************************

@@ -74,7 +74,6 @@ extern "C" {
 #define DBGPRIV_DBGDRV_MESSAGE	0x200UL  /*!< Debug-DbgDrivMessage. Privately used by pvr_debug. */
 #define DBGPRIV_LAST			0x200UL  /*!< Always set to highest mask value. Privately used by pvr_debug. */
 
-
 #if !defined(PVRSRV_NEED_PVR_ASSERT) && defined(DEBUG)
 #define PVRSRV_NEED_PVR_ASSERT
 #endif
@@ -89,7 +88,7 @@ extern "C" {
 
 #if !defined(DOXYGEN)
 #if defined(__KERNEL__)
-	IMG_IMPORT const IMG_CHAR *PVRSRVGetErrorStringKM(PVRSRV_ERROR eError);
+	IMG_EXPORT const IMG_CHAR *PVRSRVGetErrorStringKM(PVRSRV_ERROR eError);
 #	define PVRSRVGETERRORSTRING PVRSRVGetErrorStringKM
 #else
 /*************************************************************************/ /*
@@ -98,7 +97,7 @@ Returns a string describing the provided PVRSRV_ERROR code
 NB No doxygen comments provided as this function does not require porting
    for other operating systems
 */ /**************************************************************************/
-	IMG_IMPORT const IMG_CHAR *PVRSRVGetErrorString(PVRSRV_ERROR eError);
+	const IMG_CHAR *PVRSRVGetErrorString(PVRSRV_ERROR eError);
 #	define PVRSRVGETERRORSTRING PVRSRVGetErrorString
 #endif
 #endif
@@ -134,15 +133,15 @@ NB No doxygen comments provided as this function does not require porting
 #include <linux/kernel.h>
 #include <linux/bug.h>
 
-/* In Linux kernel mode, use BUG() directly. This produces the correct
-   filename and line number in the panic message. */
+/* In Linux kernel mode, use WARN_ON() directly. This produces the
+   correct filename and line number in the warning message. */
 #define PVR_ASSERT(EXPR) do											\
 	{																\
-		if (unlikely(!(EXPR)))									\
+		if (unlikely(!(EXPR)))										\
 		{															\
 			PVRSRVDebugPrintf(DBGPRIV_FATAL, __FILE__, __LINE__,	\
 							  "Debug assertion failed!");			\
-			BUG();													\
+			WARN_ON(1);												\
 		}															\
 	} while (0)
 
@@ -158,7 +157,7 @@ NB No doxygen comments provided as this function does not require porting
 @Input          pszAssertion  String describing the assertion
 @Return         NEVER!
 */ /**************************************************************************/
-IMG_IMPORT void IMG_CALLCONV __noreturn
+IMG_EXPORT void IMG_CALLCONV __noreturn
 PVRSRVDebugAssertFail(const IMG_CHAR *pszFile,
                       IMG_UINT32 ui32Line,
                       const IMG_CHAR *pszAssertion);
@@ -170,8 +169,8 @@ PVRSRVDebugAssertFail(const IMG_CHAR *pszFile,
 	} while (0)
 
 #endif /* defined(LINUX) && defined(__KERNEL__) */
-#endif /* __KLOCWORKS__ */
-#endif /* defined(PVRSRV_NEED_PVR_ASSERT)*/
+#endif /* defined(_WIN32) */
+#endif /* defined(__KLOCWORK__) */
 
 #if defined(__KLOCWORK__)
 	#define PVR_DBG_BREAK do { abort(); } while (0)
@@ -365,7 +364,7 @@ PVRSRVDebugAssertFail(const IMG_CHAR *pszFile,
                                  formatted string
 @Return         None
 */ /**************************************************************************/
-IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
+IMG_EXPORT void IMG_CALLCONV PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
                                                const IMG_CHAR *pszFileName,
                                                IMG_UINT32 ui32Line,
                                                const IMG_CHAR *pszFormat,
@@ -383,7 +382,7 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
                 console which can be read by developers.
 @Return         None
 */ /**************************************************************************/
-IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
+IMG_EXPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
 
 #else  /* defined(PVRSRV_NEED_PVR_DPF) */
 
@@ -425,25 +424,25 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
 #if defined(PVR_DPF_FUNCTION_TRACE_ON)
 
 	#define PVR_DPF_ENTERED \
-        PVR_DPF((PVR_DBG_CALLTRACE, "--> %s:%d entered", __func__, __LINE__))
+        PVR_DPF((PVR_DBG_CALLTRACE, "|-> %s:%d entered", __func__, __LINE__))
 
 	#define PVR_DPF_ENTERED1(p1) \
-		PVR_DPF((PVR_DBG_CALLTRACE, "--> %s:%d entered (0x%lx)", __func__, __LINE__, ((unsigned long)p1)))
+		PVR_DPF((PVR_DBG_CALLTRACE, "|-> %s:%d entered (0x%lx)", __func__, __LINE__, ((unsigned long)p1)))
 
 	#define PVR_DPF_RETURN_RC(a) \
-        do { int _r = (a); PVR_DPF((PVR_DBG_CALLTRACE, "-< %s:%d returned %d", __func__, __LINE__, (_r))); return (_r); MSC_SUPPRESS_4127 } while (0)
+        do { int _r = (a); PVR_DPF((PVR_DBG_CALLTRACE, "<-| %s:%d returned %d", __func__, __LINE__, (_r))); return (_r); MSC_SUPPRESS_4127 } while (0)
 
 	#define PVR_DPF_RETURN_RC1(a,p1) \
-		do { int _r = (a); PVR_DPF((PVR_DBG_CALLTRACE, "-< %s:%d returned %d (0x%lx)", __func__, __LINE__, (_r), ((unsigned long)p1))); return (_r); MSC_SUPPRESS_4127 } while (0)
+		do { int _r = (a); PVR_DPF((PVR_DBG_CALLTRACE, "<-| %s:%d returned %d (0x%lx)", __func__, __LINE__, (_r), ((unsigned long)p1))); return (_r); MSC_SUPPRESS_4127 } while (0)
 
 	#define PVR_DPF_RETURN_VAL(a) \
-		do { PVR_DPF((PVR_DBG_CALLTRACE, "-< %s:%d returned with value", __func__, __LINE__ )); return (a); MSC_SUPPRESS_4127 } while (0)
+		do { PVR_DPF((PVR_DBG_CALLTRACE, "<-| %s:%d returned with value", __func__, __LINE__ )); return (a); MSC_SUPPRESS_4127 } while (0)
 
 	#define PVR_DPF_RETURN_OK \
-		do { PVR_DPF((PVR_DBG_CALLTRACE, "-< %s:%d returned ok", __func__, __LINE__)); return PVRSRV_OK; MSC_SUPPRESS_4127 } while (0)
+		do { PVR_DPF((PVR_DBG_CALLTRACE, "<-| %s:%d returned ok", __func__, __LINE__)); return PVRSRV_OK; MSC_SUPPRESS_4127 } while (0)
 
 	#define PVR_DPF_RETURN \
-		do { PVR_DPF((PVR_DBG_CALLTRACE, "-< %s:%d returned", __func__, __LINE__)); return; MSC_SUPPRESS_4127 } while (0)
+		do { PVR_DPF((PVR_DBG_CALLTRACE, "<-| %s:%d returned", __func__, __LINE__)); return; MSC_SUPPRESS_4127 } while (0)
 
 	#if !defined(DEBUG)
 	#error PVR DPF Function trace enabled in release build, rectify
@@ -461,7 +460,7 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
 
 #endif /* defined(PVR_DPF_FUNCTION_TRACE_ON) */
 
-#if defined(__KERNEL__) || defined(DOXYGEN)
+#if defined(__KERNEL__) || defined(DOXYGEN) || defined(__QNXNTO__)
 /*Use PVR_DPF() unless message is necessary in release build */
 #ifdef PVR_DISABLE_LOGGING
 #define PVR_LOG(X)
@@ -479,7 +478,7 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
 @Input          ...         Zero or more arguments for use by the format string
 @Return         None
 */ /**************************************************************************/
-IMG_IMPORT void IMG_CALLCONV PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...) __printf(1, 2);
+void IMG_CALLCONV PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...) __printf(1, 2);
 #endif
 
 /* PVR_TRACE() handling */
@@ -497,7 +496,7 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...)
 @Input          pszFormat   The message format string
 @Input          ...         Zero or more arguments for use by the format string
 */ /**************************************************************************/
-IMG_IMPORT void IMG_CALLCONV PVRSRVTrace(const IMG_CHAR* pszFormat, ... )
+IMG_EXPORT void IMG_CALLCONV PVRSRVTrace(const IMG_CHAR* pszFormat, ... )
 	__printf(1, 2);
 
 #else /* defined(PVRSRV_NEED_PVR_TRACE) */
@@ -555,7 +554,7 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVTrace(const IMG_CHAR* pszFormat, ... )
 
 /* Macros used to trace calls */
 #if defined(DEBUG)
-	#define PVR_DBG_FILELINE , __FILE__, __LINE__
+	#define PVR_DBG_FILELINE , (__FILE__), (__LINE__)
 	#define PVR_DBG_FILELINE_PARAM , const IMG_CHAR *pszaFile, IMG_UINT32 ui32Line
 	#define PVR_DBG_FILELINE_ARG , pszaFile, ui32Line
 	#define PVR_DBG_FILELINE_FMT " %s:%u"

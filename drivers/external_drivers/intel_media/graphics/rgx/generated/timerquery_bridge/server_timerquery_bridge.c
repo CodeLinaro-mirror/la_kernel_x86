@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Server bridge for timerquery
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,15 +39,13 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+********************************************************************************/
 
-#include <stddef.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include "img_defs.h"
 
 #include "rgxtimerquery.h"
-
 
 #include "common_timerquery_bridge.h"
 
@@ -55,142 +53,82 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_debug.h"
 #include "connection_server.h"
 #include "pvr_bridge.h"
+#if defined(SUPPORT_RGX)
 #include "rgx_bridge.h"
+#endif
 #include "srvcore.h"
 #include "handle.h"
 
 #include <linux/slab.h>
 
-
-
-
-
-
 /* ***************************************************************************
  * Server-side bridge entry points
  */
- 
+
 static IMG_INT
 PVRSRVBridgeRGXBeginTimerQuery(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXBEGINTIMERQUERY *psRGXBeginTimerQueryIN,
-					  PVRSRV_BRIDGE_OUT_RGXBEGINTIMERQUERY *psRGXBeginTimerQueryOUT,
-					 CONNECTION_DATA *psConnection)
+			       PVRSRV_BRIDGE_IN_RGXBEGINTIMERQUERY *
+			       psRGXBeginTimerQueryIN,
+			       PVRSRV_BRIDGE_OUT_RGXBEGINTIMERQUERY *
+			       psRGXBeginTimerQueryOUT,
+			       CONNECTION_DATA * psConnection)
 {
 
-
-
-
-
-
-
-
 	psRGXBeginTimerQueryOUT->eError =
-		PVRSRVRGXBeginTimerQueryKM(psConnection, OSGetDevData(psConnection),
-					psRGXBeginTimerQueryIN->ui32QueryId);
-
-
-
-
-
-
-
+	    PVRSRVRGXBeginTimerQueryKM(psConnection, OSGetDevData(psConnection),
+				       psRGXBeginTimerQueryIN->ui32QueryId);
 
 	return 0;
 }
-
 
 static IMG_INT
 PVRSRVBridgeRGXEndTimerQuery(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXENDTIMERQUERY *psRGXEndTimerQueryIN,
-					  PVRSRV_BRIDGE_OUT_RGXENDTIMERQUERY *psRGXEndTimerQueryOUT,
-					 CONNECTION_DATA *psConnection)
+			     PVRSRV_BRIDGE_IN_RGXENDTIMERQUERY *
+			     psRGXEndTimerQueryIN,
+			     PVRSRV_BRIDGE_OUT_RGXENDTIMERQUERY *
+			     psRGXEndTimerQueryOUT,
+			     CONNECTION_DATA * psConnection)
 {
-
-
 
 	PVR_UNREFERENCED_PARAMETER(psRGXEndTimerQueryIN);
 
-
-
-
-
 	psRGXEndTimerQueryOUT->eError =
-		PVRSRVRGXEndTimerQueryKM(psConnection, OSGetDevData(psConnection)
-					);
-
-
-
-
-
-
-
+	    PVRSRVRGXEndTimerQueryKM(psConnection, OSGetDevData(psConnection));
 
 	return 0;
 }
-
 
 static IMG_INT
 PVRSRVBridgeRGXQueryTimer(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXQUERYTIMER *psRGXQueryTimerIN,
-					  PVRSRV_BRIDGE_OUT_RGXQUERYTIMER *psRGXQueryTimerOUT,
-					 CONNECTION_DATA *psConnection)
+			  PVRSRV_BRIDGE_IN_RGXQUERYTIMER * psRGXQueryTimerIN,
+			  PVRSRV_BRIDGE_OUT_RGXQUERYTIMER * psRGXQueryTimerOUT,
+			  CONNECTION_DATA * psConnection)
 {
 
-
-
-
-
-
-
-
 	psRGXQueryTimerOUT->eError =
-		PVRSRVRGXQueryTimerKM(psConnection, OSGetDevData(psConnection),
-					psRGXQueryTimerIN->ui32QueryId,
-					&psRGXQueryTimerOUT->ui64StartTime,
-					&psRGXQueryTimerOUT->ui64EndTime);
-
-
-
-
-
-
-
+	    PVRSRVRGXQueryTimerKM(psConnection, OSGetDevData(psConnection),
+				  psRGXQueryTimerIN->ui32QueryId,
+				  &psRGXQueryTimerOUT->ui64StartTime,
+				  &psRGXQueryTimerOUT->ui64EndTime);
 
 	return 0;
 }
-
 
 static IMG_INT
 PVRSRVBridgeRGXCurrentTime(IMG_UINT32 ui32DispatchTableEntry,
-					  PVRSRV_BRIDGE_IN_RGXCURRENTTIME *psRGXCurrentTimeIN,
-					  PVRSRV_BRIDGE_OUT_RGXCURRENTTIME *psRGXCurrentTimeOUT,
-					 CONNECTION_DATA *psConnection)
+			   PVRSRV_BRIDGE_IN_RGXCURRENTTIME * psRGXCurrentTimeIN,
+			   PVRSRV_BRIDGE_OUT_RGXCURRENTTIME *
+			   psRGXCurrentTimeOUT, CONNECTION_DATA * psConnection)
 {
-
-
 
 	PVR_UNREFERENCED_PARAMETER(psRGXCurrentTimeIN);
 
-
-
-
-
 	psRGXCurrentTimeOUT->eError =
-		PVRSRVRGXCurrentTime(psConnection, OSGetDevData(psConnection),
-					&psRGXCurrentTimeOUT->ui64Time);
-
-
-
-
-
-
-
+	    PVRSRVRGXCurrentTime(psConnection, OSGetDevData(psConnection),
+				 &psRGXCurrentTimeOUT->ui64Time);
 
 	return 0;
 }
-
-
-
 
 /* *************************************************************************** 
  * Server bridge dispatch related glue 
@@ -207,18 +145,21 @@ PVRSRV_ERROR DeinitTIMERQUERYBridge(void);
 PVRSRV_ERROR InitTIMERQUERYBridge(void)
 {
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY, PVRSRV_BRIDGE_TIMERQUERY_RGXBEGINTIMERQUERY, PVRSRVBridgeRGXBeginTimerQuery,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+			      PVRSRV_BRIDGE_TIMERQUERY_RGXBEGINTIMERQUERY,
+			      PVRSRVBridgeRGXBeginTimerQuery, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY, PVRSRV_BRIDGE_TIMERQUERY_RGXENDTIMERQUERY, PVRSRVBridgeRGXEndTimerQuery,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+			      PVRSRV_BRIDGE_TIMERQUERY_RGXENDTIMERQUERY,
+			      PVRSRVBridgeRGXEndTimerQuery, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY, PVRSRV_BRIDGE_TIMERQUERY_RGXQUERYTIMER, PVRSRVBridgeRGXQueryTimer,
-					NULL, bUseLock);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+			      PVRSRV_BRIDGE_TIMERQUERY_RGXQUERYTIMER,
+			      PVRSRVBridgeRGXQueryTimer, NULL, bUseLock);
 
-	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY, PVRSRV_BRIDGE_TIMERQUERY_RGXCURRENTTIME, PVRSRVBridgeRGXCurrentTime,
-					NULL, bUseLock);
-
+	SetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+			      PVRSRV_BRIDGE_TIMERQUERY_RGXCURRENTTIME,
+			      PVRSRVBridgeRGXCurrentTime, NULL, bUseLock);
 
 	return PVRSRV_OK;
 }
@@ -228,5 +169,18 @@ PVRSRV_ERROR InitTIMERQUERYBridge(void)
  */
 PVRSRV_ERROR DeinitTIMERQUERYBridge(void)
 {
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+				PVRSRV_BRIDGE_TIMERQUERY_RGXBEGINTIMERQUERY);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+				PVRSRV_BRIDGE_TIMERQUERY_RGXENDTIMERQUERY);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+				PVRSRV_BRIDGE_TIMERQUERY_RGXQUERYTIMER);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_TIMERQUERY,
+				PVRSRV_BRIDGE_TIMERQUERY_RGXCURRENTTIME);
+
 	return PVRSRV_OK;
 }

@@ -106,7 +106,7 @@ static_assert((sizeof(DBG_STREAM) * 4) < HOST_PAGESIZE, "DBG_STREAM is too large
  Global variables
 ******************************************************************************/
 
-static PDBG_STREAM          g_psStreamList = 0;
+static PDBG_STREAM          g_psStreamList;
 
 /* Mutex used to prevent UM threads (via the dbgdrv ioctl interface) and KM
  * threads (from pvrsrvkm via the ExtDBG API) entering the debug driver core
@@ -367,13 +367,13 @@ IMG_UINT32 AtoI(IMG_CHAR *szIn)
 	IMG_INT		iPos;
 	IMG_CHAR	bc;
 
-	//get len of string
+	/* get len of string */
 	while (szIn[iLen] > 0)
 	{
 		iLen ++;
 	}
 
-	//nothing to do
+	/* nothing to do */
 	if (iLen == 0)
 	{
 		return (0);
@@ -395,22 +395,22 @@ IMG_UINT32 AtoI(IMG_CHAR *szIn)
 		szIn[iPos]='0';
 	}
 
-	//go through string from right (least significant) to left
+	/* go through string from right (least significant) to left */
 	for (iPos = iLen - 1; iPos >= 0; iPos --)
 	{
 		bc = szIn[iPos];
 
-		if ( (bc >= 'a') && (bc <= 'f') && ui32Base == 16)			//handle lower case a-f
+		if ( (bc >= 'a') && (bc <= 'f') && ui32Base == 16)	/* handle lower case a-f */
 		{
 			bc -= 'a' - 0xa;
 		}
 		else
-		if ( (bc >= 'A') && (bc <= 'F') && ui32Base == 16)			//handle upper case A-F
+		if ( (bc >= 'A') && (bc <= 'F') && ui32Base == 16)	/* handle upper case A-F */
 		{
 			bc -= 'A' - 0xa;
 		}
 		else
-		if ((bc >= '0') && (bc <= '9'))				//if char out of range, return 0
+		if ((bc >= '0') && (bc <= '9'))	/* if char out of range, return 0 */
 		{
 			bc -= '0';
 		}
@@ -560,7 +560,7 @@ static IMG_UINT32 WriteExpandingBuffer(PDBG_STREAM psStream,IMG_UINT8 * pui8InBu
 	ui32Space = SpaceInStream(psStream);
 
 	/*
-		Check if we can expand the buffer 
+		Check if we can expand the buffer
 	*/
 	if (psStream->ui32Flags & DEBUG_FLAGS_NO_BUF_EXPANDSION)
 	{
@@ -594,8 +594,8 @@ static IMG_UINT32 WriteExpandingBuffer(PDBG_STREAM psStream,IMG_UINT8 * pui8InBu
 				PVR_DPF((PVR_DBG_ERROR, "WriteExpandingBuffer: buffer %p is expanding by size of input buffer %u", psStream, ui32NewBufSize));
 			}
 
-			/* 
-				Attempt to expand the buffer 
+			/*
+				Attempt to expand the buffer
 			*/
 			if ((ui32NewBufSize < psStream->ui32Size) ||
 					!ExpandStreamBuffer(psStream,ui32NewBufSize))
@@ -609,15 +609,15 @@ static IMG_UINT32 WriteExpandingBuffer(PDBG_STREAM psStream,IMG_UINT8 * pui8InBu
 					else
 					{
 						/* out of memory */
-						PVR_DPF((PVR_DBG_ERROR, "WriteExpandingBuffer: Unable to expand %p. Out of memory.", psStream));
+						PVR_LOG(("DBGDRV: Error: unable to expand %p stream. Out of PDump memory, InvalidateAllStreams() called", psStream));
 						InvalidateAllStreams();
 						return (0xFFFFFFFFUL);
 					}
 				}
 			}
 
-			/* 
-				Recalc the space in the buffer 
+			/*
+				Recalc the space in the buffer
 			*/
 			ui32Space = SpaceInStream(psStream);
 			PVR_DPF((PVR_DBGDRIV_MESSAGE, "Expanded buffer, free space = %x",
@@ -748,7 +748,7 @@ IMG_BOOL IMG_CALLCONV DBGDrivCreateStream(IMG_CHAR *pszName,
 	/*
 		Setup debug buffer state.
 	*/
-	psStream->psNext = 0;
+	psStream->psNext = NULL;
 	psStream->pvBase = pvBase;
 	psStream->ui32Flags = ui32Flags | DEBUG_FLAGS_CIRCULAR;
 	psStream->ui32Size = ui32Size * HOST_PAGESIZE;
@@ -827,7 +827,7 @@ IMG_BOOL IMG_CALLCONV DBGDrivCreateStream(IMG_CHAR *pszName,
 	g_psStreamList = psStream;
 
 	AddSIDEntry(psStream);
-	
+
 	*phInit = psStream->psInitStream;
 	*phMain = psStream;
 	*phDeinit = psStream->psDeinitStream;
@@ -877,12 +877,12 @@ void IMG_CALLCONV DBGDrivDestroyStream(IMG_HANDLE hInit,IMG_HANDLE hMain, IMG_HA
 	}
 
 	RemoveSIDEntry(psStream);
-	
+
 	/*
 		Remove from linked list.
 	*/
 	psStreamThis = g_psStreamList;
-	psStreamPrev = 0;
+	psStreamPrev = NULL;
 
 	while (psStreamThis)
 	{
@@ -897,7 +897,7 @@ void IMG_CALLCONV DBGDrivDestroyStream(IMG_HANDLE hInit,IMG_HANDLE hMain, IMG_HA
 				g_psStreamList = psStreamThis->psNext;
 			}
 
-			psStreamThis = 0;
+			psStreamThis = NULL;
 		}
 		else
 		{
@@ -926,7 +926,7 @@ void IMG_CALLCONV DBGDrivDestroyStream(IMG_HANDLE hInit,IMG_HANDLE hMain, IMG_HA
 	HostNonPageablePageFree(psStream);
 	psStream = psStreamInit = psStreamDeinit = NULL;
 
-	if (g_psStreamList == 0)
+	if (g_psStreamList == NULL)
 	{
 		PVR_DPF((PVR_DBG_MESSAGE,"DBGDriv: Stream list now empty" ));
 	}
@@ -943,12 +943,10 @@ void IMG_CALLCONV DBGDrivDestroyStream(IMG_HANDLE hInit,IMG_HANDLE hMain, IMG_HA
 *****************************************************************************/
 void * IMG_CALLCONV DBGDrivFindStream(IMG_CHAR * pszName, IMG_BOOL bResetStream)
 {
-	PDBG_STREAM	psStream;
+	PDBG_STREAM	psStream = NULL;
 	PDBG_STREAM	psThis;
 	IMG_UINT32	ui32Off;
 	IMG_BOOL	bAreSame;
-
-	psStream = 0;
 
 	PVR_DPF((PVR_DBGDRIV_MESSAGE, "PDump client connecting to %s %s",
 			pszName,
@@ -993,7 +991,7 @@ void * IMG_CALLCONV DBGDrivFindStream(IMG_CHAR * pszName, IMG_BOOL bResetStream)
 		psStream->ui32RPtr = 0;
 		if (bResetStream)
 		{
-			/* This will erase any data written to the main stream 
+			/* This will erase any data written to the main stream
 			 * before the client starts. */
 			psStream->ui32WPtr = 0;
 		}
@@ -1019,7 +1017,7 @@ static void IMG_CALLCONV DBGDrivInvalidateStream(PDBG_STREAM psStream)
 	IMG_UINT32 ui32Off = 0;
 	IMG_UINT32 ui32WPtr = psStream->ui32WPtr;
 	IMG_PUINT8 pui8Buffer = (IMG_UINT8 *) psStream->pvBase;
-	
+
 	PVR_DPF((PVR_DBG_ERROR, "DBGDrivInvalidateStream: An error occurred for stream %s", psStream->szName ));
 
 	/*
@@ -1401,8 +1399,8 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 	IMG_UINT32	ui32NewROffset;
 	IMG_UINT32	ui32SpaceInOldBuf;
 
-	/* 
-		First check new size is bigger than existing size 
+	/*
+		First check new size is bigger than existing size
 	*/
 	if (psStream->ui32Size >= ui32NewSize)
 	{
@@ -1410,14 +1408,14 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 	}
 
 	/*
-		Calc space in old buffer 
+		Calc space in old buffer
 	*/
 	ui32SpaceInOldBuf = SpaceInStream(psStream);
 
 	/*
-		Allocate new buffer 
+		Allocate new buffer
 	*/
-	ui32NewSizeInPages = ((ui32NewSize + 0xfffUL) & ~0xfffUL) / 4096UL;
+	ui32NewSizeInPages = ((ui32NewSize + 0xfffUL) & ~0xfffUL) / HOST_PAGESIZE;
 
 	if ((psStream->ui32Flags & DEBUG_FLAGS_USE_NONPAGED_MEM) != 0)
 	{
@@ -1442,7 +1440,7 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 		if (psStream->ui32RPtr <= psStream->ui32WPtr)
 		{
 			/*
-				No wrapping of data so copy data to start of new buffer 
+				No wrapping of data so copy data to start of new buffer
 			*/
 		HostMemCopy(pvNewBuf,
 					(void *)((uintptr_t)psStream->pvBase + psStream->ui32RPtr),
@@ -1451,24 +1449,24 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 		else
 		{
 			IMG_UINT32	ui32FirstCopySize;
-	
+
 			/*
-				The data has wrapped around the buffer, copy beginning of buffer first 
+				The data has wrapped around the buffer, copy beginning of buffer first
 			*/
 			ui32FirstCopySize = psStream->ui32Size - psStream->ui32RPtr;
-	
+
 			HostMemCopy(pvNewBuf,
 					(void *)((uintptr_t)psStream->pvBase + psStream->ui32RPtr),
 					ui32FirstCopySize);
-	
+
 			/*
-				Now second half 
+				Now second half
 			*/
 			HostMemCopy((void *)((uintptr_t)pvNewBuf + ui32FirstCopySize),
 					(void *)(IMG_PBYTE)psStream->pvBase,
 					psStream->ui32WPtr);
 		}
-		ui32NewROffset = 0; 
+		ui32NewROffset = 0;
 	}
 	else
 	{
@@ -1478,12 +1476,12 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 	}
 
 	/*
-		New Write offset is at end of data 
-	*/                                                        
+		New Write offset is at end of data
+	*/
 	ui32NewWOffset = psStream->ui32Size - ui32SpaceInOldBuf;
 
 	/*
-		Free old buffer 
+		Free old buffer
 	*/
 	if ((psStream->ui32Flags & DEBUG_FLAGS_USE_NONPAGED_MEM) != 0)
 	{
@@ -1495,12 +1493,12 @@ static IMG_BOOL ExpandStreamBuffer(PDBG_STREAM psStream, IMG_UINT32 ui32NewSize)
 	}
 
 	/*
-		Now set new params up 
+		Now set new params up
 	*/
 	psStream->pvBase = pvNewBuf;
 	psStream->ui32RPtr = ui32NewROffset;
 	psStream->ui32WPtr = ui32NewWOffset;
-	psStream->ui32Size = ui32NewSizeInPages * 4096;
+	psStream->ui32Size = ui32NewSizeInPages * HOST_PAGESIZE;
 
 	return IMG_TRUE;
 }

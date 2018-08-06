@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @Title          Direct client bridge for ri
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
@@ -37,7 +37,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #include "client_ri_bridge.h"
 #include "img_defs.h"
@@ -48,92 +48,91 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "ri_server.h"
 
-
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWritePMREntry(IMG_HANDLE hBridge,
-							     IMG_HANDLE hPMRHandle,
-							     IMG_UINT32 ui32TextASize,
-							     const IMG_CHAR *puiTextA,
-							     IMG_UINT64 ui64LogicalSize)
+							     IMG_HANDLE
+							     hPMRHandle)
 {
 	PVRSRV_ERROR eError;
-	PMR * psPMRHandleInt;
+	PMR *psPMRHandleInt;
+	PVR_UNREFERENCED_PARAMETER(hBridge);
+
+	psPMRHandleInt = (PMR *) hPMRHandle;
+
+	eError = RIWritePMREntryKM(psPMRHandleInt);
+
+	return eError;
+}
+
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteMEMDESCEntry(IMG_HANDLE
+								 hBridge,
+								 IMG_HANDLE
+								 hPMRHandle,
+								 IMG_UINT32
+								 ui32TextBSize,
+								 const IMG_CHAR
+								 * puiTextB,
+								 IMG_UINT64
+								 ui64Offset,
+								 IMG_UINT64
+								 ui64Size,
+								 IMG_BOOL
+								 bIsImport,
+								 IMG_BOOL
+								 bIsSuballoc,
+								 IMG_HANDLE *
+								 phRIHandle)
+{
+	PVRSRV_ERROR eError;
+	PMR *psPMRHandleInt;
+	RI_HANDLE psRIHandleInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psPMRHandleInt = (PMR *) hPMRHandle;
 
 	eError =
-		RIWritePMREntryKM(
-					psPMRHandleInt,
-					ui32TextASize,
-					puiTextA,
-					ui64LogicalSize);
-
-	return eError;
-}
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteMEMDESCEntry(IMG_HANDLE hBridge,
-								 IMG_HANDLE hPMRHandle,
-								 IMG_UINT32 ui32TextBSize,
-								 const IMG_CHAR *puiTextB,
-								 IMG_UINT64 ui64Offset,
-								 IMG_UINT64 ui64Size,
-								 IMG_UINT64 ui64BackedSize,
-								 IMG_BOOL bIsImport,
-								 IMG_BOOL bIsExportable,
-								 IMG_HANDLE *phRIHandle)
-{
-	PVRSRV_ERROR eError;
-	PMR * psPMRHandleInt;
-	RI_HANDLE psRIHandleInt;
-	PVR_UNREFERENCED_PARAMETER(hBridge);
-
-	psPMRHandleInt = (PMR *) hPMRHandle;
-
-	eError =
-		RIWriteMEMDESCEntryKM(
-					psPMRHandleInt,
-					ui32TextBSize,
-					puiTextB,
-					ui64Offset,
-					ui64Size,
-					ui64BackedSize,
-					bIsImport,
-					bIsExportable,
-					&psRIHandleInt);
+	    RIWriteMEMDESCEntryKM(psPMRHandleInt,
+				  ui32TextBSize,
+				  puiTextB,
+				  ui64Offset,
+				  ui64Size,
+				  bIsImport, bIsSuballoc, &psRIHandleInt);
 
 	*phRIHandle = psRIHandleInt;
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteProcListEntry(IMG_HANDLE hBridge,
-								  IMG_UINT32 ui32TextBSize,
-								  const IMG_CHAR *puiTextB,
-								  IMG_UINT64 ui64Size,
-								  IMG_UINT64 ui64BackedSize,
-								  IMG_UINT64 ui64DevVAddr,
-								  IMG_HANDLE *phRIHandle)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWriteProcListEntry(IMG_HANDLE
+								  hBridge,
+								  IMG_UINT32
+								  ui32TextBSize,
+								  const IMG_CHAR
+								  * puiTextB,
+								  IMG_UINT64
+								  ui64Size,
+								  IMG_UINT64
+								  ui64DevVAddr,
+								  IMG_HANDLE *
+								  phRIHandle)
 {
 	PVRSRV_ERROR eError;
 	RI_HANDLE psRIHandleInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
 	eError =
-		RIWriteProcListEntryKM(
-					ui32TextBSize,
-					puiTextB,
-					ui64Size,
-					ui64BackedSize,
-					ui64DevVAddr,
-					&psRIHandleInt);
+	    RIWriteProcListEntryKM(ui32TextBSize,
+				   puiTextB,
+				   ui64Size, ui64DevVAddr, &psRIHandleInt);
 
 	*phRIHandle = psRIHandleInt;
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCAddr(IMG_HANDLE hBridge,
-								 IMG_HANDLE hRIHandle,
-								 IMG_DEV_VIRTADDR sAddr)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCAddr(IMG_HANDLE
+								 hBridge,
+								 IMG_HANDLE
+								 hRIHandle,
+								 IMG_DEV_VIRTADDR
+								 sAddr)
 {
 	PVRSRV_ERROR eError;
 	RI_HANDLE psRIHandleInt;
@@ -141,17 +140,15 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCAddr(IMG_HANDLE hBri
 
 	psRIHandleInt = (RI_HANDLE) hRIHandle;
 
-	eError =
-		RIUpdateMEMDESCAddrKM(
-					psRIHandleInt,
-					sAddr);
+	eError = RIUpdateMEMDESCAddrKM(psRIHandleInt, sAddr);
 
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCPinning(IMG_HANDLE hBridge,
-								    IMG_HANDLE hRIHandle,
-								    IMG_BOOL bIsPinned)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDeleteMEMDESCEntry(IMG_HANDLE
+								  hBridge,
+								  IMG_HANDLE
+								  hRIHandle)
 {
 	PVRSRV_ERROR eError;
 	RI_HANDLE psRIHandleInt;
@@ -159,44 +156,7 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCPinning(IMG_HANDLE h
 
 	psRIHandleInt = (RI_HANDLE) hRIHandle;
 
-	eError =
-		RIUpdateMEMDESCPinningKM(
-					psRIHandleInt,
-					bIsPinned);
-
-	return eError;
-}
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIUpdateMEMDESCBacking(IMG_HANDLE hBridge,
-								    IMG_HANDLE hRIHandle,
-								    IMG_INT32 i32NumModified)
-{
-	PVRSRV_ERROR eError;
-	RI_HANDLE psRIHandleInt;
-	PVR_UNREFERENCED_PARAMETER(hBridge);
-
-	psRIHandleInt = (RI_HANDLE) hRIHandle;
-
-	eError =
-		RIUpdateMEMDESCBackingKM(
-					psRIHandleInt,
-					i32NumModified);
-
-	return eError;
-}
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDeleteMEMDESCEntry(IMG_HANDLE hBridge,
-								  IMG_HANDLE hRIHandle)
-{
-	PVRSRV_ERROR eError;
-	RI_HANDLE psRIHandleInt;
-	PVR_UNREFERENCED_PARAMETER(hBridge);
-
-	psRIHandleInt = (RI_HANDLE) hRIHandle;
-
-	eError =
-		RIDeleteMEMDESCEntryKM(
-					psRIHandleInt);
+	eError = RIDeleteMEMDESCEntryKM(psRIHandleInt);
 
 	return eError;
 }
@@ -205,14 +165,12 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDumpList(IMG_HANDLE hBridge,
 							IMG_HANDLE hPMRHandle)
 {
 	PVRSRV_ERROR eError;
-	PMR * psPMRHandleInt;
+	PMR *psPMRHandleInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psPMRHandleInt = (PMR *) hPMRHandle;
 
-	eError =
-		RIDumpListKM(
-					psPMRHandleInt);
+	eError = RIDumpListKM(psPMRHandleInt);
 
 	return eError;
 }
@@ -222,10 +180,7 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDumpAll(IMG_HANDLE hBridge)
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
-	eError =
-		RIDumpAllKM(
-					);
+	eError = RIDumpAllKM();
 	return eError;
 }
 
@@ -235,11 +190,25 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIDumpProcess(IMG_HANDLE hBridge,
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
-	eError =
-		RIDumpProcessKM(
-					ui32Pid);
+	eError = RIDumpProcessKM(ui32Pid);
 
 	return eError;
 }
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeRIWritePMREntryWithOwner(IMG_HANDLE
+								      hBridge,
+								      IMG_HANDLE
+								      hPMRHandle,
+								      IMG_PID
+								      ui32Owner)
+{
+	PVRSRV_ERROR eError;
+	PMR *psPMRHandleInt;
+	PVR_UNREFERENCED_PARAMETER(hBridge);
+
+	psPMRHandleInt = (PMR *) hPMRHandle;
+
+	eError = RIWritePMREntryWithOwnerKM(psPMRHandleInt, ui32Owner);
+
+	return eError;
+}

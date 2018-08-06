@@ -53,6 +53,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 typedef struct _PVRSRV_DEVICE_CONFIG_ PVRSRV_DEVICE_CONFIG;
+typedef enum _DRIVER_MODE_
+{
+/* Do not use these enumerations directly, to query the
+   current driver mode, use the PVRSRV_VZ_MODE_IS()
+   macro */
+	DRIVER_MODE_NATIVE	= -1,
+	DRIVER_MODE_HOST	=  0,
+	DRIVER_MODE_GUEST
+} PVRSRV_DRIVER_MODE;
 
 /*
  * All the heaps from which regular device memory allocations can be made in
@@ -63,6 +72,7 @@ typedef enum
 	PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL = 0,
 	PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL = 1,
 	PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL = 2,
+	PVRSRV_DEVICE_PHYS_HEAP_EXTERNAL = 3,
 	PVRSRV_DEVICE_PHYS_HEAP_LAST
 } PVRSRV_DEVICE_PHYS_HEAP;
 
@@ -79,7 +89,13 @@ typedef enum _PVRSRV_DEVICE_SNOOP_MODE_
 	PVRSRV_DEVICE_SNOOP_CPU_ONLY,
 	PVRSRV_DEVICE_SNOOP_DEVICE_ONLY,
 	PVRSRV_DEVICE_SNOOP_CROSS,
+	PVRSRV_DEVICE_SNOOP_EMULATED,
 } PVRSRV_DEVICE_SNOOP_MODE;
+
+#if defined(SUPPORT_SOC_TIMER)
+typedef IMG_UINT64
+(*PFN_SYS_DEV_SOC_TIMER_READ)(IMG_HANDLE hSysData);
+#endif
 
 typedef IMG_UINT32
 (*PFN_SYS_DEV_CLK_FREQ_GET)(IMG_HANDLE hSysData);
@@ -105,10 +121,20 @@ typedef PVRSRV_ERROR
 
 typedef void (*PFN_SYS_DEV_FEAT_DEP_INIT)(PVRSRV_DEVICE_CONFIG *, IMG_UINT64);
 
+typedef PVRSRV_DRIVER_MODE (*PFN_SYS_DRIVER_MODE)(void);
+
 #if defined(SUPPORT_TRUSTED_DEVICE)
 
 #define PVRSRV_DEVICE_FW_CODE_REGION          (0)
 #define PVRSRV_DEVICE_FW_COREMEM_CODE_REGION  (1)
+
+typedef PVRSRV_ERROR
+(*PFN_TD_GET_FW_CODE_PARAMS)(IMG_HANDLE hSysData,
+                             IMG_CPU_PHYADDR **pasCpuPAddr,
+                             IMG_DEV_PHYADDR **pasDevPAddr,
+                             IMG_UINT32 *pui32Log2Align,
+                             IMG_UINT32 *pui32NumPages,
+                             IMG_UINT64 *pui64FWSize);
 
 typedef struct _PVRSRV_TD_FW_PARAMS_
 {
@@ -217,6 +243,10 @@ struct _PVRSRV_DEVICE_CONFIG_
 	 *! will be used for allocations where the PVRSRV_MEMALLOCFLAG_FW_LOCAL
 	 *! flag is set.
 	 *!
+	 *! The fourth entry (aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_EXTERNAL])
+	 *! will be used for allocations that are imported into the driver and
+	 *! are local to other devices, e.g. a display controller.
+	 *!
 	 *! In the event of there being only one Physical Heap, the configuration
 	 *! should specify the same heap details in all entries.
 	 */
@@ -236,6 +266,11 @@ struct _PVRSRV_DEVICE_CONFIG_
 	/*! Callback to obtain the clock frequency from the device (optional). */
 	PFN_SYS_DEV_CLK_FREQ_GET pfnClockFreqGet;
 
+#if defined(SUPPORT_SOC_TIMER)
+	/*! Callback to read SoC timer register value (mandatory). */
+	PFN_SYS_DEV_SOC_TIMER_READ	pfnSoCTimerRead;
+#endif
+
 	/*!
 	 *! Callback to handle memory budgeting. Can be used to reject allocations
 	 *! over a certain size (optional).
@@ -243,6 +278,12 @@ struct _PVRSRV_DEVICE_CONFIG_
 	PFN_SYS_DEV_CHECK_MEM_ALLOC_SIZE pfnCheckMemAllocSize;
 
 #if defined(SUPPORT_TRUSTED_DEVICE)
+	/*!
+	 *! Callback to get FW code parameters (physical address, size) from
+	 *! the trusted device.
+	 */
+	PFN_TD_GET_FW_CODE_PARAMS pfnTDGetFWCodeParams;
+
 	/*!
 	 *! Callback to send FW image and FW boot time parameters to the trusted
 	 *! device.
@@ -267,8 +308,19 @@ struct _PVRSRV_DEVICE_CONFIG_
 	/*! Function that does device feature specific system layer initialisation */
 	PFN_SYS_DEV_FEAT_DEP_INIT	pfnSysDevFeatureDepInit;
 
+	/*! Function returns system layer execution environment */
+	PFN_SYS_DRIVER_MODE			pfnSysDriverMode;
+
 #if defined(PVR_DVFS) || defined(SUPPORT_PDVFS)
 	PVRSRV_DVFS sDVFS;
+#endif
+
+#if defined(SUPPORT_ALT_REGBASE)
+	IMG_CPU_PHYADDR sAltRegsCpuPBase;
+#endif
+
+#if defined(SUPPORT_DEVICE_PA0_AS_VALID)
+	IMG_BOOL bDevicePA0IsValid;
 #endif
 };
 

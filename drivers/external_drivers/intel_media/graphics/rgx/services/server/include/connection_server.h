@@ -73,9 +73,9 @@ typedef struct _CONNECTION_DATA_
 	 */
 	IMG_HANDLE			hOsPrivateData;
 
+#define PVRSRV_CONNECTION_PROCESS_NAME_LEN (16)
 	IMG_PID				pid;
-
-	void				*hSecureData;
+	IMG_CHAR            pszProcName[PVRSRV_CONNECTION_PROCESS_NAME_LEN];
 
 	IMG_HANDLE			hProcessStats;
 
@@ -83,6 +83,8 @@ typedef struct _CONNECTION_DATA_
 
 	/* Structure which is hooked into the cleanup thread work list */
 	PVRSRV_CLEANUP_THREAD_WORK sCleanupThreadFn;
+
+	DLLIST_NODE         sConnectionListNode;
 
 	/* List navigation for deferred freeing of connection data */
 	struct _CONNECTION_DATA_	**ppsThis;
@@ -95,6 +97,9 @@ PVRSRV_ERROR PVRSRVConnectionConnect(void **ppvPrivData, void *pvOSData);
 void PVRSRVConnectionDisconnect(void *pvPrivData);
 
 IMG_PID PVRSRVGetPurgeConnectionPid(void);
+
+void PVRSRVConnectionDebugNotify(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+                                 void *pvDumpDebugFile);
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVConnectionPrivateData)

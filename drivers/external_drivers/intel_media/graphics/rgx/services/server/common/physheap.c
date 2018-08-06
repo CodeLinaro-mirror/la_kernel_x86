@@ -76,6 +76,7 @@ struct _PHYS_HEAP_
 };
 
 static PHYS_HEAP *g_psPhysHeapList;
+static POS_LOCK g_hPhysHeapLock;
 
 #if defined(REFCOUNT_DEBUG)
 #define PHYSHEAP_REFCOUNT_PRINT(fmt, ...)	\
@@ -176,6 +177,8 @@ PVRSRV_ERROR PhysHeapAcquire(IMG_UINT32 ui32PhysHeapID,
 
 	PVR_DPF_ENTERED1(ui32PhysHeapID);
 
+	OSLockAcquire(g_hPhysHeapLock);
+
 	while (psTmp)
 	{
 		if (psTmp->ui32PhysHeapID == ui32PhysHeapID)
@@ -195,6 +198,8 @@ PVRSRV_ERROR PhysHeapAcquire(IMG_UINT32 ui32PhysHeapID,
 		PHYSHEAP_REFCOUNT_PRINT("%s: Heap %p, refcount = %d", __FUNCTION__, psTmp, psTmp->ui32RefCount);
 	}
 
+	OSLockRelease(g_hPhysHeapLock);
+
 	*ppsPhysHeap = psTmp;
 	PVR_DPF_RETURN_RC1(eError, *ppsPhysHeap);
 }
@@ -203,8 +208,10 @@ void PhysHeapRelease(PHYS_HEAP *psPhysHeap)
 {
 	PVR_DPF_ENTERED1(psPhysHeap);
 
+	OSLockAcquire(g_hPhysHeapLock);
 	psPhysHeap->ui32RefCount--;
 	PHYSHEAP_REFCOUNT_PRINT("%s: Heap %p, refcount = %d", __FUNCTION__, psPhysHeap, psPhysHeap->ui32RefCount);
+	OSLockRelease(g_hPhysHeapLock);
 
 	PVR_DPF_RETURN;
 }
@@ -310,7 +317,19 @@ IMG_CHAR *PhysHeapPDumpMemspaceName(PHYS_HEAP *psPhysHeap)
 
 PVRSRV_ERROR PhysHeapInit(void)
 {
+	PVRSRV_ERROR eError;
+
 	g_psPhysHeapList = NULL;
+
+	eError = OSLockCreate(&g_hPhysHeapLock, LOCK_TYPE_NONE);
+
+	if(eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to create PhysHeapLock: %s",
+										__func__,
+										PVRSRVGETERRORSTRING(eError)));
+		return eError;
+	}
 
 	return PVRSRV_OK;
 }
@@ -318,6 +337,8 @@ PVRSRV_ERROR PhysHeapInit(void)
 PVRSRV_ERROR PhysHeapDeinit(void)
 {
 	PVR_ASSERT(g_psPhysHeapList == NULL);
+
+	OSLockDestroy(g_hPhysHeapLock);
 
 	return PVRSRV_OK;
 }

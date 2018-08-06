@@ -60,37 +60,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 IMG_INTERNAL HTB_FLAG_EL_T g_auiHTBGroupEnable[HTB_FLAG_NUM_EL] = {0};
 
 /*************************************************************************/ /*!
- @Function      HTBConfigure
- @Description   Configure the Host Trace Buffer.
-                Once these parameters are set they may not be changed
-
- @Input         hSrvHandle      Server Handle
-
- @Input         pszBufferName   Name to use for the TL buffer, this will be
-                                required to request trace data from the TL
-
- @Input         ui32BufferSize  Requested TL buffer size in bytes
-
- @Return        eError          Internal services call returned eError error
-                                number
-*/ /**************************************************************************/
-IMG_INTERNAL PVRSRV_ERROR
-HTBConfigure(
-	IMG_HANDLE hSrvHandle,
-	IMG_CHAR * pszBufferName,
-	IMG_UINT32 ui32BufferSize
-)
-{
-	return BridgeHTBConfigure(
-			hSrvHandle,
-			(OSStringLength(pszBufferName)+1),
-			pszBufferName,
-			ui32BufferSize
-			);
-}
-
-
-/*************************************************************************/ /*!
  @Function      HTBControl
  @Description   Update the configuration of the Host Trace Buffer
 

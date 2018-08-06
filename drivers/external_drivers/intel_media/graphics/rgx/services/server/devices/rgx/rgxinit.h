@@ -47,7 +47,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "connection_server.h"
 #include "pvrsrv_error.h"
 #include "img_types.h"
-#include "rgxscript.h"
 #include "device.h"
 #include "rgxdevice.h"
 #include "rgx_bridge.h"
@@ -67,22 +66,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (CONNECTION_DATA       *psConnection,
-                                      PVRSRV_DEVICE_NODE	*psDeviceNode,
-									  RGX_INIT_COMMAND		*psDbgScript,
+PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (PVRSRV_DEVICE_NODE	*psDeviceNode,
 									  IMG_UINT32			ui32DeviceFlags,
 									  IMG_UINT32			ui32HWPerfHostBufSizeKB,
 									  IMG_UINT32			ui32HWPerfHostFilter,
-									  RGX_ACTIVEPM_CONF		eActivePMConf,
-									  PMR					*psFWCodePMR,
-									  PMR					*psFWDataPMR,
-									  PMR					*psFWCorememPMR,
-									  PMR					*psHWPerfPMR);
+									  RGX_ACTIVEPM_CONF		eActivePMConf);
 
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVRGXInitAllocFWImgMemKM(CONNECTION_DATA      *psConnection,
-                                          PVRSRV_DEVICE_NODE   *psDeviceNode,
+PVRSRV_ERROR PVRSRVRGXInitAllocFWImgMemKM(PVRSRV_DEVICE_NODE   *psDeviceNode,
                                           IMG_DEVMEM_SIZE_T    ui32FWCodeLen,
                                           IMG_DEVMEM_SIZE_T    ui32FWDataLen,
                                           IMG_DEVMEM_SIZE_T    uiFWCorememLen,
@@ -94,24 +84,11 @@ PVRSRV_ERROR PVRSRVRGXInitAllocFWImgMemKM(CONNECTION_DATA      *psConnection,
                                           IMG_DEV_VIRTADDR     *psFWCorememDevVAddrBase,
                                           RGXFWIF_DEV_VIRTADDR *psFWCorememMetaVAddrBase);
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXInitMipsWrapperRegistersKM(PVRSRV_DEVICE_NODE *psDeviceNode,
 												 IMG_UINT32 ui32Remap1Config1Offset,
 												 IMG_UINT32 ui32Remap1Config2Offset,
 												 IMG_UINT32 ui32WrapperConfigOffset,
 												 IMG_UINT32 ui32BootCodeOffset);
-
-IMG_EXPORT 
-PVRSRV_ERROR IMG_CALLCONV PVRSRVRGXInitGuestKM(CONNECTION_DATA			*psConnection,
-												PVRSRV_DEVICE_NODE		*psDeviceNode,
-												IMG_BOOL				bEnableSignatureChecks,
-												IMG_UINT32				ui32SignatureChecksBufSize,
-												IMG_UINT32				ui32RGXFWAlignChecksArrLength,
-												IMG_UINT32				*pui32RGXFWAlignChecks,
-												IMG_UINT32				ui32DeviceFlags,
-												RGXFWIF_COMPCHECKS_BVNC *psClientBVNC);
-
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXPdumpBootldrDataInitKM(PVRSRV_DEVICE_NODE *psDeviceNode,
 												 IMG_UINT32 ui32BootConfOffset,
 												 IMG_UINT32 ui32ExceptionVectorsBaseAddress);
@@ -131,9 +108,8 @@ PVRSRV_ERROR PVRSRVRGXPdumpBootldrDataInitKM(PVRSRV_DEVICE_NODE *psDeviceNode,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_IMPORT PVRSRV_ERROR
-PVRSRVRGXInitFirmwareKM(CONNECTION_DATA          *psConnection,
-                        PVRSRV_DEVICE_NODE       *psDeviceNode,
+PVRSRV_ERROR
+PVRSRVRGXInitFirmwareKM(PVRSRV_DEVICE_NODE       *psDeviceNode,
                         RGXFWIF_DEV_VIRTADDR     *psRGXFwInit,
                         IMG_BOOL                 bEnableSignatureChecks,
                         IMG_UINT32               ui32SignatureChecksBufSize,
@@ -147,33 +123,18 @@ PVRSRVRGXInitFirmwareKM(CONNECTION_DATA          *psConnection,
                         IMG_UINT32               ui32JonesDisableMask,
                         IMG_UINT32               ui32HWRDebugDumpLimit,
                         RGXFWIF_COMPCHECKS_BVNC  *psClientBVNC,
+                        RGXFWIF_COMPCHECKS_BVNC  *psFirmwareBVNC,
                         IMG_UINT32               ui32HWPerfCountersDataSize,
                         PMR                      **ppsHWPerfPMR,
                         RGX_RD_POWER_ISLAND_CONF eRGXRDPowerIslandingConf,
-                        FW_PERF_CONF             eFirmwarePerf);
+                        FW_PERF_CONF             eFirmwarePerf,
+                        IMG_UINT32               ui32ConfigFlagsExt);
 
-/*!
-*******************************************************************************
-
- @Function	PVRSRVRGXInitFirmwareExtendedKM
-
- @Description
-
- Server-side RGX firmware initialisation, extends PVRSRVRGXInitFirmwareKM
-
- @Input pvDeviceNode - device node
-
- @Return   PVRSRV_ERROR
-
-******************************************************************************/
-IMG_IMPORT PVRSRV_ERROR
-PVRSRVRGXInitFirmwareExtendedKM(CONNECTION_DATA        *psConnection,
-                                PVRSRV_DEVICE_NODE     *psDeviceNode,
-                                IMG_UINT32             ui32RGXFWAlignChecksArrLength,
-                                IMG_UINT32             *pui32RGXFWAlignChecks,
-                                RGXFWIF_DEV_VIRTADDR   *psRGXFwInit,
-                                PMR                    **ppsHWPerfPMR,
-                                RGX_FW_INIT_IN_PARAMS  *psInParams);
+PVRSRV_ERROR PVRSRVRGXInitReleaseFWInitResourcesKM(PVRSRV_DEVICE_NODE *psDeviceNode,
+												   PMR *psFWCodePMR,
+												   PMR *psFWDataPMR,
+												   PMR *psFWCorePMR,
+												   PMR *psHWPerfPMR);
 
 /*!
 *******************************************************************************
@@ -190,9 +151,8 @@ PVRSRVRGXInitFirmwareExtendedKM(CONNECTION_DATA        *psConnection,
 
 ******************************************************************************/
 
-IMG_EXPORT PVRSRV_ERROR
-PVRSRVRGXInitFinaliseFWImageKM(CONNECTION_DATA *psConnection,
-                               PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR
+PVRSRVRGXInitFinaliseFWImageKM(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 /*!
 *******************************************************************************
@@ -208,7 +168,6 @@ PVRSRVRGXInitFinaliseFWImageKM(CONNECTION_DATA *psConnection,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_IMPORT
 PVRSRV_ERROR PVRSRVRGXInitHWPerfCountersKM (PVRSRV_DEVICE_NODE	*psDeviceNode);
 
 /*!
@@ -252,9 +211,10 @@ void RGX_WaitForInterruptsTimeout(PVRSRV_RGXDEV_INFO *psDevInfo);
 /*!
 *******************************************************************************
 
- @Function     RGXRegisterGpuUtilStats
+ @Function     SORgxGpuUtilStatsRegister
 
- @Description  Initialise data used to compute GPU utilisation statistics
+ @Description  SO Interface function called from the OS layer implementation.
+               Initialise data used to compute GPU utilisation statistics
                for a particular user (identified by the handle passed as
                argument). This function must be called only once for each
                different user/handle.
@@ -265,15 +225,16 @@ void RGX_WaitForInterruptsTimeout(PVRSRV_RGXDEV_INFO *psDevInfo);
  @Return       PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RGXRegisterGpuUtilStats(IMG_HANDLE *phGpuUtilUser);
+PVRSRV_ERROR SORgxGpuUtilStatsRegister(IMG_HANDLE *phGpuUtilUser);
 
 
 /*!
 *******************************************************************************
 
- @Function     RGXUnregisterGpuUtilStats
+ @Function     SORgxGpuUtilStatsUnregister
 
- @Description  Free data previously used to compute GPU utilisation statistics
+ @Description  SO Interface function called from the OS layer implementation.
+               Free data previously used to compute GPU utilisation statistics
                for a particular user (identified by the handle passed as
                argument).
 
@@ -283,10 +244,10 @@ PVRSRV_ERROR RGXRegisterGpuUtilStats(IMG_HANDLE *phGpuUtilUser);
  @Return       PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RGXUnregisterGpuUtilStats(IMG_HANDLE hGpuUtilUser);
+PVRSRV_ERROR SORgxGpuUtilStatsUnregister(IMG_HANDLE hGpuUtilUser);
 #endif /* !defined(NO_HARDWARE) */
 
-
+#if defined(SUPPORT_GPUVIRT_VALIDATION)
 /*!
 *******************************************************************************
 
@@ -305,10 +266,9 @@ PVRSRV_ERROR RGXUnregisterGpuUtilStats(IMG_HANDLE hGpuUtilUser);
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVGPUVIRTPopulateLMASubArenasKM(CONNECTION_DATA    * psConnection,
-                                                 PVRSRV_DEVICE_NODE	* psDeviceNode,
-                                                 IMG_UINT32         ui32NumElements,
-                                                 IMG_UINT32         aui32Elements[],
+PVRSRV_ERROR PVRSRVGPUVIRTPopulateLMASubArenasKM(PVRSRV_DEVICE_NODE	* psDeviceNode,
+                                                 IMG_UINT32 aui32OSidMin[GPUVIRT_VALIDATION_NUM_REGIONS][GPUVIRT_VALIDATION_NUM_OS],
+                                                 IMG_UINT32 aui32OSidMax[GPUVIRT_VALIDATION_NUM_REGIONS][GPUVIRT_VALIDATION_NUM_OS],
                                                  IMG_BOOL bEnableTrustedDeviceAceConfig);
-
+#endif /* defined(SUPPORT_GPUVIRT_VALIDATION) */
 #endif /* __RGXINIT_H__ */

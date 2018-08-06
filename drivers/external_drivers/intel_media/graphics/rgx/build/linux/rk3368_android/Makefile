@@ -61,12 +61,29 @@ RGX_BVNC := 5.9.1.46
 include ../common/android/arch.mk
 include ../common/android/features.mk
 
+ # Heap names should be defined as per the labels used in the kernel.
+ # Kernels >=4.12, support heap query so we use heap names 
+ # to get the correct heap id.
+ # For kernels <4.12, we use heap_id_mask defined in this Makefile.
+ # Heap names defined here are for reference only.
+ION_DEFAULT_HEAP_NAME := \"system\"
 ION_DEFAULT_HEAP_ID_MASK := (1 << ION_HEAP_TYPE_SYSTEM)
+ION_FALLBACK_HEAP_NAME := \"carveout\"
 ION_FALLBACK_HEAP_ID_MASK := (1 << ION_HEAP_TYPE_CARVEOUT)
 
+ifeq ($(call kernel-version-at-least,4,4),true)
+PVR_ANDROID_COMPOSERHAL ?= drm
+endif
+
+ifeq ($(PVR_ANDROID_COMPOSERHAL),drm)
+PVR_DRM_MODESET_MODULE_NAME := dumb
+PVR_DRM_MODESET_DRIVER_NAME := rockchip
+override PVR_LDM_PLATFORM_PRE_REGISTERED := 1
+else
 DISPLAY_CONTROLLER ?= adf_fbdev
 KERNEL_COMPONENTS += $(DISPLAY_CONTROLLER)
 ADF_FBDEV_NUM_PREFERRED_BUFFERS := 2
+endif
 
 PDUMP_STREAMBUF_SIZE_MB := 10
 
@@ -75,6 +92,11 @@ DEVICE_MEMSETCPY_ALIGN_IN_BYTES := 16
 PVR_LDM_PLATFORM_PRE_REGISTERED := 1
 
 RGX_TIMECORR_CLOCK := sched
+CACHEFLUSH_NO_KMRBF_USING_UMVA ?= 1
 
 include ../config/core.mk
 include ../common/android/extra_config.mk
+
+ifeq ($(call kernel-version-at-least,4,4),true)
+$(eval $(call KernelConfigMake,RK_INIT_V2,1))
+endif

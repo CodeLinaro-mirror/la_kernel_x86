@@ -75,60 +75,56 @@ PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
 	return eError;
 }
 
-void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheFlushRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
                             IMG_CPU_PHYADDR sCPUPhysEnd)
 {
 	unsigned long len;
-	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
 	PVR_ASSERT((uintptr_t) pvVirtEnd >= (uintptr_t) pvVirtEnd);
 
 	len = (unsigned long) pvVirtEnd - (unsigned long) pvVirtStart;
-	dma_cache_sync(NULL, (void *)pvVirtStart, len, DMA_BIDIRECTIONAL);
+	dma_cache_sync(psDevNode->psDevConfig->pvOSDevice, (void *)pvVirtStart, len, DMA_BIDIRECTIONAL);
 }
 
-void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheCleanRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
                             IMG_CPU_PHYADDR sCPUPhysEnd)
 {
 	unsigned long len;
-	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
 	PVR_ASSERT((uintptr_t) pvVirtEnd >= (uintptr_t) pvVirtEnd);
 
 	len = (unsigned long) pvVirtEnd - (unsigned long) pvVirtStart;
-	dma_cache_sync(NULL, (void *)pvVirtStart, len, DMA_TO_DEVICE);
+	dma_cache_sync(psDevNode->psDevConfig->pvOSDevice, (void *)pvVirtStart, len, DMA_TO_DEVICE);
 }
 
-void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheInvalidateRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                                  void *pvVirtStart,
                                  void *pvVirtEnd,
                                  IMG_CPU_PHYADDR sCPUPhysStart,
                                  IMG_CPU_PHYADDR sCPUPhysEnd)
 {
 	unsigned long len;
-	PVR_UNREFERENCED_PARAMETER(psDevNode);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysStart);
 	PVR_UNREFERENCED_PARAMETER(sCPUPhysEnd);
 
 	PVR_ASSERT((uintptr_t) pvVirtEnd >= (uintptr_t) pvVirtEnd);
 
 	len = (unsigned long) pvVirtEnd - (unsigned long) pvVirtStart;
-	dma_cache_sync(NULL, (void *)pvVirtStart, len, DMA_FROM_DEVICE);
+	dma_cache_sync(psDevNode->psDevConfig->pvOSDevice, (void *)pvVirtStart, len, DMA_FROM_DEVICE);
 }
 
-PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(PVRSRV_CACHE_OP uiCacheOp)
+PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(void)
 {
-	PVR_UNREFERENCED_PARAMETER(uiCacheOp);
 	return PVRSRV_CACHE_OP_ADDR_TYPE_VIRTUAL;
 }
 

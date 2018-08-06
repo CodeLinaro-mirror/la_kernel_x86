@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for devicememhistory
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_DEVICEMEMHISTORY_BRIDGE_H
 #define CLIENT_DEVICEMEMHISTORY_BRIDGE_H
@@ -54,69 +54,79 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "common_devicememhistory_bridge.h"
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryMap(IMG_HANDLE hBridge,
-								 IMG_DEV_VIRTADDR sDevVAddr,
-								 IMG_DEVMEM_SIZE_T uiSize,
-								 const IMG_CHAR *puiText);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryMap(IMG_HANDLE
+								 hBridge,
+								 IMG_HANDLE
+								 hPMR,
+								 IMG_DEVMEM_SIZE_T
+								 uiOffset,
+								 IMG_DEV_VIRTADDR
+								 sDevVAddr,
+								 IMG_DEVMEM_SIZE_T
+								 uiSize,
+								 const IMG_CHAR
+								 * puiText,
+								 IMG_UINT32
+								 ui32Log2PageSize,
+								 IMG_UINT32
+								 ui32AllocationIndex,
+								 IMG_UINT32 *
+								 pui32AllocationIndexOut);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryUnmap(IMG_HANDLE hBridge,
-								   IMG_DEV_VIRTADDR sDevVAddr,
-								   IMG_DEVMEM_SIZE_T uiSize,
-								   const IMG_CHAR *puiText);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryUnmap(IMG_HANDLE
+								   hBridge,
+								   IMG_HANDLE
+								   hPMR,
+								   IMG_DEVMEM_SIZE_T
+								   uiOffset,
+								   IMG_DEV_VIRTADDR
+								   sDevVAddr,
+								   IMG_DEVMEM_SIZE_T
+								   uiSize,
+								   const
+								   IMG_CHAR *
+								   puiText,
+								   IMG_UINT32
+								   ui32Log2PageSize,
+								   IMG_UINT32
+								   ui32AllocationIndex,
+								   IMG_UINT32 *
+								   pui32AllocationIndexOut);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryMapNew(IMG_HANDLE hBridge,
-								    IMG_HANDLE hPMR,
-								    IMG_DEVMEM_SIZE_T uiOffset,
-								    IMG_DEV_VIRTADDR sDevVAddr,
-								    IMG_DEVMEM_SIZE_T uiSize,
-								    const IMG_CHAR *puiText,
-								    IMG_UINT32 ui32Log2PageSize,
-								    IMG_UINT32 ui32AllocationIndex,
-								    IMG_UINT32 *pui32AllocationIndexOut);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgeDevicememHistoryMapVRange(IMG_HANDLE hBridge,
+				IMG_DEV_VIRTADDR sBaseDevVAddr,
+				IMG_UINT32 ui32ui32StartPage,
+				IMG_UINT32 ui32NumPages,
+				IMG_DEVMEM_SIZE_T uiAllocSize,
+				const IMG_CHAR * puiText,
+				IMG_UINT32 ui32Log2PageSize,
+				IMG_UINT32 ui32AllocationIndex,
+				IMG_UINT32 * pui32AllocationIndexOut);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryUnmapNew(IMG_HANDLE hBridge,
-								      IMG_HANDLE hPMR,
-								      IMG_DEVMEM_SIZE_T uiOffset,
-								      IMG_DEV_VIRTADDR sDevVAddr,
-								      IMG_DEVMEM_SIZE_T uiSize,
-								      const IMG_CHAR *puiText,
-								      IMG_UINT32 ui32Log2PageSize,
-								      IMG_UINT32 ui32AllocationIndex,
-								      IMG_UINT32 *pui32AllocationIndexOut);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgeDevicememHistoryUnmapVRange(IMG_HANDLE hBridge,
+				  IMG_DEV_VIRTADDR sBaseDevVAddr,
+				  IMG_UINT32 ui32ui32StartPage,
+				  IMG_UINT32 ui32NumPages,
+				  IMG_DEVMEM_SIZE_T uiAllocSize,
+				  const IMG_CHAR * puiText,
+				  IMG_UINT32 ui32Log2PageSize,
+				  IMG_UINT32 ui32AllocationIndex,
+				  IMG_UINT32 * pui32AllocationIndexOut);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryMapVRange(IMG_HANDLE hBridge,
-								       IMG_DEV_VIRTADDR sBaseDevVAddr,
-								       IMG_UINT32 ui32ui32StartPage,
-								       IMG_UINT32 ui32NumPages,
-								       IMG_DEVMEM_SIZE_T uiAllocSize,
-								       const IMG_CHAR *puiText,
-								       IMG_UINT32 ui32Log2PageSize,
-								       IMG_UINT32 ui32AllocationIndex,
-								       IMG_UINT32 *pui32AllocationIndexOut);
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistoryUnmapVRange(IMG_HANDLE hBridge,
-									 IMG_DEV_VIRTADDR sBaseDevVAddr,
-									 IMG_UINT32 ui32ui32StartPage,
-									 IMG_UINT32 ui32NumPages,
-									 IMG_DEVMEM_SIZE_T uiAllocSize,
-									 const IMG_CHAR *puiText,
-									 IMG_UINT32 ui32Log2PageSize,
-									 IMG_UINT32 ui32AllocationIndex,
-									 IMG_UINT32 *pui32AllocationIndexOut);
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevicememHistorySparseChange(IMG_HANDLE hBridge,
-									  IMG_HANDLE hPMR,
-									  IMG_DEVMEM_SIZE_T uiOffset,
-									  IMG_DEV_VIRTADDR sDevVAddr,
-									  IMG_DEVMEM_SIZE_T uiSize,
-									  const IMG_CHAR *puiText,
-									  IMG_UINT32 ui32Log2PageSize,
-									  IMG_UINT32 ui32AllocPageCount,
-									  IMG_UINT32 *pui32AllocPageIndices,
-									  IMG_UINT32 ui32FreePageCount,
-									  IMG_UINT32 *pui32FreePageIndices,
-									  IMG_UINT32 ui32AllocationIndex,
-									  IMG_UINT32 *pui32AllocationIndexOut);
-
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgeDevicememHistorySparseChange(IMG_HANDLE hBridge, IMG_HANDLE hPMR,
+				   IMG_DEVMEM_SIZE_T uiOffset,
+				   IMG_DEV_VIRTADDR sDevVAddr,
+				   IMG_DEVMEM_SIZE_T uiSize,
+				   const IMG_CHAR * puiText,
+				   IMG_UINT32 ui32Log2PageSize,
+				   IMG_UINT32 ui32AllocPageCount,
+				   IMG_UINT32 * pui32AllocPageIndices,
+				   IMG_UINT32 ui32FreePageCount,
+				   IMG_UINT32 * pui32FreePageIndices,
+				   IMG_UINT32 ui32AllocationIndex,
+				   IMG_UINT32 * pui32AllocationIndexOut);
 
 #endif /* CLIENT_DEVICEMEMHISTORY_BRIDGE_H */

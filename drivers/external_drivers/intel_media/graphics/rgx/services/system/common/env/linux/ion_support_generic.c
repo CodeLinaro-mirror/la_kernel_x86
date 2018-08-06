@@ -1,11 +1,11 @@
 /*************************************************************************/ /*!
-@File           ion_support.c
+@File           ion_support_generic.c
 @Title          Generic Ion support
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    This file does the Ion initialisation and De-initialistion for
+@Description    This file does the Ion initialisation and De-initialisation for
                 systems that don't already have Ion.
-                For systems that do have Ion it's expected they they init Ion
-                as per their requirements and then implement IonDevAcquire and
+                For systems that do have Ion it's expected they init Ion as
+                per their requirements and then implement IonDevAcquire and
                 IonDevRelease which provides access to the ion device.
 @License        Dual MIT/GPLv2
 
@@ -45,10 +45,14 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/version.h>
+
 #include "pvrsrv_error.h"
+#include "ion_support.h"
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
 #include "img_types.h"
 #include "pvr_debug.h"
-#include "ion_support.h"
 #include "ion_sys.h"
 
 #include <linux/version.h>
@@ -81,19 +85,18 @@ static struct ion_platform_data generic_config = {
 struct ion_heap **g_apsIonHeaps;
 struct ion_device *g_psIonDev;
 
-PVRSRV_ERROR IonInit(void *phPrivateData)
+PVRSRV_ERROR IonInit(void *pvPrivateData)
 {
 	int uiHeapCount = generic_config.nr;
 	int uiError;
 	int i;
 
-	PVR_UNREFERENCED_PARAMETER(phPrivateData);
-
 	g_apsIonHeaps = kzalloc(sizeof(struct ion_heap *) * uiHeapCount, GFP_KERNEL);
 
 	/* Create the ion devicenode */
 	g_psIonDev = ion_device_create(NULL);
-	if (IS_ERR_OR_NULL(g_psIonDev)) {
+	if (IS_ERR_OR_NULL(g_psIonDev))
+	{
 		kfree(g_apsIonHeaps);
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
@@ -103,12 +106,16 @@ PVRSRV_ERROR IonInit(void *phPrivateData)
 	{
 		struct ion_platform_heap *psPlatHeapData = &generic_config.heaps[i];
 
+		/* Pass down the 'struct device *' for the heaps that use it */
+		psPlatHeapData->priv = pvPrivateData;
+
 		g_apsIonHeaps[i] = ion_heap_create(psPlatHeapData);
 		if (IS_ERR_OR_NULL(g_apsIonHeaps[i]))
 		{
 			uiError = PTR_ERR(g_apsIonHeaps[i]);
 			goto failHeapCreate;
 		}
+
 		ion_device_add_heap(g_psIonDev, g_apsIonHeaps[i]);
 	}
 
@@ -152,4 +159,16 @@ void IonDeinit(void)
 	kfree(g_apsIonHeaps);
 	ion_device_destroy(g_psIonDev);
 }
+#else	/* (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)) */
+PVRSRV_ERROR IonInit(void *pvPrivateData)
+{
+	(void) pvPrivateData;
+
+	return PVRSRV_OK;
+}
+
+void IonDeinit(void)
+{
+}
+#endif	/* (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)) */
 

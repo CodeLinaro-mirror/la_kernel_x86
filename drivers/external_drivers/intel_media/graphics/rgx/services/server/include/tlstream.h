@@ -5,37 +5,41 @@
 @Description    TL provides driver components with a way to copy data from kernel
                 space to user space (e.g. screen/file).
 
-                Data can be passed to the Transport Layer through the 
+                Data can be passed to the Transport Layer through the
                 TL Stream (kernel space) API interface.
 
-                The buffer provided to every stream is a modified version of a 
+                The buffer provided to every stream is a modified version of a
                 circular buffer. Which CB version is created is specified by
                 relevant flags when creating a stream. Currently two types
                 of buffer are available:
-                - TL_FLAG_RESERVE_DROP_NEWER:
-                  When the buffer is full, incoming data are dropped 
-                  (instead of overwriting older data) and a marker is set 
+                - TL_OPMODE_DROP_NEWER:
+                  When the buffer is full, incoming data are dropped
+                  (instead of overwriting older data) and a marker is set
                   to let the user know that data have been lost.
-                - TL_FLAG_RESERVE_BLOCK:
+                - TL_OPMODE_BLOCK:
                   When the circular buffer is full, reserve/write calls block
                   until enough space is freed.
+                - TL_OPMODE_DROP_OLDEST:
+                  When the circular buffer is full, the oldest packets in the
+                  buffer are dropped and a flag is set in header of next packet
+                  to let the user know that data have been lost.
 
                 All size/space requests are in bytes. However, the actual
                 implementation uses native word sizes (i.e. 4 byte aligned).
 
-                The user does not need to provide space for the stream buffer 
+                The user does not need to provide space for the stream buffer
                 as the TL handles memory allocations and usage.
 
                 Inserting data to a stream's buffer can be done either:
                 - by using TLReserve/TLCommit: User is provided with a buffer
                                                  to write data to.
-                - or by using TLWrite:         User provides a buffer with 
-                                                 data to be committed. The TL 
-                                                 copies the data from the 
-                                                 buffer into the stream buffer 
+                - or by using TLWrite:         User provides a buffer with
+                                                 data to be committed. The TL
+                                                 copies the data from the
+                                                 buffer into the stream buffer
                                                  and returns.
-                Users should be aware that there are implementation overheads 
-                associated with every stream buffer. If you find that less 
+                Users should be aware that there are implementation overheads
+                associated with every stream buffer. If you find that less
                 data are captured than expected then try increasing the
                 stream buffer size or use TLInfo to obtain buffer parameters
                 and calculate optimum required values at run time.
@@ -82,21 +86,49 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
+#include "pvrsrv_tlcommon.h"
+#include "device.h"
 
-/*! Flags specifying stream and circular buffer behaviour */
-/*! Reject new data if the buffer is full, producer may then decide to 
- *    drop the data or retry after some time. */
-#define TL_FLAG_RESERVE_DROP_NEWER     (1U<<0)
-/*! Block Reserve (subsequently Write) calls if there is not enough space 
- *    until some space is freed via a client read operation. */
-#define TL_FLAG_RESERVE_BLOCK          (1U<<1)
-/*! When buffer is full, advance the tail/read position to accept the new
- * reserve call (size permitting), effectively overwriting the oldest 
- * data in the circular buffer. Not supported yet. */
-#define TL_FLAG_RESERVE_DROP_OLDEST    (1U<<2)
+/*! Extract TL stream opmode from the given stream create flags.
+ * Last 3 bits of streamFlag is used for storing opmode, hence
+ * opmode mask is set as following. */
+#define TL_OPMODE_MASK 0x7
 
-/*! Do not destroy stream if there still are data that have not been 
- *     copied in user space. BLock until the stream is emptied. */
+/*
+ * NOTE: This enum is used to directly access the HTB_OPMODE_xxx values
+ * within htbserver.c.
+ * As such we *MUST* keep the values matching in order of declaration.
+ */
+/*! Opmode specifying circular buffer behaviour */
+typedef enum
+{
+	/*! Undefined operation mode */
+	TL_OPMODE_UNDEF = 0,
+
+	/*! Reject new data if the buffer is full, producer may then decide to
+	 *    drop the data or retry after some time. */
+	TL_OPMODE_DROP_NEWER,
+
+	/*! When buffer is full, advance the tail/read position to accept the new
+	 * reserve call (size permitting), effectively overwriting the oldest
+	 * data in the circular buffer. */
+	TL_OPMODE_DROP_OLDEST,
+
+	/*! Block Reserve (subsequently Write) calls if there is not enough space
+	 *    until some space is freed via a client read operation. */
+	TL_OPMODE_BLOCK,
+
+	/*!< For error checking */
+	TL_OPMODE_LAST
+
+} TL_OPMODE;
+
+static_assert(TL_OPMODE_LAST <= TL_OPMODE_MASK,
+	      "TL_OPMODE_LAST must not exceed TL_OPMODE_MASK");
+
+/*! Flags specifying stream behaviour */
+/*! Do not destroy stream if there still are data that have not been
+ *     copied in user space. Block until the stream is emptied. */
 #define TL_FLAG_FORCE_FLUSH            (1U<<8)
 /*! Do not signal consumers on commit automatically when the stream buffer
  * transitions from empty to non-empty. Producer responsible for signal when
@@ -113,6 +145,7 @@ typedef struct _TL_STREAM_INFO_
     IMG_UINT32 minReservationSize;  /*!< Minimum data size reserved in bytes */
     IMG_UINT32 pageSize;            /*!< Page size in bytes */
     IMG_UINT32 pageAlign;           /*!< Page alignment in bytes */
+    IMG_UINT32 maxTLpacketSize;     /*! Max allowed TL packet size*/
 } TL_STREAM_INFO, *PTL_STREAM_INFO;
 
 /*! Callback operations or notifications that a stream producer may handle
@@ -160,13 +193,19 @@ TLFreeSharedMem(IMG_HANDLE hStream);
 				used. This ensures the resources of a stream are released when
 				it is no longer required.
  @Output        phStream        Pointer to handle to store the new stream.
+ @Input			psDevNode	Pointer to the Device Node to be used for
+ 								stream allocation.
  @Input         szStreamName    Name of stream, maximum length:
                                   PRVSRVTL_MAX_STREAM_NAME_SIZE.
                                   If a longer string is provided,creation fails.
  @Input         ui32Size        Desired buffer size in bytes.
  @Input         ui32StreamFlags Flags that configure buffer behaviour.See above.
- @Input         pfProducerDB    Optional callback, may be null.
- @Input         pvProducerData  Optional user data for callback, may be null.
+ @Input			pfOnReaderOpenCB    Optional callback called when a client opens
+                                      this stream, may be null.
+ @Input			pvOnReaderOpenUD    Optional user data for pfOnReaderOpenCB, may
+                                      be null.
+ @Input         pfProducerCB    Optional callback, may be null.
+ @Input         pvProducerUD    Optional user data for callback, may be null.
  @Return        PVRSRV_ERROR_INVALID_PARAMS  NULL stream handle or string name 
                                                exceeded MAX_STREAM_NAME_SIZE
  @Return        PVRSRV_ERROR_OUT_OF_MEMORY   Failed to allocate space for stream
@@ -179,7 +218,8 @@ TLFreeSharedMem(IMG_HANDLE hStream);
 */ /**************************************************************************/
 PVRSRV_ERROR 
 TLStreamCreate(IMG_HANDLE *phStream,
-               IMG_CHAR	  *szStreamName,
+               PVRSRV_DEVICE_NODE *psDevNode,
+               IMG_CHAR *szStreamName,
                IMG_UINT32 ui32Size,
                IMG_UINT32 ui32StreamFlags,
                TL_STREAM_ONREADEROPENCB pfOnReaderOpenCB,
@@ -204,17 +244,41 @@ PVRSRV_ERROR
 TLStreamOpen(IMG_HANDLE *phStream,
              IMG_CHAR   *szStreamName);
 
+
+/*************************************************************************/ /*!
+ @Function      TLStreamReset
+ @Description   Resets read and write pointers and pending flag.
+ @Output        phStream Pointer to stream's handle
+*/ /**************************************************************************/
+void TLStreamReset(IMG_HANDLE hStream);
+
+/*************************************************************************/ /*!
+ @Function      TLStreamOpen
+ @Description   Registers a "notification stream" which will be used to publish
+                information about state change of the "hStream" stream.
+                Notification can inform about events such as stream open/close,
+                etc.
+ @Input         hStream         Handle to stream to update.
+ @Input         hNotifStream    Handle to the stream which will be used for
+                                publishing notifications.
+ @Return        PVRSRV_ERROR_INVALID_PARAMS    if either of the parameters is
+                                               NULL
+ @Return        PVRSRV_OK                      Success.
+*/ /**************************************************************************/
+PVRSRV_ERROR
+TLStreamSetNotifStream(IMG_HANDLE hStream, IMG_HANDLE hNotifStream);
+
 /*************************************************************************/ /*!
  @Function      TLStreamReconfigure
  @Description   Request the stream flags controlling buffer behaviour to
                 be updated.
-                In the case where TL_FLAG_RESERVE_BLOCK is to be used,
+                In the case where TL_OPMODE_BLOCK is to be used,
                 TLStreamCreate should be called without that flag and this
                 function used to change the stream mode once a consumer process
                 has been started. This avoids a deadlock scenario where the
                 TLStreaWrite/TLStreamReserve call will hold the Bridge Lock
                 while blocking if the TL buffer is full.
-                The TL_FLAG_RESERVE_BLOCK should never drop the Bridge Lock
+                The TL_OPMODE_BLOCK should never drop the Bridge Lock
                 as this leads to another deadlock scenario where the caller to
                 TLStreamWrite/TLStreamReserve has already acquired another lock
                 (eg. gHandleLock) which is not dropped. This then leads to that
@@ -266,10 +330,12 @@ TLStreamClose(IMG_HANDLE hStream);
  @Return        PVRSRV_ERROR_STREAM_MISUSE  Misusing the stream by trying to 
                                               reserve more space than the 
                                               buffer size.
- @Return        PVRSRV_ERROR_STREAM_RESERVE_TOO_BIG  The reserve size requested
-                                                     is larger than the free
-                                                     space or maximum supported
-                                                     packet size.
+ @Return        PVRSRV_ERROR_STREAM_FULL    The reserve size requested
+                                            is larger than the free
+                                            space.
+ @Return         PVRSRV_ERROR_TLPACKET_SIZE_LIMIT_EXCEEDED  The reserve size 
+                                                            requested is larger 
+                                                            than max TL packet size
  @Return        PVRSRV_OK                   Success, output arguments valid.
 */ /**************************************************************************/
 PVRSRV_ERROR 
@@ -301,13 +367,15 @@ TLStreamReserve(IMG_HANDLE hStream,
  @Return        PVRSRV_ERROR_STREAM_MISUSE  Misusing the stream by trying to
                                               reserve more space than the
                                               buffer size.
- @Return        PVRSRV_ERROR_STREAM_RESERVE_TOO_BIG  The reserve size requested
-                                                     is larger than the free
-                                                     space or maximum supported
-                                                     packet size.
-                                                     Check the pui32Available
-                                                     value for the correct
-                                                     reserve size to use.
+ @Return        PVRSRV_ERROR_STREAM_FULL    The reserve size requested
+                                            is larger than the free
+                                            space.
+                                            Check the pui32Available
+                                            value for the correct
+                                            reserve size to use.
+ @Return         PVRSRV_ERROR_TLPACKET_SIZE_LIMIT_EXCEEDED   The reserve size 
+                                                             requested is larger
+                                                             than max TL packet size
  @Return        PVRSRV_OK                   Success, output arguments valid.
 */ /**************************************************************************/
 PVRSRV_ERROR
@@ -385,6 +453,26 @@ PVRSRV_ERROR
 TLStreamMarkEOS(IMG_HANDLE hStream);
 
 /*************************************************************************/ /*!
+@Function       TLStreamMarkStreamOpen
+@Description    Puts *open* stream packet into hStream's notification stream,
+                if set, error otherwise."
+@Input          hStream Stream handle.
+@Return         PVRSRV_OK on success and error code on failure
+*/ /**************************************************************************/
+PVRSRV_ERROR
+TLStreamMarkStreamOpen(IMG_HANDLE hStream);
+
+/*************************************************************************/ /*!
+@Function       TLStreamMarkStreamClose
+@Description    Puts *close* stream packet into hStream's notification stream,
+                if set, error otherwise."
+@Input          hStream Stream handle.
+@Return         PVRSRV_OK on success and error code on failure
+*/ /**************************************************************************/
+PVRSRV_ERROR
+TLStreamMarkStreamClose(IMG_HANDLE hStream);
+
+/*************************************************************************/ /*!
  @Function      TLStreamInfo
  @Description   Run time information about buffer elemental sizes.
                 It sets psInfo members accordingly. Users can use those values
@@ -394,8 +482,16 @@ TLStreamMarkEOS(IMG_HANDLE hStream);
  @Return        None.
 */ /**************************************************************************/
 void
-TLStreamInfo(PTL_STREAM_INFO psInfo);
+TLStreamInfo(IMG_HANDLE hStream, PTL_STREAM_INFO psInfo);
 
+/*************************************************************************/ /*!
+ @Function      TLStreamOutOfData
+ @Description   Query if the stream is empty (no data waiting to be read).
+ @Input         hStream         Stream handle.
+ @Return        IMG_BOOL        True if read==write, no data waiting,
+                                false otherwise
+*/ /**************************************************************************/
+IMG_BOOL TLStreamOutOfData(IMG_HANDLE hStream);
 
 #endif /* __TLSTREAM_H__ */
 /*****************************************************************************

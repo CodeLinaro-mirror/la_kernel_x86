@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 #include "img_defs.h"
+#include "pvrsrv_tlcommon.h"
 #include "pvrsrv_error.h"
 
 
@@ -107,7 +108,7 @@ PVRSRV_ERROR TLClientCloseStream(IMG_HANDLE hSrvHandle,
 IMG_INTERNAL
 PVRSRV_ERROR TLClientDiscoverStreams(IMG_HANDLE hSrvHandle,
 		const IMG_CHAR *pszNamePattern,
-		IMG_UINT32 *pui32Streams,
+		IMG_CHAR aszStreams[][PRVSRVTL_MAX_STREAM_NAME_SIZE],
 		IMG_UINT32 *pui32NumFound);
 
 /**************************************************************************/ /*!

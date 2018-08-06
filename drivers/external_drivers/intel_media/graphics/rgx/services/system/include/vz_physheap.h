@@ -41,8 +41,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#ifndef _VZ_PHYSHEAP_CONFIG_H_
-#define _VZ_PHYSHEAP_CONFIG_H_
+#ifndef _VZ_PHYSHEAP_H_
+#define _VZ_PHYSHEAP_H_
 
 #include "pvrsrv.h"
 
@@ -160,7 +160,6 @@ PVRSRV_ERROR SysVzInitDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig);
  ******************************************************************************/
 void SysVzDeInitDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig);
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
 /*!
 ******************************************************************************
  @Function			SysVzCreateDevPhysHeaps
@@ -205,7 +204,7 @@ PVRSRV_ERROR SysVzRegisterFwPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig);
 									error code
  ******************************************************************************/
 PVRSRV_ERROR SysVzUnregisterFwPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig);
-#else
+
 /*!
 ******************************************************************************
  @Function			SysVzCreateDevPhysHeaps
@@ -215,13 +214,13 @@ PVRSRV_ERROR SysVzUnregisterFwPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig);
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									error code
  ******************************************************************************/
-PVRSRV_ERROR SysVzCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
-									 IMG_UINT32 ui32DevID,
-									 IMG_UINT32 *peType,
-									 IMG_UINT64 *pui64FwSize,
-									 IMG_UINT64 *pui64FwAddr,
-									 IMG_UINT64 *pui64GpuSize,
-									 IMG_UINT64 *puiGpuAddr);
+PVRSRV_ERROR SysVzPvzCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
+										IMG_UINT32 ui32DevID,
+										IMG_UINT32 *peType,
+										IMG_UINT64 *pui64FwSize,
+										IMG_UINT64 *pui64FwAddr,
+										IMG_UINT64 *pui64GpuSize,
+										IMG_UINT64 *puiGpuAddr);
 
 /*!
 ******************************************************************************
@@ -232,8 +231,8 @@ PVRSRV_ERROR SysVzCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									error code
  ******************************************************************************/
-PVRSRV_ERROR SysVzDestroyDevPhysHeaps(IMG_UINT32 ui32OSID,
-									  IMG_UINT32 ui32DevID);
+PVRSRV_ERROR SysVzPvzDestroyDevPhysHeaps(IMG_UINT32 ui32OSID, IMG_UINT32 ui32DevID);
+
 /*!
 ******************************************************************************
  @Function			SysVzRegisterFwPhysHeap
@@ -244,10 +243,11 @@ PVRSRV_ERROR SysVzDestroyDevPhysHeaps(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									error code
  ******************************************************************************/
-PVRSRV_ERROR SysVzRegisterFwPhysHeap(IMG_UINT32 ui32OSID,
-									 IMG_UINT32 ui32DevID,
-									 IMG_UINT64 ui64Size,
-									 IMG_UINT64 ui64Addr);
+PVRSRV_ERROR SysVzPvzRegisterFwPhysHeap(IMG_UINT32 ui32OSID,
+										IMG_UINT32 ui32DevID,
+										IMG_UINT64 ui64Size,
+										IMG_UINT64 ui64Addr);
+
 /*!
 ******************************************************************************
  @Function			SysVzUnregisterFwPhysHeap
@@ -258,10 +258,9 @@ PVRSRV_ERROR SysVzRegisterFwPhysHeap(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									error code
  ******************************************************************************/
-PVRSRV_ERROR SysVzUnregisterFwPhysHeap(IMG_UINT32 ui32OSID,
-									   IMG_UINT32 ui32DevID);
-#endif
-#endif /* _VZ_PHYSHEAP_CONFIG_H_ */
+PVRSRV_ERROR SysVzPvzUnregisterFwPhysHeap(IMG_UINT32 ui32OSID, IMG_UINT32 ui32DevID);
+
+#endif /* _VZ_PHYSHEAP_H_ */
 
 /*****************************************************************************
  End of file (vz_physheap.h)

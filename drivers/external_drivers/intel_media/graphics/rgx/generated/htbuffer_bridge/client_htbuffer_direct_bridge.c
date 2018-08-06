@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @Title          Direct client bridge for htbuffer
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
@@ -37,7 +37,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #include "client_htbuffer_bridge.h"
 #include "img_defs.h"
@@ -48,45 +48,49 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "htbserver.h"
 
-
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBConfigure(IMG_HANDLE hBridge,
-							  IMG_UINT32 ui32NameSize,
-							  const IMG_CHAR *puiName,
-							  IMG_UINT32 ui32BufferSize)
+							  IMG_UINT32
+							  ui32NameSize,
+							  const IMG_CHAR *
+							  puiName,
+							  IMG_UINT32
+							  ui32BufferSize)
 {
+#if defined(PVR_NEVER_USED)
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
-	eError =
-		HTBConfigureKM(
-					ui32NameSize,
-					puiName,
-					ui32BufferSize);
+	eError = PVRSRVHTBConfigureKM(ui32NameSize, puiName, ui32BufferSize);
 
 	return eError;
+#else
+	PVR_UNREFERENCED_PARAMETER(hBridge);
+	PVR_UNREFERENCED_PARAMETER(ui32NameSize);
+	PVR_UNREFERENCED_PARAMETER(puiName);
+	PVR_UNREFERENCED_PARAMETER(ui32BufferSize);
+
+	return PVRSRV_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBControl(IMG_HANDLE hBridge,
-							IMG_UINT32 ui32NumGroups,
-							IMG_UINT32 *pui32GroupEnable,
+							IMG_UINT32
+							ui32NumGroups,
+							IMG_UINT32 *
+							pui32GroupEnable,
 							IMG_UINT32 ui32LogLevel,
-							IMG_UINT32 ui32EnablePID,
+							IMG_UINT32
+							ui32EnablePID,
 							IMG_UINT32 ui32LogMode,
 							IMG_UINT32 ui32OpMode)
 {
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
 	eError =
-		HTBControlKM(
-					ui32NumGroups,
-					pui32GroupEnable,
-					ui32LogLevel,
-					ui32EnablePID,
-					ui32LogMode,
-					ui32OpMode);
+	    HTBControlKM(ui32NumGroups,
+			 pui32GroupEnable,
+			 ui32LogLevel, ui32EnablePID, ui32LogMode, ui32OpMode);
 
 	return eError;
 }
@@ -96,20 +100,13 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHTBLog(IMG_HANDLE hBridge,
 						    IMG_UINT32 ui32TimeStamp,
 						    IMG_UINT32 ui32SF,
 						    IMG_UINT32 ui32NumArgs,
-						    IMG_UINT32 *pui32Args)
+						    IMG_UINT32 * pui32Args)
 {
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
 	eError =
-		HTBLogKM(
-					ui32PID,
-					ui32TimeStamp,
-					ui32SF,
-					ui32NumArgs,
-					pui32Args);
+	    HTBLogKM(ui32PID, ui32TimeStamp, ui32SF, ui32NumArgs, pui32Args);
 
 	return eError;
 }
-

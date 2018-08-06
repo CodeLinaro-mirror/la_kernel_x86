@@ -44,8 +44,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef __TLSERVER_H_
 #define __TLSERVER_H_
 
-#include <stddef.h>
-
 #include "img_defs.h"
 #include "pvr_debug.h"
 #include "connection_server.h"
@@ -67,9 +65,9 @@ PVRSRV_ERROR TLServerOpenStreamKM(const IMG_CHAR* pszName,
 PVRSRV_ERROR TLServerCloseStreamKM(PTL_STREAM_DESC psSD);
 
 PVRSRV_ERROR TLServerDiscoverStreamsKM(const IMG_CHAR *pszNamePattern,
-                                       IMG_UINT32 ui32Max,
-                                       IMG_UINT32 *pui32Streams,
-                                       IMG_UINT32 *pui32NumFound);
+                          IMG_UINT32 ui32Max,
+                          IMG_CHAR *pszStreams,
+                          IMG_UINT32 *pui32NumFound);
 
 PVRSRV_ERROR TLServerReserveStreamKM(PTL_STREAM_DESC psSD,
                                      IMG_UINT32* ui32BufferOffset,

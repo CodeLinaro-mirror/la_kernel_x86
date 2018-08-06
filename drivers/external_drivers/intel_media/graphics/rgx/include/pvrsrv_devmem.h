@@ -94,22 +94,22 @@ typedef struct _PVRSRV_EXPORT_DEVMEMCTX_ *PVRSRV_EXPORT_DEVMEMCTX;
                 space on the CPU will also have its own virtual space on the GPU.
                 Thus there is loosely a one-to-one correspondence between process
                 and device memory context, but this is not enforced at this API.
- 
+
                 Every process must create the device memory context before any
                 memory allocations are made, and is responsible for freeing all
                 such allocations before destroying the context
-     
+
                 This is a wrapper function above the "bare-metal" device memory
                 context creation function which would create just a context and no
                 heaps.  This function will also create the heaps, according to the
                 heap config that the device specific initialization code has
                 nominated for use by this API.
-     
+
                 The number of heaps thus created is returned to the caller, such
                 that the caller can allocate an array and the call in to fetch
                 details of each heap, or look up the heap with the "Find Heap" API
                 described below.
-     
+
                 In order to derive the details of the MMU configuration for the
                 device, and for retrieving the "bridge handle" for communication
                 internally in services, it is necessary to pass in a
@@ -121,7 +121,7 @@ typedef struct _PVRSRV_EXPORT_DEVMEMCTX_ *PVRSRV_EXPORT_DEVMEMCTX;
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVCreateDeviceMemContext(PVRSRV_DEV_CONNECTION *psDevConnection,
                              PVRSRV_DEVMEMCTX *phCtxOut);
 
@@ -133,7 +133,7 @@ PVRSRVCreateDeviceMemContext(PVRSRV_DEV_CONNECTION *psDevConnection,
 @Input          hCtx            Handle to a DevMem Context
 @Return         None
 */ /***************************************************************************/
-extern IMG_IMPORT void
+IMG_EXPORT void
 PVRSRVDestroyDeviceMemContext(PVRSRV_DEVMEMCTX hCtx);
 
 /**************************************************************************/ /*!
@@ -158,7 +158,7 @@ PVRSRVDestroyDeviceMemContext(PVRSRV_DEVMEMCTX hCtx);
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVFindHeapByName(PVRSRV_DEVMEMCTX hCtx,
                      const IMG_CHAR *pszHeapName,
                      PVRSRV_HEAP *phHeapOut);
@@ -172,15 +172,15 @@ PVRSRVFindHeapByName(PVRSRV_DEVMEMCTX hCtx,
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVDevmemGetHeapBaseDevVAddr(PVRSRV_HEAP hHeap,
-			        IMG_DEV_VIRTADDR *pDevVAddr);
+                                IMG_DEV_VIRTADDR *pDevVAddr);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVSubAllocDeviceMem
 @Description    Allocate memory from the specified heap, acquiring physical
                 memory from OS as we go and mapping this into
-                the GPU (mandatorily) and CPU (optionally)
+                the GPU (required) and CPU (optional)
 
                 Size must be a positive integer multiple of alignment, or, to
                 put it another way, the uiLog2Align LSBs should all be zero, but
@@ -207,11 +207,13 @@ PVRSRVDevmemGetHeapBaseDevVAddr(PVRSRV_HEAP hHeap,
 @Input          uiSize                Amount of memory to be allocated.
 @Input          uiLog2Align           LOG2 of the required alignment
 @Input          uiMemAllocFlags       Allocation Flags
-@Input          pszText     		  Text to describe the allocation
+@Input          pszText               Allocation descriptive name, this will
+                                      be truncated to the number of characters
+                                      specified in the PVR_ANNOTATION_MAX_LEN.
 @Output         phMemDescOut          On success, the resulting memory descriptor
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVSubAllocDeviceMem(IMG_UINT8 uiPreAllocMultiplier,
                         PVRSRV_HEAP hHeap,
                         IMG_DEVMEM_SIZE_T uiSize,
@@ -224,6 +226,20 @@ PVRSRVSubAllocDeviceMem(IMG_UINT8 uiPreAllocMultiplier,
     PVRSRVSubAllocDeviceMem(PVRSRV_DEVMEM_PRE_ALLOC_MULTIPLIER_NONE, __VA_ARGS__)
 
 /**************************************************************************/ /*!
+@Function       PVRSRVGetMaxDevMemSize
+@Description    Get the amount of device memory on current platform
+		(Memory size in Bytes)
+		(Consider scaling down the values returned by this API)
+@Output         puiLMASize            LMA memory size
+@Output         puiUMASize            UMA memory size
+@Return         None
+*/ /***************************************************************************/
+IMG_EXPORT void
+PVRSRVGetMaxDevMemSize(PVRSRV_DEV_CONNECTION *psConnection,
+		    IMG_DEVMEM_SIZE_T *puiLMASize,
+		    IMG_DEVMEM_SIZE_T *puiUMASize);
+
+/**************************************************************************/ /*!
 @Function       PVRSRVFreeDeviceMem
 @Description    Free that allocated by PVRSRVSubAllocDeviceMem (Memory descriptor
                 will be destroyed)
@@ -231,7 +247,7 @@ PVRSRVSubAllocDeviceMem(IMG_UINT8 uiPreAllocMultiplier,
                                     freed
 @Return         None
 */ /***************************************************************************/
-extern IMG_IMPORT void
+IMG_EXPORT void
 PVRSRVFreeDeviceMem(PVRSRV_MEMDESC hMemDesc);
 
 /**************************************************************************/ /*!
@@ -254,7 +270,7 @@ PVRSRVFreeDeviceMem(PVRSRV_MEMDESC hMemDesc);
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVAcquireCPUMapping(PVRSRV_MEMDESC hMemDesc,
                         void **ppvCpuVirtAddrOut);
 
@@ -265,7 +281,7 @@ PVRSRVAcquireCPUMapping(PVRSRV_MEMDESC hMemDesc,
 @Input          hMemDesc            Handle of the memory descriptor
 @Return         None
 */ /***************************************************************************/
-extern IMG_IMPORT void
+IMG_EXPORT void
 PVRSRVReleaseCPUMapping(PVRSRV_MEMDESC hMemDesc);
 
 
@@ -288,10 +304,10 @@ PVRSRVReleaseCPUMapping(PVRSRV_MEMDESC hMemDesc);
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVMapToDevice(PVRSRV_MEMDESC hMemDesc,
-				  PVRSRV_HEAP hHeap,
-				  IMG_DEV_VIRTADDR *psDevVirtAddrOut);
+                  PVRSRV_HEAP hHeap,
+                  IMG_DEV_VIRTADDR *psDevVirtAddrOut);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVMapToDeviceAddress
@@ -302,8 +318,8 @@ PVRSRVMapToDevice(PVRSRV_MEMDESC hMemDesc,
                 this function on a heap where PVRSRVMapToDevice() has been
                 used before or will be used in the future.
 
-				In general the caller has to know which regions of the heap have
-				been mapped already and should avoid overlapping mappings.
+                In general the caller has to know which regions of the heap have
+                been mapped already and should avoid overlapping mappings.
 
 @Input          hMemDesc            Handle of the memory descriptor
 @Input          hHeap               Device heap to map the allocation into
@@ -311,7 +327,7 @@ PVRSRVMapToDevice(PVRSRV_MEMDESC hMemDesc,
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
                          DEVMEM_HEAP *psHeap,
                          IMG_DEV_VIRTADDR sDevVirtAddr);
@@ -339,9 +355,9 @@ PVRSRVMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-extern IMG_IMPORT PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVAcquireDeviceMapping(PVRSRV_MEMDESC hMemDesc,
-						   IMG_DEV_VIRTADDR *psDevVirtAddrOut);
+                           IMG_DEV_VIRTADDR *psDevVirtAddrOut);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVReleaseDeviceMapping
@@ -350,7 +366,7 @@ PVRSRVAcquireDeviceMapping(PVRSRV_MEMDESC hMemDesc,
 @Input          hMemDesc            Handle of the memory descriptor
 @Return         None
 */ /***************************************************************************/
-extern IMG_IMPORT void
+IMG_EXPORT void
 PVRSRVReleaseDeviceMapping(PVRSRV_MEMDESC hMemDesc);
 
 /*************************************************************************/ /*!
@@ -373,17 +389,20 @@ PVRSRVReleaseDeviceMapping(PVRSRV_MEMDESC hMemDesc);
 
 @Output         puiSizePtr              Size of the created MemDesc
 
-@Input          pszAnnotation           Annotation string for this allocation/import
+@Input          pszAnnotation           Allocation descriptive name, this will
+                                        be truncated to the number of characters
+                                        specified in the PVR_ANNOTATION_MAX_LEN.
 
 @Return         PVRSRV_OK is successful
 */
 /*****************************************************************************/
-PVRSRV_ERROR PVRSRVDevmemLocalImport(const PVRSRV_DEV_CONNECTION *psDevConnection,
-									 IMG_HANDLE hExtHandle,
-									 PVRSRV_MEMMAP_FLAGS_T uiFlags,
-									 PVRSRV_MEMDESC *phMemDescPtr,
-									 IMG_DEVMEM_SIZE_T *puiSizePtr,
-									 const IMG_CHAR *pszAnnotation);
+IMG_EXPORT PVRSRV_ERROR
+PVRSRVDevmemLocalImport(const PVRSRV_DEV_CONNECTION *psDevConnection,
+                        IMG_HANDLE hExtHandle,
+                        PVRSRV_MEMMAP_FLAGS_T uiFlags,
+                        PVRSRV_MEMDESC *phMemDescPtr,
+                        IMG_DEVMEM_SIZE_T *puiSizePtr,
+                        const IMG_CHAR *pszAnnotation);
 
 /*************************************************************************/ /*!
 @Function       PVRSRVDevmemGetImportUID
@@ -395,7 +414,7 @@ PVRSRV_ERROR PVRSRVDevmemLocalImport(const PVRSRV_DEV_CONNECTION *psDevConnectio
 @Return         UID of import
 */
 /*****************************************************************************/
-PVRSRV_ERROR PVRSRVDevmemGetImportUID(PVRSRV_MEMDESC hMemDesc,
+IMG_EXPORT PVRSRV_ERROR PVRSRVDevmemGetImportUID(PVRSRV_MEMDESC hMemDesc,
                                       IMG_UINT64 *pui64UID);
 
 /**************************************************************************/ /*!
@@ -417,11 +436,13 @@ PVRSRV_ERROR PVRSRVDevmemGetImportUID(PVRSRV_MEMDESC hMemDesc,
                                     to be mapped into.
 @Input          uiSize              the amount of memory to be allocated
 @Input          uiFlags             Allocation flags
-@Input          pszText             Text to describe the allocation
+@Input          pszText             Text to describe the allocation, this will
+                                    be truncated to the number of characters
+                                    specified in the PVR_ANNOTATION_MAX_LEN.
 @Output         hMemDesc
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVAllocExportableDevMem(const PVRSRV_DEV_CONNECTION *psDevConnection,
                             IMG_DEVMEM_SIZE_T uiSize,
                             IMG_DEVMEM_LOG2ALIGN_T uiLog2Align,
@@ -445,7 +466,7 @@ PVRSRVAllocExportableDevMem(const PVRSRV_DEV_CONNECTION *psDevConnection,
 @Input          uiFlags             Flags that control the behaviour of the call
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVChangeSparseDevMem(PVRSRV_MEMDESC psMemDesc,
                          IMG_UINT32 ui32AllocPageCount,
                          IMG_UINT32 *pai32AllocIndices,
@@ -455,33 +476,42 @@ PVRSRVChangeSparseDevMem(PVRSRV_MEMDESC psMemDesc,
 
 /**************************************************************************/ /*!
 @Function       PVRSRVAllocSparseDevMem2
-@Description    Allocate sparse memory without mapping into device memory context.
-                Sparse memory is used where you have an allocation that has a
-                logical size (i.e. the amount of VM space it will need when
-                mapping it into a device) that is larger than the amount of
-                physical memory that allocation will use. An example of this
-                is a NPOT texture where the twiddling algorithm requires you
-                to round the width and height to next POT and so you know there
-                will be pages that are never accessed.
+@Description    Allocate sparse memory without mapping into device memory
+                context. Sparse memory is used where you have an allocation
+                that has a logical size (i.e. the amount of VM space it will
+                need when mapping it into a device) that is larger than the
+                amount of physical memory that allocation will use. An example
+                of this is a NPOT texture where the twiddling algorithm requires
+                you to round the width and height to next POT and so you know
+                there will be pages that are never accessed.
 
-                This memory is can to be exported and mapped into the device
-                memory context of other processes, or to CPU.
+                This memory can be exported and mapped into the device
+                memory context of other processes, or to CPU address space.
 
-                Size must be a positive integer multiple of the page size
+                Size must be a positive integer multiple of the page size, see
+                PVRSRVGetHeapLog2PageSize().
+
+                Mapping Table array has ui32NumPhysChunks elements. Each
+                element holds the page index of the VM space where the physical
+                memory page will be mapped. All elements in this array are
+                valid.
+
 @Input          psDevConnection     Device to allocation the memory for
 @Input          uiSize              The logical size of allocation
-@Input          uiChunkSize         The size of the chunk
+@Input          uiChunkSize         The size of the chunk (== page size in byte)
 @Input          ui32NumPhysChunks   The number of physical chunks required
 @Input          ui32NumVirtChunks   The number of virtual chunks required
-@Input          pui32MappingTable	index based Mapping table
+@Input          pui32MappingTable	VM space page index table
 @Input          uiLog2Align         Log2 of the required alignment
-@Input          uiLog2HeapPageSize  Log2 of the heap we map this into
+@Input          uiLog2HeapPageSize  Log2 page size of the target heap
 @Input          uiFlags             Allocation flags
-@Input          pszText             Text to describe the allocation
+@Input          pszText             Text to describe the allocation, this will
+                                    be truncated to the number of characters
+                                    specified in PVR_ANNOTATION_MAX_LEN.
 @Output         hMemDesc
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVAllocSparseDevMem2(const PVRSRV_DEVMEMCTX psDevMemCtx,
                          IMG_DEVMEM_SIZE_T uiSize,
                          IMG_DEVMEM_SIZE_T uiChunkSize,
@@ -495,49 +525,6 @@ PVRSRVAllocSparseDevMem2(const PVRSRV_DEVMEMCTX psDevMemCtx,
                          PVRSRV_MEMDESC *hMemDesc);
 
 /**************************************************************************/ /*!
-@Function       PVRSRVAllocSparseDevMem (DEPRECATED and will be removed in future)
-@Description    Allocate sparse memory without mapping into device memory context.
-                Sparse memory is used where you have an allocation that has a
-                logical size (i.e. the amount of VM space it will need when
-                mapping it into a device) that is larger than the amount of
-                physical memory that allocation will use. An example of this
-                is a NPOT texture where the twiddling algorithm requires you
-                to round the width and height to next POT and so you know there
-                will be pages that are never accessed.
-
-                This memory is can to be exported and mapped into the device
-                memory context of other processes, or to CPU.
-
-                Size must be a positive integer multiple of the page size
-                This function is deprecated and should not be used in any new code
-                It will be removed in the subsequent changes.
-@Input          psDevConnection     Device to allocation the memory for
-@Input          uiSize              The logical size of allocation
-@Input          uiChunkSize         The size of the chunk
-@Input          ui32NumPhysChunks   The number of physical chunks required
-@Input          ui32NumVirtChunks   The number of virtual chunks required
-@Input          pabMappingTable     boolean based Mapping table
-@Input          uiLog2Align         Log2 of the required alignment
-@Input          uiLog2HeapPageSize  Log2 of the heap we map this into
-@Input          uiFlags             Allocation flags
-@Input          pszText             Text to describe the allocation
-@Output         hMemDesc
-@Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
-*/ /***************************************************************************/
-PVRSRV_ERROR
-PVRSRVAllocSparseDevMem(const PVRSRV_DEVMEMCTX psDevMemCtx,
-                        IMG_DEVMEM_SIZE_T uiSize,
-                        IMG_DEVMEM_SIZE_T uiChunkSize,
-                        IMG_UINT32 ui32NumPhysChunks,
-                        IMG_UINT32 ui32NumVirtChunks,
-                        IMG_BOOL *pabMappingTable,
-                        IMG_DEVMEM_LOG2ALIGN_T uiLog2Align,
-                        IMG_UINT32 uiLog2HeapPageSize,
-                        DEVMEM_FLAGS_T uiFlags,
-                        const IMG_CHAR *pszText,
-                        PVRSRV_MEMDESC *hMemDesc);
-
-/**************************************************************************/ /*!
 @Function       PVRSRVGetOSLog2PageSize
 @Description    Just call AFTER setting up the connection to the kernel module
                 otherwise it will run into an assert.
@@ -546,7 +533,7 @@ PVRSRVAllocSparseDevMem(const PVRSRV_DEVMEMCTX psDevMemCtx,
 @Return         The page size
 */ /***************************************************************************/
 
-IMG_UINT32 PVRSRVGetOSLog2PageSize(void);
+IMG_EXPORT IMG_UINT32 PVRSRVGetOSLog2PageSize(void);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVGetHeapLog2PageSize
@@ -557,7 +544,7 @@ IMG_UINT32 PVRSRVGetOSLog2PageSize(void);
 
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVGetHeapLog2PageSize(PVRSRV_HEAP hHeap, IMG_UINT32* puiLog2PageSize);
 
 /**************************************************************************/ /*!
@@ -574,7 +561,7 @@ PVRSRVGetHeapLog2PageSize(PVRSRV_HEAP hHeap, IMG_UINT32* puiLog2PageSize);
 
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVGetHeapTilingProperties(PVRSRV_HEAP hHeap,
                               IMG_UINT32* puiLog2ImportAlignment,
                               IMG_UINT32* puiLog2TilingStrideFactor);
@@ -592,7 +579,7 @@ PVRSRVGetHeapTilingProperties(PVRSRV_HEAP hHeap,
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVMakeLocalImportHandle(const PVRSRV_DEV_CONNECTION *psConnection,
                             IMG_HANDLE hServerHandle,
                             IMG_HANDLE *hLocalImportHandle);
@@ -606,7 +593,7 @@ PVRSRVMakeLocalImportHandle(const PVRSRV_DEV_CONNECTION *psConnection,
 @Return         PVRSRV_ERROR:       PVRSRV_OK on success. Otherwise, a PVRSRV_
                                     error code
 */ /***************************************************************************/
-PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVUnmakeLocalImportHandle(const PVRSRV_DEV_CONNECTION *psConnection,
                               IMG_HANDLE hLocalImportHandle);
 
@@ -628,8 +615,8 @@ PVRSRVUnmakeLocalImportHandle(const PVRSRV_DEV_CONNECTION *psConnection,
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-PVRSRV_ERROR PVRSRVExportDevMem(PVRSRV_MEMDESC hMemDesc,
-						  		PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie);
+IMG_EXPORT PVRSRV_ERROR PVRSRVExportDevMem(PVRSRV_MEMDESC hMemDesc,
+                                PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVUnexport
@@ -644,8 +631,8 @@ PVRSRV_ERROR PVRSRVExportDevMem(PVRSRV_MEMDESC hMemDesc,
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-PVRSRV_ERROR PVRSRVUnexportDevMem(PVRSRV_MEMDESC hMemDesc,
-								  PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie);
+IMG_EXPORT PVRSRV_ERROR PVRSRVUnexportDevMem(PVRSRV_MEMDESC hMemDesc,
+                                  PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVImportDevMem
@@ -666,10 +653,10 @@ PVRSRV_ERROR PVRSRVUnexportDevMem(PVRSRV_MEMDESC hMemDesc,
 @Return         PVRSRV_ERROR:   PVRSRV_OK on success. Otherwise, a PVRSRV_
                                 error code
 */ /***************************************************************************/
-PVRSRV_ERROR PVRSRVImportDevMem(const PVRSRV_DEV_CONNECTION *psConnection,
-								PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie,
-								PVRSRV_MEMMAP_FLAGS_T uiFlags,
-								PVRSRV_MEMDESC *phMemDescOut);
+IMG_EXPORT PVRSRV_ERROR PVRSRVImportDevMem(const PVRSRV_DEV_CONNECTION *psConnection,
+                                PVRSRV_DEVMEM_EXPORTCOOKIE *phExportCookie,
+                                PVRSRV_MEMMAP_FLAGS_T uiFlags,
+                                PVRSRV_MEMDESC *phMemDescOut);
 #endif /* SUPPORT_INSECURE_EXPORT */
 
 /**************************************************************************/ /*!
@@ -689,7 +676,7 @@ PVRSRV_ERROR PVRSRVImportDevMem(const PVRSRV_DEV_CONNECTION *psConnection,
 @Return         PVRSRV_OK if address is valid or
                 PVRSRV_ERROR_INVALID_GPU_ADDR when address is invalid
 */ /***************************************************************************/
-PVRSRV_ERROR PVRSRVIsDeviceMemAddrValid(PVRSRV_REMOTE_DEVMEMCTX hContext,
+IMG_EXPORT PVRSRV_ERROR PVRSRVIsDeviceMemAddrValid(PVRSRV_REMOTE_DEVMEMCTX hContext,
                                         IMG_DEV_VIRTADDR sDevVAddr);
 
 
@@ -722,7 +709,7 @@ PVRSRV_ERROR PVRSRVIsDeviceMemAddrValid(PVRSRV_REMOTE_DEVMEMCTX hContext,
                                 memory of the allocation is lost and we failed
                                 to allocate new one.
 */ /***************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVDevmemPin(PVRSRV_MEMDESC hMemDesc);
 
 /**************************************************************************/ /*!
@@ -776,7 +763,7 @@ PVRSRVDevmemPin(PVRSRV_MEMDESC hMemDesc);
                                 calling process still has CPU mappings set up
                                 or the GPU mapping was acquired more than once.
 */ /***************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVDevmemUnpin(PVRSRV_MEMDESC hMemDesc);
 
 
@@ -789,9 +776,20 @@ PVRSRVDevmemUnpin(PVRSRV_MEMDESC hMemDesc);
 @Return         PVRSRV_OK on success or
                 PVRSRV_ERROR_INVALID_PARAMS
 */ /***************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVDevmemGetSize(PVRSRV_MEMDESC hMemDesc, IMG_DEVMEM_SIZE_T* puiSize);
 
+/**************************************************************************/ /*!
+@Function       PVRSRVDevmemGetAnnotation
+@Description    Returns the annotation for this device-memory
+
+@Input          hMemDesc handle to memory allocation
+@Output         pszAnnotation return value for annotation
+@Return         PVRSRV_OK on success or
+                PVRSRV_ERROR_INVALID_PARAMS
+*/ /***************************************************************************/
+IMG_EXPORT PVRSRV_ERROR
+PVRSRVDevmemGetAnnotation(PVRSRV_MEMDESC hMemDesc, IMG_CHAR **pszAnnotation);
 
 /**************************************************************************/ /*!
 @Function       PVRSRVExportDevMemContext
@@ -818,7 +816,7 @@ PVRSRVDevmemGetSize(PVRSRV_MEMDESC hMemDesc, IMG_DEVMEM_SIZE_T* puiSize);
 @Return         PVRSRV_ERROR:      PVRSRV_OK on success. Otherwise, a PVRSRV_
                                    error code
 */ /***************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVExportDevMemContext(PVRSRV_DEVMEMCTX hLocalDevmemCtx,
                           PVRSRV_MEMDESC hSharedAllocation,
                           PVRSRV_EXPORT_DEVMEMCTX *phExportCtx);
@@ -831,7 +829,7 @@ PVRSRVExportDevMemContext(PVRSRV_DEVMEMCTX hLocalDevmemCtx,
 @Input          psExportCtx     An export context retrieved from
                                 PVRSRVExportDevmemContext.
 */ /***************************************************************************/
-extern void
+IMG_EXPORT void
 PVRSRVUnexportDevMemContext(PVRSRV_EXPORT_DEVMEMCTX hExportCtx);
 
 /**************************************************************************/ /*!
@@ -851,7 +849,7 @@ PVRSRVUnexportDevMemContext(PVRSRV_EXPORT_DEVMEMCTX hExportCtx);
 @Return         PVRSRV_ERROR:      PVRSRV_OK on success. Otherwise, a PVRSRV_
                                    error code
 */ /***************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVAcquireRemoteDevMemContext(PVRSRV_DEVMEMCTX hDevmemCtx,
                                  PVRSRV_MEMDESC hSharedAllocation,
                                  PVRSRV_REMOTE_DEVMEMCTX *phRemoteCtx);
@@ -863,7 +861,7 @@ PVRSRVAcquireRemoteDevMemContext(PVRSRV_DEVMEMCTX hDevmemCtx,
 
 @Input          hRemoteCtx      Handle to the remote context that will be removed.
 */ /***************************************************************************/
-extern void
+IMG_EXPORT void
 PVRSRVReleaseRemoteDevMemContext(PVRSRV_REMOTE_DEVMEMCTX hRemoteCtx);
 
 /*************************************************************************/ /*!
@@ -873,7 +871,7 @@ PVRSRVReleaseRemoteDevMemContext(PVRSRV_REMOTE_DEVMEMCTX hRemoteCtx);
 @Input          psDevmemCtx     The context to be notified about.
 @Return         PVRSRV_ERROR.
 */ /**************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVRegisterDevmemPageFaultNotify(PVRSRV_DEVMEMCTX psDevmemCtx);
 
 /*************************************************************************/ /*!
@@ -883,7 +881,7 @@ PVRSRVRegisterDevmemPageFaultNotify(PVRSRV_DEVMEMCTX psDevmemCtx);
 @Input          psDevmemCtx     The context to be unregistered from.
 @Return         PVRSRV_ERROR.
 */ /**************************************************************************/
-extern PVRSRV_ERROR
+IMG_EXPORT PVRSRV_ERROR
 PVRSRVUnregisterDevmemPageFaultNotify(PVRSRV_DEVMEMCTX psDevmemCtx);
 
 #if defined __cplusplus

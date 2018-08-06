@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @Title          Direct client bridge for rgxpdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
@@ -37,7 +37,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #include "client_rgxpdump_bridge.h"
 #include "img_defs.h"
@@ -48,32 +48,33 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "rgxpdump.h"
 
-
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpTraceBuffer(IMG_HANDLE hBridge,
-							      IMG_UINT32 ui32PDumpFlags)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpTraceBuffer(IMG_HANDLE
+							      hBridge,
+							      IMG_UINT32
+							      ui32PDumpFlags)
 {
 	PVRSRV_ERROR eError;
 
-
 	eError =
-		PVRSRVPDumpTraceBufferKM(NULL, (PVRSRV_DEVICE_NODE *)((void*) hBridge)
-		,
-					ui32PDumpFlags);
+	    PVRSRVPDumpTraceBufferKM(NULL,
+				     (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
+				     ui32PDumpFlags);
 
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpSignatureBuffer(IMG_HANDLE hBridge,
-								  IMG_UINT32 ui32PDumpFlags)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpSignatureBuffer(IMG_HANDLE
+								  hBridge,
+								  IMG_UINT32
+								  ui32PDumpFlags)
 {
 	PVRSRV_ERROR eError;
 
-
 	eError =
-		PVRSRVPDumpSignatureBufferKM(NULL, (PVRSRV_DEVICE_NODE *)((void*) hBridge)
-		,
-					ui32PDumpFlags);
+	    PVRSRVPDumpSignatureBufferKM(NULL,
+					 (PVRSRV_DEVICE_NODE *) ((void *)
+								 hBridge),
+					 ui32PDumpFlags);
 
 	return eError;
 }
-

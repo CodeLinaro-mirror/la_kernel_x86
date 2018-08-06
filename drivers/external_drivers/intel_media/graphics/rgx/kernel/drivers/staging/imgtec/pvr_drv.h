@@ -46,14 +46,35 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(__PVR_DRV_H__)
 #define __PVR_DRV_H__
 
+#include <linux/version.h>
 #include <drm/drmP.h>
 #include <linux/pm.h>
 
 struct file;
+struct _PVRSRV_DEVICE_NODE_;
+struct workqueue_struct;
 struct vm_area_struct;
+
+/* This structure is used to store Linux specific per-device information. */
+struct pvr_drm_private {
+	struct _PVRSRV_DEVICE_NODE_ *dev_node;
+
+#if defined(SUPPORT_BUFFER_SYNC) || defined(SUPPORT_NATIVE_FENCE_SYNC)
+	struct workqueue_struct *fence_status_wq;
+#endif
+};
 
 extern const struct dev_pm_ops pvr_pm_ops;
 extern const struct drm_driver pvr_drm_generic_driver;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+int pvr_drm_load(struct drm_device *ddev, unsigned long flags);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
+int pvr_drm_unload(struct drm_device *ddev);
+#else
+void pvr_drm_unload(struct drm_device *ddev);
+#endif
+#endif
 
 #if defined(PDUMP)
 int dbgdrv_init(void);

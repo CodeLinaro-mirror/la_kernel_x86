@@ -48,9 +48,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "lists.h"
 #include "pvrsrv.h"
 #include "pvr_debug.h"
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #include "process_stats.h"
-#endif
+
 
 struct _PVRSRV_POWER_DEV_TAG_
 {
@@ -69,85 +68,23 @@ struct _PVRSRV_POWER_DEV_TAG_
 	PVRSRV_DEV_POWER_STATE 			eCurrentPowerState;
 };
 
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-static IMG_BOOL gbInitServerRunning = IMG_FALSE;
-static IMG_BOOL gbInitServerRan = IMG_FALSE;
-static IMG_BOOL gbInitSuccessful = IMG_FALSE;
-
-/*!
-******************************************************************************
-
- @Function	PVRSRVSetInitServerState
-
- @Description	Sets given services init state.
-
- @Input		eInitServerState : a services init state
- @Input		bState : a state to set
-
- @Return	PVRSRV_ERROR
-
-******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_STATE eInitServerState, IMG_BOOL bState)
+static inline IMG_UINT64 PVRSRVProcessStatsGetTimeNs(void)
 {
-
-	switch(eInitServerState)
-	{
-		case PVRSRV_INIT_SERVER_RUNNING:
-			gbInitServerRunning	= bState;
-			break;
-		case PVRSRV_INIT_SERVER_RAN:
-			gbInitServerRan	= bState;
-			break;
-		case PVRSRV_INIT_SERVER_SUCCESSFUL:
-			gbInitSuccessful = bState;
-			break;
-		default:
-			PVR_DPF((PVR_DBG_ERROR,
-					 "%s: Unknown state %x", __func__, eInitServerState));
-			return PVRSRV_ERROR_UNKNOWN_INIT_SERVER_STATE;
-	}
-
-	return PVRSRV_OK;
+#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+	return OSClockns64();
+#else
+	return 0;
+#endif
 }
 
-/*!
-******************************************************************************
-
- @Function	PVRSRVGetInitServerState
-
- @Description	Tests whether a given services init state was run.
-
- @Input		eInitServerState : a services init state
-
- @Return	IMG_BOOL
-
-******************************************************************************/
-IMG_EXPORT
-IMG_BOOL PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_STATE eInitServerState)
+static inline IMG_UINT64 PVRSRVProcessStatsGetTimeUs(void)
 {
-	IMG_BOOL	bReturnVal;
-
-	switch(eInitServerState)
-	{
-		case PVRSRV_INIT_SERVER_RUNNING:
-			bReturnVal = gbInitServerRunning;
-			break;
-		case PVRSRV_INIT_SERVER_RAN:
-			bReturnVal = gbInitServerRan;
-			break;
-		case PVRSRV_INIT_SERVER_SUCCESSFUL:
-			bReturnVal = gbInitSuccessful;
-			break;
-		default:
-			PVR_DPF((PVR_DBG_ERROR,
-					 "%s: Unknown state %x", __func__, eInitServerState));
-			bReturnVal = IMG_FALSE;
-	}
-
-	return bReturnVal;
+#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+	return OSClockus();
+#else
+	return 0;
+#endif
 }
-#endif /* !defined(SUPPORT_KERNEL_SRVINIT) */
 
 /*!
 ******************************************************************************
@@ -166,7 +103,6 @@ static IMG_BOOL _IsSystemStatePowered(PVRSRV_SYS_POWER_STATE eSystemPowerState)
 	return (eSystemPowerState == PVRSRV_SYS_POWER_STATE_ON);
 }
 
-
 /*!
 ******************************************************************************
 
@@ -178,8 +114,7 @@ static IMG_BOOL _IsSystemStatePowered(PVRSRV_SYS_POWER_STATE eSystemPowerState)
  @Return	PVRSRV_ERROR_RETRY or PVRSRV_OK
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode)
+PVRSRV_ERROR PVRSRVPowerLock(PCPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	OSLockAcquire(psDeviceNode->hPowerLock);
 
@@ -205,12 +140,10 @@ PVRSRV_ERROR PVRSRVPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode)
  @Return	PVRSRV_ERROR_RETRY or PVRSRV_OK
 
 ******************************************************************************/
-IMG_EXPORT
-void PVRSRVForcedPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode)
+void PVRSRVForcedPowerLock(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	OSLockAcquire(psDeviceNode->hPowerLock);
 }
-
 
 /*!
 ******************************************************************************
@@ -222,12 +155,11 @@ void PVRSRVForcedPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode)
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
-void PVRSRVPowerUnlock(PVRSRV_DEVICE_NODE *psDeviceNode)
+void PVRSRVPowerUnlock(PCPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	OSLockRelease(psDeviceNode->hPowerLock);
 }
-IMG_EXPORT
+
 IMG_BOOL PVRSRVDeviceIsDefaultStateOFF(PVRSRV_POWER_DEV *psPowerDevice)
 {
 	return (psPowerDevice->eDefaultPowerState == PVRSRV_DEV_POWER_STATE_OFF);
@@ -246,7 +178,7 @@ IMG_BOOL PVRSRVDeviceIsDefaultStateOFF(PVRSRV_POWER_DEV *psPowerDevice)
  @Return        PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(const PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
 					PVRSRV_DEV_POWER_STATE eNewPowerState)
 {
 	PVRSRV_POWER_DEV *psPowerDevice;
@@ -279,8 +211,7 @@ PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(const PVRSRV_DEVICE_NODE *psDevice
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PPVRSRV_DEVICE_NODE psDeviceNode,
 					PFN_SYS_DEV_IS_DEFAULT_STATE_OFF	pfnIsDefaultStateOff,
 					IMG_BOOL				bDeviceOffPermitted)
 {
@@ -297,6 +228,7 @@ PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 	return PVRSRV_OK;
 }
+
 /*!
 ******************************************************************************
 
@@ -311,8 +243,7 @@ PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVDeviceIdleCancelRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode)
+PVRSRV_ERROR PVRSRVDeviceIdleCancelRequestKM(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	PVRSRV_POWER_DEV *psPowerDev = psDeviceNode->psPowerDev;
 
@@ -323,6 +254,7 @@ PVRSRV_ERROR PVRSRVDeviceIdleCancelRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	return PVRSRV_OK;
 }
+
 /*!
 ******************************************************************************
 
@@ -354,13 +286,15 @@ PVRSRV_ERROR PVRSRVDevicePrePowerStateKM(PVRSRV_POWER_DEV		*psPowerDevice,
 
 	if (psPowerDevice->pfnDevicePrePower != NULL)
 	{
+		ui64DevTimer1 = PVRSRVProcessStatsGetTimeNs();
+
 		/* Call the device's power callback. */
-		ui64DevTimer1 = OSClockns64();
 		eError = psPowerDevice->pfnDevicePrePower(psPowerDevice->hDevCookie,
 												  eNewPowerState,
 												  psPowerDevice->eCurrentPowerState,
 												  bForced);
-		ui64DevTimer2 = OSClockns64();
+
+		ui64DevTimer2 = PVRSRVProcessStatsGetTimeNs();
 
 		if (eError != PVRSRV_OK)
 		{
@@ -371,12 +305,14 @@ PVRSRV_ERROR PVRSRVDevicePrePowerStateKM(PVRSRV_POWER_DEV		*psPowerDevice,
 	/* Do any required system-layer processing. */
 	if (psPowerDevice->pfnSystemPrePower != NULL)
 	{
-		ui64SysTimer1 = OSClockns64();
+		ui64SysTimer1 = PVRSRVProcessStatsGetTimeNs();
+
 		eError = psPowerDevice->pfnSystemPrePower(psPowerDevice->hSysData,
 												  eNewPowerState,
 												  psPowerDevice->eCurrentPowerState,
 												  bForced);
-		ui64SysTimer2 = OSClockns64();
+
+		ui64SysTimer2 = PVRSRVProcessStatsGetTimeNs();
 
 		if (eError != PVRSRV_OK)
 		{
@@ -384,13 +320,11 @@ PVRSRV_ERROR PVRSRVDevicePrePowerStateKM(PVRSRV_POWER_DEV		*psPowerDevice,
 		}
 	}
 
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
 	InsertPowerTimeStatistic(ui64SysTimer1, ui64SysTimer2,
 							 ui64DevTimer1, ui64DevTimer2,
 							 bForced,
 							 eNewPowerState == PVRSRV_DEV_POWER_STATE_ON,
 							 IMG_TRUE);
-#endif
 
 	return PVRSRV_OK;
 }
@@ -427,12 +361,14 @@ PVRSRV_ERROR PVRSRVDevicePostPowerStateKM(PVRSRV_POWER_DEV			*psPowerDevice,
 	/* Do any required system-layer processing. */
 	if (psPowerDevice->pfnSystemPostPower != NULL)
 	{
-		ui64SysTimer1 = OSClockns64();
+		ui64SysTimer1 = PVRSRVProcessStatsGetTimeNs();
+
 		eError = psPowerDevice->pfnSystemPostPower(psPowerDevice->hSysData,
 												   eNewPowerState,
 												   psPowerDevice->eCurrentPowerState,
 												   bForced);
-		ui64SysTimer2 = OSClockns64();
+
+		ui64SysTimer2 = PVRSRVProcessStatsGetTimeNs();
 
 		if (eError != PVRSRV_OK)
 		{
@@ -442,13 +378,15 @@ PVRSRV_ERROR PVRSRVDevicePostPowerStateKM(PVRSRV_POWER_DEV			*psPowerDevice,
 
 	if (psPowerDevice->pfnDevicePostPower != NULL)
 	{
+		ui64DevTimer1 = PVRSRVProcessStatsGetTimeNs();
+
 		/* Call the device's power callback. */
-		ui64DevTimer1 = OSClockns64();
 		eError = psPowerDevice->pfnDevicePostPower(psPowerDevice->hDevCookie,
 												   eNewPowerState,
 												   psPowerDevice->eCurrentPowerState,
 												   bForced);
-		ui64DevTimer2 = OSClockns64();
+
+		ui64DevTimer2 = PVRSRVProcessStatsGetTimeNs();
 
 		if (eError != PVRSRV_OK)
 		{
@@ -456,13 +394,12 @@ PVRSRV_ERROR PVRSRVDevicePostPowerStateKM(PVRSRV_POWER_DEV			*psPowerDevice,
 		}
 	}
 
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
 	InsertPowerTimeStatistic(ui64SysTimer1, ui64SysTimer2,
 							 ui64DevTimer1, ui64DevTimer2,
 							 bForced,
 							 eNewPowerState == PVRSRV_DEV_POWER_STATE_ON,
 							 IMG_FALSE);
-#endif
+
 	psPowerDevice->eCurrentPowerState = eNewPowerState;
 
 	return PVRSRV_OK;
@@ -482,8 +419,7 @@ PVRSRV_ERROR PVRSRVDevicePostPowerStateKM(PVRSRV_POWER_DEV			*psPowerDevice,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVSetDevicePowerStateKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
+PVRSRV_ERROR PVRSRVSetDevicePowerStateKM(PPVRSRV_DEVICE_NODE psDeviceNode,
 										 PVRSRV_DEV_POWER_STATE	eNewPowerState,
 										 IMG_BOOL				bForced)
 {
@@ -564,8 +500,7 @@ ErrorExit:
 @Input        eNewSysPowerState  New system power state
 @Return       PVRSRV_ERROR       PVRSRV_OK on success or an error otherwise
 */ /**************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PPVRSRV_DEVICE_NODE psDeviceNode,
 											 PVRSRV_SYS_POWER_STATE eNewSysPowerState)
 {
 	PVRSRV_ERROR	eError;
@@ -573,6 +508,10 @@ PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 	PVRSRV_DEV_POWER_STATE eNewDevicePowerState = 
 	  _IsSystemStatePowered(eNewSysPowerState)? PVRSRV_DEV_POWER_STATE_DEFAULT : PVRSRV_DEV_POWER_STATE_OFF;
+
+	/* If setting devices to default state, force idle all devices whose default state is off */
+	PFN_SYS_DEV_IS_DEFAULT_STATE_OFF pfnIsDefaultStateOff =
+	  (eNewDevicePowerState == PVRSRV_DEV_POWER_STATE_DEFAULT) ? PVRSRVDeviceIsDefaultStateOFF : NULL;
 
 	/* require a proper power state */
 	if (eNewSysPowerState == PVRSRV_SYS_POWER_STATE_Unspecified)
@@ -590,34 +529,33 @@ PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
 		return PVRSRV_OK;
 	}
 
-	if ((eNewDevicePowerState == PVRSRV_DEV_POWER_STATE_OFF) || 
-		(eNewDevicePowerState == PVRSRV_DEV_POWER_STATE_DEFAULT))
+	LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
 	{
-		/* If setting devices to default state, selectively force idle all devices whose default state is off */
-		 PFN_SYS_DEV_IS_DEFAULT_STATE_OFF pfnIsDefaultStateOff =
-			(eNewDevicePowerState == PVRSRV_DEV_POWER_STATE_DEFAULT) ? PVRSRVDeviceIsDefaultStateOFF : NULL;
+		eError = PVRSRVDeviceIdleRequestKM(psDeviceNode,
+										   pfnIsDefaultStateOff, IMG_TRUE);
 
-		LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
+		if (eError == PVRSRV_OK)
 		{
-			eError = PVRSRVDeviceIdleRequestKM(psDeviceNode,
-											   pfnIsDefaultStateOff, IMG_TRUE);
+			break;
+		}
+		else if (eError == PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
+		{
+			PVRSRVPowerUnlock(psDeviceNode);
+			OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
+			PVRSRVForcedPowerLock(psDeviceNode);
+		}
+		else
+		{
+			uiStage++;
+			goto ErrorExit;
+		}
+	} END_LOOP_UNTIL_TIMEOUT();
 
-			if (eError == PVRSRV_OK)
-			{
-				break;
-			}
-			else if (eError == PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
-			{
-				PVRSRVPowerUnlock(psDeviceNode);
-				OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
-				PVRSRVForcedPowerLock(psDeviceNode);
-			}
-			else
-			{
-				uiStage++;
-				goto ErrorExit;
-			}
-		} END_LOOP_UNTIL_TIMEOUT();
+	if (eError == PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Forced idle DENIED", __func__));
+		uiStage++;
+		goto ErrorExit;
 	}
 
 	eError = PVRSRVSetDevicePowerStateKM(psDeviceNode, eNewDevicePowerState,
@@ -638,7 +576,7 @@ ErrorExit:
 	PVRSRVPowerUnlock(psDeviceNode);
 
 	PVR_DPF((PVR_DBG_ERROR,
-			 "%s: Transition from %d to %d FAILED (%s) at stage %d. Dumping debug info.",
+			 "%s: Transition from %d to %d FAILED (%s) at stage %u. Dumping debug info.",
 			 __func__, psDeviceNode->eCurrentSysPowerState, eNewSysPowerState,
 			 PVRSRVGetErrorStringKM(eError), uiStage));
 
@@ -648,7 +586,7 @@ ErrorExit:
 }
 
 
-PVRSRV_ERROR PVRSRVRegisterPowerDevice(PVRSRV_DEVICE_NODE			*psDeviceNode,
+PVRSRV_ERROR PVRSRVRegisterPowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode,
 									   PFN_PRE_POWER				pfnDevicePrePower,
 									   PFN_POST_POWER				pfnDevicePostPower,
 									   PFN_SYS_DEV_PRE_POWER		pfnSystemPrePower,
@@ -697,7 +635,6 @@ PVRSRV_ERROR PVRSRVRegisterPowerDevice(PVRSRV_DEVICE_NODE			*psDeviceNode,
 	return (PVRSRV_OK);
 }
 
-
 /*!
 ******************************************************************************
 
@@ -712,7 +649,7 @@ PVRSRV_ERROR PVRSRVRegisterPowerDevice(PVRSRV_DEVICE_NODE			*psDeviceNode,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVRemovePowerDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
+PVRSRV_ERROR PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	if (psDeviceNode->psPowerDev)
 	{
@@ -722,7 +659,6 @@ PVRSRV_ERROR PVRSRVRemovePowerDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	return (PVRSRV_OK);
 }
-
 
 /*!
 ******************************************************************************
@@ -739,8 +675,7 @@ PVRSRV_ERROR PVRSRVRemovePowerDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
  @Return	PVRSRV_ERROR_UNKNOWN_POWER_STATE if device could not be found. PVRSRV_OK otherwise.
 
 ******************************************************************************/
-IMG_EXPORT
-PVRSRV_ERROR PVRSRVGetDevicePowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVGetDevicePowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
 									   PPVRSRV_DEV_POWER_STATE pePowerState)
 {
 	PVRSRV_POWER_DEV *psPowerDevice;
@@ -770,8 +705,7 @@ PVRSRV_ERROR PVRSRVGetDevicePowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
  @Return	IMG_BOOL
 
 ******************************************************************************/
-IMG_EXPORT
-IMG_BOOL PVRSRVIsDevicePowered(PVRSRV_DEVICE_NODE *psDeviceNode)
+IMG_BOOL PVRSRVIsDevicePowered(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	PVRSRV_DEV_POWER_STATE ePowerState;
 
@@ -788,26 +722,35 @@ IMG_BOOL PVRSRVIsDevicePowered(PVRSRV_DEVICE_NODE *psDeviceNode)
 	return (ePowerState == PVRSRV_DEV_POWER_STATE_ON);
 }
 
+/**************************************************************************/ /*!
+@Function       PVRSRVDevicePreClockSpeedChange
 
-/*!
-******************************************************************************
+@Description    This function is called before a voltage/frequency change is
+                made to the GPU HW. It informs the host driver of the intention
+                to make a DVFS change. If allows the host driver to idle
+                the GPU and begin a hold off period from starting new work
+                on the GPU.
+                When this call succeeds the caller *must* call
+                PVRSRVDevicePostClockSpeedChange() to end the hold off period
+                to allow new work to be submitted to the GPU.
 
- @Function	PVRSRVDevicePreClockSpeedChange
+                Called form system layer or OS layer implementation that
+                is responsible for triggering a GPU DVFS transition.
 
- @Description
+@Input          psDeviceNode pointer to the device affected by DVFS transition.
+@Input          bIdleDevice  when True, the driver will wait for the GPU to
+                             reach an idle state before the call returns.
+@Input          pvInfo       unused
 
-	Notification from system layer that a device clock speed change is about to happen.
-
- @Input		psDeviceNode : Device node
- @Input		bIdleDevice : whether the device should be idled
- @Input		pvInfo
-
- @Return	void
-
-******************************************************************************/
-PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
-											 IMG_BOOL	bIdleDevice,
-											 void	*pvInfo)
+@Return         PVRSRV_OK    on success, power lock acquired and held on exit,
+                             GPU idle.
+                PVRSRV_ERROR on failure, power lock not held on exit, do not
+                             call PVRSRVDevicePostClockSpeedChange().
+*/ /**************************************************************************/
+PVRSRV_ERROR
+PVRSRVDevicePreClockSpeedChange(PPVRSRV_DEVICE_NODE psDeviceNode,
+                                IMG_BOOL            bIdleDevice,
+                                void*               pvInfo)
 {
 	PVRSRV_ERROR		eError = PVRSRV_OK;
 	PVRSRV_POWER_DEV	*psPowerDevice;
@@ -815,7 +758,7 @@ PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 	PVR_UNREFERENCED_PARAMETER(pvInfo);
 
-	ui64StartTimer = OSClockus();
+	ui64StartTimer = PVRSRVProcessStatsGetTimeUs();
 
 	/* This mutex is released in PVRSRVDevicePostClockSpeedChange. */
 	eError = PVRSRVPowerLock(psDeviceNode);
@@ -834,9 +777,9 @@ PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 		if ((psPowerDevice->eCurrentPowerState == PVRSRV_DEV_POWER_STATE_ON) && bIdleDevice)
 		{
 			LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
-			{	/* We can change the clock speed if the device is either IDLE or OFF */
+			{
+				/* We can change the clock speed if the device is either IDLE or OFF */
 				eError = PVRSRVDeviceIdleRequestKM(psDeviceNode, NULL, IMG_TRUE);
-
 				if (eError == PVRSRV_OK)
 				{
 					break;
@@ -866,6 +809,7 @@ PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 			if (eError == PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
 			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Forced idle DENIED", __func__));
 				PVRSRVPowerUnlock(psDeviceNode);
 				return eError;
 			}
@@ -875,43 +819,55 @@ PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 		                                               psPowerDevice->eCurrentPowerState);
 	}
 
-	ui64StopTimer = OSClockus();
+	ui64StopTimer = PVRSRVProcessStatsGetTimeUs();
 
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
 	InsertPowerTimeStatisticExtraPre(ui64StartTimer, ui64StopTimer);
-#endif
 
 	return eError;
 }
 
+/**************************************************************************/ /*!
+@Function       PVRSRVDevicePostClockSpeedChange
 
-/*!
-******************************************************************************
+@Description    This function is called after a voltage/frequency change has
+                been made to the GPU HW following a call to
+                PVRSRVDevicePreClockSpeedChange().
+                Before calling this function the caller must ensure the system
+                data RGX_DATA->RGX_TIMING_INFORMATION->ui32CoreClockSpeed has
+                been updated with the new frequency set, measured in Hz.
+                The function informs the host driver that the DVFS change has
+                completed. The driver will end the work hold off period, cancel
+                the device idle period and update its time data records.
+                When this call returns work submissions are unblocked and
+                are submitted to the GPU as normal.
+                This function *must* not be called if the preceding call to
+                PVRSRVDevicePreClockSpeedChange() failed.
 
- @Function	PVRSRVDevicePostClockSpeedChange
+                Called form system layer or OS layer implementation that
+                is responsible for triggering a GPU DVFS transition.
 
- @Description
+@Input          psDeviceNode pointer to the device affected by DVFS transition.
+@Input          bIdleDevice  when True, the driver will cancel the GPU
+                             device idle state before the call returns. Value
+                             given must match that used in the call to
+                             PVRSRVDevicePreClockSpeedChange() otherwise
+                             undefined behaviour will result.
+@Input          pvInfo       unused
 
-	Notification from system layer that a device clock speed change has just happened.
-
- @Input		psDeviceNode : Device node
- @Input		bIdleDevice : whether the device had been idled
- @Input		pvInfo
-
- @Return	void
-
-******************************************************************************/
-void PVRSRVDevicePostClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
-									  IMG_BOOL		bIdleDevice,
-									  void		*pvInfo)
+@Return         void         power lock released, no longer held on exit.
+*/ /**************************************************************************/
+void
+PVRSRVDevicePostClockSpeedChange(PPVRSRV_DEVICE_NODE psDeviceNode,
+                                 IMG_BOOL            bIdleDevice,
+                                 void*               pvInfo)
 {
 	PVRSRV_ERROR		eError;
 	PVRSRV_POWER_DEV	*psPowerDevice;
 	IMG_UINT64			ui64StartTimer, ui64StopTimer;
 
-    PVR_UNREFERENCED_PARAMETER(pvInfo);
+	PVR_UNREFERENCED_PARAMETER(pvInfo);
 
-	ui64StartTimer = OSClockus();
+	ui64StartTimer = PVRSRVProcessStatsGetTimeUs();
 
 	psPowerDevice = psDeviceNode->psPowerDev;
 	if (psPowerDevice)
@@ -939,11 +895,11 @@ void PVRSRVDevicePostClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 	/* This mutex was acquired in PVRSRVDevicePreClockSpeedChange. */
 	PVRSRVPowerUnlock(psDeviceNode);
 
-	ui64StopTimer = OSClockus();
+	OSAtomicIncrement(&psDeviceNode->iNumClockSpeedChanges);
 
-#if defined(PVRSRV_ENABLE_PROCESS_STATS)
+	ui64StopTimer = PVRSRVProcessStatsGetTimeUs();
+
 	InsertPowerTimeStatisticExtraPost(ui64StartTimer, ui64StopTimer);
-#endif
 }
 
 /*!
@@ -961,7 +917,7 @@ void PVRSRVDevicePostClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
  @Return	PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVDeviceDustCountChange(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVDeviceDustCountChange(PPVRSRV_DEVICE_NODE psDeviceNode,
 						IMG_UINT32	ui32DustCount)
 {
 	PVRSRV_ERROR		eError = PVRSRV_OK;
@@ -1016,11 +972,9 @@ PVRSRV_ERROR PVRSRVDeviceDustCountChange(PVRSRV_DEVICE_NODE *psDeviceNode,
 				}
 			} END_LOOP_UNTIL_TIMEOUT();
 
-			if (eError != PVRSRV_OK)
+			if (eError == PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
 			{
-				PVR_DPF((PVR_DBG_ERROR,
-						 "%s: timeout occurred attempting to force idle (%s)",
-						 __func__, PVRSRVGetErrorStringKM(eError)));
+				PVR_DPF((PVR_DBG_ERROR, "%s: Forced idle DENIED", __func__));
 				goto ErrorExit;
 			}
 		}
@@ -1057,7 +1011,6 @@ ErrorExit:
 	PVRSRVPowerUnlock(psDeviceNode);
 	return eError;
 }
-
 
 /******************************************************************************
  End of file (power.c)

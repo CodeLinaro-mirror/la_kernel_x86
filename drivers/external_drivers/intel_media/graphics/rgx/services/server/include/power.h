@@ -48,28 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_device.h"
 #include "pvrsrv_error.h"
 #include "servicesext.h"
-
-typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
-
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-typedef enum _PVRSRV_INIT_SERVER_STATE_
-{
-	PVRSRV_INIT_SERVER_Unspecified		= -1,	
-	PVRSRV_INIT_SERVER_RUNNING			= 0,	
-	PVRSRV_INIT_SERVER_RAN				= 1,	
-	PVRSRV_INIT_SERVER_SUCCESSFUL		= 2,	
-	PVRSRV_INIT_SERVER_NUM				= 3,	
-	PVRSRV_INIT_SERVER_FORCE_I32		= 0x7fffffff
-} PVRSRV_INIT_SERVER_STATE, *PPVRSRV_INIT_SERVER_STATE;
-
-IMG_IMPORT IMG_BOOL
-PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_STATE eInitServerState);
-
-IMG_IMPORT PVRSRV_ERROR
-PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_STATE eInitServerState,
-						 IMG_BOOL bState);
-#endif /* !defined(SUPPORT_KERNEL_SRVINIT) */
-
+#include "opaque_types.h"
 
 /*!
  *****************************************************************************
@@ -81,27 +60,25 @@ typedef struct _PVRSRV_POWER_DEV_TAG_ PVRSRV_POWER_DEV;
 typedef IMG_BOOL (*PFN_SYS_DEV_IS_DEFAULT_STATE_OFF)(PVRSRV_POWER_DEV *psPowerDevice);
 
 
-IMG_IMPORT PVRSRV_ERROR PVRSRVPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode);
-IMG_IMPORT void PVRSRVForcedPowerLock(PVRSRV_DEVICE_NODE *psDeviceNode);
-IMG_IMPORT void PVRSRVPowerUnlock(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRSRVPowerLock(PCPVRSRV_DEVICE_NODE psDeviceNode);
+void PVRSRVForcedPowerLock(PPVRSRV_DEVICE_NODE psDeviceNode);
+void PVRSRVPowerUnlock(PCPVRSRV_DEVICE_NODE psDeviceNode);
 
-IMG_IMPORT IMG_BOOL PVRSRVDeviceIsDefaultStateOFF(PVRSRV_POWER_DEV *psPowerDevice);
+IMG_BOOL PVRSRVDeviceIsDefaultStateOFF(PVRSRV_POWER_DEV *psPowerDevice);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVSetDevicePowerStateKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
+
+PVRSRV_ERROR PVRSRVSetDevicePowerStateKM(PPVRSRV_DEVICE_NODE	psDeviceNode,
 										 PVRSRV_DEV_POWER_STATE	eNewPowerState,
 										 IMG_BOOL				bForced);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVSetDeviceSystemPowerState(PPVRSRV_DEVICE_NODE psDeviceNode,
 											 PVRSRV_SYS_POWER_STATE ePVRState);
 
-PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(const PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
 					PVRSRV_DEV_POWER_STATE eNewPowerState);
 
 /* Type PFN_DC_REGISTER_POWER */
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVRegisterPowerDevice(PVRSRV_DEVICE_NODE			*psDeviceNode,
+PVRSRV_ERROR PVRSRVRegisterPowerDevice(PPVRSRV_DEVICE_NODE		psDeviceNode,
 									   PFN_PRE_POWER				pfnDevicePrePower,
 									   PFN_POST_POWER				pfnDevicePostPower,
 									   PFN_SYS_DEV_PRE_POWER		pfnSystemPrePower,
@@ -115,35 +92,28 @@ PVRSRV_ERROR PVRSRVRegisterPowerDevice(PVRSRV_DEVICE_NODE			*psDeviceNode,
 									   PVRSRV_DEV_POWER_STATE		eCurrentPowerState,
 									   PVRSRV_DEV_POWER_STATE		eDefaultPowerState);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVRemovePowerDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVGetDevicePowerState(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVGetDevicePowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
 									   PPVRSRV_DEV_POWER_STATE pePowerState);
 
-IMG_IMPORT
-IMG_BOOL PVRSRVIsDevicePowered(PVRSRV_DEVICE_NODE *psDeviceNode);
+IMG_BOOL PVRSRVIsDevicePowered(PPVRSRV_DEVICE_NODE psDeviceNode);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVDevicePreClockSpeedChange(PPVRSRV_DEVICE_NODE psDeviceNode,
 											 IMG_BOOL	bIdleDevice,
 											 void	*pvInfo);
 
-IMG_IMPORT
-void PVRSRVDevicePostClockSpeedChange(PVRSRV_DEVICE_NODE *psDeviceNode,
-										  IMG_BOOL		bIdleDevice,
-										  void		*pvInfo);
+void PVRSRVDevicePostClockSpeedChange(PPVRSRV_DEVICE_NODE psDeviceNode,
+									  IMG_BOOL		bIdleDevice,
+									  void		*pvInfo);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVDeviceIdleRequestKM(PPVRSRV_DEVICE_NODE psDeviceNode,
 					PFN_SYS_DEV_IS_DEFAULT_STATE_OFF	pfnCheckIdleReq,
 					IMG_BOOL				bDeviceOffPermitted);
 
-IMG_IMPORT
-PVRSRV_ERROR PVRSRVDeviceIdleCancelRequestKM(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRSRVDeviceIdleCancelRequestKM(PPVRSRV_DEVICE_NODE psDeviceNode);
 
-PVRSRV_ERROR PVRSRVDeviceDustCountChange(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR PVRSRVDeviceDustCountChange(PPVRSRV_DEVICE_NODE psDeviceNode,
 						IMG_UINT32	ui32DustCount);
 
 

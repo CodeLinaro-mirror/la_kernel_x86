@@ -46,26 +46,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "km_apphint_defs.h"
 
-#define SrvInitParamOpen() 0
+#define SrvInitParamOpen() NULL
 #define SrvInitParamClose(pvState) ((void)(pvState))
 
 #define	SrvInitParamGetBOOL(state, name, value) \
-	pvr_apphint_get_bool(APPHINT_ID_ ## name, &value)
+	(void) pvr_apphint_get_bool(APPHINT_ID_ ## name, &value)
 
 #define	SrvInitParamGetUINT32(state, name, value) \
-	pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
+	(void) pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
 
 #define	SrvInitParamGetUINT64(state, name, value) \
-	pvr_apphint_get_uint64(APPHINT_ID_ ## name, &value)
+	(void) pvr_apphint_get_uint64(APPHINT_ID_ ## name, &value)
 
 #define SrvInitParamGetSTRING(state, name, buffer, size) \
-	pvr_apphint_get_string(APPHINT_ID_ ## name, buffer, size)
+	(void) pvr_apphint_get_string(APPHINT_ID_ ## name, buffer, size)
 
 #define	SrvInitParamGetUINT32BitField(state, name, value) \
-	pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
+	(void) pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
 
 #define	SrvInitParamGetUINT32List(state, name, value) \
-	pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
+	(void) pvr_apphint_get_uint32(APPHINT_ID_ ## name, &value)
 
 
 #endif /* __OS_SRVINIT_PARAM_H__ */

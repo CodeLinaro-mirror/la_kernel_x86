@@ -67,9 +67,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem.h"
 
 #include "tlclient.h"
-#include "pvr_tlcommon.h"
-#include "client_pvrtl_bridge.h"
 #include "pvrsrv_tlcommon.h"
+#include "client_pvrtl_bridge.h"
 
 /* Defines/Constants
  */
@@ -95,6 +94,9 @@ typedef struct _TL_STREAM_DESC_
 	 * is outstanding. Undefined at all other times. */
 	IMG_UINT32	uiReadLen;
 
+	/* Flag indicating if the RESERVE_TOO_BIG error was already printed.
+	 * It's used to reduce number of errors in kernel log. */
+	IMG_BOOL bPrinted;
 } TL_STREAM_DESC, *PTL_STREAM_DESC;
 
 
@@ -104,8 +106,8 @@ PVRSRV_ERROR TLClientOpenStream(IMG_HANDLE hSrvHandle,
 		IMG_UINT32   ui32Mode,
 		IMG_HANDLE*  phSD)
 {
-	PVRSRV_ERROR 				eError = PVRSRV_OK;
-	TL_STREAM_DESC* 			psSD = 0;
+	PVRSRV_ERROR eError = PVRSRV_OK;
+	TL_STREAM_DESC *psSD = NULL;
 	IMG_HANDLE hTLPMR;
 	IMG_HANDLE hTLImportHandle;
 	IMG_DEVMEM_SIZE_T uiImportSize;
@@ -133,12 +135,12 @@ PVRSRV_ERROR TLClientOpenStream(IMG_HANDLE hSrvHandle,
 										&psSD->hServerSD, &hTLPMR);
 	if (eError != PVRSRV_OK)
 	{
-	    if ((ui32Mode & PVRSRV_STREAM_FLAG_OPEN_WAIT) &&
-		    (eError == PVRSRV_ERROR_TIMEOUT))
-	    {
-	    	goto e1;
-	    }
-	    PVR_LOGG_IF_ERROR(eError, "BridgeTLOpenStream", e1);
+		if ((ui32Mode & PVRSRV_STREAM_FLAG_OPEN_WAIT) &&
+			(eError == PVRSRV_ERROR_TIMEOUT))
+		{
+			goto e1;
+		}
+		PVR_LOGG_IF_ERROR(eError, "BridgeTLOpenStream", e1);
 	}
 
 	/* Convert server export cookie into a cookie for use by this client */
@@ -241,7 +243,7 @@ PVRSRV_ERROR TLClientCloseStream(IMG_HANDLE hSrvHandle,
 IMG_INTERNAL
 PVRSRV_ERROR TLClientDiscoverStreams(IMG_HANDLE hSrvHandle,
 		const IMG_CHAR *pszNamePattern,
-		IMG_UINT32 *pui32Streams,
+		IMG_CHAR aszStreams[][PRVSRVTL_MAX_STREAM_NAME_SIZE],
 		IMG_UINT32 *pui32NumFound)
 {
 	PVR_ASSERT(hSrvHandle);
@@ -250,8 +252,10 @@ PVRSRV_ERROR TLClientDiscoverStreams(IMG_HANDLE hSrvHandle,
 
 	return BridgeTLDiscoverStreams(hSrvHandle,
 	                               pszNamePattern,
-	                               *pui32NumFound,
-	                               pui32Streams,
+	                               // we need to treat this as one dimensional
+	                               // array
+	                               *pui32NumFound * PRVSRVTL_MAX_STREAM_NAME_SIZE,
+	                               (IMG_CHAR *) aszStreams,
 	                               pui32NumFound);
 }
 
@@ -291,7 +295,7 @@ PVRSRV_ERROR TLClientReserveStream2(IMG_HANDLE hSrvHandle,
 		IMG_UINT32 ui32SizeMin,
 		IMG_UINT32 *pui32Available)
 {
-		PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 	TL_STREAM_DESC* psSD = (TL_STREAM_DESC*) hSD;
 	IMG_UINT32 ui32BufferOffset;
 
@@ -340,7 +344,7 @@ PVRSRV_ERROR TLClientAcquireData(IMG_HANDLE hSrvHandle,
 		IMG_PBYTE*  ppPacketBuf,
 		IMG_UINT32* pui32BufLen)
 {
-	PVRSRV_ERROR 		  eError = PVRSRV_OK;
+	PVRSRV_ERROR eError = PVRSRV_OK;
 	TL_STREAM_DESC* psSD = (TL_STREAM_DESC*) hSD;
 
 	PVR_ASSERT(hSrvHandle);
@@ -381,7 +385,7 @@ PVRSRV_ERROR TLClientAcquireData(IMG_HANDLE hSrvHandle,
 	{
 		/* On non-blocking, zero length data could be returned from server
 		 * Which is basically a no-acquire operation */
-		*ppPacketBuf = 0;
+		*ppPacketBuf = NULL;
 		*pui32BufLen = 0;
 	}
 
@@ -445,15 +449,19 @@ PVRSRV_ERROR TLClientWriteData(IMG_HANDLE hSrvHandle,
 	eError = BridgeTLWriteData(hSrvHandle, psSD->hServerSD, ui32Size, pui8Data);
 	if (eError != PVRSRV_OK)
 	{
-		if (eError == PVRSRV_ERROR_STREAM_RESERVE_TOO_BIG)
+		if (eError == PVRSRV_ERROR_STREAM_FULL)
 		{
-			static IMG_BOOL bPrinted = IMG_FALSE;
-
-			if (!bPrinted) {
+			if (!psSD->bPrinted)
+			{
+				psSD->bPrinted = IMG_TRUE;
 				PVR_DPF((PVR_DBG_ERROR, "Not enough space. Failed to write"
 				        " data to the stream (%d).", eError));
-				bPrinted = IMG_TRUE;
 			}
+		}
+		else if (eError == PVRSRV_ERROR_TLPACKET_SIZE_LIMIT_EXCEEDED)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "TL packet size limit exceeded. "
+				"Failed to write data to the stream (%d).", eError));
 		}
 		else
 		{

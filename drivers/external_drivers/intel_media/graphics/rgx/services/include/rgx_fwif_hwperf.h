@@ -44,7 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_FWIF_HWPERF_H
 
 #include "rgx_fwif_shared.h"
-#include "rgx_hwperf_km.h"
+#include "rgx_hwperf.h"
 #include "rgxdefs_km.h"
 
 
@@ -82,7 +82,7 @@ typedef struct _RGXFWIF_HWPERF_CTL_
 } UNCACHED_ALIGN RGXFWIF_HWPERF_CTL;
 
 /* NOTE: The switch statement in this function must be kept in alignment with
- * the enumeration RGX_HWPERF_CNTBLK_ID defined in rgx_hwperf_km.h. ASSERTs may
+ * the enumeration RGX_HWPERF_CNTBLK_ID defined in rgx_hwperf.h. ASSERTs may
  * result if not.
  * The function provides a hash lookup to get a handle on the global store for
  * a block's configuration store from it's block ID.

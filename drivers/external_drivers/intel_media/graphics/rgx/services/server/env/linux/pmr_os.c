@@ -64,6 +64,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "process_stats.h"
 #endif
 
+#if defined(PVRSRV_ENABLE_LINUX_MMAP_STATS)
+#include "mmap_stats.h"
+#endif
+
 #include "kernel_compatibility.h"
 
 /*
@@ -129,12 +133,16 @@ static void MMapPMRClose(struct vm_area_struct *ps_vma)
 		while (vAddr < ps_vma->vm_end)
 		{
 			/* USER MAPPING */
-			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES, (IMG_UINT64)vAddr);
+			PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+			                                (IMG_UINT64)vAddr,
+			                                OSGetCurrentClientProcessIDKM());
 			vAddr += PAGE_SIZE;
 		}
 	}
 #else
-	PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES, ps_vma->vm_end - ps_vma->vm_start);
+	PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+	                            ps_vma->vm_end - ps_vma->vm_start,
+	                            OSGetCurrentClientProcessIDKM());
 #endif
 #endif
 
@@ -213,18 +221,20 @@ static INLINE int _OSMMapPMR(PVRSRV_DEVICE_NODE *psDevNode,
 #if defined(CONFIG_L4)
 	IMG_CPU_VIRTADDR pvCpuVAddr;
 
-	/* Use L4LINUX function, removes per-arch code-path */
+	/* In L4 remaps from KM into UM is done via VA */
 	pvCpuVAddr = l4x_phys_to_virt(psCpuPAddr->uiAddr);
 	if (pvCpuVAddr == NULL)
 	{
 		return -1;
 	}
 
+	*((volatile int*)pvCpuVAddr) = *((volatile int*)pvCpuVAddr);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
-	sPFN = phys_to_pfn_t((uintptr_t)pvCpuVAddr, 0);
+	sPFN =  pfn_to_pfn_t(((uintptr_t) pvCpuVAddr) >> PAGE_SHIFT);
 #else
 	uiPFN = ((uintptr_t) pvCpuVAddr) >> PAGE_SHIFT;
 #endif
+	PVR_ASSERT(bUseVMInsertPage == IMG_FALSE);
 #else /* defined(CONFIG_L4) */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
 	sPFN = phys_to_pfn_t(psCpuPAddr->uiAddr, 0);
@@ -351,12 +361,19 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 		((ps_vma->vm_flags & VM_SHARED) == 0))
 	{
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto e0;
+		goto e1;
 	}
 
 	sPageProt = vm_get_page_prot(ps_vma->vm_flags);
 
-	ui32CPUCacheFlags = DevmemCPUCacheMode(psDevNode, PMR_Flags(psPMR));
+	eError = DevmemCPUCacheMode(psDevNode,
+	                            PMR_Flags(psPMR),
+	                            &ui32CPUCacheFlags);
+	if (eError != PVRSRV_OK)
+	{
+		goto e0;
+	}
+
 	switch (ui32CPUCacheFlags)
 	{
 		case PVRSRV_MEMALLOCFLAG_CPU_UNCACHED:
@@ -381,7 +398,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 
 		default:
 				eError = PVRSRV_ERROR_INVALID_PARAMS;
-				goto e0;
+				goto e1;
 	}
 	ps_vma->vm_page_prot = sPageProt;
 
@@ -406,6 +423,10 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	uiLog2PageSize = PMR_GetLog2Contiguity(psPMR);
 #if defined(PMR_OS_USE_VM_INSERT_PAGE)
 	bUseVMInsertPage = (uiLog2PageSize == PAGE_SHIFT) && (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+#if defined(CONFIG_L4)
+	/* L4 uses CMA allocations */
+	bUseVMInsertPage = IMG_FALSE;
+#endif
 #endif
 
 	/* Can we use stack allocations */
@@ -518,16 +539,26 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 			}
 		}
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && defined(PVRSRV_ENABLE_MEMORY_STATS)
-		PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
-									(void*)(uintptr_t)(ps_vma->vm_start + uiOffset),
-									psCpuPAddr[uiOffsetIdx],
-									1<<uiLog2PageSize,
-									NULL);
+#define PMR_OS_BAD_CPUADDR 0x0BAD0BAD
+		{
+			IMG_CPU_PHYADDR sPAddr;
+			sPAddr.uiAddr = pbValid[uiOffsetIdx] ?
+					psCpuPAddr[uiOffsetIdx].uiAddr :
+					IMG_CAST_TO_CPUPHYADDR_UINT(PMR_OS_BAD_CPUADDR);
+
+			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+										(void*)(uintptr_t)(ps_vma->vm_start + uiOffset),
+										sPAddr,
+										1<<uiLog2PageSize,
+										NULL,
+										OSGetCurrentClientProcessIDKM());
+		}
+#undef PMR_OS_BAD_CPUADDR
 #endif
 	}
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && !defined(PVRSRV_ENABLE_MEMORY_STATS)
-	PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES, uiNumOfPFNs * PAGE_SIZE);
+	PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES, uiNumOfPFNs * PAGE_SIZE, OSGetCurrentClientProcessIDKM());
 #endif
 
 	if (psCpuPAddr != asCpuPAddr)
@@ -548,6 +579,11 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 */
 	PMRRefPMR(psPMR);
 
+#if defined(PVRSRV_ENABLE_LINUX_MMAP_STATS)
+	/* record the stats */
+	MMapStatsAddOrUpdatePMR(psPMR, uiLength);
+#endif
+
 	return PVRSRV_OK;
 
 	/* Error exit paths follow */
@@ -558,7 +594,6 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 		OSFreeMem(pbValid);
 	}
  e1:
-	PVR_DPF((PVR_DBG_ERROR, "don't know how to handle this error.  Abort!"));
 	PMRUnlockSysPhysAddresses(psPMR);
  e0:
 	return eError;

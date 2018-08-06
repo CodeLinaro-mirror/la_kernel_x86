@@ -63,7 +63,6 @@ typedef IMG_BOOL (*PFN_RGXFW_HWPERF_CNTBLK_POWERED)(
 /* Counter block run-time info */
 typedef struct _RGX_HWPERF_CNTBLK_RT_INFO_
 {
-	IMG_UINT32 uiBitSelectPreserveMask; /* Select register bits to preserve on programming, HW_ERN_41805 */
 	IMG_UINT32 uiNumUnits;              /* Number of instances of this block type in the core */
 } RGX_HWPERF_CNTBLK_RT_INFO;
 

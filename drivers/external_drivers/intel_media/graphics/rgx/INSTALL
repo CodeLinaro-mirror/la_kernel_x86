@@ -53,6 +53,6 @@ The following variables may be set on the command line to influence a build.
                 Alternatives are release, timing or debug.
 
 To build for, change to the appropriate target directory, e.g.:
-$ cd eurasiacon/build/linux/<platform>
+$ cd rogue_km/build/linux/<platform>
 $ make BUILD=debug
-$ sudo make install
+$ sudo -E make install BUILD=debug

@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_defs.h"
 #include "pvr_bridge.h"
+#include "pvr_bridge_k.h"
 #include "connection_server.h"
 #include "syscommon.h"
 #include "pvr_debug.h"
@@ -54,14 +55,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "linkage.h"
 #include "pmr.h"
 #include "rgx_bvnc_defs_km.h"
+#include "pvrsrv_bridge_init.h"
 
 #include <drm/drmP.h>
-#include "pvr_drm_gem.h"
 #include "pvr_drm.h"
 #include "pvr_drv.h"
 
 #include "env_connection.h"
 #include <linux/sched.h>
+#include <linux/freezer.h>
 
 /* RGX: */
 #if defined(SUPPORT_RGX)
@@ -71,10 +73,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "srvcore.h"
 #include "common_srvcore_bridge.h"
 
+PVRSRV_ERROR InitDMABUFBridge(void);
+PVRSRV_ERROR DeinitDMABUFBridge(void);
+
 #if defined(SUPPORT_DRM_EXT)
 #define CAST_BRIDGE_CMD_PTR_TO_PTR(ptr) (ptr)
 #else
-#define CAST_BRIDGE_CMD_PTR_TO_PTR(ptr) (void *)(uintptr_t)(ptr)
+#define CAST_BRIDGE_CMD_PTR_TO_PTR(ptr) (void __user *)(uintptr_t)(ptr)
 #endif
 
 #if defined(MODULE_TEST)
@@ -93,7 +98,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * when using gPVRSRVLock.
  * The Linux kernel takes the mm->mmap_sem before calling the mmap
  * entry points (PVRMMap, MMapVOpen, MMapVClose), but the ioctl
- * entry point may take mm->mmap_sem during fault handling, or 
+ * entry point may take mm->mmap_sem during fault handling, or
  * before calling get_user_pages.  If gPVRSRVLock was used in the
  * mmap entry points, a deadlock could result, due to the ioctl
  * and mmap code taking the two locks in different orders.
@@ -103,452 +108,69 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 static DEFINE_MUTEX(g_sMMapMutex);
 
 #if defined(DEBUG_BRIDGE_KM)
-static PVR_DEBUGFS_ENTRY_DATA *gpsPVRDebugFSBridgeStatsEntry = NULL;
+static PPVR_DEBUGFS_ENTRY_DATA gpsPVRDebugFSBridgeStatsEntry;
 static struct seq_operations gsBridgeStatsReadOps;
+static ssize_t BridgeStatsWrite(const char __user *pszBuffer,
+								size_t uiCount,
+								loff_t *puiPosition,
+								void *pvData);
 #endif
 
-/* These will go when full bridge gen comes in */
-#if defined(PDUMP)
-PVRSRV_ERROR InitPDUMPCTRLBridge(void);
-PVRSRV_ERROR DeinitPDUMPCTRLBridge(void);
-PVRSRV_ERROR InitPDUMPBridge(void);
-PVRSRV_ERROR DeinitPDUMPBridge(void);
-PVRSRV_ERROR InitRGXPDUMPBridge(void);
-PVRSRV_ERROR DeinitRGXPDUMPBridge(void);
-#endif
-#if defined(SUPPORT_DISPLAY_CLASS)
-PVRSRV_ERROR InitDCBridge(void);
-PVRSRV_ERROR DeinitDCBridge(void);
-#endif
-PVRSRV_ERROR InitMMBridge(void);
-PVRSRV_ERROR DeinitMMBridge(void);
-#if !defined(EXCLUDE_CMM_BRIDGE)
-PVRSRV_ERROR InitCMMBridge(void);
-PVRSRV_ERROR DeinitCMMBridge(void);
-#endif
-PVRSRV_ERROR InitPDUMPMMBridge(void);
-PVRSRV_ERROR DeinitPDUMPMMBridge(void);
-PVRSRV_ERROR InitSRVCOREBridge(void);
-PVRSRV_ERROR DeinitSRVCOREBridge(void);
-PVRSRV_ERROR InitSYNCBridge(void);
-PVRSRV_ERROR DeinitSYNCBridge(void);
+#define _DRIVER_SUSPENDED 1
+#define _DRIVER_NOT_SUSPENDED 0
+static ATOMIC_T g_iDriverSuspended;
+static ATOMIC_T g_iNumActiveDriverThreads;
+static ATOMIC_T g_iNumActiveKernelThreads;
+static IMG_HANDLE g_hDriverThreadEventObject;
 
-#if defined(SUPPORT_SERVER_SYNC)
-#if defined(SUPPORT_INSECURE_EXPORT)
-PVRSRV_ERROR InitSYNCEXPORTBridge(void);
-PVRSRV_ERROR DeinitSYNCEXPORTBridge(void);
-#endif
-#endif /* defined(SUPPORT_SERVER_SYNC) */
-
-#if defined (SUPPORT_RGX)
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-PVRSRV_ERROR InitRGXINITBridge(void);
-PVRSRV_ERROR DeinitRGXINITBridge(void);
-#endif
-PVRSRV_ERROR InitRGXTA3DBridge(void);
-PVRSRV_ERROR DeinitRGXTA3DBridge(void);
-PVRSRV_ERROR InitRGXTQBridge(void);
-PVRSRV_ERROR DeinitRGXTQBridge(void);
-PVRSRV_ERROR InitRGXTQ2Bridge(void);
-PVRSRV_ERROR DeinitRGXTQ2Bridge(void);
-PVRSRV_ERROR InitRGXCMPBridge(void);
-PVRSRV_ERROR DeinitRGXCMPBridge(void);
-#if !defined(EXCLUDE_BREAKPOINT_BRIDGE)
-PVRSRV_ERROR InitBREAKPOINTBridge(void);
-PVRSRV_ERROR DeinitBREAKPOINTBridge(void);
-#endif
-PVRSRV_ERROR InitDEBUGMISCBridge(void);
-PVRSRV_ERROR DeinitDEBUGMISCBridge(void);
-PVRSRV_ERROR InitRGXHWPERFBridge(void);
-PVRSRV_ERROR DeinitRGXHWPERFBridge(void);
-PVRSRV_ERROR InitRGXRAYBridge(void);
-PVRSRV_ERROR DeinitRGXRAYBridge(void);
-#if !defined(EXCLUDE_REGCONFIG_BRIDGE)
-PVRSRV_ERROR InitREGCONFIGBridge(void);
-PVRSRV_ERROR DeinitREGCONFIGBridge(void);
-#endif
-PVRSRV_ERROR InitTIMERQUERYBridge(void);
-PVRSRV_ERROR DeinitTIMERQUERYBridge(void);
-PVRSRV_ERROR InitRGXKICKSYNCBridge(void);
-PVRSRV_ERROR DeinitRGXKICKSYNCBridge(void);
-PVRSRV_ERROR InitRGXSIGNALSBridge(void);
-PVRSRV_ERROR DeinitRGXSIGNALSBridge(void);
-#endif /* SUPPORT_RGX */
-PVRSRV_ERROR InitCACHEBridge(void);
-PVRSRV_ERROR DeinitCACHEBridge(void);
-#if !defined(EXCLUDE_HTBUFFER_BRIDGE)
-PVRSRV_ERROR InitHTBUFFERBridge(void);
-PVRSRV_ERROR DeinitHTBUFFERBridge(void);
-#endif
-PVRSRV_ERROR InitPVRTLBridge(void);
-PVRSRV_ERROR DeinitPVRTLBridge(void);
-#if defined(PVR_RI_DEBUG)
-PVRSRV_ERROR InitRIBridge(void);
-PVRSRV_ERROR DeinitRIBridge(void);
-#endif
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-PVRSRV_ERROR InitDEVICEMEMHISTORYBridge(void);
-PVRSRV_ERROR DeinitDEVICEMEMHISTORYBridge(void);
-#endif
-PVRSRV_ERROR InitDMABUFBridge(void);
-PVRSRV_ERROR DeinitDMABUFBridge(void);
-#if defined(SUPPORT_VALIDATION_BRIDGE)
-PVRSRV_ERROR InitVALIDATIONBridge(void);
-#endif
-
-#if defined(PVR_TESTING_UTILS)
-PVRSRV_ERROR InitTUTILSBridge(void);
-PVRSRV_ERROR DeinitTUTILSBridge(void);
-#endif
-#if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
-PVRSRV_ERROR InitSYNCTRACKINGBridge(void);
-PVRSRV_ERROR DeinitSYNCTRACKINGBridge(void);
-#endif
-#if defined(SUPPORT_WRAP_EXTMEM)
-PVRSRV_ERROR InitMMEXTMEMBridge(void);
-PVRSRV_ERROR DeinitMMEXTMEMBridge(void);
-#endif
-
-PVRSRV_ERROR
-DeviceDepBridgeInit(IMG_UINT64 ui64Features)
+PVRSRV_ERROR OSPlatformBridgeInit(void)
 {
 	PVRSRV_ERROR eError;
 
-	if(ui64Features & RGX_FEATURE_COMPUTE_BIT_MASK)
-	{
-		eError = InitRGXCMPBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
+	eError = InitDMABUFBridge();
+	PVR_LOG_IF_ERROR(eError, "InitDMABUFBridge");
 
+	OSAtomicWrite(&g_iDriverSuspended, _DRIVER_NOT_SUSPENDED);
+	OSAtomicWrite(&g_iNumActiveDriverThreads, 0);
+	OSAtomicWrite(&g_iNumActiveKernelThreads, 0);
 
-	if(ui64Features & RGX_FEATURE_SIGNAL_SNOOPING_BIT_MASK)
-	{
-		eError = InitRGXSIGNALSBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
+	eError = OSEventObjectCreate("Global driver thread event object",
+	                             &g_hDriverThreadEventObject);
+	PVR_LOGG_IF_ERROR(eError, "OSEventObjectCreate", error_);
 
-	if(ui64Features & RGX_FEATURE_RAY_TRACING_BIT_MASK)
-	{
-		eError = InitRGXRAYBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-	if(ui64Features & RGX_FEATURE_FASTRENDER_DM_BIT_MASK)
-	{
-		eError = InitRGXTQ2Bridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-	return PVRSRV_OK;
-}
-
-
-PVRSRV_ERROR
-DeviceDepBridgeDeInit(IMG_UINT64 ui64Features)
-{
-	PVRSRV_ERROR eError;
-
-	if(ui64Features & RGX_FEATURE_COMPUTE_BIT_MASK)
-	{
-		eError = DeinitRGXCMPBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-
-	if(ui64Features & RGX_FEATURE_SIGNAL_SNOOPING_BIT_MASK)
-	{
-		eError = DeinitRGXSIGNALSBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-	if(ui64Features & RGX_FEATURE_RAY_TRACING_BIT_MASK)
-	{
-		eError = DeinitRGXRAYBridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-	if(ui64Features & RGX_FEATURE_FASTRENDER_DM_BIT_MASK)
-	{
-		eError = DeinitRGXTQ2Bridge();
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-
-	return PVRSRV_OK;
-}
-
-
-
-PVRSRV_ERROR
-LinuxBridgeInit(void)
-{
-	PVRSRV_ERROR eError;
 #if defined(DEBUG_BRIDGE_KM)
-	IMG_INT iResult;
-
-	iResult = PVRDebugFSCreateEntry("bridge_stats",
+	{
+		IMG_INT iResult;
+		iResult = PVRDebugFSCreateEntry("bridge_stats",
 					NULL,
 					&gsBridgeStatsReadOps,
-					NULL,
+					BridgeStatsWrite,
 					NULL,
 					NULL,
 					&g_BridgeDispatchTable[0],
 					&gpsPVRDebugFSBridgeStatsEntry);
-	if (iResult != 0)
-	{
-		return PVRSRV_ERROR_OUT_OF_MEMORY;
+		if (iResult != 0)
+		{
+			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+			goto error_;
+		}
 	}
 #endif
 
-	BridgeDispatchTableStartOffsetsInit();
+	return PVRSRV_OK;
 
-	eError = InitSRVCOREBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
+error_:
+	if (g_hDriverThreadEventObject) {
+		OSEventObjectDestroy(g_hDriverThreadEventObject);
+		g_hDriverThreadEventObject = NULL;
 	}
-
-	eError = InitSYNCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(SUPPORT_SERVER_SYNC)
-#if defined(SUPPORT_INSECURE_EXPORT)
-	eError = InitSYNCEXPORTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-#endif /* defined(SUPPORT_SERVER_SYNC) */
-
-#if defined(PDUMP)
-	eError = InitPDUMPCTRLBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#if !defined(EXCLUDE_CMM_BRIDGE)
-	eError = InitCMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if defined(PDUMP)
-	eError = InitPDUMPMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-	eError = InitPDUMPBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitDMABUFBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(SUPPORT_DISPLAY_CLASS)
-	eError = InitDCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitCACHEBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if !defined(EXCLUDE_HTBUFFER_BRIDGE)
-	eError = InitHTBUFFERBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitPVRTLBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	#if defined(PVR_RI_DEBUG)
-	eError = InitRIBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-	#endif
-
-#if defined(SUPPORT_VALIDATION_BRIDGE)
-	eError = InitVALIDATIONBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if defined(PVR_TESTING_UTILS)
-	eError = InitTUTILSBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	eError = InitDEVICEMEMHISTORYBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-
-#if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
-	eError = InitSYNCTRACKINGBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	#if defined (SUPPORT_RGX)
-
-	eError = InitRGXTQBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-	eError = InitRGXINITBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-	eError = InitRGXTA3DBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if !defined(EXCLUDE_BREAKPOINT_BRIDGE)
-	eError = InitBREAKPOINTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitDEBUGMISCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(PDUMP)
-	eError = InitRGXPDUMPBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitRGXHWPERFBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if !defined(EXCLUDE_REGCONFIG_BRIDGE)
-	eError = InitREGCONFIGBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = InitTIMERQUERYBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	eError = InitRGXKICKSYNCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#endif /* SUPPORT_RGX */
-
-#if defined(SUPPORT_WRAP_EXTMEM)
-	eError = InitMMEXTMEMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
 
 	return eError;
 }
 
-PVRSRV_ERROR
-LinuxBridgeDeInit(void)
+PVRSRV_ERROR OSPlatformBridgeDeInit(void)
 {
 	PVRSRV_ERROR eError;
-
-#if defined(SUPPORT_WRAP_EXTMEM)
-	eError = DeinitMMEXTMEMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
 
 #if defined(DEBUG_BRIDGE_KM)
 	if (gpsPVRDebugFSBridgeStatsEntry != NULL)
@@ -557,210 +179,13 @@ LinuxBridgeDeInit(void)
 	}
 #endif
 
-	eError = DeinitSRVCOREBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	eError = DeinitSYNCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(SUPPORT_SERVER_SYNC)
-#if defined(SUPPORT_SECURE_EXPORT)
-	eError = DeinitSYNCSEXPORTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-#endif /* defined(SUPPORT_SERVER_SYNC) */
-
-#if defined(PDUMP)
-	eError = DeinitPDUMPCTRLBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#if !defined(EXCLUDE_CMM_BRIDGE)
-	eError = DeinitCMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if defined(PDUMP)
-	eError = DeinitPDUMPMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-	eError = DeinitPDUMPBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
 	eError = DeinitDMABUFBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
+	PVR_LOGR_IF_ERROR(eError, "DeinitDMABUFBridge");
+
+	if (g_hDriverThreadEventObject != NULL) {
+		OSEventObjectDestroy(g_hDriverThreadEventObject);
+		g_hDriverThreadEventObject = NULL;
 	}
-
-#if defined(PVR_TESTING_UTILS)
-	eError = DeinitTUTILSBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if defined(SUPPORT_DISPLAY_CLASS)
-	eError = DeinitDCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitCACHEBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(SUPPORT_SECURE_EXPORT)
-	eError = DeinitSMMBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-#if !defined(EXCLUDE_HTBUFFER_BRIDGE)
-	eError = DeinitHTBUFFERBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitPVRTLBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	#if defined(PVR_RI_DEBUG)
-	eError = DeinitRIBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-	#endif
-
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	eError = DeinitDEVICEMEMHISTORYBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-
-#if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
-	eError = DeinitSYNCTRACKINGBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	#if defined (SUPPORT_RGX)
-
-	eError = DeinitRGXTQBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if 0  //TODO
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-	eError = DeinitRGXINITBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-#endif
-
-	eError = DeinitRGXTA3DBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if !defined(EXCLUDE_BREAKPOINT_BRIDGE)
-	eError = DeinitBREAKPOINTBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitDEBUGMISCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if defined(PDUMP)
-	eError = DeinitRGXPDUMPBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitRGXHWPERFBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#if !defined(EXCLUDE_REGCONFIG_BRIDGE)
-	eError = DeinitREGCONFIGBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-#endif
-
-	eError = DeinitTIMERQUERYBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	eError = DeinitRGXKICKSYNCBridge();
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-#endif /* SUPPORT_RGX */
 
 	return eError;
 }
@@ -770,14 +195,18 @@ static void *BridgeStatsSeqStart(struct seq_file *psSeqFile, loff_t *puiPosition
 {
 	PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *psDispatchTable = (PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *)psSeqFile->private;
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSAcquireBridgeLock();
+#else
+	BridgeGlobalStatsLock();
+#endif
 
 	if (psDispatchTable == NULL || (*puiPosition) > BRIDGE_DISPATCH_TABLE_ENTRY_COUNT)
 	{
 		return NULL;
 	}
 
-	if ((*puiPosition) == 0) 
+	if ((*puiPosition) == 0)
 	{
 		return SEQ_START_TOKEN;
 	}
@@ -790,7 +219,11 @@ static void BridgeStatsSeqStop(struct seq_file *psSeqFile, void *pvData)
 	PVR_UNREFERENCED_PARAMETER(psSeqFile);
 	PVR_UNREFERENCED_PARAMETER(pvData);
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSReleaseBridgeLock();
+#else
+	BridgeGlobalStatsUnlock();
+#endif
 }
 
 static void *BridgeStatsSeqNext(struct seq_file *psSeqFile,
@@ -838,7 +271,7 @@ static int BridgeStatsSeqShow(struct seq_file *psSeqFile, void *pvData)
 	}
 	else if (pvData != NULL)
 	{
-		PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *psEntry = (	PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *)pvData;
+		PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *psEntry = (PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY *)pvData;
 		IMG_UINT32 ui32Remainder;
 
 		seq_printf(psSeqFile,
@@ -863,7 +296,241 @@ static struct seq_operations gsBridgeStatsReadOps =
 	.next = BridgeStatsSeqNext,
 	.show = BridgeStatsSeqShow,
 };
+
+static ssize_t BridgeStatsWrite(const char __user *pszBuffer,
+								size_t uiCount,
+								loff_t *puiPosition,
+								void *pvData)
+{
+	IMG_UINT32 i;
+	/* We only care if a '0' is written to the file, if so we reset results. */
+	char buf[1];
+	ssize_t iResult = simple_write_to_buffer(&buf[0], sizeof(buf), puiPosition, pszBuffer, uiCount);
+
+	if (iResult < 0)
+	{
+		return iResult;
+	}
+
+	if (iResult == 0 || buf[0] != '0')
+	{
+		return -EINVAL;
+	}
+
+	/* Reset stats. */
+
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSAcquireBridgeLock();
+#else
+	BridgeGlobalStatsLock();
+#endif
+
+	g_BridgeGlobalStats.ui32IOCTLCount = 0;
+	g_BridgeGlobalStats.ui32TotalCopyFromUserBytes = 0;
+	g_BridgeGlobalStats.ui32TotalCopyToUserBytes = 0;
+
+	for (i = 0; i < ARRAY_SIZE(g_BridgeDispatchTable); i++)
+	{
+		g_BridgeDispatchTable[i].ui32CallCount = 0;
+		g_BridgeDispatchTable[i].ui32CopyFromUserTotalBytes = 0;
+		g_BridgeDispatchTable[i].ui32CopyToUserTotalBytes = 0;
+		g_BridgeDispatchTable[i].ui64TotalTimeNS = 0;
+		g_BridgeDispatchTable[i].ui64MaxTimeNS = 0;
+	}
+
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSReleaseBridgeLock();
+#else
+	BridgeGlobalStatsUnlock();
+#endif
+
+	return uiCount;
+}
+
 #endif /* defined(DEBUG_BRIDGE_KM) */
+
+PVRSRV_ERROR LinuxBridgeBlockClientsAccess(IMG_BOOL bShutdown)
+{
+	PVRSRV_ERROR eError;
+	IMG_HANDLE hEvent;
+
+	eError = OSEventObjectOpen(g_hDriverThreadEventObject, &hEvent);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to open event object", __func__));
+		return eError;
+	}
+
+	if (OSAtomicCompareExchange(&g_iDriverSuspended, _DRIVER_NOT_SUSPENDED,
+	                            _DRIVER_SUSPENDED) == _DRIVER_SUSPENDED)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Driver is already suspended", __func__));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto out_put;
+	}
+
+	/* now wait for any threads currently in the server to exit */
+	while(OSAtomicRead(&g_iNumActiveDriverThreads) != 0 ||
+	      (OSAtomicRead(&g_iNumActiveKernelThreads) != 0 && !bShutdown))
+	{
+		if (OSAtomicRead(&g_iNumActiveDriverThreads) != 0)
+		{
+			PVR_LOG(("%s: waiting for user threads (%d)", __func__,
+			        OSAtomicRead(&g_iNumActiveDriverThreads)));
+		}
+		if (OSAtomicRead(&g_iNumActiveKernelThreads) != 0)
+		{
+			PVR_LOG(("%s: waiting for kernel threads (%d)", __func__,
+			        OSAtomicRead(&g_iNumActiveKernelThreads)));
+		}
+		/* Regular wait is called here (and not OSEventObjectWaitKernel) because
+		 * this code is executed by the caller of .suspend/.shutdown callbacks
+		 * which is most likely PM (or other actor responsible for suspend
+		 * process). Because of that this thread shouldn't and most likely
+		 * event cannot be frozen. */
+		OSEventObjectWait(hEvent);
+	}
+
+out_put:
+	OSEventObjectClose(hEvent);
+
+	return eError;
+}
+
+PVRSRV_ERROR LinuxBridgeUnblockClientsAccess(void)
+{
+	PVRSRV_ERROR eError;
+
+	/* resume the driver and then signal so any waiting threads wake up */
+	if (OSAtomicCompareExchange(&g_iDriverSuspended, _DRIVER_SUSPENDED,
+	                            _DRIVER_NOT_SUSPENDED) == _DRIVER_NOT_SUSPENDED)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Driver is not suspended", __func__));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
+
+	eError = OSEventObjectSignal(g_hDriverThreadEventObject);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: OSEventObjectSignal failed: %s",
+		        __func__, PVRSRVGetErrorStringKM(eError)));
+	}
+
+	return eError;
+}
+
+static PVRSRV_ERROR LinuxBridgeSignalIfSuspended(void)
+{
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	if (OSAtomicRead(&g_iDriverSuspended) == _DRIVER_SUSPENDED)
+	{
+		PVRSRV_ERROR eError = OSEventObjectSignal(g_hDriverThreadEventObject);
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: Failed to signal driver thread event"
+			        " object: %s", __func__, PVRSRVGetErrorStringKM(eError)));
+		}
+	}
+
+	return eError;
+}
+
+void LinuxBridgeNumActiveKernelThreadsIncrement(void)
+{
+	OSAtomicIncrement(&g_iNumActiveKernelThreads);
+}
+
+void LinuxBridgeNumActiveKernelThreadsDecrement(void)
+{
+	OSAtomicDecrement(&g_iNumActiveKernelThreads);
+	PVR_ASSERT(OSAtomicRead(&g_iNumActiveKernelThreads) >= 0);
+
+	/* Signal on every decrement in case LinuxBridgeBlockClientsAccess() is
+	 * waiting for the threads to freeze.
+	 * (error is logged in called function so ignore, we can't do much with
+	 * it anyway) */
+	(void) LinuxBridgeSignalIfSuspended();
+}
+
+static PVRSRV_ERROR _WaitForDriverUnsuspend(void)
+{
+	PVRSRV_ERROR eError;
+	IMG_HANDLE hEvent;
+
+	eError = OSEventObjectOpen(g_hDriverThreadEventObject, &hEvent);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to open event object", __func__));
+		return eError;
+	}
+
+	while (OSAtomicRead(&g_iDriverSuspended) == _DRIVER_SUSPENDED)
+	{
+		/* we should be able to use normal (not kernel) wait here since
+		 * we were just unfrozen and most likely we're not going to
+		 * be frozen again (?) */
+		OSEventObjectWait(hEvent);
+	}
+
+	OSEventObjectClose(hEvent);
+
+	return PVRSRV_OK;
+}
+
+static PVRSRV_ERROR PVRSRVDriverThreadEnter(void)
+{
+	PVRSRV_ERROR eError;
+
+	/* increment first so there is no race between this value and
+	 * g_iDriverSuspended in LinuxBridgeBlockClientsAccess() */
+	OSAtomicIncrement(&g_iNumActiveDriverThreads);
+
+	if (OSAtomicRead(&g_iDriverSuspended) == _DRIVER_SUSPENDED)
+	{
+		/* decrement here because the driver is going to be suspended and
+		 * this thread is going to be frozen so we don't want to wait for
+		 * it in LinuxBridgeBlockClientsAccess() */
+		OSAtomicDecrement(&g_iNumActiveDriverThreads);
+
+		/* during suspend procedure this will put the current thread to
+		 * the freezer but during shutdown this will just return */
+		try_to_freeze();
+
+		/* if the thread was unfrozen but the flag is not yet set to
+		 * _DRIVER_NOT_SUSPENDED wait for it
+		 * in case this is a shutdown the thread was not frozen so we'll
+		 * wait here indefinitely but this is ok (and this is in fact what
+		 * we want) because no thread should be entering the driver in such
+		 * case */
+		eError = _WaitForDriverUnsuspend();
+
+		/* increment here because that means that the thread entered the
+		 * driver */
+		OSAtomicIncrement(&g_iNumActiveDriverThreads);
+
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: Failed to wait for driver"
+			        " unsuspend: %s", __func__,
+			        PVRSRVGetErrorStringKM(eError)));
+			return eError;
+		}
+	}
+
+	return PVRSRV_OK;
+}
+
+static INLINE void PVRSRVDriverThreadExit(void)
+{
+	OSAtomicDecrement(&g_iNumActiveDriverThreads);
+	/* if the driver is being suspended then we need to signal the
+	 * event object as the thread suspending the driver is waiting
+	 * for active threads to exit
+	 * error is logged in called function so ignore returned error
+	 */
+	(void) LinuxBridgeSignalIfSuspended();
+}
 
 int
 PVRSRV_BridgeDispatchKM(struct drm_device __maybe_unused *dev, void *arg, struct drm_file *pDRMFile)
@@ -873,15 +540,10 @@ PVRSRV_BridgeDispatchKM(struct drm_device __maybe_unused *dev, void *arg, struct
 	CONNECTION_DATA *psConnection = LinuxConnectionFromFile(pDRMFile->filp);
 	PVRSRV_ERROR error;
 
-	if(psConnection == NULL)
+	if (psConnection == NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Connection is closed", __FUNCTION__));
 		return -EFAULT;
-	}
-
-	if(OSGetDriverSuspended())
-	{
-		return -EINTR;
 	}
 
 	PVR_ASSERT(psSrvkmCmd != NULL);
@@ -892,6 +554,14 @@ PVRSRV_BridgeDispatchKM(struct drm_device __maybe_unused *dev, void *arg, struct
 			  psSrvkmCmd->bridge_id,
 			  psSrvkmCmd->bridge_func_id);
 
+	if ((error = PVRSRVDriverThreadEnter()) != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: PVRSRVDriverThreadEnter failed: %s",
+		        __func__,
+		        PVRSRVGetErrorStringKM(error)));
+		goto e0;
+	}
+
 	sBridgePackageKM.ui32BridgeID = psSrvkmCmd->bridge_id;
 	sBridgePackageKM.ui32FunctionID = psSrvkmCmd->bridge_func_id;
 	sBridgePackageKM.ui32Size = sizeof(sBridgePackageKM);
@@ -900,7 +570,11 @@ PVRSRV_BridgeDispatchKM(struct drm_device __maybe_unused *dev, void *arg, struct
 	sBridgePackageKM.pvParamOut = CAST_BRIDGE_CMD_PTR_TO_PTR(psSrvkmCmd->out_data_ptr);
 	sBridgePackageKM.ui32OutBufferSize = psSrvkmCmd->out_data_size;
 
-	error =  BridgedDispatchKM(psConnection, &sBridgePackageKM);
+	error = BridgedDispatchKM(psConnection, &sBridgePackageKM);
+
+	PVRSRVDriverThreadExit();
+
+e0:
 	return OSPVRSRVToNativeError(error);
 }
 
@@ -912,7 +586,7 @@ PVRSRV_MMap(struct file *pFile, struct vm_area_struct *ps_vma)
 	PMR *psPMR;
 	PVRSRV_ERROR eError;
 
-	if(psConnection == NULL)
+	if (psConnection == NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Invalid connection data"));
 		return -ENOENT;
@@ -944,19 +618,16 @@ PVRSRV_MMap(struct file *pFile, struct vm_area_struct *ps_vma)
 	PVRSRVReleaseHandle(psConnection->psHandleBase, hSecurePMRHandle, PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
 	if (eError != PVRSRV_OK)
 	{
-		goto e1;
+		PVR_DPF((PVR_DBG_ERROR, "%s: PMRMMapPMR failed (%s)",
+				__func__, PVRSRVGetErrorStringKM(eError)));
+		goto e0;
 	}
 
 	mutex_unlock(&g_sMMapMutex);
 
 	return 0;
 
-e1:
-	PMRUnrefPMR(psPMR);
-	goto em1;
 e0:
-	PVR_DPF((PVR_DBG_ERROR, "Error in mmap critical section"));
-em1:
 	mutex_unlock(&g_sMMapMutex);
 
 	PVR_DPF((PVR_DBG_ERROR, "Unable to translate error %d", eError));

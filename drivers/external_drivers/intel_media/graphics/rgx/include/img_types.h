@@ -68,6 +68,7 @@ extern "C" {
 	#include "kernel_types.h"
 #elif defined(LINUX) || defined(__METAG) || defined(__QNXNTO__) || defined(INTEGRITY_OS)
 	#include <stddef.h>			/* NULL */
+	#include <stdint.h>
 	#include <inttypes.h>		/* intX_t/uintX_t, format specifiers */
 	#include <limits.h>			/* INT_MIN, etc */
 #elif defined(__mips)
@@ -128,14 +129,6 @@ typedef	enum tag_img_bool
 } IMG_BOOL, *IMG_PBOOL;
 
 #if defined(UNDER_WDDM) || defined(WINDOWS_WDF)
-typedef void            IMG_VOID, *IMG_PVOID;
-
-typedef uintptr_t		IMG_UINTPTR_T;
-typedef size_t			IMG_SIZE_T;
-
-#define IMG_SIZE_T_MAX	SIZE_MAX
-#define IMG_NULL		NULL
-
 typedef IMG_CHAR const* IMG_PCCHAR;
 #endif
 
@@ -290,6 +283,7 @@ typedef struct _IMG_BOX_
 	IMG_INT32	y1;
 	IMG_INT32	z1;
 } IMG_BOX, *PIMG_BOX;
+
 
 #if defined (__cplusplus)
 }

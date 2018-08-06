@@ -45,15 +45,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _PVRSRV_TLSTREAMS_H_
 #define _PVRSRV_TLSTREAMS_H_
 
+#define PVRSRV_TL_CTLR_STREAM "tlctrl"
 
-#define PVRSRV_TL_HWPERF_RGX_FW_STREAM      "hwperf"
-#define PVRSRV_TL_HWPERF_HOST_SERVER_STREAM "hwperf_host"
+#define PVRSRV_TL_HWPERF_RGX_FW_STREAM      "hwperf_fw_"
+#define PVRSRV_TL_HWPERF_HOST_SERVER_STREAM "hwperf_host_"
 
 /* Host HWPerf client stream names are of the form 'hwperf_client_<pid>' */
 #define PVRSRV_TL_HWPERF_HOST_CLIENT_STREAM         "hwperf_client_"
-#define PVRSRV_TL_HWPERF_HOST_CLIENT_STREAM_FMTSPEC "hwperf_client_%u"
-
-
+#define PVRSRV_TL_HWPERF_HOST_CLIENT_STREAM_FMTSPEC "hwperf_client_%u_%u"
 
 #endif /* _PVRSRV_TLSTREAMS_H_ */
 

@@ -45,102 +45,130 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if defined(LINUX)
 #include <linux/version.h>
+#else
+#define KERNEL_VERSION
 #endif
 
 #include "pvrsrv_error.h"
+#include "os_cpu_cache.h"
 #include "img_types.h"
 #include "cache_ops.h"
 #include "device.h"
 #include "pmr.h"
 
-typedef IMG_UINT32 PVRSRV_CACHE_OP_ADDR_TYPE;	/*!< Type represents address required for cache op. */
-#define PVRSRV_CACHE_OP_ADDR_TYPE_VIRTUAL	0x1	/*!< Operation requires virtual address only */
-#define PVRSRV_CACHE_OP_ADDR_TYPE_PHYSICAL	0x2	/*!< Operation requires physical address only */
-#define PVRSRV_CACHE_OP_ADDR_TYPE_BOTH		0x3	/*!< Operation requires both virtual & physical addresses */
-
-#define CACHEFLUSH_KM_RANGEBASED_DEFERRED	0x1	/*!< Services KM using deferred (i.e asynchronous) range-based flush */
-#define CACHEFLUSH_KM_RANGEBASED			0x2	/*!< Services KM using immediate (i.e synchronous) range-based flush */
-#define CACHEFLUSH_KM_GLOBAL				0x3	/*!< Services KM using global flush */
-#ifndef CACHEFLUSH_KM_TYPE						/*!< Type represents cache maintenance operation method */
-	#if defined(__x86__)
-		/* Default for x86/x86_64 is global */
-		#define CACHEFLUSH_KM_TYPE CACHEFLUSH_KM_GLOBAL
-	#elif defined(__aarch64__)
-		#if defined(LINUX) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0))
-			/* Default here is range-based (i.e. no linux global flush) */
-			#define CACHEFLUSH_KM_TYPE CACHEFLUSH_KM_RANGEBASED
-		#else
-			/* Default here is global (i.e. OS supports global flush) */
-			#define CACHEFLUSH_KM_TYPE CACHEFLUSH_KM_GLOBAL
-		#endif
-	#else
-		/* Default for other architecture is range-based */
-		#define CACHEFLUSH_KM_TYPE CACHEFLUSH_KM_RANGEBASED
-	#endif
-#else
-	#if (CACHEFLUSH_KM_TYPE == CACHEFLUSH_KM_GLOBAL)
-		#if defined(__mips__) 
-			/* Architecture does not support global cache maintenance */
-			#error "CACHEFLUSH_KM_GLOBAL is not supported on architecture"
-		#elif defined(__aarch64__)
-			#if defined(LINUX) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0))
-				/* Linux revisions does not support global cache maintenance */
-				#error "CACHEFLUSH_KM_GLOBAL is not supported on Linux v4.2 onwards"
-			#endif
-		#endif
-	#endif
-#endif
+typedef IMG_UINT32 PVRSRV_CACHE_OP_ADDR_TYPE;	/*!< Represents CPU address type required for CPU d-cache maintenance */
+#define PVRSRV_CACHE_OP_ADDR_TYPE_VIRTUAL	0x1	/*!< Operation requires CPU virtual address only */
+#define PVRSRV_CACHE_OP_ADDR_TYPE_PHYSICAL	0x2	/*!< Operation requires CPU physical address only */
+#define PVRSRV_CACHE_OP_ADDR_TYPE_BOTH		0x3	/*!< Operation requires both CPU virtual & physical addresses */
 
 /*
-	If we get multiple cache operations before the operation which will
-	trigger the operation to happen then we need to make sure we do
-	the right thing. Used for global cache maintenance
-*/
-#ifdef INLINE_IS_PRAGMA
-#pragma inline(SetCacheOp)
-#endif
-static INLINE PVRSRV_CACHE_OP SetCacheOp(PVRSRV_CACHE_OP uiCurrent, PVRSRV_CACHE_OP uiNew)
-{
-	PVRSRV_CACHE_OP uiRet;
-	uiRet = uiCurrent | uiNew;
-	return uiRet;
-}
-
-/*
-	Cache maintenance framework API
-*/
+ * CacheOpInit() & CacheOpDeInit()
+ *
+ * This must be called to initialise the KM cache maintenance framework.
+ * This is called early during the driver/module (un)loading phase.
+ */
 PVRSRV_ERROR CacheOpInit(void);
-PVRSRV_ERROR CacheOpDeInit(void);
+void CacheOpDeInit(void);
 
-/* This interface is always guaranteed to be synchronous */
-PVRSRV_ERROR CacheOpExec (PMR *psPMR,
-						IMG_DEVMEM_OFFSET_T uiOffset,
-						IMG_DEVMEM_SIZE_T uiSize,
+/*
+ * CacheOpInit2() & CacheOpDeInit2()
+ *
+ * This must be called to initialise the UM cache maintenance framework.
+ * This is called when the driver is loaded/unloaded from the kernel.
+ */
+PVRSRV_ERROR CacheOpInit2(void);
+void CacheOpDeInit2(void);
+
+/*
+ * CacheOpAcquireInfoPage() & CacheOpReleaseInfoPage()
+ *
+ * This interface is used for obtaining the global CacheOp info. page
+ * which acts as a repository of meta-data for the cache maintenance
+ * framework. The use of this information page outside of services
+ * is _not_ recommended.
+ */
+PVRSRV_ERROR CacheOpAcquireInfoPage (PMR **ppsPMR);
+PVRSRV_ERROR CacheOpReleaseInfoPage (PMR *psPMR);
+
+/*
+ * CacheOpExec()
+ *
+ * This is the primary CPU data-cache maintenance interface and it is
+ * always guaranteed to be synchronous; the arguments supplied must be
+ * pre-validated for performance reasons else the d-cache maintenance
+ * operation might cause the underlying OS kernel to fault.
+ */
+PVRSRV_ERROR CacheOpExec (PPVRSRV_DEVICE_NODE psDevNode,
+						void *pvVirtStart,
+						void *pvVirtEnd,
+						IMG_CPU_PHYADDR sCPUPhysStart,
+						IMG_CPU_PHYADDR sCPUPhysEnd,
 						PVRSRV_CACHE_OP uiCacheOp);
 
-/* This interface _may_ defer cache-ops (i.e. asynchronous) */
+/*
+ * CacheOpValExec()
+ *
+ * Same as CacheOpExec(), except arguments are _Validated_ before being
+ * presented to the underlying OS kernel for CPU data-cache maintenance.
+ * The uiAddress is the start CPU virtual address for the to-be d-cache
+ * maintained PMR, it can be NULL in which case a remap will be performed 
+ * internally, if required for cache maintenance. This is primarily used
+ * as the services client bridge call handler for synchronous user-mode
+ * cache maintenance requests.
+ */
+PVRSRV_ERROR CacheOpValExec(PMR *psPMR,
+							IMG_UINT64 uiAddress,
+							IMG_DEVMEM_OFFSET_T uiOffset,
+							IMG_DEVMEM_SIZE_T uiSize,
+							PVRSRV_CACHE_OP uiCacheOp);
+
+/*
+ * CacheOpQueue()
+ *
+ * This is the secondary cache maintenance interface and it is not 
+ * guaranteed to be synchronous in that requests could be deferred
+ * and executed asynchronously. This interface is primarily meant
+ * as services client bridge call handler. Both uiInfoPgGFSeqNum
+ * and ui32[Current,Next]FenceSeqNum implements an internal client
+ * server queueing protocol so making use of this interface outside
+ * of services client is not recommended and should not be done.
+ */
 PVRSRV_ERROR CacheOpQueue (IMG_UINT32 ui32OpCount,
 						PMR **ppsPMR,
+						IMG_UINT64 *puiAddress,
 						IMG_DEVMEM_OFFSET_T *puiOffset,
 						IMG_DEVMEM_SIZE_T *puiSize,
 						PVRSRV_CACHE_OP *puiCacheOp,
-						IMG_UINT32 *pui32OpSeqNum);
+						IMG_UINT32 ui32OpTimeline,
+						IMG_UINT32 uiOpInfoPgGFSeqNum,
+						IMG_UINT32 uiCurrentFenceSeqNum,
+						IMG_UINT32 *puiNextFenceSeqNum);
 
-/* This interface is used to log user-mode cache-ops */
+/*
+ * CacheOpFence()
+ *
+ * This is used for fencing for any client in-flight cache maintenance
+ * operations that might have been deferred by the use of CacheOpQueue().
+ * This should be called before any subsequent HW device kicks to ensure
+ * device memory is coherent with the HW before the kick.
+ */
+PVRSRV_ERROR CacheOpFence (RGXFWIF_DM eOpType, IMG_UINT32 ui32OpSeqNum);
+
+/*
+ * CacheOpLog()
+ *
+ * This is used for logging client cache maintenance operations that
+ * was executed in user-space.
+ */
 PVRSRV_ERROR CacheOpLog (PMR *psPMR,
+						IMG_UINT64 uiAddress,
 						IMG_DEVMEM_OFFSET_T uiOffset,
 						IMG_DEVMEM_SIZE_T uiSize,
 						IMG_UINT64 ui64QueuedTimeMs,
 						IMG_UINT64 ui64ExecuteTimeMs,
+						IMG_UINT32 ui32NumRBF,
+						IMG_BOOL bIsDiscard,
 						PVRSRV_CACHE_OP uiCacheOp);
 
-/* This interface must be used to fence for pending cache-ops before kicks */
-PVRSRV_ERROR CacheOpFence (RGXFWIF_DM eOpType, IMG_UINT32 ui32OpSeqNum);
-
-/* This interface is used for notification of completed cache-ops */
-PVRSRV_ERROR CacheOpSetTimeline (IMG_INT32 i32OpTimeline);
-
-/* This interface is used for retrieving the processor d-cache line size */
-PVRSRV_ERROR CacheOpGetLineSize (IMG_UINT32 *pui32L1DataCacheLineSize);
 #endif	/* _CACHE_KM_H_ */
 

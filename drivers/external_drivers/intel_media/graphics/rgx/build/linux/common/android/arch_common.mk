@@ -45,85 +45,123 @@ SYS_CFLAGS := \
  -fdata-sections \
  -D__linux__
 
-# Always include the NDK compatibility directory, because it allows us to
-# compile in inline versions of simple functions to eliminate dependencies,
-# and we can also constrain the available APIs.
-
-SYS_INCLUDES := \
- -isystem android/ndk
+SYS_INCLUDES :=
 
 ifneq ($(TARGET_PLATFORM),)
 
-# Support for building with the Android NDK >= r13b.
-# The NDK provides only the most basic includes and libraries.
+ # Support for building with the Android NDK >= r15b.
+ # The NDK provides only the most basic includes and libraries.
 
-SYS_INCLUDES += \
- -isystem $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-$(TARGET_ARCH)/usr/include
+ SYS_INCLUDES += \
+  -isystem $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-$(TARGET_ARCH)/usr/include \
+  -isystem $(NDK_SYSROOT)/usr/include/drm \
+  -isystem $(NDK_SYSROOT)/usr/include
 
 else # !TARGET_PLATFORM
 
-# These libraries are not coming from the NDK now, so we need to include them
-# from the ANDROID_ROOT source tree.
+ # These libraries are not coming from the NDK now, so we need to include them
+ # from the ANDROID_ROOT source tree.
 
-SYS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/bionic/libc/include \
- -isystem $(ANDROID_ROOT)/bionic/libc/kernel/android/uapi \
- -isystem $(ANDROID_ROOT)/bionic/libm/include \
- -isystem $(ANDROID_ROOT)/external/zlib/src \
- -isystem $(ANDROID_ROOT)/libnativehelper/include/nativehelper
+ SYS_INCLUDES += \
+  -isystem $(ANDROID_ROOT)/bionic/libc/include \
+  -isystem $(ANDROID_ROOT)/bionic/libc/kernel/android/uapi \
+  -isystem $(ANDROID_ROOT)/bionic/libc/kernel/uapi \
+  -isystem $(ANDROID_ROOT)/bionic/libm/include \
+  -isystem $(ANDROID_ROOT)/external/libdrm/include/drm \
+  -isystem $(ANDROID_ROOT)/external/zlib/src \
+  -isystem $(ANDROID_ROOT)/frameworks/native/include
 
-# Obsolete include paths
-
-SYS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/bionic/libc/kernel/arch-$(TARGET_ARCH) \
- -isystem $(ANDROID_ROOT)/bionic/libc/kernel/common \
- -isystem $(ANDROID_ROOT)/bionic/libc/kernel/uapi \
- -isystem $(ANDROID_ROOT)/bionic/libthread_db/include \
- -isystem $(ANDROID_ROOT)/external/jpeg \
- -isystem $(ANDROID_ROOT)/frameworks/base/include \
- -isystem $(ANDROID_ROOT)/system/core/include/sync \
- -isystem $(ANDROID_ROOT)/system/core/libsync
+ ifeq ($(is_future_version),1)
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/libnativehelper/include_jni
+ else ifeq ($(is_aosp_master),1)
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/libnativehelper/include_jni
+ else
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/libnativehelper/include/nativehelper \
+   -isystem $(ANDROID_ROOT)/libnativehelper/include
+ endif
 
 endif # !TARGET_PLATFORM
 
-# These components aren't in the NDK. They may be added to the VDK later.
-# For now, always rely on the ANDROID_ROOT source tree.
+ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
 
-SYS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/external/libdrm \
- -isystem $(ANDROID_ROOT)/external/libdrm/include/drm \
- -isystem $(ANDROID_ROOT)/external/libjpeg-turbo \
- -isystem $(ANDROID_ROOT)/external/libpng \
- -isystem $(ANDROID_ROOT)/external/libunwind/include \
- -isystem $(ANDROID_ROOT)/frameworks/compile/libbcc/bcinfo/include \
- -isystem $(ANDROID_ROOT)/frameworks/compile/libbcc/include \
- -isystem $(ANDROID_ROOT)/frameworks/compile/slang \
- -isystem $(ANDROID_ROOT)/frameworks/native/include \
- -isystem $(ANDROID_ROOT)/frameworks/native/libs/arect/include \
- -isystem $(ANDROID_ROOT)/frameworks/native/libs/nativewindow/include \
- -isystem $(ANDROID_ROOT)/frameworks/native/vulkan/include \
- -isystem $(ANDROID_ROOT)/frameworks/rs \
- -isystem $(ANDROID_ROOT)/frameworks/rs/cpp \
- -isystem $(ANDROID_ROOT)/frameworks/rs/driver \
- -isystem $(ANDROID_ROOT)/hardware/libhardware/include \
- -isystem $(ANDROID_ROOT)/libnativehelper/include \
- -isystem $(ANDROID_ROOT)/system/core/adf/libadf/include \
- -isystem $(ANDROID_ROOT)/system/core/adf/libadfhwc/include \
- -isystem $(ANDROID_ROOT)/system/core/base/include \
- -isystem $(ANDROID_ROOT)/system/core/include \
- -isystem $(ANDROID_ROOT)/system/core/libion/include \
- -isystem $(ANDROID_ROOT)/system/core/libsync/include \
- -isystem $(ANDROID_ROOT)/system/media/camera/include
+ # These components aren't in the NDK. They *are* in the VNDK. If this is an
+ # NDK or non-NDK build, but not a VNDK build, include the needed bits from
+ # the ANDROID_ROOT source tree. We put libsync first because the NDK copy
+ # of the sync headers have been stripped in an unsupported way.
 
-# Handle SSL specially as we do not want to contaminate one with the other
-# by including both paths
-ifneq ($(wildcard $(ANDROID_ROOT)/external/boringssl/src/include),)
-SYS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/external/boringssl/src/include
-else
-SYS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/external/openssl/include
-endif
+ SYS_INCLUDES := \
+  -isystem $(ANDROID_ROOT)/system/core/libsync/include \
+  $(SYS_INCLUDES) \
+  -isystem $(ANDROID_ROOT)/external/libdrm \
+  -isystem $(ANDROID_ROOT)/external/libpng \
+  -isystem $(ANDROID_ROOT)/hardware/libhardware/include \
+  -isystem $(ANDROID_ROOT)/system/core/adf/libadf/include \
+  -isystem $(ANDROID_ROOT)/system/core/adf/libadfhwc/include \
+  -isystem $(ANDROID_ROOT)/system/core/libion/include \
+  -isystem $(ANDROID_ROOT)/system/media/camera/include
+
+ # libjpeg-turbo replaced libjpeg from Nougat
+ ifeq ($(is_at_least_nougat),1)
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/external/libjpeg-turbo
+ else
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/external/jpeg
+ endif
+
+ # Vulkan was only available from Nougat
+ ifeq ($(is_at_least_nougat),1)
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/frameworks/native/vulkan/include
+ endif
+
+ # Handle upstream includes refactoring
+ ifeq ($(is_at_least_oreo),1)
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/frameworks/native/libs/nativewindow/include \
+   -isystem $(ANDROID_ROOT)/system/core/libbacktrace/include \
+   -isystem $(ANDROID_ROOT)/system/core/libsystem/include \
+   -isystem $(ANDROID_ROOT)/system/core/libutils/include
+  ifeq ($(is_at_least_oreo_mr1),1)
+   SYS_INCLUDES += \
+    -isystem $(ANDROID_ROOT)/frameworks/native/libs/nativebase/include
+  endif
+  ifeq ($(NDK_ROOT),)
+   SYS_INCLUDES += \
+    -isystem $(ANDROID_ROOT)/frameworks/native/libs/arect/include \
+    -isystem $(ANDROID_ROOT)/system/core/liblog/include
+  endif
+ else
+  SYS_INCLUDES += \
+   -isystem $(ANDROID_ROOT)/frameworks/base/include \
+   -isystem $(ANDROID_ROOT)/system/core/include
+ endif
+
+else # VNDK
+
+ # We're using a VNDK sysroot, but targeting a legacy platform version.
+ # In this case, RenderScript can only be built if we pull in headers
+ # from the platform build. The user will need that platform to be
+ # hanging around.
+
+ ifeq ($(is_at_least_oreo),0)
+  SYS_INCLUDES := \
+   -isystem $(ANDROID_ROOT)/frameworks/native/include \
+   -isystem $(ANDROID_ROOT)/system/core/include \
+   $(SYS_INCLUDES)
+ endif
+
+endif # !VNDK
+
+# Always include the NDK compatibility directory, because it allows us to
+# compile in inline versions of simple functions to eliminate dependencies,
+# and we can also constrain the available APIs. Do this last, so we can
+# make sure it is always first on the include list.
+
+SYS_INCLUDES := -isystem android/ndk $(SYS_INCLUDES)
 
 OPTIM ?= -O2
 

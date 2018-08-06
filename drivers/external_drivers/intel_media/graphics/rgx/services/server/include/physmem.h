@@ -54,37 +54,48 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr.h"
 #include "pmr_impl.h"
 
+/* Valid values for TC_MEMORY_CONFIG configuration option */
+#define TC_MEMORY_LOCAL			(1)
+#define TC_MEMORY_HOST			(2)
+#define TC_MEMORY_HYBRID		(3)
+
+/* Valid values for the PLATO_MEMORY_CONFIG configuration option */
+#define PLATO_MEMORY_LOCAL		(1)
+#define PLATO_MEMORY_HOST		(2)
+#define PLATO_MEMORY_HYBRID		(3)
+
 /*************************************************************************/ /*!
 @Function       DevPhysMemAlloc
 
 @Description    Allocate memory from device specific heaps directly.
 
-@Input          	psDevNode            	device node to operate on
-@Input 				ui32MemSize				Size of the memory to be allocated
-@Input 				u8Value					Value to be initialised to.
-@Input 				bInitPage				Flag to control initialisation
-@Input         		pszDevSpace             PDUMP memory space in which the
-											allocation is to be done
-@Input 				pszSymbolicAddress		Symbolic name of the allocation
-@Input 				phHandlePtr				PDUMP handle to the allocation
-@Output      	    psMemHandle             Handle to the allocated memory
-@Output    		    psDevPhysAddr           Device Physical address of allocated
-											page
+@Input          psDevNode               device node to operate on
+@Input          ui32MemSize             Size of the memory to be allocated
+@Input          u8Value                 Value to be initialised to.
+@Input          bInitPage               Flag to control initialisation
+@Input          pszDevSpace             PDUMP memory space in which the
+                                          allocation is to be done
+@Input          pszSymbolicAddress      Symbolic name of the allocation
+@Input          phHandlePtr             PDUMP handle to the allocation
+@Output         psMemHandle             Handle to the allocated memory
+@Output         psDevPhysAddr           Device Physical address of allocated
+                                          page
 
 @Return         PVRSRV_OK if the allocation is successful
 */
 /*****************************************************************************/
 extern PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE *psDevNode,
-		IMG_UINT32 ui32MemSize,
-		const IMG_UINT8 u8Value,
-		IMG_BOOL bInitPage,
+                                    IMG_UINT32 ui32MemSize,
+                                    IMG_UINT32 ui32Log2Align,
+                                    const IMG_UINT8 u8Value,
+                                    IMG_BOOL bInitPage,
 #if defined(PDUMP)
-		const IMG_CHAR *pszDevSpace,
-		const IMG_CHAR *pszSymbolicAddress,
-		IMG_HANDLE *phHandlePtr,
+                                    const IMG_CHAR *pszDevSpace,
+                                    const IMG_CHAR *pszSymbolicAddress,
+                                    IMG_HANDLE *phHandlePtr,
 #endif
-		IMG_HANDLE hMemHandle,
-		IMG_DEV_PHYADDR *psDevPhysAddr);
+                                    IMG_HANDLE hMemHandle,
+                                    IMG_DEV_PHYADDR *psDevPhysAddr);
 
 /*************************************************************************/ /*!
 @Function       DevPhysMemFree
@@ -138,6 +149,8 @@ extern void DevPhysMemFree(PVRSRV_DEVICE_NODE *psDevNode,
  * if required.  The flags will also be stored in the PMR as immutable
  * metadata and returned to mmu_common when it asks for it.
  *
+ * The PID specified is used to tie this allocation to the process context
+ * that the allocation is made on behalf of.
  */
 extern PVRSRV_ERROR
 PhysmemNewRamBackedPMR(CONNECTION_DATA * psConnection,
@@ -151,6 +164,7 @@ PhysmemNewRamBackedPMR(CONNECTION_DATA * psConnection,
                        PVRSRV_MEMALLOCFLAGS_T uiFlags,
                        IMG_UINT32 uiAnnotationLength,
                        const IMG_CHAR *pszAnnotation,
+                       IMG_PID uiPid,
                        PMR **ppsPMROut);
 
 
@@ -181,6 +195,45 @@ PhysmemNewRamBackedLockedPMR(CONNECTION_DATA * psConnection,
                              PVRSRV_MEMALLOCFLAGS_T uiFlags,
                              IMG_UINT32 uiAnnotationLength,
                              const IMG_CHAR *pszAnnotation,
+                             IMG_PID uiPid,
                              PMR **ppsPMRPtr);
+
+/**************************************************************************/ /*!
+@Function       PhysmemImportPMR
+@Description    Import PMR a previously exported PMR
+@Input          psPMRExport           The exported PMR token
+@Input          uiPassword            Authorisation password
+                                      for the PMR being imported
+@Input          uiSize                Size of the PMR being imported
+                                      (for verification)
+@Input          uiLog2Contig          Log2 continuity of the PMR being
+                                      imported (for verification)
+@Output         ppsPMR                The imported PMR
+@Return         PVRSRV_ERROR_PMR_NOT_PERMITTED if not for the same device
+                PVRSRV_ERROR_PMR_WRONG_PASSWORD_OR_STALE_PMR if password incorrect
+                PVRSRV_ERROR_PMR_MISMATCHED_ATTRIBUTES if size or contiguity incorrect
+                PVRSRV_OK if successful
+*/ /***************************************************************************/
+extern PVRSRV_ERROR
+PhysmemImportPMR(CONNECTION_DATA *psConnection,
+                 PVRSRV_DEVICE_NODE *psDevNode,
+                 PMR_EXPORT *psPMRExport,
+                 PMR_PASSWORD_T uiPassword,
+                 PMR_SIZE_T uiSize,
+                 PMR_LOG2ALIGN_T uiLog2Contig,
+                 PMR **ppsPMR);
+
+/**************************************************************************/ /*!
+@Function       PVRSRVGetMaxDevMemSizeKM
+@Description    Get the amount of device memory on current platform
+@Output         uiLMASize             LMA memory size
+@Output         uiUMASize             UMA memory size
+@Return         None
+*/ /***************************************************************************/
+extern PVRSRV_ERROR
+PVRSRVGetMaxDevMemSizeKM( CONNECTION_DATA * psConnection,
+		                   PVRSRV_DEVICE_NODE *psDevNode,
+		                   IMG_DEVMEM_SIZE_T *puiLMASize,
+		                   IMG_DEVMEM_SIZE_T *puiUMASize );
 
 #endif /* _SRVSRV_PHYSMEM_H_ */

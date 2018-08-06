@@ -43,15 +43,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvrsrv_device.h"
 #include "syscommon.h"
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
 #include "vz_support.h"
-#endif
 #include "allocmem.h"
 #include "sysinfo.h"
 #include "sysconfig.h"
 #include "physheap.h"
 #if defined(SUPPORT_ION)
 #include "ion_support.h"
+#endif
+#if defined(LINUX)
+#include <linux/dma-mapping.h>
 #endif
 #include "rgx_bvnc_defs_km.h"
 /*
@@ -66,7 +67,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PHYS_HEAP_IDX_FW          1
 #define PHYS_HEAP_IDX_TDFWCODE    2
 #define PHYS_HEAP_IDX_TDSECUREBUF 3
-#define PHYS_HEAP_IDX_VIRTFW      4
 
 /*
 	CPU to Device physical address translation
@@ -128,19 +128,11 @@ static PVRSRV_ERROR PhysHeapsCreate(PHYS_HEAP_CONFIG **ppasPhysHeapsOut,
 									IMG_UINT32 *puiPhysHeapCountOut)
 {
 	PHYS_HEAP_CONFIG *pasPhysHeaps;
-	static IMG_UINT32 uiHeapIDBase = 0;
 	IMG_UINT32 ui32NextHeapID = 0;
-	IMG_UINT32 uiHeapCount = 1;
+	IMG_UINT32 uiHeapCount = 2;
 
-#if defined(PDUMP)
-	uiHeapCount++;
-#endif
 #if defined(SUPPORT_TRUSTED_DEVICE)
 	uiHeapCount += 2;
-#endif
-
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	uiHeapCount++;
 #endif
 
 	pasPhysHeaps = OSAllocZMem(sizeof(*pasPhysHeaps) * uiHeapCount);
@@ -155,13 +147,11 @@ static PVRSRV_ERROR PhysHeapsCreate(PHYS_HEAP_CONFIG **ppasPhysHeapsOut,
 	pasPhysHeaps[ui32NextHeapID].psMemFuncs = &gsPhysHeapFuncs;
 	ui32NextHeapID++;
 
-#if defined(PDUMP)
 	pasPhysHeaps[ui32NextHeapID].ui32PhysHeapID = PHYS_HEAP_IDX_FW;
 	pasPhysHeaps[ui32NextHeapID].pszPDumpMemspaceName = "SYSMEM_FW";
 	pasPhysHeaps[ui32NextHeapID].eType = PHYS_HEAP_TYPE_UMA;
 	pasPhysHeaps[ui32NextHeapID].psMemFuncs = &gsPhysHeapFuncs;
 	ui32NextHeapID++;
-#endif
 
 #if defined(SUPPORT_TRUSTED_DEVICE)
 	pasPhysHeaps[ui32NextHeapID].ui32PhysHeapID = PHYS_HEAP_IDX_TDFWCODE;
@@ -177,15 +167,8 @@ static PVRSRV_ERROR PhysHeapsCreate(PHYS_HEAP_CONFIG **ppasPhysHeapsOut,
 	ui32NextHeapID++;
 #endif
 
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	pasPhysHeaps[ui32NextHeapID].ui32PhysHeapID = PHYS_HEAP_IDX_VIRTFW;
-	ui32NextHeapID++;
-#endif
-
-	uiHeapIDBase += uiHeapCount;
-
 	*ppasPhysHeapsOut = pasPhysHeaps;
-	*puiPhysHeapCountOut = uiHeapCount;
+	*puiPhysHeapCountOut = ui32NextHeapID;
 
 	return PVRSRV_OK;
 }
@@ -203,10 +186,6 @@ static void SysDevFeatureDepInit(PVRSRV_DEVICE_CONFIG *psDevConfig, IMG_UINT64 u
 			psDevConfig->eCacheSnoopingMode		= PVRSRV_DEVICE_SNOOP_CPU_ONLY;
 		}else
 #endif
-		if( ui64Features & RGX_FEATURE_GPU_CPU_COHERENCY_BIT_MASK)
-		{
-			psDevConfig->eCacheSnoopingMode		= PVRSRV_DEVICE_SNOOP_CROSS;
-		}else
 		{
 			psDevConfig->eCacheSnoopingMode		= PVRSRV_DEVICE_SNOOP_NONE;
 		}
@@ -220,6 +199,10 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	PHYS_HEAP_CONFIG *pasPhysHeaps;
 	IMG_UINT32 uiPhysHeapCount;
 	PVRSRV_ERROR eError;
+
+#if defined(LINUX)
+	dma_set_mask(pvOSDevice, DMA_BIT_MASK(40));
+#endif
 
 	psDevConfig = OSAllocZMem(sizeof(*psDevConfig) +
 							  sizeof(*psRGXData) +
@@ -271,21 +254,12 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 
 	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = PHYS_HEAP_IDX_GENERAL;
 	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] = PHYS_HEAP_IDX_GENERAL;
-
-#if defined(PDUMP)
+	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_EXTERNAL] = PHYS_HEAP_IDX_GENERAL;
 	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = PHYS_HEAP_IDX_FW;
-#else
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	/* Virtualization support services needs to know which heap ID corresponds to FW */
-	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = PHYS_HEAP_IDX_VIRTFW;
-#else
-	psDevConfig->aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = PHYS_HEAP_IDX_GENERAL;
-#endif
-#endif
 
 	psDevConfig->eBIFTilingMode = geBIFTilingMode;
 	psDevConfig->pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides;
-	psDevConfig->ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
+	psDevConfig->ui32BIFTilingHeapCount = ARRAY_SIZE(gauiBIFTilingHeapXStrides);
 
 	/* No power management on no HW system */
 	psDevConfig->pfnPrePowerState       = NULL;
@@ -301,10 +275,6 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	IonInit(NULL);
 #endif
 
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	SysVzDevInit(psDevConfig);
-#endif
-
 	*ppsDevConfig = psDevConfig;
 
 	return PVRSRV_OK;
@@ -316,10 +286,6 @@ ErrorFreeDevConfig:
 
 void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	SysVzDevDeInit(psDevConfig);
-#endif
-
 #if defined(SUPPORT_ION)
 	IonDeinit();
 #endif

@@ -50,7 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 #if defined(LINUX) && !defined(DOXYGEN)
-#if defined(SUPPORT_KERNEL_SRVINIT)
 static INLINE IMG_UINT os_get_km_apphint_UINT32(void *state, APPHINT_ID id, IMG_UINT32 *pAppHintDefault, IMG_UINT32 *pVal) {
 	return !pvr_apphint_get_uint32(id, pVal);
 }
@@ -76,37 +75,6 @@ static INLINE IMG_UINT os_get_km_apphint_STRING(void *state, APPHINT_ID id, IMG_
 #define OSGetKMAppHintSTRING(state, name, appHintDefault, buffer, size) \
 	os_get_km_apphint_STRING(state, APPHINT_ID_ ## name, appHintDefault, buffer, size)
 
-#else
-static INLINE IMG_UINT os_get_apphint_default_UINT32(IMG_UINT32 *pAppHintDefault, IMG_UINT32 *pVal) {
-	*pVal = *pAppHintDefault;
-	return IMG_TRUE;
-}
-static INLINE IMG_UINT os_get_apphint_default_UINT64(IMG_UINT64 *pAppHintDefault, IMG_UINT64 *pVal) {
-	*pVal = *pAppHintDefault;
-	return IMG_TRUE;
-}
-static INLINE IMG_UINT os_get_apphint_default_BOOL(IMG_BOOL *pAppHintDefault, IMG_BOOL *pVal) {
-	*pVal = *pAppHintDefault;
-	return IMG_TRUE;
-}
-static INLINE IMG_UINT os_get_apphint_default_STRING(IMG_CHAR **pAppHintDefault, IMG_CHAR *buffer, IMG_UINT32 size) {
-	strlcpy(buffer, *pAppHintDefault, size);
-	return IMG_TRUE;
-}
-
-#define OSGetKMAppHintUINT32(state, name, appHintDefault, value) \
-	os_get_apphint_default_UINT32(appHintDefault, value)
-
-#define OSGetKMAppHintUINT64(state, name, appHintDefault, value) \
-	os_get_apphint_default_UINT64(appHintDefault, value)
-
-#define OSGetKMAppHintBOOL(state, name, appHintDefault, value) \
-	os_get_apphint_default_BOOL(appHintDefault, value)
-
-#define OSGetKMAppHintSTRING(state, name, appHintDefault, buffer, size) \
-	os_get_apphint_default_STRING(appHintDefault, buffer, size)
-
-#endif
 
 #define OSCreateKMAppHintState(state) \
 	PVR_UNREFERENCED_PARAMETER(state)
@@ -115,11 +83,6 @@ static INLINE IMG_UINT os_get_apphint_default_STRING(IMG_CHAR **pAppHintDefault,
 	PVR_UNREFERENCED_PARAMETER(state)
 
 #else /* #if defined(LINUX) && !defined(DOXYGEN) */
-
-static INLINE IMG_BOOL os_get_km_apphint_STRING(void *state, IMG_CHAR *name, IMG_CHAR **pAppHintDefault, IMG_CHAR *buffer, size_t size) {
-	PVR_UNREFERENCED_PARAMETER(size);
-	return PVRSRVGetAppHint(state, name, IMG_STRING_TYPE, pAppHintDefault, buffer);
-}
 
 /**************************************************************************/ /*!
 @def OSGetKMAppHintUINT32(state, name, appHintDefault, value)
@@ -180,7 +143,7 @@ static INLINE IMG_BOOL os_get_km_apphint_STRING(void *state, IMG_CHAR *name, IMG
 @Input			size			  Size of the buffer.
  */ /**************************************************************************/
 #define OSGetKMAppHintSTRING(state, name, appHintDefault, buffer, size) \
-	os_get_km_apphint_STRING(state, # name, appHintDefault, buffer, size)
+	(PVR_UNREFERENCED_PARAMETER(size), PVRSRVGetAppHint(state, # name, IMG_STRING_TYPE, appHintDefault, buffer))
 
 /**************************************************************************/ /*!
 @def OSCreateKMAppHintState(state)

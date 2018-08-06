@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+ */ /**************************************************************************/
 
 
 
@@ -77,6 +77,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv.h"
 #include "rgxdefs_km.h"
 #include "rgx_bvnc_defs_km.h"
+#include "device.h"
+#include "rgxdevice.h"
+#include "pvr_ricommon.h"
 #if defined(LINUX)
 #include "linux/kernel.h"
 #endif
@@ -88,23 +91,44 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 extern PVRSRV_ERROR RIDumpAllKM(void);
 #endif
 
+#if defined(__KERNEL__)
+#define GET_ERROR_STRING(eError) PVRSRVGetErrorStringKM(eError)
+#else
+#define GET_ERROR_STRING(eError) PVRSRVGetErrorString(eError)
+#endif
 /*****************************************************************************
  *                    Sub allocation internals                               *
  *****************************************************************************/
 
+static INLINE void
+_CheckAnnotationLength(const IMG_CHAR *pszAnnotation)
+{
+#if defined(SUPPORT_PAGE_FAULT_DEBUG) || defined(PDUMP) || defined(PVR_RI_DEBUG)
+	IMG_UINT32 length = OSStringLength(pszAnnotation);
+
+	if (length >= DEVMEM_ANNOTATION_MAX_LEN)
+	{
+		PVR_DPF((PVR_DBG_WARNING, "%s: Annotation \"%s\" has been truncated to %d characters from %d characters",
+				__FUNCTION__, pszAnnotation, DEVMEM_ANNOTATION_MAX_LEN - 1, length));
+	}
+#else
+	PVR_UNREFERENCED_PARAMETER(pszAnnotation);
+#endif
+}
+
 static PVRSRV_ERROR
 _AllocateDeviceMemory(SHARED_DEV_CONNECTION hDevConnection,
-                      IMG_UINT32 uiLog2Quantum,
-                      IMG_DEVMEM_SIZE_T uiSize,
-                      IMG_DEVMEM_SIZE_T uiChunkSize,
-                      IMG_UINT32 ui32NumPhysChunks,
-                      IMG_UINT32 ui32NumVirtChunks,
-                      IMG_UINT32 *pui32MappingTable,
-                      IMG_DEVMEM_ALIGN_T uiAlign,
-                      DEVMEM_FLAGS_T uiFlags,
-                      IMG_BOOL bExportable,
-                      const IMG_CHAR *pszAnnotation,
-                      DEVMEM_IMPORT **ppsImport)
+		IMG_UINT32 uiLog2Quantum,
+		IMG_DEVMEM_SIZE_T uiSize,
+		IMG_DEVMEM_SIZE_T uiChunkSize,
+		IMG_UINT32 ui32NumPhysChunks,
+		IMG_UINT32 ui32NumVirtChunks,
+		IMG_UINT32 *pui32MappingTable,
+		IMG_DEVMEM_ALIGN_T uiAlign,
+		DEVMEM_FLAGS_T uiFlags,
+		IMG_BOOL bExportable,
+		const IMG_CHAR *pszAnnotation,
+		DEVMEM_IMPORT **ppsImport)
 {
 	DEVMEM_IMPORT *psImport;
 	DEVMEM_FLAGS_T uiPMRFlags;
@@ -112,60 +136,55 @@ _AllocateDeviceMemory(SHARED_DEV_CONNECTION hDevConnection,
 	PVRSRV_ERROR eError;
 
 	eError = _DevmemImportStructAlloc(hDevConnection,
-									  &psImport);
+			&psImport);
 	if (eError != PVRSRV_OK)
 	{
 		goto failAlloc;
 	}
 
-    /* Check the size is a multiple of the quantum */
-    PVR_ASSERT((uiSize & ((1ULL<<uiLog2Quantum)-1)) == 0);
+	/* Check the size is a multiple of the quantum */
+	PVR_ASSERT((uiSize & ((1ULL<<uiLog2Quantum)-1)) == 0);
+
+	_CheckAnnotationLength(pszAnnotation);
 
 	/* Pass only the PMR flags down */
 	uiPMRFlags = uiFlags & PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK;
-    eError = BridgePhysmemNewRamBackedPMR(hDevConnection,
-                                          uiSize,
-                                          uiChunkSize,
-                                          ui32NumPhysChunks,
-                                          ui32NumVirtChunks,
-                                          pui32MappingTable,
-                                          uiLog2Quantum,
-                                          uiPMRFlags,
-#if defined(PDUMP)
-                                          OSStringLength(pszAnnotation) + 1,
-                                          pszAnnotation,
-                                          &hPMR);
-#else
-                                          1,
-                                          "",
-                                          &hPMR);
+	eError = BridgePhysmemNewRamBackedPMR(hDevConnection,
+			uiSize,
+			uiChunkSize,
+			ui32NumPhysChunks,
+			ui32NumVirtChunks,
+			pui32MappingTable,
+			uiLog2Quantum,
+			uiPMRFlags,
+			OSStringNLength(pszAnnotation, DEVMEM_ANNOTATION_MAX_LEN - 1) + 1,
+			pszAnnotation,
+			OSGetCurrentProcessID(),
+			&hPMR);
 
-	PVR_UNREFERENCED_PARAMETER(pszAnnotation);
-#endif
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+				"%s: Problem to allocate memory for %s (%s)",
+				__func__,
+				pszAnnotation,
+				PVRSRVGETERRORSTRING(eError) ));
+		goto failPMR;
+	}
 
-
-    if (eError != PVRSRV_OK)
-    {
-        /* Our check above should have ensured this the "not page
-           multiple" error never happens */
-        PVR_ASSERT(eError != PVRSRV_ERROR_PMR_NOT_PAGE_MULTIPLE);
-
-        goto failPMR;
-    }
-
-    _DevmemImportStructInit(psImport,
-							uiSize,
-							uiAlign,
-							uiFlags,
-							hPMR,
-							bExportable ? DEVMEM_PROPERTIES_EXPORTABLE : 0);
+	_DevmemImportStructInit(psImport,
+			uiSize,
+			uiAlign,
+			uiFlags,
+			hPMR,
+			bExportable ? DEVMEM_PROPERTIES_EXPORTABLE : 0);
 
 	*ppsImport = psImport;
 	return PVRSRV_OK;
 
-failPMR:
+	failPMR:
 	_DevmemImportDiscard(psImport);
-failAlloc:
+	failAlloc:
 	PVR_ASSERT(eError != PVRSRV_OK);
 
 	return eError;
@@ -178,11 +197,11 @@ failAlloc:
 
 IMG_INTERNAL PVRSRV_ERROR
 DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
-                      IMG_UINT32 ui32AllocPageCount,
-                      IMG_UINT32 *paui32AllocPageIndices,
-                      IMG_UINT32 ui32FreePageCount,
-                      IMG_UINT32 *pauiFreePageIndices,
-                      SPARSE_MEM_RESIZE_FLAGS uiSparseFlags)
+		IMG_UINT32 ui32AllocPageCount,
+		IMG_UINT32 *paui32AllocPageIndices,
+		IMG_UINT32 ui32FreePageCount,
+		IMG_UINT32 *pauiFreePageIndices,
+		SPARSE_MEM_RESIZE_FLAGS uiSparseFlags)
 {
 	PVRSRV_ERROR eError = PVRSRV_ERROR_INVALID_PARAMS;
 	DEVMEM_IMPORT *psImport = psMemDesc->psImport;
@@ -191,7 +210,7 @@ DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
 	IMG_HANDLE hSrvDevMemHeap;
 	POS_LOCK hLock;
 	IMG_DEV_VIRTADDR sDevVAddr;
-	IMG_CPU_VIRTADDR sCpuVAddr;
+	IMG_CPU_VIRTADDR pvCpuVAddr;
 
 	if (NULL == psImport)
 	{
@@ -203,7 +222,7 @@ DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
 	hPMR = psImport->hPMR;
 	hLock = psImport->hLock;
 	sDevVAddr = psImport->sDeviceImport.sDevVAddr;
-	sCpuVAddr = psImport->sCPUImport.pvCPUVAddr;
+	pvCpuVAddr = psImport->sCPUImport.pvCPUVAddr;
 
 	if (NULL == hDevConnection)
 	{
@@ -223,7 +242,7 @@ DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
 		goto e0;
 	}
 
-	if ((uiSparseFlags & SPARSE_MAP_CPU_ADDR) && (0 == sCpuVAddr))
+	if ((uiSparseFlags & SPARSE_MAP_CPU_ADDR) && (NULL == pvCpuVAddr))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Invalid CPU Virtual Map", __func__));
 		goto e0;
@@ -243,61 +262,35 @@ DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
 	OSLockAcquire(hLock);
 
 	eError = BridgeChangeSparseMem(hDevConnection,
-	                               hSrvDevMemHeap,
-	                               hPMR,
-	                               ui32AllocPageCount,
-	                               paui32AllocPageIndices,
-	                               ui32FreePageCount,
-	                               pauiFreePageIndices,
-	                               uiSparseFlags,
-	                               psImport->uiFlags,
-	                               sDevVAddr,
-	                               (IMG_UINT64)((uintptr_t)sCpuVAddr));
+			hSrvDevMemHeap,
+			hPMR,
+			ui32AllocPageCount,
+			paui32AllocPageIndices,
+			ui32FreePageCount,
+			pauiFreePageIndices,
+			uiSparseFlags,
+			psImport->uiFlags,
+			sDevVAddr,
+			(IMG_UINT64)((uintptr_t)pvCpuVAddr));
 
-	 OSLockRelease(hLock);
-
-#if defined(PVR_RI_DEBUG)
-	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_RI))
-	{
-		BridgeRIUpdateMEMDESCBacking(psImport->hDevConnection,
-		                             psMemDesc->hRIHandle,
-		                             ((IMG_INT32) ui32AllocPageCount - (IMG_INT32) ui32FreePageCount)
-		                              * (1 << psImport->sDeviceImport.psHeap->uiLog2Quantum));
-	}
-#endif
+	OSLockRelease(hLock);
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
 	{
-		static IMG_BOOL bHaveNewAPI = IMG_TRUE;
-		PVRSRV_ERROR eError;
-
-		if(bHaveNewAPI)
-		{
-			eError = BridgeDevicememHistorySparseChange(psMemDesc->psImport->hDevConnection,
-								psMemDesc->psImport->hPMR,
-								psMemDesc->uiOffset,
-								psMemDesc->sDeviceMemDesc.sDevVAddr,
-								psMemDesc->uiAllocSize,
-								psMemDesc->sTraceData.szText,
-								DevmemGetHeapLog2PageSize(psImport->sDeviceImport.psHeap),
-								ui32AllocPageCount,
-								paui32AllocPageIndices,
-								ui32FreePageCount,
-								pauiFreePageIndices,
-								psMemDesc->sTraceData.ui32AllocationIndex,
-								&psMemDesc->sTraceData.ui32AllocationIndex);
-
-			 if(eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
-			 {
-			 	bHaveNewAPI = IMG_FALSE;
-			 }
-		}
-
-		/* no fallback required here.
-		 * the old version of devicememhistory doesn't have entry
-		 * points for SparseChange
-		 */
+		BridgeDevicememHistorySparseChange(psMemDesc->psImport->hDevConnection,
+				psMemDesc->psImport->hPMR,
+				psMemDesc->uiOffset,
+				psMemDesc->sDeviceMemDesc.sDevVAddr,
+				psMemDesc->uiAllocSize,
+				psMemDesc->szText,
+				DevmemGetHeapLog2PageSize(psImport->sDeviceImport.psHeap),
+				ui32AllocPageCount,
+				paui32AllocPageIndices,
+				ui32FreePageCount,
+				pauiFreePageIndices,
+				psMemDesc->ui32AllocationIndex,
+				&psMemDesc->ui32AllocationIndex);
 	}
 #endif
 
@@ -312,7 +305,7 @@ DeviceMemChangeSparse(DEVMEM_MEMDESC *psMemDesc,
 	}
 #endif
 
-e0:
+	e0:
 	return eError;
 }
 
@@ -324,13 +317,13 @@ _FreeDeviceMemory(DEVMEM_IMPORT *psImport)
 
 static PVRSRV_ERROR
 _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
-                     RA_LENGTH_T uiSize,
-                     RA_FLAGS_T _flags,
-                     const IMG_CHAR *pszAnnotation,
-                     /* returned data */
-                     RA_BASE_T *puiBase,
-                     RA_LENGTH_T *puiActualSize,
-                     RA_PERISPAN_HANDLE *phImport)
+		RA_LENGTH_T uiSize,
+		RA_FLAGS_T _flags,
+		const IMG_CHAR *pszAnnotation,
+		/* returned data */
+		RA_BASE_T *puiBase,
+		RA_LENGTH_T *puiActualSize,
+		RA_PERISPAN_HANDLE *phImport)
 {
 	/* When suballocations need a new lump of memory, the RA calls
 	   back here.  Later, in the kernel, we must construct a new PMR
@@ -352,7 +345,7 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 	   ask us for Non-power-of-2 size anyway, but I don't want to make
 	   that restriction arbitrarily now */
 	uiAlign = uiSize & ~(uiSize-1);
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
+
 	/* Technically this is only required for guest drivers due to
 	   fw heaps being pre-allocated and pre-mapped resulting in
 	   a 1:1 (i.e. virtual : physical) offset correlation but we
@@ -362,51 +355,79 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 	{
 		uiAlign = (IMG_DEVMEM_ALIGN_T)(1 << psHeap->uiLog2Quantum);
 	}
-#endif
 
 	/* The RA should not have invoked us with a size that is not a
 	   multiple of the quantum anyway */
 	PVR_ASSERT((uiSize & ((1ULL<<psHeap->uiLog2Quantum)-1)) == 0);
 
 	eError = _AllocateDeviceMemory(psHeap->psCtx->hDevConnection,
-	                               psHeap->uiLog2Quantum,
-	                               uiSize,
-	                               uiSize,
-	                               1,
-	                               1,
-	                               &ui32MappingTable,
-	                               uiAlign,
-	                               uiFlags,
-	                               IMG_FALSE,
-	                               pszAnnotation,
-	                               &psImport);
+			psHeap->uiLog2Quantum,
+			uiSize,
+			uiSize,
+			1,
+			1,
+			&ui32MappingTable,
+			uiAlign,
+			uiFlags,
+			IMG_FALSE,
+			"PMR sub-allocated",
+			&psImport);
 	if (eError != PVRSRV_OK)
 	{
 		goto failAlloc;
 	}
 
-#if defined (PDUMP)
-	/* Keep the annotation in the Devmem layer so we know where suballocations were done from*/
-	psImport->pszAnnotation = OSAllocMem(OSStringLength(pszAnnotation)+1);
-	if (psImport->pszAnnotation == NULL)
+#if defined(PDUMP)
+#if defined(__KERNEL__)
+	PDumpCommentWithFlags(PDUMP_NONE,
+			"Created PMR for sub-allocations with handle ID: 0x%p Annotation: \"%s\" (PID %u)",
+			psImport->hPMR, pszAnnotation, OSGetCurrentProcessID());
+#else
 	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto failAllocMem;
+		IMG_CHAR pszComment[PVRSRV_PDUMP_MAX_COMMENT_SIZE];
+		OSSNPrintf(pszComment,
+				PVRSRV_PDUMP_MAX_COMMENT_SIZE,
+				"Created PMR for sub-allocations with handle ID: %p Annotation: \"%s\" (PID %u)",
+				psImport->hPMR, pszAnnotation, OSGetCurrentProcessID());
+
+		BridgePVRSRVPDumpComment(psHeap->psCtx->hDevConnection, pszComment, IMG_FALSE);
 	}
-	OSStringNCopy(psImport->pszAnnotation, pszAnnotation, OSStringLength(pszAnnotation)+1);
+#endif
+#else
+	PVR_UNREFERENCED_PARAMETER(pszAnnotation);
 #endif
 
 #if defined(PVR_RI_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_RI))
 	{
-		eError = BridgeRIWritePMREntry (psImport->hDevConnection,
-										psImport->hPMR,
-										sizeof("PMR sub-allocated"),
-										"PMR sub-allocated",
-										psImport->uiSize);
-		if( eError != PVRSRV_OK)
+#if defined(__KERNEL__)
+		PVRSRV_DEVICE_NODE *psDevNode = (PVRSRV_DEVICE_NODE *)psHeap->psCtx->hDevConnection;
+		PVRSRV_RGXDEV_INFO *psDevInfo = (PVRSRV_RGXDEV_INFO *) psDevNode->pvDevice;
+
+		PVR_ASSERT(PVRSRV_CHECK_FW_LOCAL(uiFlags));
+
+		/* If allocation is made by the Kernel from the firmware heap, account for it
+		 * under the PVR_SYS_ALLOC_PID.
+		 */
+		if ((psHeap == psDevInfo->psFirmwareMainHeap) || (psHeap == psDevInfo->psFirmwareConfigHeap))
 		{
-			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWritePMREntry failed (eError=%d)", __func__, eError));
+			eError = BridgeRIWritePMREntryWithOwner (psImport->hDevConnection,
+					psImport->hPMR,
+					PVR_SYS_ALLOC_PID);
+			if( eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWritePMREntryWithOwner failed (eError=%d)", __func__, eError));
+			}
+		}
+		else
+#endif
+		{
+			eError = BridgeRIWritePMREntry (psImport->hDevConnection,
+					psImport->hPMR);
+			if( eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWritePMREntry failed (eError=%d)", __func__, eError));
+			}
 		}
 	}
 #endif
@@ -415,11 +436,11 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 		Suballocations always get mapped into the device was we need to
 		key the RA off something and as we can't export suballocations
 		there is no valid reason to request an allocation an not map it
-	*/
+	 */
 	eError = _DevmemImportStructDevMap(psHeap,
-									   IMG_TRUE,
-									   psImport,
-									   ui64OptionalMapAddress);
+			IMG_TRUE,
+			psImport,
+			ui64OptionalMapAddress);
 	if (eError != PVRSRV_OK)
 	{
 		goto failMap;
@@ -431,6 +452,10 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 	{
 		psImport->uiProperties |= DEVMEM_PROPERTIES_IMPORT_IS_ZEROED;
 	}
+	else if (uiFlags & PVRSRV_MEMALLOCFLAG_POISON_ON_ALLOC)
+	{
+		psImport->uiProperties |= DEVMEM_PROPERTIES_IMPORT_IS_POISONED;
+	}
 	psImport->uiProperties |= DEVMEM_PROPERTIES_IMPORT_IS_CLEAN;
 
 	*puiBase = psImport->sDeviceImport.sDevVAddr.uiAddr;
@@ -441,23 +466,18 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 
 	/*
 	  error exit paths follow
-	*/
-failMap:
-#if defined(PDUMP)
-failAllocMem:
-	OSFreeMem(psImport->pszAnnotation);
-	psImport->pszAnnotation = NULL;
-#endif
+	 */
+	failMap:
 	_FreeDeviceMemory(psImport);
-failAlloc:
+	failAlloc:
 
 	return eError;
 }
 
 static void
 _SubAllocImportFree(RA_PERARENA_HANDLE hArena,
-                    RA_BASE_T uiBase,
-                    RA_PERISPAN_HANDLE hImport)
+		RA_BASE_T uiBase,
+		RA_PERISPAN_HANDLE hImport)
 {
 	DEVMEM_IMPORT *psImport = hImport;
 
@@ -475,7 +495,7 @@ _SubAllocImportFree(RA_PERARENA_HANDLE hArena,
 
 static PVRSRV_ERROR
 _PopulateContextFromBlueprint(struct _DEVMEM_CONTEXT_ *psCtx,
-                              DEVMEM_HEAPCFGID uiHeapBlueprintID)
+		DEVMEM_HEAPCFGID uiHeapBlueprintID)
 {
 	PVRSRV_ERROR eError;
 	PVRSRV_ERROR eError2;
@@ -490,90 +510,90 @@ _PopulateContextFromBlueprint(struct _DEVMEM_CONTEXT_ *psCtx,
 	IMG_DEVMEM_LOG2ALIGN_T uiLog2ImportAlignment;
 	IMG_DEVMEM_LOG2ALIGN_T uiLog2TilingStrideFactor;
 
-    eError = DevmemHeapCount(psCtx->hDevConnection,
-                             uiHeapBlueprintID,
-                             &uiNumHeaps);
-    if (eError != PVRSRV_OK)
-    {
-        goto e0;
-    }
+	eError = DevmemHeapCount(psCtx->hDevConnection,
+			uiHeapBlueprintID,
+			&uiNumHeaps);
+	if (eError != PVRSRV_OK)
+	{
+		goto e0;
+	}
 
-    if (uiNumHeaps == 0)
-    {
-        ppsHeapArray = NULL;
-    }
-    else
-    {
-        ppsHeapArray = OSAllocMem(sizeof(*ppsHeapArray) * uiNumHeaps);
-        if (ppsHeapArray == NULL)
-        {
-            eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-            goto e0;
-        }
-    }
+	if (uiNumHeaps == 0)
+	{
+		ppsHeapArray = NULL;
+	}
+	else
+	{
+		ppsHeapArray = OSAllocMem(sizeof(*ppsHeapArray) * uiNumHeaps);
+		if (ppsHeapArray == NULL)
+		{
+			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+			goto e0;
+		}
+	}
 
-    uiHeapsToUnwindOnError = 0;
+	uiHeapsToUnwindOnError = 0;
 
-    for (uiHeapIndex = 0; uiHeapIndex < uiNumHeaps; uiHeapIndex++)
-    {
-        eError = DevmemHeapDetails(psCtx->hDevConnection,
-                                   uiHeapBlueprintID,
-                                   uiHeapIndex,
-                                   &aszHeapName[0],
-                                   sizeof(aszHeapName),
-                                   &sDevVAddrBase,
-                                   &uiHeapLength,
-                                   &uiLog2DataPageSize,
-                                   &uiLog2ImportAlignment,
-                                   &uiLog2TilingStrideFactor);
-        if (eError != PVRSRV_OK)
-        {
-            goto e1;
-        }
+	for (uiHeapIndex = 0; uiHeapIndex < uiNumHeaps; uiHeapIndex++)
+	{
+		eError = DevmemHeapDetails(psCtx->hDevConnection,
+				uiHeapBlueprintID,
+				uiHeapIndex,
+				&aszHeapName[0],
+				sizeof(aszHeapName),
+				&sDevVAddrBase,
+				&uiHeapLength,
+				&uiLog2DataPageSize,
+				&uiLog2ImportAlignment,
+				&uiLog2TilingStrideFactor);
+		if (eError != PVRSRV_OK)
+		{
+			goto e1;
+		}
 
-        eError = DevmemCreateHeap(psCtx,
-                                  sDevVAddrBase,
-                                  uiHeapLength,
-                                  uiLog2DataPageSize,
-                                  uiLog2ImportAlignment,
-                                  uiLog2TilingStrideFactor,
-                                  aszHeapName,
-                                  uiHeapBlueprintID,
-                                  &ppsHeapArray[uiHeapIndex]);
-        if (eError != PVRSRV_OK)
-        {
-            goto e1;
-        }
+		eError = DevmemCreateHeap(psCtx,
+				sDevVAddrBase,
+				uiHeapLength,
+				uiLog2DataPageSize,
+				uiLog2ImportAlignment,
+				uiLog2TilingStrideFactor,
+				aszHeapName,
+				uiHeapBlueprintID,
+				&ppsHeapArray[uiHeapIndex]);
+		if (eError != PVRSRV_OK)
+		{
+			goto e1;
+		}
 
-        uiHeapsToUnwindOnError = uiHeapIndex + 1;
-    }
+		uiHeapsToUnwindOnError = uiHeapIndex + 1;
+	}
 
-    psCtx->uiAutoHeapCount = uiNumHeaps;
-    psCtx->ppsAutoHeapArray = ppsHeapArray;
+	psCtx->uiAutoHeapCount = uiNumHeaps;
+	psCtx->ppsAutoHeapArray = ppsHeapArray;
 
-    PVR_ASSERT(psCtx->uiNumHeaps >= psCtx->uiAutoHeapCount);
-    PVR_ASSERT(psCtx->uiAutoHeapCount == uiNumHeaps);
+	PVR_ASSERT(psCtx->uiNumHeaps >= psCtx->uiAutoHeapCount);
+	PVR_ASSERT(psCtx->uiAutoHeapCount == uiNumHeaps);
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-    /*
+	/*
       error exit paths
-    */
- e1:
-    for (uiHeapIndex = 0; uiHeapIndex < uiHeapsToUnwindOnError; uiHeapIndex++)
-    {
-        eError2 = DevmemDestroyHeap(ppsHeapArray[uiHeapIndex]);
-        PVR_ASSERT(eError2 == PVRSRV_OK);
-    }
+	 */
+	e1:
+	for (uiHeapIndex = 0; uiHeapIndex < uiHeapsToUnwindOnError; uiHeapIndex++)
+	{
+		eError2 = DevmemDestroyHeap(ppsHeapArray[uiHeapIndex]);
+		PVR_ASSERT(eError2 == PVRSRV_OK);
+	}
 
-    if (uiNumHeaps != 0)
-    {
-        OSFreeMem(ppsHeapArray);
-    }
+	if (uiNumHeaps != 0)
+	{
+		OSFreeMem(ppsHeapArray);
+	}
 
- e0:
-    PVR_ASSERT(eError != PVRSRV_OK);
-    return eError;
+	e0:
+	PVR_ASSERT(eError != PVRSRV_OK);
+	return eError;
 }
 
 static PVRSRV_ERROR
@@ -619,6 +639,60 @@ _UnpopulateContextFromBlueprint(struct _DEVMEM_CONTEXT_ *psCtx)
 	return eReturn;
 }
 
+static PVRSRV_ERROR
+_AllocateMCUFenceAddress(struct _DEVMEM_CONTEXT_ *psCtx)
+{
+	PVRSRV_ERROR		eError;
+	DEVMEM_HEAP			*psGeneralHeap;
+	IMG_DEV_VIRTADDR	sTempMCUFenceAddr;
+
+	eError = DevmemFindHeapByName(psCtx, RGX_GENERAL_HEAP_IDENT, &psGeneralHeap);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: General Heap not found (%s)", __func__, GET_ERROR_STRING(eError)));
+		goto e0;
+	}
+
+	/* MCUFence:  Fixed address reserved per Memory Context */
+	eError = DevmemAllocate(psGeneralHeap,
+			sizeof(IMG_UINT32),
+			RGX_CR_MCU_FENCE_ADDR_ALIGNSIZE,
+			PVRSRV_MEMALLOCFLAG_GPU_READABLE |
+			PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE,
+			"MCUFence",
+			&psCtx->psMCUFenceMemDesc);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to allocate MCU fence word (%s)", __func__, GET_ERROR_STRING(eError)));
+		goto e0;
+	}
+
+	/* This is the first memory allocation on General Heap so its virtual address
+	 * is always equal to heap base address. Storing this address separately is not required. */
+	eError = DevmemMapToDevice(psCtx->psMCUFenceMemDesc, psGeneralHeap, &sTempMCUFenceAddr);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to map MCU fence word (%s)", __func__, GET_ERROR_STRING(eError)));
+		goto e1;
+	}
+	else if (sTempMCUFenceAddr.uiAddr != psGeneralHeap->sBaseAddress.uiAddr)
+	{
+
+		PVR_DPF((PVR_DBG_ERROR, "%s: MCU_FENCE address (%llx) not at the start of General Heap (%llx)", \
+				__FUNCTION__, (long long unsigned) sTempMCUFenceAddr.uiAddr, \
+				(long long unsigned) psGeneralHeap->sBaseAddress.uiAddr));
+		eError = PVRSRV_ERROR_DEVICEMEM_MAP_FAILED;
+		goto e1;
+	}
+
+	e0:
+	return eError;
+
+	e1:
+	DevmemFree(psCtx->psMCUFenceMemDesc);
+	psCtx->psMCUFenceMemDesc = NULL;
+	return eError;
+}
 
 /*****************************************************************************
  *                    Devmem context functions                               *
@@ -626,84 +700,87 @@ _UnpopulateContextFromBlueprint(struct _DEVMEM_CONTEXT_ *psCtx)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemCreateContext(SHARED_DEV_CONNECTION hDevConnection,
-                    DEVMEM_HEAPCFGID uiHeapBlueprintID,
-                   DEVMEM_CONTEXT **ppsCtxPtr)
+		DEVMEM_HEAPCFGID uiHeapBlueprintID,
+		DEVMEM_CONTEXT **ppsCtxPtr)
 {
-    PVRSRV_ERROR eError;
-    DEVMEM_CONTEXT *psCtx;
-    /* handle to the server-side counterpart of the device memory
+	PVRSRV_ERROR		eError;
+	DEVMEM_CONTEXT		*psCtx;
+	/* handle to the server-side counterpart of the device memory
        context (specifically, for handling mapping to device MMU) */
-    IMG_HANDLE hDevMemServerContext;
-    IMG_HANDLE hPrivData;
-    IMG_BOOL bHeapCfgMetaId = (uiHeapBlueprintID == DEVMEM_HEAPCFG_META);
+	IMG_HANDLE			hDevMemServerContext;
+	IMG_HANDLE			hPrivData;
+	IMG_BOOL			bHeapCfgMetaId = (uiHeapBlueprintID == DEVMEM_HEAPCFG_META);
 
-    if (ppsCtxPtr == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto e0;
-    }
+	if (ppsCtxPtr == NULL)
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto e0;
+	}
 
-    psCtx = OSAllocMem(sizeof *psCtx);
-    if (psCtx == NULL)
-    {
-        eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-        goto e0;
-    }
+	psCtx = OSAllocMem(sizeof *psCtx);
+	if (psCtx == NULL)
+	{
+		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto e0;
+	}
 
-    psCtx->uiNumHeaps = 0;
+	psCtx->uiNumHeaps = 0;
 
-    psCtx->hDevConnection = hDevConnection;
+	psCtx->hDevConnection = hDevConnection;
 
-    /* Create (server-side) Device Memory context */
-    eError = BridgeDevmemIntCtxCreate(psCtx->hDevConnection,
-                                      bHeapCfgMetaId,
-                                      &hDevMemServerContext,
-                                      &hPrivData,
-                                      &psCtx->ui32CPUCacheLineSize);
-    if (eError != PVRSRV_OK)
-    {
-        goto e1;
-    }
+	/* Create (server-side) Device Memory context */
+	eError = BridgeDevmemIntCtxCreate(psCtx->hDevConnection,
+			bHeapCfgMetaId,
+			&hDevMemServerContext,
+			&hPrivData,
+			&psCtx->ui32CPUCacheLineSize);
+	if (eError != PVRSRV_OK) goto e1;
 
-    psCtx->hDevMemServerContext = hDevMemServerContext;
-    psCtx->hPrivData = hPrivData;
+	psCtx->hDevMemServerContext = hDevMemServerContext;
+	psCtx->hPrivData = hPrivData;
 
-    /* automagic heap creation */
-    psCtx->uiAutoHeapCount = 0;
+	/* automagic heap creation */
+	psCtx->uiAutoHeapCount = 0;
 
-    eError = _PopulateContextFromBlueprint(psCtx, uiHeapBlueprintID);
-    if (eError != PVRSRV_OK)
-    {
-        goto e2;
-    }
+	eError = _PopulateContextFromBlueprint(psCtx, uiHeapBlueprintID);
+	if (eError != PVRSRV_OK) goto e2;
 
+	/* Allocate a word at the start of the General heap to be used as MCU_FENCE Address*/
+	if (uiHeapBlueprintID == DEVMEM_HEAPCFG_FORCLIENTS)
+	{
+		eError = _AllocateMCUFenceAddress(psCtx);
+		if (eError != PVRSRV_OK) goto e2;
+	}
+	else
+	{
+		psCtx->psMCUFenceMemDesc = NULL;
+	}
 
-    *ppsCtxPtr = psCtx;
+	*ppsCtxPtr = psCtx;
 
+	PVR_ASSERT(psCtx->uiNumHeaps == psCtx->uiAutoHeapCount);
+	return PVRSRV_OK;
 
-    PVR_ASSERT(psCtx->uiNumHeaps == psCtx->uiAutoHeapCount);
-    return PVRSRV_OK;
-
-    /*
+	/*
       error exit paths follow
-    */
+	 */
 
- e2:
-    PVR_ASSERT(psCtx->uiAutoHeapCount == 0);
-    PVR_ASSERT(psCtx->uiNumHeaps == 0);
-    BridgeDevmemIntCtxDestroy(psCtx->hDevConnection, hDevMemServerContext);
+	e2:
+	PVR_ASSERT(psCtx->uiAutoHeapCount == 0);
+	PVR_ASSERT(psCtx->uiNumHeaps == 0);
+	BridgeDevmemIntCtxDestroy(psCtx->hDevConnection, hDevMemServerContext);
 
- e1:
-    OSFreeMem(psCtx);
+	e1:
+	OSFreeMem(psCtx);
 
- e0:
-    PVR_ASSERT(eError != PVRSRV_OK);
-    return eError;
+	e0:
+	PVR_ASSERT(eError != PVRSRV_OK);
+	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemAcquireDevPrivData(DEVMEM_CONTEXT *psCtx,
-                         IMG_HANDLE *hPrivData)
+		IMG_HANDLE *hPrivData)
 {
 	PVRSRV_ERROR eError;
 
@@ -716,7 +793,7 @@ DevmemAcquireDevPrivData(DEVMEM_CONTEXT *psCtx,
 	*hPrivData = psCtx->hPrivData;
 	return PVRSRV_OK;
 
-e0:
+	e0:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	return eError;
 }
@@ -733,7 +810,7 @@ DevmemReleaseDevPrivData(DEVMEM_CONTEXT *psCtx)
 	}
 	return PVRSRV_OK;
 
-e0:
+	e0:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	return eError;
 }
@@ -741,24 +818,24 @@ e0:
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemFindHeapByName(const struct _DEVMEM_CONTEXT_ *psCtx,
-                     const IMG_CHAR *pszHeapName,
-                     struct _DEVMEM_HEAP_ **ppsHeapRet)
+		const IMG_CHAR *pszHeapName,
+		struct _DEVMEM_HEAP_ **ppsHeapRet)
 {
-    IMG_UINT32 uiHeapIndex;
+	IMG_UINT32 uiHeapIndex;
 
-    /* N.B.  This func is only useful for finding "automagic" heaps by name */
-    for (uiHeapIndex = 0;
-         uiHeapIndex < psCtx->uiAutoHeapCount;
-         uiHeapIndex++)
-    {
-        if (!OSStringCompare(psCtx->ppsAutoHeapArray[uiHeapIndex]->pszName, pszHeapName))
-        {
-            *ppsHeapRet = psCtx->ppsAutoHeapArray[uiHeapIndex];
-            return PVRSRV_OK;
-        }
-    }
+	/* N.B.  This func is only useful for finding "automagic" heaps by name */
+	for (uiHeapIndex = 0;
+			uiHeapIndex < psCtx->uiAutoHeapCount;
+			uiHeapIndex++)
+	{
+		if (!OSStringCompare(psCtx->ppsAutoHeapArray[uiHeapIndex]->pszName, pszHeapName))
+		{
+			*ppsHeapRet = psCtx->ppsAutoHeapArray[uiHeapIndex];
+			return PVRSRV_OK;
+		}
+	}
 
-    return PVRSRV_ERROR_DEVICEMEM_INVALID_HEAP_INDEX;
+	return PVRSRV_ERROR_DEVICEMEM_INVALID_HEAP_INDEX;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
@@ -780,22 +857,28 @@ DevmemDestroyContext(DEVMEM_CONTEXT *psCtx)
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
+	if (psCtx->psMCUFenceMemDesc != NULL)
+	{
+		DevmemReleaseDevVirtAddr(psCtx->psMCUFenceMemDesc);
+		DevmemFree(psCtx->psMCUFenceMemDesc);
+	}
+
 	eError = _UnpopulateContextFromBlueprint(psCtx);
 	if (bDoCheck && eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: _UnpopulateContextFromBlueprint failed (%d) leaving %d heaps",
-		          __func__, eError, psCtx->uiNumHeaps));
+				"%s: _UnpopulateContextFromBlueprint failed (%d) leaving %d heaps",
+				__func__, eError, psCtx->uiNumHeaps));
 		goto e1;
 	}
 
 	eError = BridgeDevmemIntCtxDestroy(psCtx->hDevConnection,
-	                                   psCtx->hDevMemServerContext);
+			psCtx->hDevMemServerContext);
 	if (bDoCheck && eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: BridgeDevmemIntCtxDestroy failed (%d)",
-		          __func__, eError));
+				"%s: BridgeDevmemIntCtxDestroy failed (%d)",
+				__func__, eError));
 		goto e1;
 	}
 
@@ -803,8 +886,8 @@ DevmemDestroyContext(DEVMEM_CONTEXT *psCtx)
 	if (bDoCheck && psCtx->uiNumHeaps)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: Additional heaps remain in DEVMEM_CONTEXT",
-		          __func__));
+				"%s: Additional heaps remain in DEVMEM_CONTEXT",
+				__func__));
 		eError = PVRSRV_ERROR_DEVICEMEM_ADDITIONAL_HEAPS_IN_CONTEXT;
 		goto e1;
 	}
@@ -812,7 +895,7 @@ DevmemDestroyContext(DEVMEM_CONTEXT *psCtx)
 	OSDeviceMemSet(psCtx, 0, sizeof(*psCtx));
 	OSFreeMem(psCtx);
 
-e1:
+	e1:
 	return eError;
 }
 
@@ -822,87 +905,71 @@ e1:
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemHeapConfigCount(SHARED_DEV_CONNECTION hDevConnection,
-                      IMG_UINT32 *puiNumHeapConfigsOut)
+		IMG_UINT32 *puiNumHeapConfigsOut)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    eError = BridgeHeapCfgHeapConfigCount(hDevConnection,
-                                          puiNumHeapConfigsOut);
-    return eError;
+	eError = BridgeHeapCfgHeapConfigCount(hDevConnection,
+			puiNumHeapConfigsOut);
+	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemHeapCount(SHARED_DEV_CONNECTION hDevConnection,
-                IMG_UINT32 uiHeapConfigIndex,
-                IMG_UINT32 *puiNumHeapsOut)
+		IMG_UINT32 uiHeapConfigIndex,
+		IMG_UINT32 *puiNumHeapsOut)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    eError = BridgeHeapCfgHeapCount(hDevConnection,
-                                    uiHeapConfigIndex,
-                                    puiNumHeapsOut);
-    return eError;
+	eError = BridgeHeapCfgHeapCount(hDevConnection,
+			uiHeapConfigIndex,
+			puiNumHeapsOut);
+	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemHeapConfigName(SHARED_DEV_CONNECTION hDevConnection,
-                     IMG_UINT32 uiHeapConfigIndex,
-                     IMG_CHAR *pszConfigNameOut,
-                     IMG_UINT32 uiConfigNameBufSz)
+		IMG_UINT32 uiHeapConfigIndex,
+		IMG_CHAR *pszConfigNameOut,
+		IMG_UINT32 uiConfigNameBufSz)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    eError = BridgeHeapCfgHeapConfigName(hDevConnection,
-                                         uiHeapConfigIndex,
-                                         uiConfigNameBufSz,
-                                         pszConfigNameOut);
-    return eError;
+	eError = BridgeHeapCfgHeapConfigName(hDevConnection,
+			uiHeapConfigIndex,
+			uiConfigNameBufSz,
+			pszConfigNameOut);
+	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemHeapDetails(SHARED_DEV_CONNECTION hDevConnection,
-                  IMG_UINT32 uiHeapConfigIndex,
-                  IMG_UINT32 uiHeapIndex,
-                  IMG_CHAR *pszHeapNameOut,
-                  IMG_UINT32 uiHeapNameBufSz,
-                  IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
-                  IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
-                  IMG_UINT32 *puiLog2DataPageSizeOut,
-                  IMG_UINT32 *puiLog2ImportAlignmentOut,
-                  IMG_UINT32 *puiLog2TilingStrideFactor)
+		IMG_UINT32 uiHeapConfigIndex,
+		IMG_UINT32 uiHeapIndex,
+		IMG_CHAR *pszHeapNameOut,
+		IMG_UINT32 uiHeapNameBufSz,
+		IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
+		IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
+		IMG_UINT32 *puiLog2DataPageSizeOut,
+		IMG_UINT32 *puiLog2ImportAlignmentOut,
+		IMG_UINT32 *puiLog2TilingStrideFactor)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    eError = BridgeHeapCfgHeapDetails(hDevConnection,
-                                      uiHeapConfigIndex,
-                                      uiHeapIndex,
-                                      uiHeapNameBufSz,
-                                      pszHeapNameOut,
-                                      psDevVAddrBaseOut,
-                                      puiHeapLengthOut,
-                                      puiLog2DataPageSizeOut,
-                                      puiLog2ImportAlignmentOut);
+	eError = BridgeHeapCfgHeapDetails(hDevConnection,
+			uiHeapConfigIndex,
+			uiHeapIndex,
+			uiHeapNameBufSz,
+			pszHeapNameOut,
+			psDevVAddrBaseOut,
+			puiHeapLengthOut,
+			puiLog2DataPageSizeOut,
+			puiLog2ImportAlignmentOut,
+			puiLog2TilingStrideFactor);
 
-    /* REL/1.8 maintain bridge compatibility
-     *     4:0 - uiLog2ImportAlignment (13--20)
-     *   18:16 - uiLog2TilingStrideFactor (3--4)
-     */
-    *puiLog2TilingStrideFactor = (*puiLog2ImportAlignmentOut >> 16);
-    *puiLog2ImportAlignmentOut &= 0xffff;
+	VG_MARK_INITIALIZED(pszHeapNameOut,uiHeapNameBufSz);
 
-    /* NB: *puiLog2TilingStrideFactor is either 3 or 4 (tiling mode 1 or 0).
-     * If reading from an older KM, *puiLog2TilingStrideFactor will not be set.
-     * If so force to 4 (tiling mode 0), which was the original assumption
-     * before puiLog2TilingStrideFactor was queried.
-     */
-    if (!*puiLog2TilingStrideFactor)
-    {
-        *puiLog2TilingStrideFactor = 4;
-    }
-
-    VG_MARK_INITIALIZED(pszHeapNameOut,uiHeapNameBufSz);
-
-    return eError;
+	return eError;
 }
 
 /*****************************************************************************
@@ -911,7 +978,7 @@ DevmemHeapDetails(SHARED_DEV_CONNECTION hDevConnection,
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemGetHeapInt(DEVMEM_HEAP *psHeap,
-				 IMG_HANDLE *phDevmemHeap)
+		IMG_HANDLE *phDevmemHeap)
 {
 	if (psHeap == NULL)
 	{
@@ -925,102 +992,102 @@ DevmemGetHeapInt(DEVMEM_HEAP *psHeap,
    to this function */
 IMG_INTERNAL PVRSRV_ERROR
 DevmemCreateHeap(DEVMEM_CONTEXT *psCtx,
-                 IMG_DEV_VIRTADDR sBaseAddress,
-                 IMG_DEVMEM_SIZE_T uiLength,
-                 IMG_UINT32 ui32Log2Quantum,
-                 IMG_UINT32 ui32Log2ImportAlignment,
-                 IMG_UINT32 ui32Log2TilingStrideFactor,
-                 const IMG_CHAR *pszName,
-                 DEVMEM_HEAPCFGID uiHeapBlueprintID,
-                 DEVMEM_HEAP **ppsHeapPtr)
+		IMG_DEV_VIRTADDR sBaseAddress,
+		IMG_DEVMEM_SIZE_T uiLength,
+		IMG_UINT32 ui32Log2Quantum,
+		IMG_UINT32 ui32Log2ImportAlignment,
+		IMG_UINT32 ui32Log2TilingStrideFactor,
+		const IMG_CHAR *pszName,
+		DEVMEM_HEAPCFGID uiHeapBlueprintID,
+		DEVMEM_HEAP **ppsHeapPtr)
 {
-    PVRSRV_ERROR eError = PVRSRV_OK;
-    PVRSRV_ERROR eError2;
-    DEVMEM_HEAP *psHeap;
-    /* handle to the server-side counterpart of the device memory
+	PVRSRV_ERROR eError = PVRSRV_OK;
+	PVRSRV_ERROR eError2;
+	DEVMEM_HEAP *psHeap;
+	/* handle to the server-side counterpart of the device memory
        heap (specifically, for handling mapping to device MMU */
-    IMG_HANDLE hDevMemServerHeap;
-    IMG_BOOL bRANoSplit = IMG_FALSE;
+	IMG_HANDLE hDevMemServerHeap;
+	IMG_BOOL bRANoSplit = IMG_FALSE;
 
-    IMG_CHAR aszBuf[100];
-    IMG_CHAR *pszStr;
+	IMG_CHAR aszBuf[100];
+	IMG_CHAR *pszStr;
 
-    if (ppsHeapPtr == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto e0;
-    }
+	if (ppsHeapPtr == NULL)
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto e0;
+	}
 
-    psHeap = OSAllocMem(sizeof *psHeap);
-    if (psHeap == NULL)
-    {
-        eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-        goto e0;
-    }
+	psHeap = OSAllocMem(sizeof *psHeap);
+	if (psHeap == NULL)
+	{
+		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto e0;
+	}
 
-    /* Need to keep local copy of heap name, so caller may free
+	/* Need to keep local copy of heap name, so caller may free
        theirs */
-    pszStr = OSAllocMem(OSStringLength(pszName)+1);
-    if (pszStr == NULL)
-    {
+	pszStr = OSAllocMem(OSStringLength(pszName)+1);
+	if (pszStr == NULL)
+	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-        goto e1;
-    }
-    OSStringCopy(pszStr, pszName);
-    psHeap->pszName = pszStr;
+		goto e1;
+	}
+	OSStringCopy(pszStr, pszName);
+	psHeap->pszName = pszStr;
 
-    psHeap->uiSize = uiLength;
-    psHeap->sBaseAddress = sBaseAddress;
-    OSAtomicWrite(&psHeap->hImportCount,0);
+	psHeap->uiSize = uiLength;
+	psHeap->sBaseAddress = sBaseAddress;
+	OSAtomicWrite(&psHeap->hImportCount,0);
 
-    OSSNPrintf(aszBuf, sizeof(aszBuf),
-               "NDM heap '%s' (suballocs) ctx:%p",
-               pszName, psCtx);
-    pszStr = OSAllocMem(OSStringLength(aszBuf)+1);
-    if (pszStr == NULL)
-    {
+	OSSNPrintf(aszBuf, sizeof(aszBuf),
+			"NDM heap '%s' (suballocs) ctx:%p",
+			pszName, psCtx);
+	pszStr = OSAllocMem(OSStringLength(aszBuf)+1);
+	if (pszStr == NULL)
+	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-        goto e2;
-    }
-    OSStringCopy(pszStr, aszBuf);
-    psHeap->pszSubAllocRAName = pszStr;
+		goto e2;
+	}
+	OSStringCopy(pszStr, aszBuf);
+	psHeap->pszSubAllocRAName = pszStr;
 
 #if defined(PDUMP)
-    /* the META heap is shared globally so a single
-     * physical memory import may be used to satisfy
-     * allocations of different processes.
-     * This is problematic when PDumping because the
-     * physical memory import used to satisfy a new allocation
-     * may actually have been imported (and thus the PDump MALLOC
-     * generated) before the PDump client was started, leading to the
-     * MALLOC being missing.
-     * This is solved by disabling splitting of imports for the META physmem
-     * RA, meaning that every firmware allocation gets its own import, thus
-     * ensuring the MALLOC is present for every allocation made within the
-     * pdump capture range
-     */
-    if(uiHeapBlueprintID == DEVMEM_HEAPCFG_META)
-    {
-    	bRANoSplit = IMG_TRUE;
-    }
+	/* the META heap is shared globally so a single
+	 * physical memory import may be used to satisfy
+	 * allocations of different processes.
+	 * This is problematic when PDumping because the
+	 * physical memory import used to satisfy a new allocation
+	 * may actually have been imported (and thus the PDump MALLOC
+	 * generated) before the PDump client was started, leading to the
+	 * MALLOC being missing.
+	 * This is solved by disabling splitting of imports for the META physmem
+	 * RA, meaning that every firmware allocation gets its own import, thus
+	 * ensuring the MALLOC is present for every allocation made within the
+	 * pdump capture range
+	 */
+	if(uiHeapBlueprintID == DEVMEM_HEAPCFG_META)
+	{
+		bRANoSplit = IMG_TRUE;
+	}
 #else
-    PVR_UNREFERENCED_PARAMETER(uiHeapBlueprintID);
+	PVR_UNREFERENCED_PARAMETER(uiHeapBlueprintID);
 #endif
 
 
-    psHeap->psSubAllocRA = RA_Create(psHeap->pszSubAllocRAName,
-                       /* Subsequent imports: */
-                       ui32Log2Quantum,
-					   RA_LOCKCLASS_2,
-                       _SubAllocImportAlloc,
-                       _SubAllocImportFree,
-                       (RA_PERARENA_HANDLE) psHeap,
-                       bRANoSplit);
-    if (psHeap->psSubAllocRA == NULL)
-    {
-        eError = PVRSRV_ERROR_DEVICEMEM_UNABLE_TO_CREATE_ARENA;
-        goto e3;
-    }
+	psHeap->psSubAllocRA = RA_Create(psHeap->pszSubAllocRAName,
+			/* Subsequent imports: */
+			ui32Log2Quantum,
+			RA_LOCKCLASS_2,
+			_SubAllocImportAlloc,
+			_SubAllocImportFree,
+			(RA_PERARENA_HANDLE) psHeap,
+			bRANoSplit);
+	if (psHeap->psSubAllocRA == NULL)
+	{
+		eError = PVRSRV_ERROR_DEVICEMEM_UNABLE_TO_CREATE_ARENA;
+		goto e3;
+	}
 
 	psHeap->uiLog2ImportAlignment = ui32Log2ImportAlignment;
 	psHeap->uiLog2TilingStrideFactor = ui32Log2TilingStrideFactor;
@@ -1040,8 +1107,8 @@ DevmemCreateHeap(DEVMEM_CONTEXT *psCtx,
 	}
 
 	OSSNPrintf(aszBuf, sizeof(aszBuf),
-				"NDM heap '%s' (QVM) ctx:%p",
-				pszName, psCtx);
+			"NDM heap '%s' (QVM) ctx:%p",
+			pszName, psCtx);
 	pszStr = OSAllocMem(OSStringLength(aszBuf)+1);
 	if (pszStr == NULL)
 	{
@@ -1052,10 +1119,10 @@ DevmemCreateHeap(DEVMEM_CONTEXT *psCtx,
 	psHeap->pszQuantizedVMRAName = pszStr;
 
 	psHeap->psQuantizedVMRA = RA_Create(psHeap->pszQuantizedVMRAName,
-					   /* Subsequent import: */
-									   0, RA_LOCKCLASS_1, NULL, NULL,
-					   (RA_PERARENA_HANDLE) psHeap,
-					   IMG_FALSE);
+			/* Subsequent import: */
+			0, RA_LOCKCLASS_1, NULL, NULL,
+			(RA_PERARENA_HANDLE) psHeap,
+			IMG_FALSE);
 	if (psHeap->psQuantizedVMRA == NULL)
 	{
 		eError = PVRSRV_ERROR_DEVICEMEM_UNABLE_TO_CREATE_ARENA;
@@ -1063,31 +1130,31 @@ DevmemCreateHeap(DEVMEM_CONTEXT *psCtx,
 	}
 
 	if (!RA_Add(psHeap->psQuantizedVMRA,
-					   (RA_BASE_T)sBaseAddress.uiAddr,
-					   (RA_LENGTH_T)uiLength,
-					   (RA_FLAGS_T)0, /* This RA doesn't use or need flags */
-				NULL /* per ispan handle */))
+			(RA_BASE_T)sBaseAddress.uiAddr,
+			(RA_LENGTH_T)uiLength,
+			(RA_FLAGS_T)0, /* This RA doesn't use or need flags */
+			NULL /* per ispan handle */))
 	{
 		RA_Delete(psHeap->psQuantizedVMRA);
 		eError = PVRSRV_ERROR_DEVICEMEM_UNABLE_TO_CREATE_ARENA;
 		goto e5;
 	}
 
-    psHeap->psCtx = psCtx;
+	psHeap->psCtx = psCtx;
 
 
-    /* Create server-side counterpart of Device Memory heap */
-    eError = BridgeDevmemIntHeapCreate(psCtx->hDevConnection,
-                                      psCtx->hDevMemServerContext,
-                                      sBaseAddress,
-                                      uiLength,
-                                      ui32Log2Quantum,
-                                      &hDevMemServerHeap);
-    if (eError != PVRSRV_OK)
-    {
-        goto e6;
-    }
-    psHeap->hDevMemServerHeap = hDevMemServerHeap;
+	/* Create server-side counterpart of Device Memory heap */
+	eError = BridgeDevmemIntHeapCreate(psCtx->hDevConnection,
+			psCtx->hDevMemServerContext,
+			sBaseAddress,
+			uiLength,
+			ui32Log2Quantum,
+			&hDevMemServerHeap);
+	if (eError != PVRSRV_OK)
+	{
+		goto e6;
+	}
+	psHeap->hDevMemServerHeap = hDevMemServerHeap;
 
 	eError = OSLockCreate(&psHeap->hLock, LOCK_TYPE_PASSIVE);
 	if (eError != PVRSRV_OK)
@@ -1095,44 +1162,44 @@ DevmemCreateHeap(DEVMEM_CONTEXT *psCtx,
 		goto e7;
 	}
 
-    psHeap->psCtx->uiNumHeaps ++;
-    *ppsHeapPtr = psHeap;
+	psHeap->psCtx->uiNumHeaps ++;
+	*ppsHeapPtr = psHeap;
 
 #if defined PVRSRV_NEWDEVMEM_SUPPORT_MEM_TRACKING
-    psHeap->psMemDescList = NULL;
+	psHeap->psMemDescList = NULL;
 #endif  /* PVRSRV_NEWDEVMEM_SUPPORT_MEM_TRACKING */
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-    /*
+	/*
       error exit paths
-    */
- e7:
-    eError2 = BridgeDevmemIntHeapDestroy(psCtx->hDevConnection,
-                                       psHeap->hDevMemServerHeap);
-    PVR_ASSERT (eError2 == PVRSRV_OK);
- e6:
-    if (psHeap->psQuantizedVMRA)
+	 */
+	e7:
+	eError2 = BridgeDevmemIntHeapDestroy(psCtx->hDevConnection,
+			psHeap->hDevMemServerHeap);
+	PVR_ASSERT (eError2 == PVRSRV_OK);
+	e6:
+	if (psHeap->psQuantizedVMRA)
 		RA_Delete(psHeap->psQuantizedVMRA);
- e5:
-    if (psHeap->pszQuantizedVMRAName)
+	e5:
+	if (psHeap->pszQuantizedVMRAName)
 		OSFreeMem(psHeap->pszQuantizedVMRAName);
- e4:
-    RA_Delete(psHeap->psSubAllocRA);
- e3:
-    OSFreeMem(psHeap->pszSubAllocRAName);
- e2:
-    OSFreeMem(psHeap->pszName);
- e1:
-    OSFreeMem(psHeap);
- e0:
-    PVR_ASSERT(eError != PVRSRV_OK);
-    return eError;
+	e4:
+	RA_Delete(psHeap->psSubAllocRA);
+	e3:
+	OSFreeMem(psHeap->pszSubAllocRAName);
+	e2:
+	OSFreeMem(psHeap->pszName);
+	e1:
+	OSFreeMem(psHeap);
+	e0:
+	PVR_ASSERT(eError != PVRSRV_OK);
+	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemGetHeapBaseDevVAddr(struct _DEVMEM_HEAP_ *psHeap,
-			  IMG_DEV_VIRTADDR *pDevVAddr)
+		IMG_DEV_VIRTADDR *pDevVAddr)
 {
 	if (psHeap == NULL)
 	{
@@ -1146,17 +1213,17 @@ DevmemGetHeapBaseDevVAddr(struct _DEVMEM_HEAP_ *psHeap,
 
 IMG_INTERNAL void
 DevmemExportalignAdjustSizeAndAlign(IMG_UINT32 uiLog2Quantum,
-                                    IMG_DEVMEM_SIZE_T *puiSize,
-                                    IMG_DEVMEM_ALIGN_T *puiAlign)
+		IMG_DEVMEM_SIZE_T *puiSize,
+		IMG_DEVMEM_ALIGN_T *puiAlign)
 {
 	IMG_DEVMEM_SIZE_T uiSize = *puiSize;
 	IMG_DEVMEM_ALIGN_T uiAlign = *puiAlign;
 
-    if ((1ULL << uiLog2Quantum) > uiAlign)
-    {
+	if ((1ULL << uiLog2Quantum) > uiAlign)
+	{
 		uiAlign = 1ULL << uiLog2Quantum;
-    }
-    uiSize = (uiSize + uiAlign - 1) & ~(uiAlign - 1);
+	}
+	uiSize = (uiSize + uiAlign - 1) & ~(uiAlign - 1);
 
 	*puiSize = uiSize;
 	*puiAlign = uiAlign;
@@ -1205,7 +1272,7 @@ DevmemDestroyHeap(DEVMEM_HEAP *psHeap)
 	}
 
 	eError = BridgeDevmemIntHeapDestroy(psHeap->psCtx->hDevConnection,
-	                                    psHeap->hDevMemServerHeap);
+			psHeap->hDevMemServerHeap);
 #if defined(PVRSRV_FORCE_UNLOAD_IF_BAD_STATE)
 	if (bDoCheck)
 #endif
@@ -1213,8 +1280,8 @@ DevmemDestroyHeap(DEVMEM_HEAP *psHeap)
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,
-			         "%s: BridgeDevmemIntHeapDestroy failed (%d)",
-			          __func__, eError));
+					"%s: BridgeDevmemIntHeapDestroy failed (%d)",
+					__func__, eError));
 			return eError;
 		}
 	}
@@ -1250,12 +1317,12 @@ DevmemDestroyHeap(DEVMEM_HEAP *psHeap)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
-                  DEVMEM_HEAP *psHeap,
-                  IMG_DEVMEM_SIZE_T uiSize,
-                  IMG_DEVMEM_ALIGN_T uiAlign,
-                  DEVMEM_FLAGS_T uiFlags,
-                  const IMG_CHAR *pszText,
-                  DEVMEM_MEMDESC **ppsMemDescPtr)
+		DEVMEM_HEAP *psHeap,
+		IMG_DEVMEM_SIZE_T uiSize,
+		IMG_DEVMEM_ALIGN_T uiAlign,
+		DEVMEM_FLAGS_T uiFlags,
+		const IMG_CHAR *pszText,
+		DEVMEM_MEMDESC **ppsMemDescPtr)
 {
 	RA_BASE_T uiAllocatedAddr;
 	RA_LENGTH_T uiAllocatedSize;
@@ -1265,17 +1332,18 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 	IMG_DEVMEM_OFFSET_T uiOffset = 0;
 	DEVMEM_IMPORT *psImport;
 	IMG_UINT32 ui32CPUCacheLineSize;
-	void *pvAddr;
+	void *pvAddr = NULL;
 
 	IMG_BOOL bImportClean;
 	IMG_BOOL bCPUCleanFlag = PVRSRV_CHECK_CPU_CACHE_CLEAN(uiFlags);
 	IMG_BOOL bZero = PVRSRV_CHECK_ZERO_ON_ALLOC(uiFlags);
+	IMG_BOOL bPoisonOnAlloc = PVRSRV_CHECK_POISON_ON_ALLOC(uiFlags);
 	IMG_BOOL bCPUCached = (PVRSRV_CHECK_CPU_CACHE_COHERENT(uiFlags)   ||
-	                       PVRSRV_CHECK_CPU_CACHE_INCOHERENT(uiFlags));
+			PVRSRV_CHECK_CPU_CACHE_INCOHERENT(uiFlags));
 	IMG_BOOL bGPUCached = (PVRSRV_CHECK_GPU_CACHE_COHERENT(uiFlags)   ||
-	                       PVRSRV_CHECK_GPU_CACHE_INCOHERENT(uiFlags));
+			PVRSRV_CHECK_GPU_CACHE_INCOHERENT(uiFlags));
 	PVRSRV_CACHE_OP eOp = PVRSRV_CACHE_OP_INVALIDATE;
-	IMG_UINT32	ui32CacheLineSize;
+	IMG_UINT32	ui32CacheLineSize = 0;
 
 	if (uiFlags & PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC)
 	{
@@ -1296,8 +1364,7 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 		 * address space in which it is used.
 		 * In this instance the variable points to the device node in server */
 		PVRSRV_DEVICE_NODE *psDevNode = (PVRSRV_DEVICE_NODE *)psHeap->psCtx->hDevConnection;
-		ui32CacheLineSize = GET_ROGUE_CACHE_LINE_SIZE(psDevNode->pfnGetDeviceFeatureValue(psDevNode, \
-				RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS_BIT_MASK));
+		ui32CacheLineSize = GET_ROGUE_CACHE_LINE_SIZE(PVRSRV_GET_DEVICE_FEATURE_VALUE(psDevNode, SLC_CACHE_LINE_SIZE_BITS));
 	}
 #else
 	ui32CacheLineSize = ROGUE_CACHE_LINE_SIZE;
@@ -1330,8 +1397,8 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 	}
 
 	eError = _DevmemValidateParams(uiSize,
-	                               uiAlign,
-	                               &uiFlags);
+			uiAlign,
+			&uiFlags);
 	if (eError != PVRSRV_OK)
 	{
 		goto failParams;
@@ -1345,14 +1412,14 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 
 	/* No request for exportable memory so use the RA */
 	eError = RA_Alloc(psHeap->psSubAllocRA,
-	                  uiSize,
-	                  uiPreAllocMultiplier,
-	                  uiFlags,
-	                  uiAlign,
-	                  pszText,
-	                  &uiAllocatedAddr,
-	                  &uiAllocatedSize,
-	                  &hImport);
+			uiSize,
+			uiPreAllocMultiplier,
+			uiFlags,
+			uiAlign,
+			pszText,
+			&uiAllocatedAddr,
+			&uiAllocatedSize,
+			&hImport);
 	if (PVRSRV_OK != eError)
 	{
 		goto failDeviceMemAlloc;
@@ -1367,7 +1434,7 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 	 * if it is not.
 	 * */
 	if (!(uiSize & ((1 << psHeap->uiLog2Quantum) - 1)) &&
-	     (uiPreAllocMultiplier == RA_NO_IMPORT_MULTIPLIER) )
+			(uiPreAllocMultiplier == RA_NO_IMPORT_MULTIPLIER) )
 	{
 		psImport->uiProperties |= DEVMEM_PROPERTIES_EXPORTABLE;
 	}
@@ -1378,17 +1445,18 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 #if defined(PDUMP)
 #if defined(__KERNEL__)
 	PDumpCommentWithFlags(PDUMP_NONE,
-	                      "Suballocated %u Byte for \"%s\" from physical allocation \"%s\"",
-	                      (IMG_UINT32) uiSize, pszText, psImport->pszAnnotation);
+			"Suballocated %u Byte for \"%s\" from PMR with handle ID: 0x%p (PID %u)",
+			(IMG_UINT32) uiSize, pszText, psImport->hPMR, OSGetCurrentProcessID());
 #else
 	{
 		IMG_CHAR pszComment[PVRSRV_PDUMP_MAX_COMMENT_SIZE];
 		OSSNPrintf(pszComment,
-	                   PVRSRV_PDUMP_MAX_COMMENT_SIZE,
-	                   "Suballocated %u Byte for \"%s\" from physical allocation \"%s\"",
-	                   (IMG_UINT32) uiSize,
-	                   pszText,
-	                   psImport->pszAnnotation);
+				PVRSRV_PDUMP_MAX_COMMENT_SIZE,
+				"Suballocated %u Byte for \"%s\" from PMR with handle ID: %p (PID %u)",
+				(IMG_UINT32) uiSize,
+				pszText,
+				psImport->hPMR,
+				OSGetCurrentProcessID());
 
 		BridgePVRSRVPDumpComment(psHeap->psCtx->hDevConnection, pszComment, IMG_FALSE);
 	}
@@ -1396,9 +1464,9 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 #endif
 
 	_DevmemMemDescInit(psMemDesc,
-	                   uiOffset,
-	                   psImport,
-	                   uiSize);
+			uiOffset,
+			psImport,
+			uiSize);
 
 	bImportClean = ((psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_IMPORT_IS_CLEAN) != 0);
 
@@ -1426,55 +1494,90 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 			PVR_ASSERT(uiSize < IMG_UINT32_MAX);
 
 			OSDeviceMemSet(pvAddr, 0x0, (size_t) uiSize);
-
-			DevmemReleaseCpuVirtAddr(psMemDesc);
-
 #if defined(PDUMP)
 			DevmemPDumpLoadZeroMem(psMemDesc, 0, uiSize, PDUMP_FLAGS_CONTINUOUS);
 #endif
 		}
 	}
+	else if (bPoisonOnAlloc)
+	{
+		/* Has the import been poisoned on allocation and were no suballocations returned to it so far? */
+		bPoisonOnAlloc = (psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_IMPORT_IS_POISONED) != 0;
+
+		if (!bPoisonOnAlloc)
+		{
+			eOp = PVRSRV_CACHE_OP_FLUSH;
+
+			eError = DevmemAcquireCpuVirtAddr(psMemDesc, &pvAddr);
+			if (eError != PVRSRV_OK)
+			{
+				goto failMaintenance;
+			}
+
+			if (PVRSRV_CHECK_CPU_UNCACHED(uiFlags) ||
+					PVRSRV_CHECK_CPU_WRITE_COMBINE(uiFlags))
+			{
+				OSDeviceMemSet(pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE,
+						uiSize);
+			}
+			else
+			{
+				OSCachedMemSet(pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE,
+						uiSize);
+			}
+
+			bPoisonOnAlloc = IMG_TRUE;
+		}
+	}
 
 	/* Flush or invalidate */
-	if (bCPUCached && !bImportClean && (bZero || bCPUCleanFlag))
+	if (bCPUCached && !bImportClean && (bZero || bCPUCleanFlag || bPoisonOnAlloc))
 	{
 		/* BridgeCacheOpQueue _may_ be deferred so use BridgeCacheOpExec
 		   to ensure this cache maintenance is actioned immediately */
 		eError = BridgeCacheOpExec (psMemDesc->psImport->hDevConnection,
-		                            psMemDesc->psImport->hPMR,
-		                            psMemDesc->uiOffset,
-		                            psMemDesc->uiAllocSize,
-		                            eOp);
+				psMemDesc->psImport->hPMR,
+				(IMG_UINT64)(uintptr_t)
+				pvAddr - psMemDesc->uiOffset,
+				psMemDesc->uiOffset,
+				psMemDesc->uiAllocSize,
+				eOp);
 		if (eError != PVRSRV_OK)
 		{
 			goto failMaintenance;
 		}
 	}
 
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
+	if (pvAddr)
 	{
-		/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
-		 * the allocation gets mapped/unmapped
-		 */
-		OSStringNCopy(psMemDesc->sTraceData.szText, pszText, sizeof(psMemDesc->sTraceData.szText) - 1);
+		DevmemReleaseCpuVirtAddr(psMemDesc);
+		pvAddr = NULL;
 	}
-#endif
+
+	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
+	 * the allocation gets mapped/unmapped
+	 */
+	_CheckAnnotationLength(pszText);
+#if defined(__KERNEL__)
+	OSStringLCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+#else
+	OSStringNCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+	psMemDesc->szText[DEVMEM_ANNOTATION_MAX_LEN - 1] = '\0';
+#endif	/* if defined(__KERNEL__) */
 
 #if defined(PVR_RI_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_RI))
 	{
 		/* Attach RI information */
 		eError = BridgeRIWriteMEMDESCEntry (psMemDesc->psImport->hDevConnection,
-		                                    psMemDesc->psImport->hPMR,
-		                                    OSStringNLength(pszText, RI_MAX_TEXT_LEN),
-		                                    pszText,
-		                                    psMemDesc->uiOffset,
-		                                    uiAllocatedSize,
-		                                    uiAllocatedSize,
-		                                    IMG_FALSE,
-		                                    IMG_FALSE,
-		                                    &(psMemDesc->hRIHandle));
+				psMemDesc->psImport->hPMR,
+				OSStringNLength(psMemDesc->szText, DEVMEM_ANNOTATION_MAX_LEN),
+				psMemDesc->szText,
+				psMemDesc->uiOffset,
+				uiAllocatedSize,
+				IMG_FALSE,
+				IMG_TRUE,
+				&(psMemDesc->hRIHandle));
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWriteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -1492,16 +1595,21 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 	  error exit paths follow
 	 */
 
-failMaintenance:
+	failMaintenance:
+	if (pvAddr)
+	{
+		DevmemReleaseCpuVirtAddr(psMemDesc);
+		pvAddr = NULL;
+	}
 	_DevmemMemDescRelease(psMemDesc);
 	psMemDesc = NULL;	/* Make sure we don't do a discard after the release */
-failDeviceMemAlloc:
+	failDeviceMemAlloc:
 	if (psMemDesc)
 	{
 		_DevmemMemDescDiscard(psMemDesc);
 	}
-failMemDescAlloc:
-failParams:
+	failMemDescAlloc:
+	failParams:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	PVR_DPF((PVR_DBG_ERROR,
 			"%s: Failed! Error is %s. Allocation size: %#llX",
@@ -1511,16 +1619,14 @@ failParams:
 	return eError;
 }
 
-
-
 IMG_INTERNAL PVRSRV_ERROR
 DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
-                         IMG_DEVMEM_SIZE_T uiSize,
-                         IMG_DEVMEM_ALIGN_T uiAlign,
-                         IMG_UINT32 uiLog2HeapPageSize,
-                         DEVMEM_FLAGS_T uiFlags,
-                         const IMG_CHAR *pszText,
-                         DEVMEM_MEMDESC **ppsMemDescPtr)
+		IMG_DEVMEM_SIZE_T uiSize,
+		IMG_DEVMEM_ALIGN_T uiAlign,
+		IMG_UINT32 uiLog2HeapPageSize,
+		DEVMEM_FLAGS_T uiFlags,
+		const IMG_CHAR *pszText,
+		DEVMEM_MEMDESC **ppsMemDescPtr)
 {
 	PVRSRV_ERROR eError;
 	DEVMEM_MEMDESC *psMemDesc = NULL;
@@ -1528,12 +1634,12 @@ DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
 	IMG_UINT32 ui32MappingTable = 0;
 
 	DevmemExportalignAdjustSizeAndAlign(uiLog2HeapPageSize,
-	                                    &uiSize,
-	                                    &uiAlign);
+			&uiSize,
+			&uiAlign);
 
 	eError = _DevmemValidateParams(uiSize,
-	                               uiAlign,
-	                               &uiFlags);
+			uiAlign,
+			&uiFlags);
 	if (eError != PVRSRV_OK)
 	{
 		goto failParams;
@@ -1546,63 +1652,61 @@ DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
 	}
 
 	eError = _AllocateDeviceMemory(hDevConnection,
-	                               uiLog2HeapPageSize,
-	                               uiSize,
-	                               uiSize,
-	                               1,
-	                               1,
-	                               &ui32MappingTable,
-	                               uiAlign,
-	                               uiFlags,
-	                               IMG_TRUE,
-	                               pszText,
-	                               &psImport);
+			uiLog2HeapPageSize,
+			uiSize,
+			uiSize,
+			1,
+			1,
+			&ui32MappingTable,
+			uiAlign,
+			uiFlags,
+			IMG_TRUE,
+			pszText,
+			&psImport);
 	if (eError != PVRSRV_OK)
 	{
 		goto failDeviceMemAlloc;
 	}
 
 	_DevmemMemDescInit(psMemDesc,
-	                   0,
-	                   psImport,
-	                   uiSize);
+			0,
+			psImport,
+			uiSize);
 
-    *ppsMemDescPtr = psMemDesc;
+	*ppsMemDescPtr = psMemDesc;
 
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
-	{
-		/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
-		 * the allocation gets mapped/unmapped
-		 */
-		OSStringNCopy(psMemDesc->sTraceData.szText, pszText, sizeof(psMemDesc->sTraceData.szText) - 1);
-	}
-#endif
+	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
+	 * the allocation gets mapped/unmapped
+	 */
+	_CheckAnnotationLength(pszText);
+#if defined(__KERNEL__)
+	OSStringLCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+#else
+	OSStringNCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+	psMemDesc->szText[DEVMEM_ANNOTATION_MAX_LEN - 1] = '\0';
+#endif	/* if defined(__KERNEL__) */
+
 
 #if defined(PVR_RI_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_RI))
 	{
 		eError = BridgeRIWritePMREntry (psImport->hDevConnection,
-		                                psImport->hPMR,
-		                                OSStringNLength(pszText, RI_MAX_TEXT_LEN),
-		                                (IMG_CHAR *)pszText,
-		                                psImport->uiSize);
+				psImport->hPMR);
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWritePMREntry failed (eError=%d)", __func__, eError));
 		}
 
-		 /* Attach RI information */
+		/* Attach RI information */
 		eError = BridgeRIWriteMEMDESCEntry (psImport->hDevConnection,
-		                                    psImport->hPMR,
-		                                    sizeof("^"),
-		                                    "^",
-		                                    psMemDesc->uiOffset,
-		                                    uiSize,
-		                                    uiSize,
-		                                    IMG_FALSE,
-		                                    IMG_TRUE,
-		                                    &psMemDesc->hRIHandle);
+				psImport->hPMR,
+				sizeof("^"),
+				"^",
+				psMemDesc->uiOffset,
+				uiSize,
+				IMG_FALSE,
+				IMG_FALSE,
+				&psMemDesc->hRIHandle);
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWriteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -1618,11 +1722,11 @@ DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
 	  error exit paths follow
 	 */
 
-failDeviceMemAlloc:
+	failDeviceMemAlloc:
 	_DevmemMemDescDiscard(psMemDesc);
 
-failMemDescAlloc:
-failParams:
+	failMemDescAlloc:
+	failParams:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	PVR_DPF((PVR_DBG_ERROR,
 			"%s: Failed! Error is %s. Allocation size: %#llX",
@@ -1634,44 +1738,28 @@ failParams:
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
-                     IMG_DEVMEM_SIZE_T uiSize,
-                     IMG_DEVMEM_SIZE_T uiChunkSize,
-                     IMG_UINT32 ui32NumPhysChunks,
-                     IMG_UINT32 ui32NumVirtChunks,
-                     IMG_UINT32 *pui32MappingTable,
-                     IMG_DEVMEM_ALIGN_T uiAlign,
-                     IMG_UINT32 uiLog2HeapPageSize,
-                     DEVMEM_FLAGS_T uiFlags,
-                     const IMG_CHAR *pszText,
-                     DEVMEM_MEMDESC **ppsMemDescPtr)
+		IMG_DEVMEM_SIZE_T uiSize,
+		IMG_DEVMEM_SIZE_T uiChunkSize,
+		IMG_UINT32 ui32NumPhysChunks,
+		IMG_UINT32 ui32NumVirtChunks,
+		IMG_UINT32 *pui32MappingTable,
+		IMG_DEVMEM_ALIGN_T uiAlign,
+		IMG_UINT32 uiLog2HeapPageSize,
+		DEVMEM_FLAGS_T uiFlags,
+		const IMG_CHAR *pszText,
+		DEVMEM_MEMDESC **ppsMemDescPtr)
 {
 	PVRSRV_ERROR eError;
 	DEVMEM_MEMDESC *psMemDesc = NULL;
 	DEVMEM_IMPORT *psImport;
-	IMG_UINT32 i;
-
-	for (i = 0; i < ui32NumPhysChunks; i++)
-	{
-		if (!(pui32MappingTable[i] < ui32NumVirtChunks))
-		{
-			PVR_DPF((PVR_DBG_ERROR,
-					"A mapping table index exceeds the size of the allocation:"
-					" pui32MappingTable[%u] %u, ui32NumVirtChunks %u ",
-					i,
-					pui32MappingTable[i],
-					ui32NumVirtChunks));
-			eError = PVRSRV_ERROR_INVALID_PARAMS;
-			goto failMemDescAlloc;
-		}
-	}
 
 	DevmemExportalignAdjustSizeAndAlign(uiLog2HeapPageSize,
-	                                    &uiSize,
-	                                    &uiAlign);
+			&uiSize,
+			&uiAlign);
 
 	eError = _DevmemValidateParams(uiSize,
-	                               uiAlign,
-	                               &uiFlags);
+			uiAlign,
+			&uiFlags);
 	if (eError != PVRSRV_OK)
 	{
 		goto failParams;
@@ -1684,45 +1772,44 @@ DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
 	}
 
 	eError = _AllocateDeviceMemory(hDevConnection,
-	                               uiLog2HeapPageSize,
-	                               uiSize,
-	                               uiChunkSize,
-	                               ui32NumPhysChunks,
-	                               ui32NumVirtChunks,
-	                               pui32MappingTable,
-	                               uiAlign,
-	                               uiFlags,
-	                               IMG_TRUE,
-	                               pszText,
-	                               &psImport);
+			uiLog2HeapPageSize,
+			uiSize,
+			uiChunkSize,
+			ui32NumPhysChunks,
+			ui32NumVirtChunks,
+			pui32MappingTable,
+			uiAlign,
+			uiFlags,
+			IMG_TRUE,
+			pszText,
+			&psImport);
 	if (eError != PVRSRV_OK)
 	{
 		goto failDeviceMemAlloc;
 	}
 
 	_DevmemMemDescInit(psMemDesc,
-	                   0,
-	                   psImport,
-	                   uiSize);
+			0,
+			psImport,
+			uiSize);
 
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
-	{
-		/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
-		 * the allocation gets mapped/unmapped
-		 */
-		OSStringNCopy(psMemDesc->sTraceData.szText, pszText, sizeof(psMemDesc->sTraceData.szText) - 1);
-	}
-#endif
+	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
+	 * the allocation gets mapped/unmapped
+	 */
+	_CheckAnnotationLength(pszText);
+#if defined(__KERNEL__)
+	OSStringLCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+#else
+	OSStringNCopy(psMemDesc->szText, pszText, DEVMEM_ANNOTATION_MAX_LEN);
+	psMemDesc->szText[DEVMEM_ANNOTATION_MAX_LEN - 1] = '\0';
+#endif	/* if defined(__KERNEL__) */
+
 
 #if defined(PVR_RI_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psImport->hDevConnection, PVRSRV_BRIDGE_RI))
 	{
 		eError = BridgeRIWritePMREntry (psImport->hDevConnection,
-		                                psImport->hPMR,
-		                                OSStringNLength(pszText, RI_MAX_TEXT_LEN),
-		                                (IMG_CHAR *)pszText,
-		                                psImport->uiSize);
+				psImport->hPMR);
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWritePMREntry failed (eError=%d)", __func__, eError));
@@ -1730,15 +1817,14 @@ DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
 
 		/* Attach RI information */
 		eError = BridgeRIWriteMEMDESCEntry (psMemDesc->psImport->hDevConnection,
-		                                    psMemDesc->psImport->hPMR,
-		                                    sizeof("^"),
-		                                    "^",
-		                                    psMemDesc->uiOffset,
-		                                    uiSize,
-		                                    ui32NumPhysChunks * uiChunkSize,
-		                                    IMG_FALSE,
-		                                    IMG_TRUE,
-		                                    &psMemDesc->hRIHandle);
+				psMemDesc->psImport->hPMR,
+				sizeof("^"),
+				"^",
+				psMemDesc->uiOffset,
+				uiSize,
+				IMG_FALSE,
+				IMG_FALSE,
+				&psMemDesc->hRIHandle);
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWriteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -1756,33 +1842,33 @@ DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
 	  error exit paths follow
 	 */
 
-failDeviceMemAlloc:
+	failDeviceMemAlloc:
 	_DevmemMemDescDiscard(psMemDesc);
 
-failMemDescAlloc:
-failParams:
+	failMemDescAlloc:
+	failParams:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	PVR_DPF((PVR_DBG_ERROR,
-		"%s: Failed! Error is %s. Allocation size: %#llX",
-		__func__,
-		PVRSRVGETERRORSTRING(eError),
-		(unsigned long long) uiSize));
+			"%s: Failed! Error is %s. Allocation size: %#llX",
+			__func__,
+			PVRSRVGETERRORSTRING(eError),
+			(unsigned long long) uiSize));
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemMakeLocalImportHandle(SHARED_DEV_CONNECTION hBridge,
-                            IMG_HANDLE hServerHandle,
-                            IMG_HANDLE *hLocalImportHandle)
+		IMG_HANDLE hServerHandle,
+		IMG_HANDLE *hLocalImportHandle)
 {
 	return BridgePMRMakeLocalImportHandle(hBridge,
-	                                      hServerHandle,
-	                                      hLocalImportHandle);
+			hServerHandle,
+			hLocalImportHandle);
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemUnmakeLocalImportHandle(SHARED_DEV_CONNECTION hBridge,
-                              IMG_HANDLE hLocalImportHandle)
+		IMG_HANDLE hLocalImportHandle)
 {
 	return BridgePMRUnmakeLocalImportHandle(hBridge, hLocalImportHandle);
 }
@@ -1795,156 +1881,156 @@ DevmemUnmakeLocalImportHandle(SHARED_DEV_CONNECTION hBridge,
 
 static PVRSRV_ERROR
 _Mapping_Export(DEVMEM_IMPORT *psImport,
-                DEVMEM_EXPORTHANDLE *phPMRExportHandlePtr,
-                DEVMEM_EXPORTKEY *puiExportKeyPtr,
-                DEVMEM_SIZE_T *puiSize,
-                DEVMEM_LOG2ALIGN_T *puiLog2Contig)
+		DEVMEM_EXPORTHANDLE *phPMRExportHandlePtr,
+		DEVMEM_EXPORTKEY *puiExportKeyPtr,
+		DEVMEM_SIZE_T *puiSize,
+		DEVMEM_LOG2ALIGN_T *puiLog2Contig)
 {
-    /* Gets an export handle and key for the PMR used for this mapping */
-    /* Can only be done if there are no suballocations for this mapping */
+	/* Gets an export handle and key for the PMR used for this mapping */
+	/* Can only be done if there are no suballocations for this mapping */
 
-    PVRSRV_ERROR eError;
-    DEVMEM_EXPORTHANDLE hPMRExportHandle;
-    DEVMEM_EXPORTKEY uiExportKey;
-    IMG_DEVMEM_SIZE_T uiSize;
-    IMG_DEVMEM_LOG2ALIGN_T uiLog2Contig;
+	PVRSRV_ERROR eError;
+	DEVMEM_EXPORTHANDLE hPMRExportHandle;
+	DEVMEM_EXPORTKEY uiExportKey;
+	IMG_DEVMEM_SIZE_T uiSize;
+	IMG_DEVMEM_LOG2ALIGN_T uiLog2Contig;
 
-    if (psImport == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto failParams;
-    }
+	if (psImport == NULL)
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto failParams;
+	}
 
 	if ((psImport->uiProperties & DEVMEM_PROPERTIES_EXPORTABLE) == 0)
-    {
+	{
 		eError = PVRSRV_ERROR_DEVICEMEM_CANT_EXPORT_SUBALLOCATION;
-        goto failParams;
-    }
+		goto failParams;
+	}
 
-    eError = BridgePMRExportPMR(psImport->hDevConnection,
-                                psImport->hPMR,
-                                &hPMRExportHandle,
-                                &uiSize,
-                                &uiLog2Contig,
-                                &uiExportKey);
-    if (eError != PVRSRV_OK)
-    {
-        goto failExport;
-    }
+	eError = BridgePMRExportPMR(psImport->hDevConnection,
+			psImport->hPMR,
+			&hPMRExportHandle,
+			&uiSize,
+			&uiLog2Contig,
+			&uiExportKey);
+	if (eError != PVRSRV_OK)
+	{
+		goto failExport;
+	}
 
-    PVR_ASSERT(uiSize == psImport->uiSize);
+	PVR_ASSERT(uiSize == psImport->uiSize);
 
-    *phPMRExportHandlePtr = hPMRExportHandle;
-    *puiExportKeyPtr = uiExportKey;
-    *puiSize = uiSize;
-    *puiLog2Contig = uiLog2Contig;
+	*phPMRExportHandlePtr = hPMRExportHandle;
+	*puiExportKeyPtr = uiExportKey;
+	*puiSize = uiSize;
+	*puiLog2Contig = uiLog2Contig;
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-    /*
+	/*
       error exit paths follow
-    */
+	 */
 
-failExport:
-failParams:
+	failExport:
+	failParams:
 
-    PVR_ASSERT(eError != PVRSRV_OK);
-    return eError;
+	PVR_ASSERT(eError != PVRSRV_OK);
+	return eError;
 
 }
 
 static void
 _Mapping_Unexport(DEVMEM_IMPORT *psImport,
-                  DEVMEM_EXPORTHANDLE hPMRExportHandle)
+		DEVMEM_EXPORTHANDLE hPMRExportHandle)
 {
-    PVRSRV_ERROR eError;
+	PVRSRV_ERROR eError;
 
-    PVR_ASSERT (psImport != NULL);
+	PVR_ASSERT (psImport != NULL);
 
-    eError = BridgePMRUnexportPMR(psImport->hDevConnection,
-                                  hPMRExportHandle);
-    PVR_ASSERT(eError == PVRSRV_OK);
+	eError = BridgePMRUnexportPMR(psImport->hDevConnection,
+			hPMRExportHandle);
+	PVR_ASSERT(eError == PVRSRV_OK);
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemExport(DEVMEM_MEMDESC *psMemDesc,
-             DEVMEM_EXPORTCOOKIE *psExportCookie)
+		DEVMEM_EXPORTCOOKIE *psExportCookie)
 {
-    /* Caller to provide storage for export cookie struct */
-    PVRSRV_ERROR eError;
-    IMG_HANDLE hPMRExportHandle = 0;
-    IMG_UINT64 uiPMRExportPassword = 0;
-    IMG_DEVMEM_SIZE_T uiSize = 0;
-    IMG_DEVMEM_LOG2ALIGN_T uiLog2Contig = 0;
+	/* Caller to provide storage for export cookie struct */
+	PVRSRV_ERROR eError;
+	IMG_HANDLE hPMRExportHandle = 0;
+	IMG_UINT64 uiPMRExportPassword = 0;
+	IMG_DEVMEM_SIZE_T uiSize = 0;
+	IMG_DEVMEM_LOG2ALIGN_T uiLog2Contig = 0;
 
-    if (psMemDesc == NULL || psExportCookie == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto e0;
-    }
+	if (psMemDesc == NULL || psExportCookie == NULL)
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto e0;
+	}
 
-    eError = _Mapping_Export(psMemDesc->psImport,
-                             &hPMRExportHandle,
-                             &uiPMRExportPassword,
-                             &uiSize,
-                             &uiLog2Contig);
-    if (eError != PVRSRV_OK)
-    {
+	eError = _Mapping_Export(psMemDesc->psImport,
+			&hPMRExportHandle,
+			&uiPMRExportPassword,
+			&uiSize,
+			&uiLog2Contig);
+	if (eError != PVRSRV_OK)
+	{
 		psExportCookie->uiSize = 0;
-        goto e0;
-    }
+		goto e0;
+	}
 
-    psExportCookie->hPMRExportHandle = hPMRExportHandle;
-    psExportCookie->uiPMRExportPassword = uiPMRExportPassword;
-    psExportCookie->uiSize = uiSize;
-    psExportCookie->uiLog2ContiguityGuarantee = uiLog2Contig;
+	psExportCookie->hPMRExportHandle = hPMRExportHandle;
+	psExportCookie->uiPMRExportPassword = uiPMRExportPassword;
+	psExportCookie->uiSize = uiSize;
+	psExportCookie->uiLog2ContiguityGuarantee = uiLog2Contig;
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-    /*
+	/*
       error exit paths follow
-    */
+	 */
 
- e0:
-    PVR_ASSERT(eError != PVRSRV_OK);
-    return eError;
+	e0:
+	PVR_ASSERT(eError != PVRSRV_OK);
+	return eError;
 }
 
 IMG_INTERNAL void
 DevmemUnexport(DEVMEM_MEMDESC *psMemDesc,
-               DEVMEM_EXPORTCOOKIE *psExportCookie)
+		DEVMEM_EXPORTCOOKIE *psExportCookie)
 {
-    _Mapping_Unexport(psMemDesc->psImport,
-                      psExportCookie->hPMRExportHandle);
+	_Mapping_Unexport(psMemDesc->psImport,
+			psExportCookie->hPMRExportHandle);
 
-    psExportCookie->uiSize = 0;
+	psExportCookie->uiSize = 0;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemImport(SHARED_DEV_CONNECTION hDevConnection,
-			 DEVMEM_EXPORTCOOKIE *psCookie,
-			 DEVMEM_FLAGS_T uiFlags,
-			 DEVMEM_MEMDESC **ppsMemDescPtr)
+		DEVMEM_EXPORTCOOKIE *psCookie,
+		DEVMEM_FLAGS_T uiFlags,
+		DEVMEM_MEMDESC **ppsMemDescPtr)
 {
-    DEVMEM_MEMDESC *psMemDesc = NULL;
-    DEVMEM_IMPORT *psImport;
-    IMG_HANDLE hPMR;
-    PVRSRV_ERROR eError;
+	DEVMEM_MEMDESC *psMemDesc = NULL;
+	DEVMEM_IMPORT *psImport;
+	IMG_HANDLE hPMR;
+	PVRSRV_ERROR eError;
 
 	if (ppsMemDescPtr == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto failParams;
-    }
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto failParams;
+	}
 
 	eError =_DevmemMemDescAlloc(&psMemDesc);
-    if (eError != PVRSRV_OK)
-    {
-        goto failMemDescAlloc;
-    }
+	if (eError != PVRSRV_OK)
+	{
+		goto failMemDescAlloc;
+	}
 
 	eError = _DevmemImportStructAlloc(hDevConnection,
-									  &psImport);
+			&psImport);
 	if (eError != PVRSRV_OK)
 	{
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
@@ -1952,46 +2038,45 @@ DevmemImport(SHARED_DEV_CONNECTION hDevConnection,
 	}
 
 	/* Get a handle to the PMR (inc refcount) */
-    eError = BridgePMRImportPMR(hDevConnection,
-                                psCookie->hPMRExportHandle,
-                                psCookie->uiPMRExportPassword,
-                                psCookie->uiSize, /* not trusted - just for sanity checks */
-                                psCookie->uiLog2ContiguityGuarantee, /* not trusted - just for sanity checks */
-                                &hPMR);
+	eError = BridgePMRImportPMR(hDevConnection,
+			psCookie->hPMRExportHandle,
+			psCookie->uiPMRExportPassword,
+			psCookie->uiSize, /* not trusted - just for sanity checks */
+			psCookie->uiLog2ContiguityGuarantee, /* not trusted - just for sanity checks */
+			&hPMR);
 	if (eError != PVRSRV_OK)
 	{
 		goto failImport;
 	}
 
 	_DevmemImportStructInit(psImport,
-							psCookie->uiSize,
-							1ULL << psCookie->uiLog2ContiguityGuarantee,
-							uiFlags,
-							hPMR,
-							DEVMEM_PROPERTIES_IMPORTED |
-							DEVMEM_PROPERTIES_EXPORTABLE);
+			psCookie->uiSize,
+			1ULL << psCookie->uiLog2ContiguityGuarantee,
+			uiFlags,
+			hPMR,
+			DEVMEM_PROPERTIES_IMPORTED |
+			DEVMEM_PROPERTIES_EXPORTABLE);
 
 	_DevmemMemDescInit(psMemDesc,
-					   0,
-					   psImport,
-					   psImport->uiSize);
+			0,
+			psImport,
+			psImport->uiSize);
 
-    *ppsMemDescPtr = psMemDesc;
+	*ppsMemDescPtr = psMemDesc;
 
 #if defined(PVR_RI_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_RI))
 	{
 		/* Attach RI information */
 		eError = BridgeRIWriteMEMDESCEntry (psMemDesc->psImport->hDevConnection,
-											psMemDesc->psImport->hPMR,
-											sizeof("^"),
-											"^",
-											psMemDesc->uiOffset,
-											psMemDesc->psImport->uiSize,
-											psMemDesc->psImport->uiSize,
-											IMG_TRUE,
-											IMG_FALSE,
-											&psMemDesc->hRIHandle);
+				psMemDesc->psImport->hPMR,
+				sizeof("^"),
+				"^",
+				psMemDesc->uiOffset,
+				psMemDesc->psImport->uiSize,
+				IMG_TRUE,
+				IMG_TRUE,
+				&psMemDesc->hRIHandle);
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWriteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -2001,19 +2086,19 @@ DevmemImport(SHARED_DEV_CONNECTION hDevConnection,
 
 	return PVRSRV_OK;
 
-    /*
+	/*
       error exit paths follow
-    */
+	 */
 
-failImport:
-    _DevmemImportDiscard(psImport);
-failImportAlloc:
-    _DevmemMemDescDiscard(psMemDesc);
-failMemDescAlloc:
-failParams:
-    PVR_ASSERT(eError != PVRSRV_OK);
+	failImport:
+	_DevmemImportDiscard(psImport);
+	failImportAlloc:
+	_DevmemMemDescDiscard(psMemDesc);
+	failMemDescAlloc:
+	failParams:
+	PVR_ASSERT(eError != PVRSRV_OK);
 
-    return eError;
+	return eError;
 }
 
 #endif /* SUPPORT_INSECURE_EXPORT */
@@ -2032,10 +2117,10 @@ DevmemUnpin(DEVMEM_MEMDESC *psMemDesc)
 	{
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: The passed allocation is not valid to unpin because "
-		         "there might be suballocations on it. Make sure you allocate a page multiple "
-		         "of the heap when using PVRSRVAllocDeviceMem()",
-		         __FUNCTION__));
+				"%s: The passed allocation is not valid to unpin because "
+				"there might be suballocations on it. Make sure you allocate a page multiple "
+				"of the heap when using PVRSRVAllocDeviceMem()",
+				__FUNCTION__));
 
 		goto e_exit;
 	}
@@ -2045,10 +2130,10 @@ DevmemUnpin(DEVMEM_MEMDESC *psMemDesc)
 	{
 		eError = PVRSRV_ERROR_STILL_MAPPED;
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: There are still %u references on the CPU mapping. "
-		         "Please remove all CPU mappings before unpinning.",
-		         __FUNCTION__,
-		         psImport->sCPUImport.ui32RefCount));
+				"%s: There are still %u references on the CPU mapping. "
+				"Please remove all CPU mappings before unpinning.",
+				__FUNCTION__,
+				psImport->sCPUImport.ui32RefCount));
 
 		goto e_exit;
 	}
@@ -2064,50 +2149,30 @@ DevmemUnpin(DEVMEM_MEMDESC *psMemDesc)
 	if (psImport->sDeviceImport.bMapped == IMG_TRUE)
 	{
 		eError = BridgeDevmemIntUnpinInvalidate(psImport->hDevConnection,
-		                                        psImport->sDeviceImport.hMapping,
-		                                        psImport->hPMR);
+				psImport->sDeviceImport.hMapping,
+				psImport->hPMR);
 	}
 	else
 	{
 		/* Or just unpin it */
 		eError = BridgeDevmemIntUnpin(psImport->hDevConnection,
-		                              psImport->hPMR);
+				psImport->hPMR);
 	}
 
 	/* Update flags and RI when call was successful */
 	if (eError == PVRSRV_OK)
 	{
 		psImport->uiProperties |= DEVMEM_PROPERTIES_UNPINNED;
-#if defined(PVR_RI_DEBUG)
-		if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_RI))
-		{
-			if (psMemDesc->hRIHandle)
-			{
-				PVRSRV_ERROR eError2;
-
-				eError2 = BridgeRIUpdateMEMDESCPinning(psMemDesc->psImport->hDevConnection,
-				                                       psMemDesc->hRIHandle,
-				                                       IMG_FALSE);
-
-				if( eError2 != PVRSRV_OK)
-				{
-					PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIUpdateMEMDESCPinningKM failed (eError=%d)",
-					         __func__,
-					         eError));
-				}
-			}
-		}
-#endif
 	}
 	else
 	{
 		/* Or just show what went wrong */
 		PVR_DPF((PVR_DBG_ERROR, "%s: Unpin aborted because of error %d",
-		         __func__,
-		         eError));
+				__func__,
+				eError));
 	}
 
-e_exit:
+	e_exit:
 	return eError;
 }
 
@@ -2128,49 +2193,29 @@ DevmemPin(DEVMEM_MEMDESC *psMemDesc)
 	if (psImport->sDeviceImport.bMapped)
 	{
 		eError = BridgeDevmemIntPinValidate(psImport->hDevConnection,
-		                                    psImport->sDeviceImport.hMapping,
-		                                    psImport->hPMR);
+				psImport->sDeviceImport.hMapping,
+				psImport->hPMR);
 	}
 	else
 	{
 		/* Or just pin it */
 		eError = BridgeDevmemIntPin(psImport->hDevConnection,
-		                            psImport->hPMR);
+				psImport->hPMR);
 	}
 
 	if ( (eError == PVRSRV_OK) || (eError == PVRSRV_ERROR_PMR_NEW_MEMORY) )
 	{
 		psImport->uiProperties &= ~DEVMEM_PROPERTIES_UNPINNED;
-#if defined(PVR_RI_DEBUG)
-		if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_RI))
-		{
-			if (psMemDesc->hRIHandle)
-			{
-				PVRSRV_ERROR eError2;
-
-				eError2 = BridgeRIUpdateMEMDESCPinning(psMemDesc->psImport->hDevConnection,
-								       psMemDesc->hRIHandle,
-								       IMG_TRUE);
-
-				if( eError2 != PVRSRV_OK)
-				{
-					PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIUpdateMEMDESCPinningKM failed (eError=%d)",
-						 __func__,
-						 eError));
-				}
-			}
-		}
-#endif
 	}
 	else
 	{
 		/* Or just show what went wrong */
 		PVR_DPF((PVR_DBG_ERROR, "%s: Pin aborted because of error %d",
-		         __func__,
-		         eError));
+				__func__,
+				eError));
 	}
 
-e_exit:
+	e_exit:
 	return eError;
 }
 
@@ -2185,9 +2230,19 @@ DevmemGetSize(DEVMEM_MEMDESC *psMemDesc, IMG_DEVMEM_SIZE_T* puiSize)
 	return eError;
 }
 
+IMG_INTERNAL PVRSRV_ERROR
+DevmemGetAnnotation(DEVMEM_MEMDESC *psMemDesc, IMG_CHAR **pszAnnotation)
+{
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	*pszAnnotation = psMemDesc->szText;
+
+	return eError;
+}
+
 /*
 	This function is called for freeing any class of memory
-*/
+ */
 IMG_INTERNAL void
 DevmemFree(DEVMEM_MEMDESC *psMemDesc)
 {
@@ -2204,10 +2259,10 @@ DevmemFree(DEVMEM_MEMDESC *psMemDesc)
 	{
 		if (psMemDesc->hRIHandle)
 		{
-		    PVRSRV_ERROR eError;
+			PVRSRV_ERROR eError;
 
-		    eError = BridgeRIDeleteMEMDESCEntry(psMemDesc->psImport->hDevConnection,
-									   psMemDesc->hRIHandle);
+			eError = BridgeRIDeleteMEMDESCEntry(psMemDesc->psImport->hDevConnection,
+					psMemDesc->hRIHandle);
 			if( eError != PVRSRV_OK)
 			{
 				PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIDeleteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -2220,13 +2275,14 @@ DevmemFree(DEVMEM_MEMDESC *psMemDesc)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
-				  DEVMEM_HEAP *psHeap,
-				  IMG_DEV_VIRTADDR *psDevVirtAddr)
+		DEVMEM_HEAP *psHeap,
+		IMG_DEV_VIRTADDR *psDevVirtAddr)
 {
 	DEVMEM_IMPORT *psImport;
 	IMG_DEV_VIRTADDR sDevVAddr;
 	PVRSRV_ERROR eError;
 	IMG_BOOL bMap = IMG_TRUE;
+	IMG_BOOL bDestroyed = IMG_FALSE;
 
 	/* Do not try to map unpinned memory */
 	if (psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_UNPINNED)
@@ -2256,18 +2312,18 @@ DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
 	}
 
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sDeviceMemDesc.ui32RefCount,
-					psMemDesc->sDeviceMemDesc.ui32RefCount+1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sDeviceMemDesc.ui32RefCount,
+			psMemDesc->sDeviceMemDesc.ui32RefCount+1);
 
 	psImport = psMemDesc->psImport;
 	_DevmemMemDescAcquire(psMemDesc);
 
 	eError = _DevmemImportStructDevMap(psHeap,
-									   bMap,
-									   psImport,
-									   DEVICEMEM_UTILS_NO_ADDRESS);
+			bMap,
+			psImport,
+			DEVICEMEM_UTILS_NO_ADDRESS);
 	if (eError != PVRSRV_OK)
 	{
 		goto failMap;
@@ -2278,41 +2334,22 @@ DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
 	psMemDesc->sDeviceMemDesc.sDevVAddr = sDevVAddr;
 	psMemDesc->sDeviceMemDesc.ui32RefCount++;
 
-    *psDevVirtAddr = psMemDesc->sDeviceMemDesc.sDevVAddr;
+	*psDevVirtAddr = psMemDesc->sDeviceMemDesc.sDevVAddr;
 
-    OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
 	{
-		static IMG_BOOL bHaveNewAPI = IMG_TRUE;
-		PVRSRV_ERROR eError;
-
-		if(bHaveNewAPI)
-		{
-			eError = BridgeDevicememHistoryMapNew(psMemDesc->psImport->hDevConnection,
-								psMemDesc->psImport->hPMR,
-								psMemDesc->uiOffset,
-								psMemDesc->sDeviceMemDesc.sDevVAddr,
-								psMemDesc->uiAllocSize,
-								psMemDesc->sTraceData.szText,
-								DevmemGetHeapLog2PageSize(psHeap),
-								psMemDesc->sTraceData.ui32AllocationIndex,
-								&psMemDesc->sTraceData.ui32AllocationIndex);
-
-			if(eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
-			{
-				bHaveNewAPI = IMG_FALSE;
-			}
-		}
-
-		if(!bHaveNewAPI)
-		{
-			BridgeDevicememHistoryMap(psMemDesc->psImport->hDevConnection,
-								psMemDesc->sDeviceMemDesc.sDevVAddr,
-								psMemDesc->uiAllocSize,
-								psMemDesc->sTraceData.szText);
-		}
+		BridgeDevicememHistoryMap(psMemDesc->psImport->hDevConnection,
+				psMemDesc->psImport->hPMR,
+				psMemDesc->uiOffset,
+				psMemDesc->sDeviceMemDesc.sDevVAddr,
+				psMemDesc->uiAllocSize,
+				psMemDesc->szText,
+				DevmemGetHeapLog2PageSize(psHeap),
+				psMemDesc->ui32AllocationIndex,
+				&psMemDesc->ui32AllocationIndex);
 	}
 #endif
 
@@ -2321,9 +2358,9 @@ DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
 	{
 		if (psMemDesc->hRIHandle)
 		{
-			 eError = BridgeRIUpdateMEMDESCAddr(psImport->hDevConnection,
-											   psMemDesc->hRIHandle,
-											   psImport->sDeviceImport.sDevVAddr);
+			eError = BridgeRIUpdateMEMDESCAddr(psImport->hDevConnection,
+					psMemDesc->hRIHandle,
+					psImport->sDeviceImport.sDevVAddr);
 			if( eError != PVRSRV_OK)
 			{
 				PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIUpdateMEMDESCAddr failed (eError=%d)", __func__, eError));
@@ -2332,28 +2369,31 @@ DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
 	}
 #endif
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-failMap:
-	_DevmemMemDescRelease(psMemDesc);
-failCheck:
-failParams:
-	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	failMap:
+	bDestroyed = _DevmemMemDescRelease(psMemDesc);
+	failCheck:
+	failParams:
+	if (!bDestroyed)
+	{
+		OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	}
 	PVR_ASSERT(eError != PVRSRV_OK);
-
-failFlags:
+	failFlags:
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
-                         DEVMEM_HEAP *psHeap,
-                         IMG_DEV_VIRTADDR sDevVirtAddr)
+		DEVMEM_HEAP *psHeap,
+		IMG_DEV_VIRTADDR sDevVirtAddr)
 {
 	DEVMEM_IMPORT *psImport;
 	IMG_DEV_VIRTADDR sDevVAddr;
 	PVRSRV_ERROR eError;
 	IMG_BOOL bMap = IMG_TRUE;
+	IMG_BOOL bDestroyed = IMG_FALSE;
 
 	/* Do not try to map unpinned memory */
 	if (psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_UNPINNED)
@@ -2383,18 +2423,18 @@ DevmemMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
 	}
 
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sDeviceMemDesc.ui32RefCount,
-					psMemDesc->sDeviceMemDesc.ui32RefCount+1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sDeviceMemDesc.ui32RefCount,
+			psMemDesc->sDeviceMemDesc.ui32RefCount+1);
 
 	psImport = psMemDesc->psImport;
 	_DevmemMemDescAcquire(psMemDesc);
 
 	eError = _DevmemImportStructDevMap(psHeap,
-									   bMap,
-									   psImport,
-									   sDevVirtAddr.uiAddr);
+			bMap,
+			psImport,
+			sDevVirtAddr.uiAddr);
 	if (eError != PVRSRV_OK)
 	{
 		goto failMap;
@@ -2405,39 +2445,20 @@ DevmemMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
 	psMemDesc->sDeviceMemDesc.sDevVAddr = sDevVAddr;
 	psMemDesc->sDeviceMemDesc.ui32RefCount++;
 
-    OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
 	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
 	{
-		static IMG_BOOL bHaveNewAPI = IMG_TRUE;
-		PVRSRV_ERROR eError;
-
-		if(bHaveNewAPI)
-		{
-			eError = BridgeDevicememHistoryMapNew(psMemDesc->psImport->hDevConnection,
-								psMemDesc->psImport->hPMR,
-								psMemDesc->uiOffset,
-								psMemDesc->sDeviceMemDesc.sDevVAddr,
-								psMemDesc->uiAllocSize,
-								psMemDesc->sTraceData.szText,
-								DevmemGetHeapLog2PageSize(psHeap),
-								psMemDesc->sTraceData.ui32AllocationIndex,
-								&psMemDesc->sTraceData.ui32AllocationIndex);
-
-			if(eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
-			{
-				bHaveNewAPI = IMG_FALSE;
-			}
-		}
-
-		if(!bHaveNewAPI)
-		{
-			BridgeDevicememHistoryMap(psMemDesc->psImport->hDevConnection,
-								psMemDesc->sDeviceMemDesc.sDevVAddr,
-								psMemDesc->uiAllocSize,
-								psMemDesc->sTraceData.szText);
-		}
+		BridgeDevicememHistoryMap(psMemDesc->psImport->hDevConnection,
+				psMemDesc->psImport->hPMR,
+				psMemDesc->uiOffset,
+				psMemDesc->sDeviceMemDesc.sDevVAddr,
+				psMemDesc->uiAllocSize,
+				psMemDesc->szText,
+				DevmemGetHeapLog2PageSize(psHeap),
+				psMemDesc->ui32AllocationIndex,
+				&psMemDesc->ui32AllocationIndex);
 	}
 #endif
 
@@ -2446,9 +2467,9 @@ DevmemMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
 	{
 		if (psMemDesc->hRIHandle)
 		{
-			 eError = BridgeRIUpdateMEMDESCAddr(psImport->hDevConnection,
-											   psMemDesc->hRIHandle,
-											   psImport->sDeviceImport.sDevVAddr);
+			eError = BridgeRIUpdateMEMDESCAddr(psImport->hDevConnection,
+					psMemDesc->hRIHandle,
+					psImport->sDeviceImport.sDevVAddr);
 			if( eError != PVRSRV_OK)
 			{
 				PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIUpdateMEMDESCAddr failed (eError=%d)", __func__, eError));
@@ -2457,22 +2478,24 @@ DevmemMapToDeviceAddress(DEVMEM_MEMDESC *psMemDesc,
 	}
 #endif
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-failMap:
-	_DevmemMemDescRelease(psMemDesc);
-failCheck:
-failParams:
-	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	failMap:
+	bDestroyed = _DevmemMemDescRelease(psMemDesc);
+	failCheck:
+	failParams:
+	if (!bDestroyed)
+	{
+		OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
+	}
 	PVR_ASSERT(eError != PVRSRV_OK);
-
-failFlags:
+	failFlags:
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemAcquireDevVirtAddr(DEVMEM_MEMDESC *psMemDesc,
-                         IMG_DEV_VIRTADDR *psDevVirtAddr)
+		IMG_DEV_VIRTADDR *psDevVirtAddr)
 {
 	PVRSRV_ERROR eError;
 
@@ -2485,10 +2508,10 @@ DevmemAcquireDevVirtAddr(DEVMEM_MEMDESC *psMemDesc,
 
 	OSLockAcquire(psMemDesc->sDeviceMemDesc.hLock);
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sDeviceMemDesc.ui32RefCount,
-					psMemDesc->sDeviceMemDesc.ui32RefCount+1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sDeviceMemDesc.ui32RefCount,
+			psMemDesc->sDeviceMemDesc.ui32RefCount+1);
 
 	if (psMemDesc->sDeviceMemDesc.ui32RefCount == 0)
 	{
@@ -2497,15 +2520,15 @@ DevmemAcquireDevVirtAddr(DEVMEM_MEMDESC *psMemDesc,
 	}
 	psMemDesc->sDeviceMemDesc.ui32RefCount++;
 
-    *psDevVirtAddr = psMemDesc->sDeviceMemDesc.sDevVAddr;
+	*psDevVirtAddr = psMemDesc->sDeviceMemDesc.sDevVAddr;
 	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-failRelease:
+	failRelease:
 	OSLockRelease(psMemDesc->sDeviceMemDesc.hLock);
 	PVR_ASSERT(eError != PVRSRV_OK);
-failCheck:
+	failCheck:
 	return eError;
 }
 
@@ -2516,10 +2539,10 @@ DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC *psMemDesc)
 
 	OSLockAcquire(psMemDesc->sDeviceMemDesc.hLock);
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sDeviceMemDesc.ui32RefCount,
-					psMemDesc->sDeviceMemDesc.ui32RefCount-1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sDeviceMemDesc.ui32RefCount,
+			psMemDesc->sDeviceMemDesc.ui32RefCount-1);
 
 	PVR_ASSERT(psMemDesc->sDeviceMemDesc.ui32RefCount != 0);
 
@@ -2528,34 +2551,15 @@ DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC *psMemDesc)
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
 		if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
 		{
-			static IMG_BOOL bHaveNewAPI = IMG_TRUE;
-			PVRSRV_ERROR eError;
-
-			if(bHaveNewAPI)
-			{
-				eError = BridgeDevicememHistoryUnmapNew(psMemDesc->psImport->hDevConnection,
-									psMemDesc->psImport->hPMR,
-									psMemDesc->uiOffset,
-									psMemDesc->sDeviceMemDesc.sDevVAddr,
-									psMemDesc->uiAllocSize,
-									psMemDesc->sTraceData.szText,
-									DevmemGetHeapLog2PageSize(psMemDesc->psImport->sDeviceImport.psHeap),
-									psMemDesc->sTraceData.ui32AllocationIndex,
-									&psMemDesc->sTraceData.ui32AllocationIndex);
-
-				if(eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
-				{
-					bHaveNewAPI = IMG_FALSE;
-				}
-			}
-
-			if(!bHaveNewAPI)
-			{
-				BridgeDevicememHistoryUnmap(psMemDesc->psImport->hDevConnection,
-									psMemDesc->sDeviceMemDesc.sDevVAddr,
-									psMemDesc->uiAllocSize,
-									psMemDesc->sTraceData.szText);
-			}
+			BridgeDevicememHistoryUnmap(psMemDesc->psImport->hDevConnection,
+					psMemDesc->psImport->hPMR,
+					psMemDesc->uiOffset,
+					psMemDesc->sDeviceMemDesc.sDevVAddr,
+					psMemDesc->uiAllocSize,
+					psMemDesc->szText,
+					DevmemGetHeapLog2PageSize(psMemDesc->psImport->sDeviceImport.psHeap),
+					psMemDesc->ui32AllocationIndex,
+					&psMemDesc->ui32AllocationIndex);
 		}
 #endif
 		_DevmemImportStructDevUnmap(psMemDesc->psImport);
@@ -2571,12 +2575,15 @@ DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC *psMemDesc)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
-                         void **ppvCpuVirtAddr)
+		void **ppvCpuVirtAddr)
 {
 	PVRSRV_ERROR eError;
 
+	PVR_ASSERT(psMemDesc != NULL);
+	PVR_ASSERT(ppvCpuVirtAddr != NULL);
+
 	if ( psMemDesc->psImport->uiProperties &
-	    (DEVMEM_PROPERTIES_UNPINNED | DEVMEM_PROPERTIES_SECURE) )
+			(DEVMEM_PROPERTIES_UNPINNED | DEVMEM_PROPERTIES_SECURE) )
 	{
 		PVR_DPF((PVR_DBG_ERROR,
 				"%s: Allocation is currently unpinned or a secure buffer. "
@@ -2588,10 +2595,10 @@ DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
 
 	OSLockAcquire(psMemDesc->sCPUMemDesc.hLock);
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sCPUMemDesc.ui32RefCount,
-					psMemDesc->sCPUMemDesc.ui32RefCount+1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sCPUMemDesc.ui32RefCount,
+			psMemDesc->sCPUMemDesc.ui32RefCount+1);
 
 	if (psMemDesc->sCPUMemDesc.ui32RefCount++ == 0)
 	{
@@ -2609,21 +2616,49 @@ DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
 		pui8CPUVAddr += psMemDesc->uiOffset;
 		psMemDesc->sCPUMemDesc.pvCPUVAddr = pui8CPUVAddr;
 	}
-    *ppvCpuVirtAddr = psMemDesc->sCPUMemDesc.pvCPUVAddr;
+	*ppvCpuVirtAddr = psMemDesc->sCPUMemDesc.pvCPUVAddr;
 
-    VG_MARK_INITIALIZED(*ppvCpuVirtAddr, psMemDesc->psImport->uiSize);
+	VG_MARK_INITIALIZED(*ppvCpuVirtAddr, psMemDesc->psImport->uiSize);
 
-    OSLockRelease(psMemDesc->sCPUMemDesc.hLock);
+	OSLockRelease(psMemDesc->sCPUMemDesc.hLock);
 
-    return PVRSRV_OK;
+	return PVRSRV_OK;
 
-failMap:
+	failMap:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	psMemDesc->sCPUMemDesc.ui32RefCount--;
-	_DevmemMemDescRelease(psMemDesc);
-	OSLockRelease(psMemDesc->sCPUMemDesc.hLock);
-failFlags:
+
+	if (!_DevmemMemDescRelease(psMemDesc))
+	{
+		OSLockRelease(psMemDesc->sCPUMemDesc.hLock);
+	}
+	failFlags:
 	return eError;
+}
+
+IMG_INTERNAL void
+DevmemReacquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
+		void **ppvCpuVirtAddr)
+{
+	PVR_ASSERT(psMemDesc != NULL);
+	PVR_ASSERT(ppvCpuVirtAddr != NULL);
+
+	OSLockAcquire(psMemDesc->sCPUMemDesc.hLock);
+	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sCPUMemDesc.ui32RefCount,
+			psMemDesc->sCPUMemDesc.ui32RefCount+1);
+
+	*ppvCpuVirtAddr = NULL;
+	if (psMemDesc->sCPUMemDesc.ui32RefCount)
+	{
+		*ppvCpuVirtAddr = psMemDesc->sCPUMemDesc.pvCPUVAddr;
+		psMemDesc->sCPUMemDesc.ui32RefCount += 1;
+	}
+
+	VG_MARK_INITIALIZED(*ppvCpuVirtAddr, psMemDesc->psImport->uiSize);
+	OSLockRelease(psMemDesc->sCPUMemDesc.hLock);
 }
 
 IMG_INTERNAL void
@@ -2633,10 +2668,10 @@ DevmemReleaseCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc)
 
 	OSLockAcquire(psMemDesc->sCPUMemDesc.hLock);
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
-					__FUNCTION__,
-					psMemDesc,
-					psMemDesc->sCPUMemDesc.ui32RefCount,
-					psMemDesc->sCPUMemDesc.ui32RefCount-1);
+			__FUNCTION__,
+			psMemDesc,
+			psMemDesc->sCPUMemDesc.ui32RefCount,
+			psMemDesc->sCPUMemDesc.ui32RefCount-1);
 
 	PVR_ASSERT(psMemDesc->sCPUMemDesc.ui32RefCount != 0);
 
@@ -2654,7 +2689,7 @@ DevmemReleaseCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemLocalGetImportHandle(DEVMEM_MEMDESC *psMemDesc,
-			   IMG_HANDLE *phImport)
+		IMG_HANDLE *phImport)
 {
 	if ((psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_EXPORTABLE) == 0)
 	{
@@ -2668,21 +2703,21 @@ DevmemLocalGetImportHandle(DEVMEM_MEMDESC *psMemDesc,
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemGetImportUID(DEVMEM_MEMDESC *psMemDesc,
-						   IMG_UINT64 *pui64UID)
+		IMG_UINT64 *pui64UID)
 {
 	DEVMEM_IMPORT *psImport = psMemDesc->psImport;
 	PVRSRV_ERROR eError;
 
 	eError = BridgePMRGetUID(psImport->hDevConnection,
-							 psImport->hPMR,
-							 pui64UID);
+			psImport->hPMR,
+			pui64UID);
 
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemGetReservation(DEVMEM_MEMDESC *psMemDesc,
-				IMG_HANDLE *hReservation)
+		IMG_HANDLE *hReservation)
 {
 	DEVMEM_IMPORT *psImport;
 
@@ -2714,7 +2749,7 @@ DevmemGetPMRData(DEVMEM_MEMDESC *psMemDesc,
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemGetFlags(DEVMEM_MEMDESC *psMemDesc,
-				DEVMEM_FLAGS_T *puiFlags)
+		DEVMEM_FLAGS_T *puiFlags)
 {
 	DEVMEM_IMPORT *psImport;
 
@@ -2735,64 +2770,64 @@ DevmemGetConnection(DEVMEM_MEMDESC *psMemDesc)
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemLocalImport(IMG_HANDLE hBridge,
-				  IMG_HANDLE hExtHandle,
-				  DEVMEM_FLAGS_T uiFlags,
-				  DEVMEM_MEMDESC **ppsMemDescPtr,
-				  IMG_DEVMEM_SIZE_T *puiSizePtr,
-				  const IMG_CHAR *pszAnnotation)
+		IMG_HANDLE hExtHandle,
+		DEVMEM_FLAGS_T uiFlags,
+		DEVMEM_MEMDESC **ppsMemDescPtr,
+		IMG_DEVMEM_SIZE_T *puiSizePtr,
+		const IMG_CHAR *pszAnnotation)
 {
-    DEVMEM_MEMDESC *psMemDesc = NULL;
-    DEVMEM_IMPORT *psImport;
-    IMG_DEVMEM_SIZE_T uiSize;
-    IMG_DEVMEM_ALIGN_T uiAlign;
-    IMG_HANDLE hPMR;
-    PVRSRV_ERROR eError;
+	DEVMEM_MEMDESC *psMemDesc = NULL;
+	DEVMEM_IMPORT *psImport;
+	IMG_DEVMEM_SIZE_T uiSize;
+	IMG_DEVMEM_ALIGN_T uiAlign;
+	IMG_HANDLE hPMR;
+	PVRSRV_ERROR eError;
 
-    if (ppsMemDescPtr == NULL)
-    {
-        eError = PVRSRV_ERROR_INVALID_PARAMS;
-        goto failParams;
-    }
+	if (ppsMemDescPtr == NULL)
+	{
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto failParams;
+	}
 
 	eError =_DevmemMemDescAlloc(&psMemDesc);
-    if (eError != PVRSRV_OK)
-    {
-        goto failMemDescAlloc;
-    }
+	if (eError != PVRSRV_OK)
+	{
+		goto failMemDescAlloc;
+	}
 
 	eError = _DevmemImportStructAlloc(hBridge,
-									  &psImport);
-    if (eError != PVRSRV_OK)
-    {
-        eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-        goto failImportAlloc;
-    }
+			&psImport);
+	if (eError != PVRSRV_OK)
+	{
+		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto failImportAlloc;
+	}
 
 	/* Get the PMR handle and its size from the server */
 	eError = BridgePMRLocalImportPMR(hBridge,
-									 hExtHandle,
-									 &hPMR,
-									 &uiSize,
-									 &uiAlign);
+			hExtHandle,
+			&hPMR,
+			&uiSize,
+			&uiAlign);
 	if (eError != PVRSRV_OK)
 	{
 		goto failImport;
 	}
 
 	_DevmemImportStructInit(psImport,
-							uiSize,
-							uiAlign,
-							uiFlags,
-							hPMR,
-							DEVMEM_PROPERTIES_IMPORTED |
-							DEVMEM_PROPERTIES_EXPORTABLE);
+			uiSize,
+			uiAlign,
+			uiFlags,
+			hPMR,
+			DEVMEM_PROPERTIES_IMPORTED |
+			DEVMEM_PROPERTIES_EXPORTABLE);
 
 	_DevmemMemDescInit(psMemDesc,
-					   0,
-					   psImport,
-					   uiSize);
+			0,
+			psImport,
+			uiSize);
 
-    *ppsMemDescPtr = psMemDesc;
+	*ppsMemDescPtr = psMemDesc;
 	if (puiSizePtr)
 		*puiSizePtr = uiSize;
 
@@ -2803,15 +2838,14 @@ DevmemLocalImport(IMG_HANDLE hBridge,
 		 * Set backed size to 0 since this allocation has been allocated
 		 * by the same process and has been accounted for. */
 		eError = BridgeRIWriteMEMDESCEntry (psMemDesc->psImport->hDevConnection,
-											psMemDesc->psImport->hPMR,
-											sizeof("^"),
-											"^",
-											psMemDesc->uiOffset,
-											psMemDesc->psImport->uiSize,
-											0,
-											IMG_TRUE,
-											IMG_FALSE,
-											&(psMemDesc->hRIHandle));
+				psMemDesc->psImport->hPMR,
+				sizeof("^"),
+				"^",
+				psMemDesc->uiOffset,
+				psMemDesc->psImport->uiSize,
+				IMG_TRUE,
+				IMG_FALSE,
+				&(psMemDesc->hRIHandle));
 		if( eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: call to BridgeRIWriteMEMDESCEntry failed (eError=%d)", __func__, eError));
@@ -2819,26 +2853,27 @@ DevmemLocalImport(IMG_HANDLE hBridge,
 	}
 #endif /* if defined(PVR_RI_DEBUG) */
 
-#if defined(SUPPORT_PAGE_FAULT_DEBUG)
-	if(PVRSRVIsBridgeEnabled(psMemDesc->psImport->hDevConnection, PVRSRV_BRIDGE_DEVICEMEMHISTORY))
-	{
-		/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
-		* the allocation gets mapped/unmapped
-		*/
-		OSStringNCopy(psMemDesc->sTraceData.szText, pszAnnotation, sizeof(psMemDesc->sTraceData.szText) - 1);
-	}
+
+	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
+	 * the allocation gets mapped/unmapped
+	 */
+	_CheckAnnotationLength(pszAnnotation);
+#if defined(__KERNEL__)
+	OSStringLCopy(psMemDesc->szText, pszAnnotation, DEVMEM_ANNOTATION_MAX_LEN);
 #else
-	PVR_UNREFERENCED_PARAMETER(pszAnnotation);
-#endif
+	OSStringNCopy(psMemDesc->szText, pszAnnotation, DEVMEM_ANNOTATION_MAX_LEN);
+	psMemDesc->szText[DEVMEM_ANNOTATION_MAX_LEN - 1] = '\0';
+#endif	/* if defined(__KERNEL__) */
+
 
 	return PVRSRV_OK;
 
-failImport:
-    _DevmemImportDiscard(psImport);
-failImportAlloc:
+	failImport:
+	_DevmemImportDiscard(psImport);
+	failImportAlloc:
 	_DevmemMemDescDiscard(psMemDesc);
-failMemDescAlloc:
-failParams:
+	failMemDescAlloc:
+	failParams:
 	PVR_ASSERT(eError != PVRSRV_OK);
 
 	return eError;
@@ -2846,11 +2881,11 @@ failParams:
 
 IMG_INTERNAL PVRSRV_ERROR
 DevmemIsDevVirtAddrValid(DEVMEM_CONTEXT *psContext,
-                         IMG_DEV_VIRTADDR sDevVAddr)
+		IMG_DEV_VIRTADDR sDevVAddr)
 {
-    return BridgeDevmemIsVDevAddrValid(psContext->hDevConnection,
-                                       psContext->hDevMemServerContext,
-                                       sDevVAddr);
+	return BridgeDevmemIsVDevAddrValid(psContext->hDevConnection,
+			psContext->hDevMemServerContext,
+			sDevVAddr);
 }
 
 IMG_INTERNAL IMG_UINT32
@@ -2861,8 +2896,8 @@ DevmemGetHeapLog2PageSize(DEVMEM_HEAP *psHeap)
 
 IMG_INTERNAL IMG_UINT32
 DevmemGetHeapTilingProperties(DEVMEM_HEAP *psHeap,
-                              IMG_UINT32 *puiLog2ImportAlignment,
-                              IMG_UINT32 *puiLog2TilingStrideFactor)
+		IMG_UINT32 *puiLog2ImportAlignment,
+		IMG_UINT32 *puiLog2TilingStrideFactor)
 {
 	*puiLog2ImportAlignment = psHeap->uiLog2ImportAlignment;
 	*puiLog2TilingStrideFactor = psHeap->uiLog2TilingStrideFactor;
@@ -2880,25 +2915,36 @@ DevmemGetHeapTilingProperties(DEVMEM_HEAP *psHeap,
 @Input          bRegister      If true, register. If false, de-register.
 @Return         PVRSRV_ERROR:  PVRSRV_OK on success. Otherwise, a PVRSRV_
                                error code
-*/ /***************************************************************************/
+ */ /***************************************************************************/
 IMG_INTERNAL PVRSRV_ERROR
 RegisterDevmemPFNotify(DEVMEM_CONTEXT *psContext,
-                       IMG_UINT32     ui32PID,
-                       IMG_BOOL       bRegister)
+		IMG_UINT32     ui32PID,
+		IMG_BOOL       bRegister)
 {
 	PVRSRV_ERROR eError;
 
 	eError = BridgeDevmemIntRegisterPFNotifyKM(psContext->hDevConnection,
-	                                           psContext->hDevMemServerContext,
-	                                           ui32PID,
-	                                           bRegister);
+			psContext->hDevMemServerContext,
+			ui32PID,
+			bRegister);
 	if (eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
-		         "%s: Bridge Call Failed: This could suggest a UM/KM miss-match (%d)",
-		         __func__,
-		         (IMG_INT)(eError)));
+				"%s: Bridge Call Failed: This could suggest a UM/KM miss-match (%d)",
+				__func__,
+				(IMG_INT)(eError)));
 	}
 
 	return eError;
 }
+
+IMG_INTERNAL PVRSRV_ERROR
+GetMaxDevMemSize(SHARED_DEV_CONNECTION psConnection,
+		IMG_DEVMEM_SIZE_T *puiLMASize,
+		IMG_DEVMEM_SIZE_T *puiUMASize)
+{
+	return BridgeGetMaxDevMemSize(psConnection,
+			puiLMASize,
+			puiUMASize);
+}
+

@@ -86,8 +86,7 @@ static const struct kernel_param_ops pvr_num_devices_ops = {
 	.get = param_get_uint,
 };
 
-module_param_cb(num_devices, &pvr_num_devices_ops, &pvr_num_devices,
-		S_IRUSR | S_IRGRP | S_IROTH);
+module_param_cb(num_devices, &pvr_num_devices_ops, &pvr_num_devices, 0444);
 MODULE_PARM_DESC(num_devices,
 		 "Number of platform devices to register (default: 1 - max: 16)");
 #endif /* defined(NO_HARDWARE) */
@@ -149,9 +148,61 @@ static void pvr_devices_unregister(void)
 
 static int pvr_probe(struct platform_device *pdev)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+	struct drm_device *ddev;
+	int ret;
+
+	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
+
+	ddev = drm_dev_alloc(&pvr_drm_platform_driver, &pdev->dev);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
+	if (IS_ERR(ddev))
+		return PTR_ERR(ddev);
+#else
+	if (!ddev)
+		return -ENOMEM;
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+	/* Needed by drm_platform_set_busid */
+	ddev->platformdev = pdev;
+#endif
+
+	/*
+	 * The load callback, called from drm_dev_register, is deprecated,
+	 * because of potential race conditions. Calling the function here,
+	 * before calling drm_dev_register, avoids those potential races.
+	 */
+	BUG_ON(pvr_drm_platform_driver.load != NULL);
+	ret = pvr_drm_load(ddev, 0);
+	if (ret)
+		goto err_drm_dev_unref;
+
+	ret = drm_dev_register(ddev, 0);
+	if (ret)
+		goto err_drm_dev_unload;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
+	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n",
+		pvr_drm_platform_driver.name,
+		pvr_drm_platform_driver.major,
+		pvr_drm_platform_driver.minor,
+		pvr_drm_platform_driver.patchlevel,
+		pvr_drm_platform_driver.date,
+		ddev->primary->index);
+#endif
+	return 0;
+
+err_drm_dev_unload:
+	pvr_drm_unload(ddev);
+err_drm_dev_unref:
+	drm_dev_unref(ddev);
+	return	ret;
+#else
 	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
 
 	return drm_platform_init(&pvr_drm_platform_driver, pdev);
+#endif
 }
 
 static int pvr_remove(struct platform_device *pdev)
@@ -160,22 +211,34 @@ static int pvr_remove(struct platform_device *pdev)
 
 	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
 
-	drm_put_dev(ddev);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+	drm_dev_unregister(ddev);
 
+	/* The unload callback, called from drm_dev_unregister, is
+	 * deprecated. Call the unload function directly.
+	 */
+	BUG_ON(pvr_drm_platform_driver.unload != NULL);
+	pvr_drm_unload(ddev);
+
+	drm_dev_unref(ddev);
+#else
+	drm_put_dev(ddev);
+#endif
 	return 0;
 }
 
 static void pvr_shutdown(struct platform_device *pdev)
 {
 	struct drm_device *ddev = platform_get_drvdata(pdev);
+	struct pvr_drm_private *priv = ddev->dev_private;
 
 	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
 
-	PVRSRVCommonDeviceShutdown(ddev->dev_private);
+	PVRSRVCommonDeviceShutdown(priv->dev_node);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
-static const struct of_device_id pvr_of_ids[] = {
+static struct of_device_id pvr_of_ids[] = {
 #if defined(SYS_RGX_OF_COMPATIBLE)
 	{ .compatible = SYS_RGX_OF_COMPATIBLE, },
 #endif
@@ -207,11 +270,7 @@ static struct platform_driver pvr_platform_driver = {
 	.shutdown		= pvr_shutdown,
 };
 
-#if defined(SUPPORT_DRM)
-int pvr_init(void)
-#else
 static int __init pvr_init(void)
-#endif
 {
 	int err;
 
@@ -234,11 +293,7 @@ static int __init pvr_init(void)
 	return pvr_devices_register();
 }
 
-#if defined(SUPPORT_DRM)
-void pvr_exit(void)
-#else
 static void __exit pvr_exit(void)
-#endif
 {
 	DRM_DEBUG_DRIVER("\n");
 
@@ -249,7 +304,5 @@ static void __exit pvr_exit(void)
 	DRM_DEBUG_DRIVER("done\n");
 }
 
-#if !defined(SUPPORT_DRM)
 late_initcall(pvr_init);
 module_exit(pvr_exit);
-#endif

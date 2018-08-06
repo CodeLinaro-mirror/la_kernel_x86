@@ -62,7 +62,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PDUMP_DATAMASTER_PIXEL		(1)
 #define PDUMP_DATAMASTER_EDM		(3)
 
-static PDBGKM_SERVICE_TABLE gpfnDbgDrv = NULL;
+static PDBGKM_SERVICE_TABLE gpfnDbgDrv;
 
 
 typedef struct PDBG_PDUMP_STATE_TAG
@@ -75,7 +75,7 @@ typedef struct PDBG_PDUMP_STATE_TAG
 
 } PDBG_PDUMP_STATE;
 
-static PDBG_PDUMP_STATE gsDBGPdumpState = {{NULL}, NULL, NULL, NULL};
+static PDBG_PDUMP_STATE gsDBGPdumpState;
 
 #define SZ_MSG_SIZE_MAX			PVRSRV_PDUMP_MAX_COMMENT_SIZE-1
 #define SZ_SCRIPT_SIZE_MAX		PVRSRV_PDUMP_MAX_COMMENT_SIZE-1
@@ -182,15 +182,6 @@ PVRSRV_ERROR PDumpOSVSprintf(IMG_CHAR *pszComment, IMG_UINT32 ui32ScriptSizeMax,
 	return PVRSRV_OK;
 }
 
-/*!
- * \name	PDumpOSDebugPrintf
- */
-void PDumpOSDebugPrintf(IMG_CHAR* pszFormat, ...)
-{
-	PVR_UNREFERENCED_PARAMETER(pszFormat);
-
-	/* FIXME: Implement using services PVR_DBG or otherwise with kprintf */
-}
 
 /*!
  * \name	PDumpOSSprintf
@@ -224,7 +215,7 @@ IMG_UINT32 PDumpOSBuflen(IMG_HANDLE hBuffer, IMG_UINT32 ui32BufferSizeMax)
 	IMG_CHAR* pszBuf = hBuffer;
 	IMG_UINT32 ui32Count = 0;
 
-	while ((pszBuf[ui32Count]!=0) && (ui32Count<ui32BufferSizeMax) )
+	while ((ui32Count<ui32BufferSizeMax) && (pszBuf[ui32Count]!=0))
 	{
 		ui32Count++;
 	}

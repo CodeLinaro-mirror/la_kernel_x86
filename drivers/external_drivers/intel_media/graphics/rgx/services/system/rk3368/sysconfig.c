@@ -41,6 +41,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/platform_device.h>
+
 #include "interrupt_support.h"
 #include "pvrsrv_device.h"
 #include "syscommon.h"
@@ -50,17 +52,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ion_support.h"
 #endif
 #include "rk_init.h"
+#include "vz_support.h"
 
 static RGX_TIMING_INFORMATION	gsRGXTimingInfo;
-static RGX_DATA			gsRGXData;
+static RGX_DATA					gsRGXData;
 static PVRSRV_DEVICE_CONFIG 	gsDevices[1];
-
-static PHYS_HEAP_FUNCTIONS	gsPhysHeapFuncs;
-#if defined(TDMETACODE)
-static PHYS_HEAP_CONFIG		gsPhysHeapConfig[3];
-#else
-static PHYS_HEAP_CONFIG		gsPhysHeapConfig[1];
-#endif
+static PHYS_HEAP_FUNCTIONS		gsPhysHeapFuncs;
+static PHYS_HEAP_CONFIG			gsPhysHeapConfig[4];
 
 /*
 	CPU to Device physical address translation
@@ -110,6 +108,15 @@ void UMAPhysHeapDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 
 PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 {
+	IMG_UINT32 ui32NextPhysHeapID = 0;
+	IMG_UINT32 uiTDMetaCodePhysHeapID = 0;
+	IMG_UINT32 uiTDSecureBufPhysHeapID = 0;
+	int iIrq;
+	struct resource *psDevMemRes = NULL;
+	struct platform_device *psDev;
+
+	psDev = to_platform_device((struct device *)pvOSDevice);
+
 	if (gsDevices[0].pvOSDevice)
 	{
 		return PVRSRV_ERROR_INVALID_DEVICE;
@@ -121,24 +128,29 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	gsPhysHeapFuncs.pfnCpuPAddrToDevPAddr = UMAPhysHeapCpuPAddrToDevPAddr;
 	gsPhysHeapFuncs.pfnDevPAddrToCpuPAddr = UMAPhysHeapDevPAddrToCpuPAddr;
 
-	gsPhysHeapConfig[0].ui32PhysHeapID = 0;
+	gsPhysHeapConfig[0].ui32PhysHeapID = ui32NextPhysHeapID;
 	gsPhysHeapConfig[0].pszPDumpMemspaceName = "SYSMEM";
 	gsPhysHeapConfig[0].eType = PHYS_HEAP_TYPE_UMA;
 	gsPhysHeapConfig[0].psMemFuncs = &gsPhysHeapFuncs;
 	gsPhysHeapConfig[0].hPrivData = NULL;
+	ui32NextPhysHeapID += 1;
 
 #if defined(TDMETACODE)
-	gsPhysHeapConfig[1].ui32PhysHeapID = 1;
+	gsPhysHeapConfig[1].ui32PhysHeapID = ui32NextPhysHeapID;
 	gsPhysHeapConfig[1].pszPDumpMemspaceName = "TDMETACODEMEM";
 	gsPhysHeapConfig[1].eType = PHYS_HEAP_TYPE_UMA;
 	gsPhysHeapConfig[1].psMemFuncs = &gsPhysHeapFuncs;
 	gsPhysHeapConfig[1].hPrivData = NULL;
+	uiTDMetaCodePhysHeapID = ui32NextPhysHeapID;
+	ui32NextPhysHeapID += 1;
 
-	gsPhysHeapConfig[2].ui32PhysHeapID = 2;
+	gsPhysHeapConfig[2].ui32PhysHeapID = ui32NextPhysHeapID;
 	gsPhysHeapConfig[2].pszPDumpMemspaceName = "TDSECUREBUFMEM";
 	gsPhysHeapConfig[2].eType = PHYS_HEAP_TYPE_UMA;
 	gsPhysHeapConfig[2].psMemFuncs = &gsPhysHeapFuncs;
 	gsPhysHeapConfig[2].hPrivData = NULL;
+	uiTDSecureBufPhysHeapID = ui32NextPhysHeapID;
+	ui32NextPhysHeapID +=1;
 #endif
 
 	/*
@@ -155,10 +167,13 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	gsRGXData.psRGXTimingInfo = &gsRGXTimingInfo;
 #if defined(TDMETACODE)
 	gsRGXData.bHasTDMetaCodePhysHeap = IMG_TRUE;
-	gsRGXData.uiTDMetaCodePhysHeapID = 1;
+	gsRGXData.uiTDMetaCodePhysHeapID = uiTDMetaCodePhysHeapID;
 
 	gsRGXData.bHasTDSecureBufPhysHeap = IMG_TRUE;
-	gsRGXData.uiTDSecureBufPhysHeapID = 2;
+	gsRGXData.uiTDSecureBufPhysHeapID = uiTDSecureBufPhysHeapID;
+#else
+	PVR_UNREFERENCED_PARAMETER(uiTDMetaCodePhysHeapID);
+	PVR_UNREFERENCED_PARAMETER(uiTDSecureBufPhysHeapID);
 #endif
 
 	/*
@@ -168,24 +183,45 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	gsDevices[0].pszName                = "rk3368";
 
 	/* Device setup information */
-	gsDevices[0].sRegsCpuPBase.uiAddr   = RK_GPU_PBASE;
-	gsDevices[0].ui32RegsSize           = RK_GPU_SIZE;
-	gsDevices[0].ui32IRQ                = RK_IRQ_GPU;
 
-	/* No cache snooping */
-	gsDevices[0].eCacheSnoopingMode     = PVRSRV_DEVICE_SNOOP_NONE;
+	psDevMemRes = platform_get_resource(psDev, IORESOURCE_MEM, 0);
+	if (psDevMemRes)
+	{
+		gsDevices[0].sRegsCpuPBase.uiAddr = psDevMemRes->start;
+		gsDevices[0].ui32RegsSize         = (unsigned int)(psDevMemRes->end - psDevMemRes->start);
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_WARNING, "%s: platform_get_resource failed", __func__));
+		gsDevices[0].sRegsCpuPBase.uiAddr = RK_GPU_PBASE;
+		gsDevices[0].ui32RegsSize         = RK_GPU_SIZE;
+	}
+
+	iIrq = platform_get_irq(psDev, 0);
+	if (iIrq >= 0)
+	{
+		gsDevices[0].ui32IRQ  = (IMG_UINT32) iIrq;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_WARNING, "%s: platform_get_irq failed (%d)", __func__, -iIrq));
+		gsDevices[0].ui32IRQ = RK_IRQ_GPU;
+	}
+
+	gsDevices[0].eCacheSnoopingMode     = PVRSRV_DEVICE_SNOOP_EMULATED;
 
 	/* Device's physical heaps */
 	gsDevices[0].pasPhysHeaps           = &gsPhysHeapConfig[0];
-	gsDevices[0].ui32PhysHeapCount      = IMG_ARR_NUM_ELEMS(gsPhysHeapConfig);
+	gsDevices[0].ui32PhysHeapCount      = ui32NextPhysHeapID;
 
 	/* Device's physical heap IDs */
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = 0;
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] = 0;
+	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_EXTERNAL] = 0;
 
 	gsDevices[0].eBIFTilingMode = geBIFTilingMode;
 	gsDevices[0].pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides;
-	gsDevices[0].ui32BIFTilingHeapCount    = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
+	gsDevices[0].ui32BIFTilingHeapCount    = ARRAY_SIZE(gauiBIFTilingHeapXStrides);
 
 	/* No power management on RK system */
 	gsDevices[0].pfnPrePowerState       = RkPrePowerState;
@@ -210,6 +246,15 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 #if defined(SUPPORT_ION)
 	IonInit(NULL);
 #endif
+
+	/* Virtualization support services needs to know which heap ID corresponds to FW */
+	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = ui32NextPhysHeapID;
+	gsPhysHeapConfig[ui32NextPhysHeapID].ui32PhysHeapID = ui32NextPhysHeapID;
+	gsPhysHeapConfig[ui32NextPhysHeapID].pszPDumpMemspaceName = "SYSMEM";
+	gsPhysHeapConfig[ui32NextPhysHeapID].eType = PHYS_HEAP_TYPE_UMA;
+	gsPhysHeapConfig[ui32NextPhysHeapID].psMemFuncs = &gsPhysHeapFuncs;
+	gsPhysHeapConfig[ui32NextPhysHeapID].hPrivData = NULL;
+	gsDevices[0].ui32PhysHeapCount = ++ui32NextPhysHeapID;
 
 	*ppsDevConfig = &gsDevices[0];
 
@@ -239,7 +284,6 @@ PVRSRV_ERROR SysInstallDeviceLISR(IMG_HANDLE hSysData,
 								  IMG_HANDLE *phLISRData)
 {
 	PVR_UNREFERENCED_PARAMETER(hSysData);
-
 	return OSInstallSystemLISR(phLISRData, ui32IRQ, pszName, pfnLISR, pvData,
 							   SYS_IRQ_FLAG_TRIGGER_DEFAULT);
 }

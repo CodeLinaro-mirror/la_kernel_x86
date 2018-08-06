@@ -52,11 +52,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	 - page directory, PD
 	 - page table, PT (can be variable sized)
 	 - data page, DP (can be variable sized)
-    Note: PD and PC are fixed size and can't be larger than 
+    Note: PD and PC are fixed size and can't be larger than
            the native physical (CPU) page size
 	Shifts and AlignShift variables:
-	 - 'xxxShift' represent the number of bits a bitfield is shifted left from bit0 
-	 - 'xxxAlignShift' is used to convert a bitfield (based at bit0) into byte units 
+	 - 'xxxShift' represent the number of bits a bitfield is shifted left from bit0
+	 - 'xxxAlignShift' is used to convert a bitfield (based at bit0) into byte units
 	 	by applying a bit shift left by 'xxxAlignShift' bits
 */
 
@@ -105,6 +105,29 @@ typedef enum
 #include "pdump_mmu.h"
 
 #define MMU_MAX_LEVEL 3
+
+typedef struct _MMU_LEVEL_DATA_
+{
+	IMG_UINT32	ui32Index;
+	IMG_UINT32	ui32NumOfEntries;
+	IMG_CHAR const	*psDebugStr;
+	IMG_UINT8	uiBytesPerEntry;
+	IMG_UINT64	ui64Address;
+} MMU_LEVEL_DATA;
+
+typedef enum _MMU_FAULT_TYPE_
+{
+	MMU_FAULT_TYPE_UNKNOWN = 0, /* If fault is not analysed by Host */
+	MMU_FAULT_TYPE_PM,
+	MMU_FAULT_TYPE_NON_PM,
+} MMU_FAULT_TYPE;
+
+typedef struct _MMU_FAULT_DATA_
+{
+	MMU_LEVEL	eTopLevel;
+	MMU_FAULT_TYPE	eType;
+	MMU_LEVEL_DATA	sLevelData[MMU_MAX_LEVEL];
+} MMU_FAULT_DATA;
 
 struct _MMU_DEVVADDR_CONFIG_;
 
@@ -251,7 +274,7 @@ typedef IMG_UINT32 MMU_PROTFLAGS_T;
 
 typedef struct _MMU_CONTEXT_ MMU_CONTEXT;
 
-struct _PVRSRV_DEVICE_NODE_; 
+struct _PVRSRV_DEVICE_NODE_;
 
 typedef struct _MMU_PAGESIZECONFIG_
 {
@@ -286,7 +309,7 @@ MMU_ContextCreate (struct _PVRSRV_DEVICE_NODE_ *psDevNode,
 
 @Description    Destroy a MMU context
 
-@Input          ppsMMUContext           MMU context to destroy
+@Input          psMMUContext            MMU context to destroy
 
 @Return         None
 */
@@ -453,7 +476,7 @@ MMU_MapPMRFast (MMU_CONTEXT *psMMUContext,
 @Function       MMU_UnmapPMRFast
 
 @Description    Unmap pages from the MMU as fast as possible.
-                PMR must be non sparse!
+                PMR must be non-sparse!
 
 @Input          psMMUContext            MMU context to operate on
 
@@ -607,13 +630,16 @@ void MMU_SetDeviceData(MMU_CONTEXT *psMMUContext, IMG_HANDLE hDevData);
 @Input          pvDumpDebugFile         Optional file identifier to be passed
                                         to the debug print function if required
 
+@Output          psOutFaultData          To store fault details after checking
+
 @Return         None
 */
 /*****************************************************************************/
 void MMU_CheckFaultAddress(MMU_CONTEXT *psMMUContext,
 				IMG_DEV_VIRTADDR *psDevVAddr,
 				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-				void *pvDumpDebugFile);
+				void *pvDumpDebugFile,
+				MMU_FAULT_DATA *psOutFaultData);
 
 /*************************************************************************/ /*!
 @Function       MMUI_IsVDevAddrValid
@@ -725,6 +751,5 @@ MMU_PDumpWritePageCatBase(MMU_CONTEXT *psMMUContext,
 	PVR_UNREFERENCED_PARAMETER(uiPdumpFlags);
 }
 #endif /* PDUMP */
-
 
 #endif /* #ifdef MMU_COMMON_H */

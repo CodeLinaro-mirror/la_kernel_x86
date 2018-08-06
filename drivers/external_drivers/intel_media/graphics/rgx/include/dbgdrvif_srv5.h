@@ -44,22 +44,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _DBGDRVIF_SRV5_
 #define _DBGDRVIF_SRV5_
 
-#if defined(_MSC_VER) 
+#if defined(_MSC_VER)
 #pragma  warning(disable:4200)
 #endif
 
-#if defined(__linux__)
+#if defined(_WIN32)
+
+#include "ioctldef.h"
+
+#else
 
 #define FILE_DEVICE_UNKNOWN             0
 #define METHOD_BUFFERED                 0
 #define FILE_ANY_ACCESS                 0
 
-#define CTL_CODE( DeviceType, Function, Method, Access ) (Function) 
+#define CTL_CODE( DeviceType, Function, Method, Access ) (Function)
 #define MAKEIOCTLINDEX(i)	((i) & 0xFFF)
-
-#else
-
-#include "ioctldef.h"
 
 #endif
 
@@ -141,7 +141,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 typedef union
 {
 	/* native pointer type for UM to write to */
-	void *pvPtr;
+	void __user *pvPtr;
 	/* the pointer written by a 32-bit client */
 	IMG_UINT32 ui32Ptr;
 	/* force the union width */
@@ -158,7 +158,7 @@ typedef union
 
 #if defined(CONFIG_COMPAT)
 #define WIDEPTR_GET_PTR(p, bCompat) (bCompat ? \
-					(void *) (uintptr_t) (p).ui32Ptr : \
+					(void __user *) (uintptr_t) (p).ui32Ptr : \
 					(p).pvPtr)
 #else
 #define WIDEPTR_GET_PTR(p, bCompat) (p).pvPtr
@@ -252,7 +252,7 @@ typedef struct _DBGKM_SERVICE_TABLE_
 	void		(IMG_CALLCONV *pfnSetFrame)				(IMG_UINT32 ui32Frame);
 } DBGKM_SERVICE_TABLE, *PDBGKM_SERVICE_TABLE;
 
-#if defined(_MSC_VER) 
+#if defined(_MSC_VER)
 #pragma  warning(default:4200)
 #endif
 

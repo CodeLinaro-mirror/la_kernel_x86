@@ -40,7 +40,22 @@
 ### ###########################################################################
 
 PVRSRVKM_NAME = $(PVRSRV_MODNAME)
+
+ifeq ($(RK_INIT_V2),1)
+pvrsrvkm-y += services/system/$(PVR_SYSTEM)/rk_init_v2.o
+else
+pvrsrvkm-y += services/system/$(PVR_SYSTEM)/rk_init.o
+endif
+
 pvrsrvkm-y += \
-	services/system/$(PVR_SYSTEM)/rk_init.o \
 	services/system/$(PVR_SYSTEM)/sysconfig.o \
-	services/system/common/env/linux/interrupt_support.o
+	services/system/common/env/linux/interrupt_support.o \
+	services/system/common/env/linux/dma_support.o \
+	services/system/common/vz_physheap_generic.o \
+	services/system/common/vz_physheap_common.o \
+	services/system/common/vmm_pvz_client.o \
+	services/system/common/vmm_pvz_server.o \
+	services/system/common/vz_vmm_pvz.o \
+	services/system/common/vz_vmm_vm.o \
+	services/system/common/vz_support.o \
+	services/system/common/vmm_type_$(VMM_TYPE).o

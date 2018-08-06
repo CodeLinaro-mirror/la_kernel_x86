@@ -80,9 +80,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 #define _RGX_BVNC_ST2(S)	#S
 #define _RGX_BVNC_ST(S)		_RGX_BVNC_ST2(S)
-#if defined(PDUMP) || defined(NO_HARDWARE) || defined(PVRSRV_GPUVIRT_GUESTDRV) || !defined(SUPPORT_MULTIBVNC_RUNTIME_BVNC_ACQUISITION)
 #define RGX_BVNC_KM			_RGX_BVNC_ST(RGX_BVNC_KM_B) "." _RGX_BVNC_ST(RGX_BVNC_KM_V) "." _RGX_BVNC_ST(RGX_BVNC_KM_N) "." _RGX_BVNC_ST(RGX_BVNC_KM_C)
-#endif
 #define RGX_BVNC_KM_V_ST	_RGX_BVNC_ST(RGX_BVNC_KM_V)
 
 /******************************************************************************
@@ -117,6 +115,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_CR_CORE_ID_CONFIG_N_CLRMSK                    (0XFFFF00FFU)
 #define RGX_CR_CORE_ID_CONFIG_C_CLRMSK                    (0XFFFFFF00U)
 
+/* The default number of OSID is 1, higher number implies VZ enabled firmware */
+#if !defined(RGXFW_NATIVE) && defined(PVRSRV_VZ_NUM_OSID) && (PVRSRV_VZ_NUM_OSID +1> 1)
+#define RGXFW_NUM_OS PVRSRV_VZ_NUM_OSID
+#else
+#define RGXFW_NUM_OS 1
+#endif
+
 /* META cores (required for the RGX_FEATURE_META) */
 #define MTP218   (1)
 #define MTP219   (2)
@@ -127,15 +132,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_META_COREMEM_32K      (32*1024)
 #define RGX_META_COREMEM_48K      (48*1024)
 #define RGX_META_COREMEM_64K      (64*1024)
+#define RGX_META_COREMEM_96K      (96*1024)
 #define RGX_META_COREMEM_128K     (128*1024)
 #define RGX_META_COREMEM_256K     (256*1024)
 
 #if !defined(__KERNEL__)
-#if (!defined(SUPPORT_TRUSTED_DEVICE) || defined(RGX_FEATURE_META_DMA)) && (RGX_FEATURE_META_COREMEM_SIZE != 0)
+#if (!defined(SUPPORT_TRUSTED_DEVICE) || defined(RGX_FEATURE_META_DMA)) && \
+    (defined(RGX_FEATURE_META_COREMEM_SIZE) && RGX_FEATURE_META_COREMEM_SIZE != 0)
 #define RGX_META_COREMEM_SIZE     (RGX_FEATURE_META_COREMEM_SIZE*1024)
 #define RGX_META_COREMEM          (1)
 #define RGX_META_COREMEM_CODE     (1)
-#if !defined(FIX_HW_BRN_50767)
+#if !defined(FIX_HW_BRN_50767) && (RGXFW_NUM_OS == 1)
 #define RGX_META_COREMEM_DATA     (1)
 #endif
 #else
@@ -152,11 +159,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #define RGX_MAX_NUM_PIPES	3
 
-#define GET_ROGUE_CACHE_LINE_SIZE(x)				((x)/8)
+#define GET_ROGUE_CACHE_LINE_SIZE(x)				(((IMG_INT32)x) > 0) ? ((x)/8) : (0)
 
 
 #define MAX_HW_TA3DCONTEXTS	2
-
 
 /* useful extra defines for clock ctrl*/
 #define RGX_CR_CLK_CTRL_ALL_ON   (IMG_UINT64_C(0x5555555555555555)&RGX_CR_CLK_CTRL_MASKFULL)
@@ -203,6 +209,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_BIF_PM_VIRTUAL_PAGE_ALIGNSHIFT		(14)
 #define RGX_BIF_PM_VIRTUAL_PAGE_SIZE			(1 << RGX_BIF_PM_VIRTUAL_PAGE_ALIGNSHIFT)
 
+#define RGX_BIF_PM_FREELIST_BASE_ADDR_ALIGNSIZE	(16)
+
 /* To get the number of required Dusts, divide the number of clusters by 2 and round up */
 #define RGX_REQ_NUM_DUSTS(CLUSTERS)    ((CLUSTERS + 1) / 2)
 
@@ -211,20 +219,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_REQ_NUM_BERNADOS(CLUSTERS) ((CLUSTERS + 3) / 4)
 #define RGX_REQ_NUM_BLACKPEARLS(CLUSTERS) ((CLUSTERS + 3) / 4)
 
-#if  defined(SUPPORT_KERNEL_SRVINIT) && defined(__KERNEL__)
-	#define RGX_GET_NUM_PHANTOMS(x)	 (RGX_REQ_NUM_PHANTOMS(x))
-#if defined(RGX_FEATURE_CLUSTER_GROUPING)
-	#define RGX_NUM_PHANTOMS (RGX_REQ_NUM_PHANTOMS(RGX_FEATURE_NUM_CLUSTERS))
-#else
-	#define RGX_NUM_PHANTOMS (1)
-#endif
-#else
-	#if defined(RGX_FEATURE_CLUSTER_GROUPING)
-	#define RGX_NUM_PHANTOMS (RGX_REQ_NUM_PHANTOMS(RGX_FEATURE_NUM_CLUSTERS))
-	#else
-	#define RGX_NUM_PHANTOMS (1)
-	#endif
-	#define RGX_GET_NUM_PHANTOMS(x)	 (RGX_REQ_NUM_PHANTOMS(RGX_FEATURE_NUM_CLUSTERS))
+#if !defined(__KERNEL__)
+# define RGX_NUM_PHANTOMS (RGX_REQ_NUM_PHANTOMS(RGX_FEATURE_NUM_CLUSTERS))
 #endif
 
 
@@ -241,20 +237,30 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*
    Start at 903GiB. Size of 32MB per OSID (see rgxheapconfig.h)
    NOTE:
-		The firmware heap base and size is defined here to
+		The firmware heaps bases and sizes are defined here to
 		simplify #include dependencies, see rgxheapconfig.h
 		for the full RGX virtual address space layout.
-*/
-#define RGX_FIRMWARE_HEAP_BASE			IMG_UINT64_C(0xE1C0000000)
-#define RGX_FIRMWARE_HEAP_SIZE			(1<<RGX_FW_HEAP_SHIFT)
-#define RGX_FIRMWARE_HEAP_SHIFT			RGX_FW_HEAP_SHIFT
 
-/* Default number of OSIDs is 1 unless GPU Virtualization is supported and enabled */
-#if defined(SUPPORT_PVRSRV_GPUVIRT) && !defined(PVRSRV_GPUVIRT_GUESTDRV) && (PVRSRV_GPUVIRT_NUM_OSID +1> 1)
-#define RGXFW_NUM_OS PVRSRV_GPUVIRT_NUM_OSID
-#else
-#define RGXFW_NUM_OS 1
-#endif
+   The config heap takes up the last 64 KBytes from the total firmware heap space.
+   It is intended to act as a storage space for the kernel and firmware CCB offset storage.
+   The Main Firmware heap size is reduced accordingly but most of the map / unmap functions must take
+   into consideration the entire range (i.e. main and config heap) */
+
+#define RGX_FIRMWARE_HEAP_SHIFT						RGX_FW_HEAP_SHIFT
+#define RGX_FIRMWARE_RAW_HEAP_BASE					(0xE1C0000000ULL)
+#define RGX_FIRMWARE_RAW_HEAP_SIZE					(1U << RGX_FIRMWARE_HEAP_SHIFT)
+#define RGX_FIRMWARE_CONFIG_HEAP_SIZE				(0x10000U)
+#define RGX_FIRMWARE_MAIN_HEAP_SIZE					(RGX_FIRMWARE_RAW_HEAP_SIZE - RGX_FIRMWARE_CONFIG_HEAP_SIZE)
+
+/* Hypervisor sub-heap order: MAIN + CONFIG */
+#define RGX_FIRMWARE_HYPERV_MAIN_HEAP_BASE			RGX_FIRMWARE_RAW_HEAP_BASE
+#define RGX_FIRMWARE_HYPERV_CONFIG_HEAP_BASE		(RGX_FIRMWARE_HYPERV_MAIN_HEAP_BASE + RGX_FIRMWARE_MAIN_HEAP_SIZE)
+
+/* Guest sub-heap order: CONFIG + MAIN */
+#define RGX_FIRMWARE_GUEST_CONFIG_HEAP_BASE			RGX_FIRMWARE_RAW_HEAP_BASE
+#define RGX_FIRMWARE_GUEST_MAIN_HEAP_BASE			(RGX_FIRMWARE_GUEST_CONFIG_HEAP_BASE + RGX_FIRMWARE_CONFIG_HEAP_SIZE)
+
+#define RGXFW_GUEST_OSID_START 1
 
 /******************************************************************************
  * WA HWBRNs
@@ -299,5 +305,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 #endif
 
+#if defined(__KERNEL__)
+
+#define RGX_GET_NUM_RASTERISATION_MODULES(DEV_FEATURE_CFG)                                         \
+	(                                                                                          \
+	 ((DEV_FEATURE_CFG).ui64Features & RGX_FEATURE_ROGUEXE_BIT_MASK) != 0 ?                    \
+	  (DEV_FEATURE_CFG).ui32FeaturesValues[RGX_FEATURE_NUM_CLUSTERS_IDX] :                     \
+	  RGX_REQ_NUM_PHANTOMS((DEV_FEATURE_CFG).ui32FeaturesValues[RGX_FEATURE_NUM_CLUSTERS_IDX]) \
+	)
+
+#else
+
+#if defined(RGX_FEATURE_ROGUEXE)
+#define RGX_NUM_RASTERISATION_MODULES	RGX_FEATURE_NUM_CLUSTERS
+#else
+#define RGX_NUM_RASTERISATION_MODULES	RGX_NUM_PHANTOMS
+#endif
+
+#define RGX_GET_NUM_RASTERISATION_MODULES(DEV_FEATURE_CFG) RGX_NUM_RASTERISATION_MODULES
+
+#endif /* !__KERNEL__ */
 
 #endif /* _RGXDEFS_KM_H_ */

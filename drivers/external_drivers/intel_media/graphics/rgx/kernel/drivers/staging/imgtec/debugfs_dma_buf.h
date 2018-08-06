@@ -47,7 +47,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* This creates a debugfs file for reading out the current content of the dma
  * buffer provided by the set function. Please note that you can get tearing in
- * the final dumps if the content is quickly changing. */
+ * the final dumps if the content is quickly changing.
+ */
 
 /* Uncomment the following line to enable */
 /*#define DEBUGFS_DMA_BUF 1*/

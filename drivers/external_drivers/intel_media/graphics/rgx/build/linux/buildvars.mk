@@ -73,6 +73,12 @@ COMMON_FLAGS += \
  -D_FILE_OFFSET_BITS=64
 endif
 
+ifeq (, $(shell which indent))
+ INDENT_TOOL_NOT_FOUND := 1
+else
+ INDENT_GENERATED_HEADERS := 1
+endif
+
 # Some GCC warnings are C only, so we must mask them from C++
 #
 COMMON_CFLAGS := $(COMMON_FLAGS) \
@@ -119,11 +125,13 @@ COMMON_USER_FLAGS += \
 # Additional warnings, and optional warnings.
 #
 TESTED_TARGET_USER_FLAGS := \
+ $(call cc-option,-Wno-error=implicit-fallthrough) \
  $(call cc-option,-Wno-missing-field-initializers) \
  $(call cc-option,-fdiagnostics-show-option) \
  $(call cc-option,-Wno-self-assign) \
  $(call cc-option,-Wno-parentheses-equality)
 TESTED_HOST_USER_FLAGS := \
+ $(call host-cc-option,-Wno-error=implicit-fallthrough) \
  $(call host-cc-option,-Wno-missing-field-initializers) \
  $(call host-cc-option,-fdiagnostics-show-option) \
  $(call host-cc-option,-Wno-self-assign) \
@@ -142,7 +150,7 @@ TESTED_TARGET_USER_FLAGS += \
 TESTED_HOST_USER_FLAGS += \
  $(call host-cc-option,-Qunused-arguments) \
  $(call host-cc-option,-Wlogical-op) \
- $(if $(shell test -t 2 && echo true),$(call cc-option,-fcolor-diagnostics))
+ $(if $(shell test -t 2 && echo true),$(call host-cc-option,-fcolor-diagnostics))
 
 ifeq ($(W),1)
 TESTED_TARGET_USER_FLAGS += \
@@ -202,6 +210,7 @@ TESTED_KBUILD_FLAGS := \
  $(call kernel-cc-option,-Wno-aggregate-return) \
  $(call kernel-cc-option,-Wno-unused-but-set-variable) \
  $(call kernel-cc-option,-Wno-ignored-qualifiers) \
+ $(call kernel-cc-option,-Wno-error=implicit-fallthrough) \
  $(call kernel-cc-optional-warning,-Wbad-function-cast) \
  $(call kernel-cc-optional-warning,-Wcast-qual) \
  $(call kernel-cc-optional-warning,-Wcast-align) \
@@ -222,6 +231,23 @@ TESTED_KBUILD_FLAGS := \
  $(call kernel-cc-optional-warning,-Wswitch-default) \
  $(call kernel-cc-optional-warning,-Wvla) \
  $(call kernel-cc-optional-warning,-Wwrite-strings)
+
+# Force no-pie, for compilers that enable pie by default
+TESTED_KBUILD_FLAGS := \
+ $(call kernel-cc-option,-fno-pie) \
+ $(call kernel-cc-option,-no-pie) \
+ $(TESTED_KBUILD_FLAGS)
+
+# When building against experimentally patched kernels with LLVM support,
+# we need to suppress warnings about bugs we haven't fixed yet. This is
+# temporary and will go away in the future.
+ifeq ($(kernel-cc-is-clang),true)
+TESTED_KBUILD_FLAGS := \
+ $(call kernel-cc-option,-Wno-address-of-packed-member) \
+ $(call kernel-cc-option,-Wno-unneeded-internal-declaration) \
+ $(call kernel-cc-optional-warning,-Wno-typedef-redefinition) \
+ $(TESTED_KBUILD_FLAGS)
+endif
 
 # User C only
 #
@@ -314,13 +340,14 @@ endif
 # allow the build to work..
 ifeq ($(SUPPORT_ANDROID_PLATFORM),1)
  ifeq ($(shell $(patsubst @%,%,$(HOST_CC)) -print-search-dirs | \
-                  grep -q $(ANDROID_ROOT)/prebuilts/ && echo true || echo false),true)
+               grep -q '$(ANDROID_ROOT)/prebuilts/\|$(NDK_ROOT)/toolchains/llvm/prebuilt' \
+               && echo true || echo false),true)
   # Both C and C++ toolchains need to be set up to point to the right
   # host GCC toolchain. This is not to use GCC, but to enable clang to
   # use the right binutils and sysroot components.
   ifeq ($(host-cc-is-clang),true)
    _gcc_toolchain := \
-    $(ANDROID_ROOT)/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.15-4.8
+    $(ANDROID_ROOT)/prebuilts/gcc/$(HOST_OS)-$(HOST_PREBUILT_ARCH)/host/x86_64-linux-glibc2.15-4.8
    _clang_toolchain_override_flags := \
     --gcc-toolchain=$(_gcc_toolchain) \
     --sysroot=$(_gcc_toolchain)/sysroot \
@@ -336,9 +363,9 @@ ifeq ($(SUPPORT_ANDROID_PLATFORM),1)
   endif
 
   # All host C++ programs must use libc++ instead of GNU C++
-  _lib64_path := $(OUT_DIR)/host/$(HOST_OS)-$(HOST_ARCH)/lib64
+  _lib64_path := $(OUT_DIR)/host/$(HOST_OS)-$(HOST_PREBUILT_ARCH)/lib64
   ALL_HOST_CXXFLAGS += \
-   -isystem $(LIBCXX_INCLUDE_PATH) \
+   -isystem $(LIBCXX_INCLUDE_PATH_HOST) -D_USING_LIBCXX \
    -Wl,-rpath=$(_lib64_path) -L$(_lib64_path) -lc++
 
   # If we know we're using the Android toolchain, we know we can enable
