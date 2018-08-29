@@ -5335,7 +5335,6 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	.can_attach = mem_cgroup_can_attach,
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.attach = mem_cgroup_move_task,
-	.allow_attach = mem_cgroup_allow_attach,
 	.post_attach = mem_cgroup_move_task,
 	.bind = mem_cgroup_bind,
 	.dfl_cftypes = memory_files,
