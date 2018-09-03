@@ -302,6 +302,7 @@ PVRSRVUnregisterDbgTable(PVRSRV_DEVICE_NODE *psDevNode)
 	OSFreeMem(psDebugTable);
 }
 
+#ifdef USE_MRFLD_PVR_DBG
 PVRSRV_ERROR
 PVRSRVRegisterDbgRequestNotify(IMG_HANDLE *phNotify,
 							   PVRSRV_DEVICE_NODE *psDevNode,
@@ -378,6 +379,17 @@ ErrorReleaseLock:
 
 	return eError;
 }
+#else
+PVRSRV_ERROR
+PVRSRVRegisterDbgRequestNotify(IMG_HANDLE *phNotify,
+                                                           PVRSRV_DEVICE_NODE *psDevNode,
+                                                           PFN_DBGREQ_NOTIFY pfnDbgRequestNotify,
+                                                           IMG_UINT32 ui32RequesterID,
+                                                           PVRSRV_DBGREQ_HANDLE hDbgRequestHandle)
+{
+	return 0;
+}
+#endif
 
 PVRSRV_ERROR
 SOPvrDbgRequestNotifyRegister(IMG_HANDLE *phNotify,
