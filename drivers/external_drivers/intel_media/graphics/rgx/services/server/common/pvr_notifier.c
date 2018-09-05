@@ -408,6 +408,7 @@ SOPvrDbgRequestNotifyRegister(IMG_HANDLE *phNotify,
 PVRSRV_ERROR
 PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify)
 {
+#ifdef USE_MRFLD_PVR_DBG
 	DEBUG_REQUEST_NOTIFY *psNotify = (DEBUG_REQUEST_NOTIFY *) hNotify;
 	DEBUG_REQUEST_TABLE *psDebugTable;
 
@@ -424,7 +425,7 @@ PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify)
 	OSWRLockReleaseWrite(psDebugTable->hLock);
 
 	OSFreeMemNoStats(psNotify);
-
+#endif
 	return PVRSRV_OK;
 }
 
