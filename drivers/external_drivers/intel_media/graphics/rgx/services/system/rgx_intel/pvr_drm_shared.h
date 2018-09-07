@@ -58,17 +58,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define DRM_PVR_GEM_SYNC_GET			6
 
 
-#if !defined(SUPPORT_KERNEL_SRVINIT)
-/* Subcommands of DRM_PVR_UNPRIV_CMD */
-#define	DRM_PVR_UNPRIV_CMD_INIT_SUCCESFUL	0 /* PVR Services init succesful */
-
-typedef struct drm_pvr_unpriv_cmd_tag
-{
-	uint32_t	cmd;
-	int32_t		result;
-} drm_pvr_unpriv_cmd;
-#endif	/* #if !defined(SUPPORT_KERNEL_SRVINIT) */
-
 #define PVR_GEM_USE_SCANOUT	(1 << 0)
 #define PVR_GEM_USE_CURSOR	(2 << 0)
 

@@ -63,7 +63,7 @@ static struct ion_device *gpsIonDev;
 
 struct ion_allocation_dc_private_data
 {
-	ion_user_handle_t handle;
+	int handle;
 	__u64 dc_buffer;
 	__s32 fd;
 } __packed;
@@ -351,7 +351,9 @@ static long IonCustomIoctl(struct ion_client *psClient,
 	if (!psConnection)
 		goto err_fput;
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSAcquireBridgeLock();
+#endif
 
 	eError = PVRSRVLookupHandle(psConnection->psHandleBase,
 								(void **)&psBuffer,
@@ -400,7 +402,9 @@ err_unlock:
 							(IMG_HANDLE)sData.dc_buffer,
 							PVRSRV_HANDLE_TYPE_DC_BUFFER);
 	}
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSReleaseBridgeLock();
+#endif
 err_fput:
 	fput(psFile);
 err_out:
