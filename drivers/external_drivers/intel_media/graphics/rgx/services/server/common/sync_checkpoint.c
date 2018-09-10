@@ -204,6 +204,8 @@ static IMG_UINT32 _CleanCheckpointPool(_SYNC_CHECKPOINT_CONTEXT *psContext);
 #define SYNC_CHECKPOINT_PATTERN_IN_POOL 0x2b2bb
 #define SYNC_CHECKPOINT_PATTERN_FREED 0x3c3cc
 
+extern PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void);
+
 static inline void RGXSRVHWPerfSyncCheckpointUFOIsSignalled(PVRSRV_RGXDEV_INFO *psDevInfo, _SYNC_CHECKPOINT *psSyncCheckpointInt, IMG_BOOL bSleepAllowed)
 {
 	if (RGXHWPerfHostIsEventEnabled(psDevInfo, RGX_HWPERF_HOST_UFO))
@@ -338,7 +340,7 @@ static PVRSRV_ERROR
 _AllocSyncCheckpointBlock(_SYNC_CHECKPOINT_CONTEXT *psContext,
                           SYNC_CHECKPOINT_BLOCK    **ppsSyncBlock)
 {
-	PVRSRV_DEVICE_NODE *psDevNode;
+	PVRSRV_DEVICE_NODE *psDevNode = RGXGetDeviceNode();
 	SYNC_CHECKPOINT_BLOCK *psSyncBlk;
 	PVRSRV_ERROR eError;
 
@@ -348,7 +350,6 @@ _AllocSyncCheckpointBlock(_SYNC_CHECKPOINT_CONTEXT *psContext,
 	psSyncBlk->psContext = psContext;
 
 	/* Allocate sync checkpoint block */
-	psDevNode = psContext->psDevNode;
 	if (!psDevNode)
 	{
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
@@ -400,7 +401,7 @@ _FreeSyncCheckpointBlock(SYNC_CHECKPOINT_BLOCK *psSyncBlk)
 	OSLockAcquire(psSyncBlk->hLock);
 	if (0 == OSAtomicDecrement(&psSyncBlk->hRefCount))
 	{
-		PVRSRV_DEVICE_NODE *psDevNode = psSyncBlk->psDevNode;
+		PVRSRV_DEVICE_NODE *psDevNode = RGXGetDeviceNode();
 
 		DevmemReleaseCpuVirtAddr(psSyncBlk->hMemDesc);
 		psDevNode->pfnFreeUFOBlock(psDevNode, psSyncBlk->hMemDesc);
@@ -845,7 +846,7 @@ SyncCheckpointContextCreate(PPVRSRV_DEVICE_NODE psDevNode,
 	psContextCtl->bSyncCheckpointPoolFull = IMG_FALSE;
 	psContextCtl->bSyncCheckpointPoolValid = IMG_TRUE;
 #endif
-	psContext->psDevNode = psDevNode;
+	psContext->psDevNode = RGXGetDeviceNode();
 
 	OSSNPrintf(psContext->azName, PVRSRV_SYNC_NAME_LENGTH, "Sync Prim RA-%p", psContext);
 	OSSNPrintf(psContext->azSpanName, PVRSRV_SYNC_NAME_LENGTH, "Sync Prim span RA-%p", psContext);

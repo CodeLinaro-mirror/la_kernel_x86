@@ -55,6 +55,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_sync_km.h"
 #include "sync_fallback_server.h"
 
+extern PVRSRV_DEVICE_NODE* RGXGetDeviceNode(void);
+
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeAllocSyncPrimitiveBlock(IMG_HANDLE
 								     hBridge,
 								     IMG_HANDLE
@@ -70,14 +72,14 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeAllocSyncPrimitiveBlock(IMG_HANDLE
 								     *
 								     phhSyncPMR)
 {
+	PVRSRV_DEVICE_NODE* psDevNode = RGXGetDeviceNode();
 	PVRSRV_ERROR eError;
 	SYNC_PRIMITIVE_BLOCK *psSyncHandleInt;
 	PMR *pshSyncPMRInt;
 
 	eError =
 	    PVRSRVAllocSyncPrimitiveBlockKM(NULL,
-					    (PVRSRV_DEVICE_NODE *) ((void *)
-								    hBridge),
+					    psDevNode,
 					    &psSyncHandleInt,
 					    pui32SyncPrimVAddr,
 					    pui32SyncPrimBlockSize,
@@ -530,11 +532,12 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeSyncAllocEvent(IMG_HANDLE hBridge,
 							    const IMG_CHAR *
 							    puiClassName)
 {
+	PVRSRV_DEVICE_NODE* psDevNode = RGXGetDeviceNode();
 	PVRSRV_ERROR eError;
 
 	eError =
 	    PVRSRVSyncAllocEventKM(NULL,
-				   (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
+				   psDevNode,
 				   bServerSync, ui32FWAddr, ui32ClassNameSize,
 				   puiClassName);
 
