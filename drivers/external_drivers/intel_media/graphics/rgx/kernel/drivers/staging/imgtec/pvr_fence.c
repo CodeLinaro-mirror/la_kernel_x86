@@ -980,6 +980,27 @@ pvr_fence_sw_signal(struct pvr_fence *pvr_fence)
 	return 0;
 }
 
+/**
+ * pvr_fence_sw_error - errors the sync checkpoint backing a PVR fence
+ * @pvr_fence: PVR fence to error
+ *
+ * Sets the PVR fence sync checkpoint value to errored.
+ *
+ * Returns -EINVAL if the PVR fence represents a foreign fence.
+ */
+int
+pvr_fence_sw_error(struct pvr_fence *pvr_fence)
+{
+	if (!is_our_fence(pvr_fence->fctx, &pvr_fence->base))
+		return -EINVAL;
+
+	SyncCheckpointError(pvr_fence->sync_checkpoint, ATOMIC_SYNC_CTX);
+	PVR_FENCE_TRACE(&pvr_fence->base, "sw set fence sync errored (%s)\n",
+	            pvr_fence->name);
+
+	return 0;
+}
+
 int
 pvr_fence_get_checkpoints(struct pvr_fence **pvr_fences, u32 nr_fences,
 			  struct _SYNC_CHECKPOINT **fence_checkpoints)
@@ -989,10 +1010,10 @@ pvr_fence_get_checkpoints(struct pvr_fence **pvr_fences, u32 nr_fences,
 	int fence_checkpoint_idx;
 
 	if (nr_fences > 0) {
-		struct pvr_fence *next_fence = *next_pvr_fence++;
 
 		for (fence_checkpoint_idx = 0; fence_checkpoint_idx < nr_fences;
 		     fence_checkpoint_idx++) {
+			struct pvr_fence *next_fence = *next_pvr_fence++;
 			*next_fence_checkpoint++ = next_fence->sync_checkpoint;
 			/* Take reference on sync checkpoint (will be dropped
 			 * later by kick code)

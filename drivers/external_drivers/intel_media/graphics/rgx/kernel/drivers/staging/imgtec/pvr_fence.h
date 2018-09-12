@@ -171,6 +171,7 @@ struct pvr_fence *pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 					      const char *name);
 void pvr_fence_destroy(struct pvr_fence *pvr_fence);
 int pvr_fence_sw_signal(struct pvr_fence *pvr_fence);
+int pvr_fence_sw_error(struct pvr_fence *pvr_fence);
 
 int pvr_fence_get_checkpoints(struct pvr_fence **pvr_fences, u32 nr_fences,
 			      struct _SYNC_CHECKPOINT **fence_checkpoints);

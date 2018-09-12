@@ -220,11 +220,17 @@ enum PVRSRV_ERROR pvr_sync_finalise_fence(PVRSRV_FENCE fence_fd,
 	void *finalise_data)
 {
 	struct sync_file *sync_file = finalise_data;
+	struct pvr_fence *pvr_fence;
 
 	if (!sync_file || (fence_fd < 0)) {
 		pr_err(FILE_NAME ": %s: Invalid input fence\n", __func__);
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
+
+	pvr_fence = to_pvr_fence(sync_file->fence);
+
+	/* pvr fences can be signalled any time after creation */
+	dma_fence_enable_sw_signaling(&pvr_fence->base);
 
 	fd_install(fence_fd, sync_file->file);
 
@@ -319,9 +325,6 @@ enum PVRSRV_ERROR pvr_sync_create_fence(const char *fence_name,
 		goto err_destroy_fence;
 	}
 
-	/* pvr fences can be signalled any time after creation */
-	dma_fence_enable_sw_signaling(&pvr_fence->base);
-
 	sync_file = sync_file_create(&pvr_fence->base);
 	if (!sync_file) {
 		pr_err(FILE_NAME ": %s: Failed to create sync_file\n",
@@ -373,7 +376,6 @@ enum PVRSRV_ERROR pvr_sync_rollback_fence_data(PVRSRV_FENCE fence_to_rollback,
 			__func__, sync_file->fence);
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
-	pvr_fence_sw_signal(pvr_fence);
 
 	fput(sync_file->file);
 
