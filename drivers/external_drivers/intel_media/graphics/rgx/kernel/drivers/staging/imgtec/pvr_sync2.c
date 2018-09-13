@@ -2396,7 +2396,7 @@ enum PVRSRV_ERROR pvr_sync_init(struct device *dev)
 		pvr_sync_defer_free_work_queue_function);
 
 	/* Use the shared workqueue */
-	pvr_sync_data.check_status_wq = priv->fence_status_wq;
+	pvr_sync_data.check_status_wq = create_freezable_workqueue("pvr_fence_status");
 
 	INIT_WORK(&pvr_sync_data.check_status_work,
 		pvr_sync_check_status_work_queue_function);
