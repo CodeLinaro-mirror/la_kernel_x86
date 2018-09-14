@@ -152,10 +152,11 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeServerSyncAlloc(IMG_HANDLE hBridge,
 {
 	PVRSRV_ERROR eError;
 	SERVER_SYNC_PRIMITIVE *psSyncHandleInt;
+	PVRSRV_DEVICE_NODE* psDevNode = RGXGetDeviceNode();
 
 	eError =
 	    PVRSRVServerSyncAllocKM(NULL,
-				    (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
+				    psDevNode,
 				    &psSyncHandleInt, pui32SyncPrimVAddr,
 				    ui32ClassNameSize, puiClassName);
 
@@ -549,10 +550,11 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeSyncFreeEvent(IMG_HANDLE hBridge,
 							   ui32FWAddr)
 {
 	PVRSRV_ERROR eError;
+	PVRSRV_DEVICE_NODE* psDevNode = RGXGetDeviceNode();
 
 	eError =
 	    PVRSRVSyncFreeEventKM(NULL,
-				  (PVRSRV_DEVICE_NODE *) ((void *)hBridge),
+				  psDevNode,
 				  ui32FWAddr);
 
 	return eError;
