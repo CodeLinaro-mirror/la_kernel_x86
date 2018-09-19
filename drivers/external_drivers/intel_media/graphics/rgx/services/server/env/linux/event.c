@@ -91,6 +91,11 @@ typedef struct PVRSRV_LINUX_EVENT_OBJECT_TAG
 #endif
 	wait_queue_head_t sWait;
 	struct list_head sList;
+	enum {
+		PVRSRV_LINUX_EVENT_OBJECT_NONE = 0,
+		PVRSRV_LINUX_EVENT_OBJECT_ALLOC = 1,
+		PVRSRV_LINUX_EVENT_OBJECT_FREE = 2
+	} eState;
 	PVRSRV_LINUX_EVENT_OBJECT_LIST *psLinuxEventObjectList;
 } PVRSRV_LINUX_EVENT_OBJECT;
 
@@ -182,6 +187,9 @@ PVRSRV_ERROR LinuxEventObjectDelete(IMG_HANDLE hOSEventObject)
 		PVRSRV_LINUX_EVENT_OBJECT *psLinuxEventObject = (PVRSRV_LINUX_EVENT_OBJECT *)hOSEventObject;
 		PVRSRV_LINUX_EVENT_OBJECT_LIST *psLinuxEventObjectList = psLinuxEventObject->psLinuxEventObjectList;
 
+		/* Mark for deletion to avoid race condition */
+		psLinuxEventObject->eState = PVRSRV_LINUX_EVENT_OBJECT_FREE;
+
 		write_lock_bh(&psLinuxEventObjectList->sLock);
 		list_del(&psLinuxEventObject->sList);
 		write_unlock_bh(&psLinuxEventObjectList->sLock);
@@ -227,6 +235,7 @@ PVRSRV_ERROR LinuxEventObjectAdd(IMG_HANDLE hOSEventObjectList, IMG_HANDLE *phOS
 	}
 
 	INIT_LIST_HEAD(&psLinuxEventObject->sList);
+	psLinuxEventObject->eState = PVRSRV_LINUX_EVENT_OBJECT_ALLOC;
 
 	atomic_set(&psLinuxEventObject->sTimeStamp, 0);
 	psLinuxEventObject->ui32TimeStampPrevious = 0;
@@ -273,9 +282,11 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
 	{
 
 		psLinuxEventObject = (PVRSRV_LINUX_EVENT_OBJECT *)list_entry(psListEntry, PVRSRV_LINUX_EVENT_OBJECT, sList);
-
-		atomic_inc(&psLinuxEventObject->sTimeStamp);
-		wake_up_interruptible(&psLinuxEventObject->sWait);
+		if (psLinuxEventObject->eState == PVRSRV_LINUX_EVENT_OBJECT_ALLOC) {
+			/* only access the struct if the object was not marked for deletion */
+			atomic_inc(&psLinuxEventObject->sTimeStamp);
+			wake_up_interruptible(&psLinuxEventObject->sWait);
+		}
 	}
 	read_unlock_bh(&psLinuxEventObjectList->sLock);
 
