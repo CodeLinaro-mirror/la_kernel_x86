@@ -268,7 +268,7 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
 	struct list_head *psListEntry, *psListEntryTemp, *psList;
 	psList = &psLinuxEventObjectList->sList;
 
-	write_lock_bh(&psLinuxEventObjectList->sLock);
+	read_lock_bh(&psLinuxEventObjectList->sLock);
 	list_for_each_safe(psListEntry, psListEntryTemp, psList)
 	{
 
@@ -277,7 +277,7 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
 		atomic_inc(&psLinuxEventObject->sTimeStamp);
 		wake_up_interruptible(&psLinuxEventObject->sWait);
 	}
-	write_unlock_bh(&psLinuxEventObjectList->sLock);
+	read_unlock_bh(&psLinuxEventObjectList->sLock);
 
 	return 	PVRSRV_OK;
 
