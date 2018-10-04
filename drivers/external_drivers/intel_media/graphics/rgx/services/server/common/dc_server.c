@@ -59,6 +59,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if defined(PVR_RI_DEBUG)
 #include "ri_server.h"
+#define RI_MAX_TEXT_LEN 20
 #endif
 
 struct _DC_DISPLAY_CONTEXT_
@@ -1321,10 +1322,7 @@ PVRSRV_ERROR DCSystemBufferAcquire(DC_DEVICE *psDevice,
 		{
 			pszRIText[RI_MAX_TEXT_LEN-1] = '\0';
 		}
-		eError = RIWritePMREntryKM (psPMR,
-									(IMG_UINT32)i32RITextSize,
-									(IMG_CHAR *)pszRIText,
-									(uiLog2PageSize*ui32PageCount));
+		eError = RIWritePMREntryKM(psPMR);
 	}
 #endif
 
@@ -1991,10 +1989,7 @@ PVRSRV_ERROR DCBufferAlloc(DC_DISPLAY_CONTEXT *psDisplayContext,
 		{
 			pszRIText[RI_MAX_TEXT_LEN-1] = '\0';
 		}
-		eError = RIWritePMREntryKM (psPMR,
-									(IMG_UINT32)i32RITextSize,
-									(IMG_CHAR *)pszRIText,
-									(uiLog2PageSize*ui32PageCount));
+		eError = RIWritePMREntryKM (psPMR);
 	}
 #endif
 

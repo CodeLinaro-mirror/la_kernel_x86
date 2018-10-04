@@ -360,10 +360,7 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 	}
 
 #if defined(PVR_RI_DEBUG)
-	eError = RIWritePMREntryKM(*ppsPMR,
-				   sizeof("GEM"),
-				   "GEM",
-				   psObj->size);
+	eError = RIWritePMREntryKM(*ppsPMR);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_WARNING,

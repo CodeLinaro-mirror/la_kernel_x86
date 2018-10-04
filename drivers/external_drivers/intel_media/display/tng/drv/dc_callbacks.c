@@ -786,7 +786,6 @@ void DCCBEnablePrimaryWA(struct drm_device *dev, int index)
 	PSB_WVDC32(0, DSPALINOFF + reg_offset);
 	PSB_WVDC32(0, DSPATILEOFF + reg_offset);
 	PSB_WVDC32(pg->reserved_gtt_start, DSPASURF + reg_offset);
-	dev_dbg(dev, "enable primary plane WA on pipe %d\n", index);
 }
 
 int DCCBPrimaryEnable(struct drm_device *dev, u32 ctx,
