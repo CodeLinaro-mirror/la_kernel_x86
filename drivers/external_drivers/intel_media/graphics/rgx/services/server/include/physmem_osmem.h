@@ -1,20 +1,15 @@
-/**************************************************************************/ /*!
+/*************************************************************************/ /*!
 @File
-@Title		PMR implementation of OS derived physical memory
+@Title          PhysmemNewOSRamBackedPMR function declaration header
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description	Part of the memory management.  This module is
-                responsible for the an implementation of the "PMR"
-                abstraction.  This interface is for the
-                PhysmemNewOSRamBackedPMR() "PMR Factory" which is
-                responsible for claiming chunks of memory (in
-                particular physically contiguous quanta) from the
-                Operating System.
+@Description    Part of Services memory management.  This file defines the
+                OS memory PMR factory API that must be defined so that the
+                common & device layer code in the Services Server can allocate
+                new PMRs back with pages from the OS page allocator. Applicable
+                for UMA based platforms, such platforms must implement this API
+                in the OS Porting layer, in the "env" directory for that
+                system.
 
-                As such, this interface will be implemented on a
-                Per-OS basis, in the "env" directory for that system.
-                A dummy implementation is available in
-                physmem_osmem_dummy.c for operating systems that
-                cannot, or do not wish to, offer this functionality.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -51,9 +46,10 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /***************************************************************************/
-#ifndef _SRVSRV_PHYSMEM_OSMEM_H_
-#define _SRVSRV_PHYSMEM_OSMEM_H_
+*/ /**************************************************************************/
+
+#ifndef _PHYSMEM_OSMEM_H_
+#define _PHYSMEM_OSMEM_H_
 
 /* include/ */
 #include "img_types.h"
@@ -106,6 +102,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 @Input          pszAnnotation    string describing the PMR (for debug).
                                  This should be passed into the function
                                  PMRCreatePMR().
+@Input          uiPid            The process ID that this allocation should
+                                 be associated with.
 @Output         ppsPMROut        pointer to the PMR created for the
                                  new allocation
 @Return         PVRSRV_OK on success, a failure code otherwise.
@@ -120,6 +118,7 @@ PhysmemNewOSRamBackedPMR(PVRSRV_DEVICE_NODE *psDevNode,
                          IMG_UINT32 uiLog2PageSize,
                          PVRSRV_MEMALLOCFLAGS_T uiFlags,
                          const IMG_CHAR *pszAnnotation,
+                         IMG_PID uiPid,
                          PMR **ppsPMROut);
 
-#endif /* #ifndef _SRVSRV_PHYSMEM_OSMEM_H_ */
+#endif /* #ifndef _PHYSMEM_OSMEM_H_ */

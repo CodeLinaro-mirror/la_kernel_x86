@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for pdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_PDUMP_BRIDGE_H
 #define COMMON_PDUMP_BRIDGE_H
@@ -52,14 +52,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "devicemem_typedefs.h"
 #include "pdumpdefs.h"
-
+#include <powervr/buffer_attribs.h>
 
 #define PVRSRV_BRIDGE_PDUMP_CMD_FIRST			0
 #define PVRSRV_BRIDGE_PDUMP_DEVMEMPDUMPBITMAP			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+0
-#define PVRSRV_BRIDGE_PDUMP_PVRSRVPDUMPCOMMENT			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+1
-#define PVRSRV_BRIDGE_PDUMP_PVRSRVPDUMPSETFRAME			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+2
-#define PVRSRV_BRIDGE_PDUMP_CMD_LAST			(PVRSRV_BRIDGE_PDUMP_CMD_FIRST+2)
-
+#define PVRSRV_BRIDGE_PDUMP_PDUMPIMAGEDESCRIPTOR			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+1
+#define PVRSRV_BRIDGE_PDUMP_PVRSRVPDUMPCOMMENT			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+2
+#define PVRSRV_BRIDGE_PDUMP_PVRSRVPDUMPSETFRAME			PVRSRV_BRIDGE_PDUMP_CMD_FIRST+3
+#define PVRSRV_BRIDGE_PDUMP_CMD_LAST			(PVRSRV_BRIDGE_PDUMP_CMD_FIRST+3)
 
 /*******************************************
             DevmemPDumpBitmap          
@@ -68,7 +68,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for DevmemPDumpBitmap */
 typedef struct PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP_TAG
 {
-	IMG_CHAR * puiFileName;
+	IMG_CHAR *puiFileName;
 	IMG_UINT32 ui32FileOffset;
 	IMG_UINT32 ui32Width;
 	IMG_UINT32 ui32Height;
@@ -79,14 +79,44 @@ typedef struct PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP_TAG
 	PDUMP_PIXEL_FORMAT ePixelFormat;
 	IMG_UINT32 ui32AddrMode;
 	IMG_UINT32 ui32PDumpFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEVMEMPDUMPBITMAP;
 
 /* Bridge out structure for DevmemPDumpBitmap */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP;
 
+/*******************************************
+            PDumpImageDescriptor          
+ *******************************************/
+
+/* Bridge in structure for PDumpImageDescriptor */
+typedef struct PVRSRV_BRIDGE_IN_PDUMPIMAGEDESCRIPTOR_TAG
+{
+	IMG_HANDLE hDevmemCtx;
+	IMG_UINT32 ui32StringSize;
+	const IMG_CHAR *puiFileName;
+	IMG_DEV_VIRTADDR sDataDevAddr;
+	IMG_UINT32 ui32DataSize;
+	IMG_UINT32 ui32LogicalWidth;
+	IMG_UINT32 ui32LogicalHeight;
+	IMG_UINT32 ui32PhysicalWidth;
+	IMG_UINT32 ui32PhysicalHeight;
+	PDUMP_PIXEL_FORMAT ePixelFormat;
+	IMG_MEMLAYOUT eMemLayout;
+	IMG_FB_COMPRESSION eFBCompression;
+	const IMG_UINT32 *pui32FBCClearColour;
+	IMG_DEV_VIRTADDR sHeaderDevAddr;
+	IMG_UINT32 ui32HeaderSize;
+	IMG_UINT32 ui32PDumpFlags;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PDUMPIMAGEDESCRIPTOR;
+
+/* Bridge out structure for PDumpImageDescriptor */
+typedef struct PVRSRV_BRIDGE_OUT_PDUMPIMAGEDESCRIPTOR_TAG
+{
+	PVRSRV_ERROR eError;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PDUMPIMAGEDESCRIPTOR;
 
 /*******************************************
             PVRSRVPDumpComment          
@@ -95,16 +125,15 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMPDUMPBITMAP_TAG
 /* Bridge in structure for PVRSRVPDumpComment */
 typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPCOMMENT_TAG
 {
-	IMG_CHAR * puiComment;
+	IMG_CHAR *puiComment;
 	IMG_UINT32 ui32Flags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPCOMMENT;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPCOMMENT;
 
 /* Bridge out structure for PVRSRVPDumpComment */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT;
 
 /*******************************************
             PVRSRVPDumpSetFrame          
@@ -114,13 +143,12 @@ typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPCOMMENT_TAG
 typedef struct PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETFRAME_TAG
 {
 	IMG_UINT32 ui32Frame;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETFRAME;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PVRSRVPDUMPSETFRAME;
 
 /* Bridge out structure for PVRSRVPDumpSetFrame */
 typedef struct PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETFRAME_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETFRAME;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PVRSRVPDUMPSETFRAME;
 
 #endif /* COMMON_PDUMP_BRIDGE_H */

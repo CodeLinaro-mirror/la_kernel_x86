@@ -100,12 +100,14 @@ target_neutral_types := \
  spv_header \
  preprocessed_file \
  rs_bitcode \
+ rs_object \
  rscsha1_header \
  test_image \
  usc_header \
  rgxmetafw \
  rgxmipsfw \
- vk_layer
+ vk_layer \
+ hidl
 
 doc_types := \
  doc \
@@ -186,8 +188,12 @@ define host-cxx-option
 $(call cc-check,$(patsubst @%,%,$(HOST_CXX)),$(OUT),$(1))
 endef
 
+define kernel-cc-is-clang
+$(call cc-check,$(if $(KERNEL_CC),$(KERNEL_CC),$(KERNEL_CROSS_COMPILE)gcc),$(OUT),--clang)
+endef
+
 define kernel-cc-option
-$(call cc-check,$(KERNEL_CROSS_COMPILE)gcc,$(OUT),$(1))
+$(call cc-check,$(if $(KERNEL_CC),$(KERNEL_CC),$(KERNEL_CROSS_COMPILE)gcc),$(OUT),$(1))
 endef
 
 # Turn a particular warning on, or explicitly turn it off, depending on
@@ -272,4 +278,15 @@ endef
 
 define unsupported-module-var
 $(if $(strip $($(THIS_MODULE)_$(1))),$(error In makefile $(THIS_MAKEFILE): Setting '$(THIS_MODULE)_$(1)' has no effect, because $(THIS_MODULE) has type $($(THIS_MODULE)_type)))
+endef
+
+define hidl_headers
+$(addprefix $(1)/$($(1)_intf_path)/,\
+	$(foreach _i,$($(1)_intf_class),BnHw$(_i).h BpHw$(_i).h Bs$(_i).h IHw$(_i).h I$(_i).h) \
+	$(foreach _i,$($(1)_intf_type),hw$(_i).h $(_i).h))
+endef
+
+define hidl_sources
+$(addprefix $(GENERATED_CODE_OUT)/$(1)/$($(1)_intf_path)/,\
+	$(foreach _i,$($(1)_intf_class),$(_i)All.cpp))
 endef

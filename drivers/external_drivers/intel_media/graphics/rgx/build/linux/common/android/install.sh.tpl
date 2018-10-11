@@ -69,6 +69,7 @@ APP_DESTDIR=[APP_DESTDIR]
 BIN_DESTDIR=[BIN_DESTDIR]
 FW_DESTDIR=[FW_DESTDIR]
 DATA_DESTDIR=[BIN_DESTDIR]
+TEST_DESTDIR=[TEST_DESTDIR]
 
 # Exit with an error messages.
 # $1=blurb
@@ -89,7 +90,6 @@ function copy_files_locally() {
     function check_module_directory() { true; }
     function uninstall() { true; }
     function link_library() { true; }
-    function set_icdconf()  { true; }
     function symlink_library_if_not_present() { true; }
 
     # basic installation function

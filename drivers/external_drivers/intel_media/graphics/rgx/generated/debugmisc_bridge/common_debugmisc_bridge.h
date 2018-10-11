@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for debugmisc
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_DEBUGMISC_BRIDGE_H
 #define COMMON_DEBUGMISC_BRIDGE_H
@@ -54,17 +54,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_bridge.h"
 #include "pvrsrv_memallocflags.h"
 
-
 #define PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST			0
 #define PVRSRV_BRIDGE_DEBUGMISC_DEBUGMISCSLCSETBYPASSSTATE			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+0
 #define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETFWLOG			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+1
 #define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCDUMPFREELISTPAGELIST			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+2
-#define PVRSRV_BRIDGE_DEBUGMISC_PHYSMEMIMPORTSECBUF			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+3
-#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETHCSDEADLINE			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+4
-#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSIDPRIORITY			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+5
-#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSNEWONLINESTATE			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+6
-#define PVRSRV_BRIDGE_DEBUGMISC_CMD_LAST			(PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+6)
-
+#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETHCSDEADLINE			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+3
+#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSIDPRIORITY			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+4
+#define PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETOSNEWONLINESTATE			PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+5
+#define PVRSRV_BRIDGE_DEBUGMISC_CMD_LAST			(PVRSRV_BRIDGE_DEBUGMISC_CMD_FIRST+5)
 
 /*******************************************
             DebugMiscSLCSetBypassState          
@@ -75,14 +72,13 @@ typedef struct PVRSRV_BRIDGE_IN_DEBUGMISCSLCSETBYPASSSTATE_TAG
 {
 	IMG_UINT32 ui32Flags;
 	IMG_BOOL bIsBypassed;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEBUGMISCSLCSETBYPASSSTATE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEBUGMISCSLCSETBYPASSSTATE;
 
 /* Bridge out structure for DebugMiscSLCSetBypassState */
 typedef struct PVRSRV_BRIDGE_OUT_DEBUGMISCSLCSETBYPASSSTATE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEBUGMISCSLCSETBYPASSSTATE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEBUGMISCSLCSETBYPASSSTATE;
 
 /*******************************************
             RGXDebugMiscSetFWLog          
@@ -92,14 +88,13 @@ typedef struct PVRSRV_BRIDGE_OUT_DEBUGMISCSLCSETBYPASSSTATE_TAG
 typedef struct PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETFWLOG_TAG
 {
 	IMG_UINT32 ui32RGXFWLogType;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETFWLOG;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETFWLOG;
 
 /* Bridge out structure for RGXDebugMiscSetFWLog */
 typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETFWLOG_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETFWLOG;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETFWLOG;
 
 /*******************************************
             RGXDebugMiscDumpFreelistPageList          
@@ -108,36 +103,14 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETFWLOG_TAG
 /* Bridge in structure for RGXDebugMiscDumpFreelistPageList */
 typedef struct PVRSRV_BRIDGE_IN_RGXDEBUGMISCDUMPFREELISTPAGELIST_TAG
 {
-	 IMG_UINT32 ui32EmptyStructPlaceholder;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCDUMPFREELISTPAGELIST;
+	IMG_UINT32 ui32EmptyStructPlaceholder;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCDUMPFREELISTPAGELIST;
 
 /* Bridge out structure for RGXDebugMiscDumpFreelistPageList */
 typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCDUMPFREELISTPAGELIST_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCDUMPFREELISTPAGELIST;
-
-
-/*******************************************
-            PhysmemImportSecBuf          
- *******************************************/
-
-/* Bridge in structure for PhysmemImportSecBuf */
-typedef struct PVRSRV_BRIDGE_IN_PHYSMEMIMPORTSECBUF_TAG
-{
-	IMG_DEVMEM_SIZE_T uiSize;
-	IMG_UINT32 ui32Log2Align;
-	PVRSRV_MEMALLOCFLAGS_T uiFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PHYSMEMIMPORTSECBUF;
-
-/* Bridge out structure for PhysmemImportSecBuf */
-typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF_TAG
-{
-	IMG_HANDLE hPMRPtr;
-	IMG_UINT64 ui64SecBufHandle;
-	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCDUMPFREELISTPAGELIST;
 
 /*******************************************
             RGXDebugMiscSetHCSDeadline          
@@ -147,14 +120,13 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF_TAG
 typedef struct PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETHCSDEADLINE_TAG
 {
 	IMG_UINT32 ui32RGXHCSDeadline;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETHCSDEADLINE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETHCSDEADLINE;
 
 /* Bridge out structure for RGXDebugMiscSetHCSDeadline */
 typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETHCSDEADLINE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETHCSDEADLINE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETHCSDEADLINE;
 
 /*******************************************
             RGXDebugMiscSetOSidPriority          
@@ -165,14 +137,13 @@ typedef struct PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSIDPRIORITY_TAG
 {
 	IMG_UINT32 ui32OSid;
 	IMG_UINT32 ui32Priority;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSIDPRIORITY;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSIDPRIORITY;
 
 /* Bridge out structure for RGXDebugMiscSetOSidPriority */
 typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSIDPRIORITY_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSIDPRIORITY;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSIDPRIORITY;
 
 /*******************************************
             RGXDebugMiscSetOSNewOnlineState          
@@ -183,13 +154,12 @@ typedef struct PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSNEWONLINESTATE_TAG
 {
 	IMG_UINT32 ui32OSid;
 	IMG_UINT32 ui32OSNewState;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSNEWONLINESTATE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXDEBUGMISCSETOSNEWONLINESTATE;
 
 /* Bridge out structure for RGXDebugMiscSetOSNewOnlineState */
 typedef struct PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSNEWONLINESTATE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSNEWONLINESTATE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXDEBUGMISCSETOSNEWONLINESTATE;
 
 #endif /* COMMON_DEBUGMISC_BRIDGE_H */

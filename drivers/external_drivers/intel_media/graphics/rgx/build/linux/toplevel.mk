@@ -202,6 +202,7 @@ ifeq ($(INTERNAL_CLOBBER_ONLY)$(SUPPORT_ANDROID_PLATFORM)$(SUPPORT_NEUTRINO_PLAT
 
  else ifneq ($(SYSROOT),)
   LWS_PREFIX ?= /usr
+  XORG_CONFDIR ?= /etc/X11
 
   override SYS_CFLAGS      += --sysroot=${SYSROOT}
   override SYS_CXXFLAGS    += --sysroot=${SYSROOT}
@@ -286,8 +287,11 @@ ALL_MODULES := $(filter-out $(ALL_BAD_MODULES),$(ALL_MODULES))
 kbuild install:
 
 ifneq ($(INTERNAL_CLOBBER_ONLY),true)
--include $(MAKE_TOP)/scripts.mk
--include $(MAKE_TOP)/kbuild/kbuild.mk
+ ifeq ($(SUPPORT_ANDROID_PLATFORM)$(SUPPORT_NEUTRINO_PLATFORM)$(SUPPORT_INTEGRITY_PLATFORM),)
+  -include $(MAKE_TOP)/packaging.mk
+ endif
+ -include $(MAKE_TOP)/scripts.mk
+ -include $(MAKE_TOP)/kbuild/kbuild.mk
 endif
 # We won't depend on 'build' here so that people can build subsets of
 # components and still have the install script attempt to install the
@@ -311,11 +315,12 @@ install:
 	@cd $(RELATIVE_OUT) && ./install.sh
 
 .PHONY: uninstall
-uninstall: install_script
+uninstall: install_script install_script_km
 uninstall:
-	@if [ ! -d "$(DISCIMAGE)" ]; then \
+	@if [ ! -d "$(DISCIMAGE)" -a -z "$(INSTALL_TARGET)" ]; then \
 		echo; \
 		echo "** DISCIMAGE was not set or does not point to a valid directory."; \
+		echo "** Either use INSTALL_TARGET or set DISCIMAGE."; \
 		echo "** Cannot continue with uninstall."; \
 		echo; \
 		exit 1; \

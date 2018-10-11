@@ -63,7 +63,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(RGXFW_GROUP_SPM,SPM)          \
 	X(RGXFW_GROUP_MTS,MTS)          \
 	X(RGXFW_GROUP_BIF,BIF)          \
-	X(RGXFW_GROUP_DATA,DATA)        \
+	X(RGXFW_GROUP_MISC,MISC)        \
 	X(RGXFW_GROUP_POW,POW)          \
 	X(RGXFW_GROUP_HWR,HWR)          \
 	X(RGXFW_GROUP_HWP,HWP)          \
@@ -76,6 +76,14 @@ enum RGXFW_LOG_SFGROUPS {
 	RGXFW_LOG_SFGROUPLIST
 #undef X
 };
+
+#define IMG_SF_STRING_MAX_SIZE 256
+
+typedef struct _TUPLE_ {
+	IMG_UINT32 ui32Id;
+	IMG_CHAR sName[IMG_SF_STRING_MAX_SIZE];
+} RGXFW_STID_FMT; /*  pair of string format id and string formats */
+
 
 /* Table of String Format specifiers, the group they belong and the number of
  * arguments each expects. Xmacro styled macros are used to generate what is
@@ -146,7 +154,7 @@ X(53,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_MLIST_CHECKER_EMPTY, "MLIST%d is empty\n"
 X(54,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_MLIST_CHECKER_REG_VALUE, "MLIST%d checker: CatBase TE=0x%08X%08X, VCE=0x%08x%08X, ALIST=0x%08x%08X, IsTA=%d\n", 8) \
 X(55,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_3D_40480KICK, "3D OQ flush kick\n", 0) \
 X(56,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_HWP_UNSUPPORTED_BLOCK, "HWPerf block ID (0x%x) unsupported by device\n", 1) \
-X(57,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_BREAKPOINT_SET, "Setting breakpoint: Addr 0x%08.8X DM%u\n", 2) \
+X(57,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_BREAKPOINT_SET_DEPRECATED2, "Setting breakpoint: Addr 0x%08.8X DM%u\n", 2) \
 X(58,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_KICK_RTU_DEPRECATED, "Kick RTU: FWCtx 0x%08.8X @ %d, prio: %d\n", 3) \
 X(59,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_RTU_FINISHED, "RDM finished on context %u\n", 1) \
 X(60,  RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_KICK_SHG_DEPRECATED, "Kick SHG: FWCtx 0x%08.8X @ %d, prio: %d\n", 3) \
@@ -234,8 +242,24 @@ X(142, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_TDM_OFFSET_READ_RESET, "Reset TDM Queue R
 X(143, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_UMQ_MISMATCHED_READ_OFFSET, "User Mode Queue mismatched stream start: FWCtx 0x%08.8X, queue: 0x%08X%08X (Roff = %u, StreamStartOffset = %u)\n", 5) \
 X(144, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_SIDEKICK_DEINIT, "Sidekick deinit\n", 0) \
 X(145, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_RD_DEINIT, "Rascal+Dusts deinit\n", 0) \
-X(146, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_OS_INIT_CONFIG, "Initialised OS %d with config flags 0x%08x\n", 2) \
+X(146, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_OS_INIT_CONFIG_DEPRECATED, "Initialised OS %d with config flags 0x%08x\n", 2) \
+X(147, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_UFO_CHKPT_LIMIT, "Fence checkpoint UFO limit exceeded %d/%d\n", 2) \
 X(148, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_3D_62850KICK, "3D Dummy stencil store\n", 0) \
+X(149, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_OS_INIT_CONFIG, "Initialised OS %d with config flags 0x%08x and extended config flags 0x%08x\n", 3) \
+X(150, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_UNKNOWN_COMMAND, "Unknown Command (eCmdType=0x%08x)\n", 1) \
+X(151, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_UFO_FORCED_UPDATE, "UFO forced update: FWCtx %08.8X @ %d [%08.8X] = %08.8X\n", 4) \
+X(152, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_UFO_FORCED_UPDATE_NOP, "UFO forced update NOP: FWCtx %08.8X @ %d [%08.8X] = %08.8X, reason %d\n", 5) \
+X(153, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_TDM_BRN66075_CHECK, "TDM context switch check: Roff %u points to 0x%08x, Match=%u\n", 3) \
+X(154, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_OS_INIT_CCBS, "OSid %d CCB init status: %d (1-ok 0-fail): kCCBCtl@0x%x kCCB@0x%x fwCCBCtl@0x%x fwCCB@0x%x \n", 6) \
+X(155, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_FWIRQ, "FW IRQ # %u @ %u\n", 2) \
+X(156, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_BREAKPOINT_SET, "Setting breakpoint: Addr 0x%08.8X DM%u usc_breakpoint_ctrl_dm = %u\n", 3) \
+X(157, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_INVALID_KERNEL_CCB, "Invalid KCCB setup for OSid %u: KCCB 0x%08x, KCCB Ctrl 0x%08x\n", 3) \
+X(158, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_INVALID_KERNEL_CCB_CMD, "Invalid KCCB cmd (%u) for OSid %u @ KCCB 0x%08x\n", 3) \
+X(159, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_FW_FAULT, "FW FAULT: At line %d in file 0x%08x%08x, additional data=0x%08x\n", 4) \
+X(160, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_BREAKPOINT_INVALID, "Invalid breakpoint: MemCtx 0x%08x Addr 0x%08.8X DM%u usc_breakpoint_ctrl_dm = %u\n", 4) \
+X(161, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_FLUSHINVAL_CMD_INVALID, "Discarding invalid SLC flushinval command for OSid %u: DM %u, FWCtx 0x%08x\n", 3) \
+X(162, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_INVALID_NOTIFY_WRITE_OFFSET_UPDATE, "Invalid Write Offset update notification from OSid %u to DM %u: FWCtx 0x%08x, MemCtx 0x%08x\n", 4) \
+X(163, RGXFW_GROUP_MAIN, RGXFW_SF_MAIN_INVALID_KCCB_KICK_CMD, "Null FWCtx in KCCB kick cmd for OSid %u: KCCB 0x%08x, ROff %u, WOff %u\n", 4) \
 \
 X( 1, RGXFW_GROUP_MTS, RGXFW_SF_MTS_BG_KICK_DEPRECATED, "Bg Task DM = %u, counted = %d\n", 2) \
 X( 2, RGXFW_GROUP_MTS, RGXFW_SF_MTS_BG_COMPLETE_DEPRECATED, "Bg Task complete DM = %u\n", 1) \
@@ -251,6 +275,7 @@ X(11, RGXFW_GROUP_MTS, RGXFW_SF_MTS_READYCELLTYPE, "Ready queue debug DM = %u, c
 X(12, RGXFW_GROUP_MTS, RGXFW_SF_MTS_BG_KICK, "Bg Task DM = %u, counted = %d, OSid = %u\n", 3 ) \
 X(13, RGXFW_GROUP_MTS, RGXFW_SF_MTS_BG_COMPLETE, "Bg Task complete DM Bitfield: %u\n", 1) \
 X(14, RGXFW_GROUP_MTS, RGXFW_SF_MTS_IRQ_COMPLETE, "Irq Task complete.\n", 0) \
+X(15, RGXFW_GROUP_MTS, RGXFW_SF_MTS_CMD_DISCARD, "Discarded Command Type: %d OS ID = %d PID = %d context = 0x%08x cccb ROff = %x, due to USC breakpoint hit by OS ID = %d PID = %d.\n", 7) \
 \
 X( 1, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_FWCTX_CLEANUP, "FwCommonContext [0x%08x] cleaned\n", 1) \
 X( 2, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_FWCTX_BUSY, "FwCommonContext [0x%08x] is busy: ReadOffset = %d, WriteOffset = %d\n", 3) \
@@ -266,6 +291,7 @@ X(11, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_HWRFD_CLEANUP, "HW Ray Frame data [0
 X(12, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_HWRFD_CLEANED_FOR_DM, "HW Ray Frame Data [0x%08x] cleaned for DM%u, executed commands = %d\n", 3) \
 X(13, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_HWRFD_BUSY, "HW Ray Frame Data [0x%08x] for DM%u is busy: submitted = %d, executed = %d\n", 4) \
 X(14, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_HWRFD_CLEANED, "HW Ray Frame Data [0x%08x] HW Context %u cleaned\n", 2) \
+X(15, RGXFW_GROUP_CLEANUP, RGXFW_SF_CLEANUP_INVALID_REQUEST, "Discarding invalid cleanup request of type 0x%x\n", 1) \
 \
 X( 1, RGXFW_GROUP_CSW, RGXFW_SF_CSW_CDM_NEEDS_RESUME, "CDM FWCtx 0x%08.8X needs resume\n", 1) \
 X( 2, RGXFW_GROUP_CSW, RGXFW_SF_CSW_CDM_RESUME, "*** CDM FWCtx 0x%08.8X resume from snapshot buffer 0x%08X%08X\n", 3) \
@@ -284,10 +310,10 @@ X(14, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_RESUME, "*** TA FWCtx 0x%08.8X resume fro
 X(15, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_SHARED, "TA context shared alloc size store 0x%X, load 0x%X\n", 2) \
 X(16, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STORE_COMPLETE, "*** TA context store complete\n", 0) \
 X(17, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STORE_START, "*** TA context store start\n", 0) \
-X(18, RGXFW_GROUP_CSW, RGXFW_SF_CSW_HIGHER_PRIORITY_SCHEDULED_DEPRECATED, "Higher priority context scheduled for DM %u, old prio:%d, new prio:%d\n", 3) \
+X(18, RGXFW_GROUP_CSW, RGXFW_SF_CSW_HIGHER_PRIORITY_SCHEDULED_DEPRECATED_AGAIN, "Higher priority context scheduled for DM %u, old prio:%d, new prio:%d\n", 3) \
 X(19, RGXFW_GROUP_CSW, RGXFW_SF_CSW_SET_CONTEXT_PRIORITY, "Set FWCtx 0x%x priority to %u\n", 2) \
-X(20, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_STORE_PIPE_STATE, "3D context store pipe%d state: 0x%08.8X\n", 2) \
-X(21, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_RESUME_PIPE_STATE, "3D context resume pipe%d state: 0x%08.8X\n", 2) \
+X(20, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_STORE_PIPE_STATE_DEPRECATED2, "3D context store pipe%d state: 0x%08.8X\n", 2) \
+X(21, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_RESUME_PIPE_STATE_DEPRECATED, "3D context resume pipe%d state: 0x%08.8X\n", 2) \
 X(22, RGXFW_GROUP_CSW, RGXFW_SF_CSW_SHG_NEEDS_RESUME, "SHG FWCtx 0x%08.8X needs resume\n", 1) \
 X(23, RGXFW_GROUP_CSW, RGXFW_SF_CSW_SHG_RESUME, "*** SHG FWCtx 0x%08.8X resume from snapshot buffer 0x%08X%08X\n", 3) \
 X(24, RGXFW_GROUP_CSW, RGXFW_SF_CSW_SHG_SHARED, "SHG context shared alloc size store 0x%X, load 0x%X\n", 2) \
@@ -300,10 +326,13 @@ X(30, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STATE_BUFFER_FLIP, "TA PDS/USC state buff
 X(31, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STORE_52563_HIT, "TA context store hit BRN 52563: vertex store tasks outstanding\n", 0) \
 X(32, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STORE_USC_POLL_FAILED, "TA USC poll failed (USC vertex task count: %d)\n", 1) \
 X(33, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TA_STORE_DEFERRED, "TA context store deferred due to BRN 54141.", 0) \
-X(34, RGXFW_GROUP_CSW, RGXFW_SF_CSW_HIGHER_PRIORITY_SCHEDULED, "Higher priority context scheduled for DM %u. Prios (OSid, OSid Prio, Context Prio): Current: %u, %u, %u New: %u, %u, %u\n", 7) \
+X(34, RGXFW_GROUP_CSW, RGXFW_SF_CSW_HIGHER_PRIORITY_SCHEDULED_DEPRECATED, "Higher priority context scheduled for DM %u. Prios (OSid, OSid Prio, Context Prio): Current: %u, %u, %u New: %u, %u, %u\n", 7) \
 X(35, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TDM_STORE_START, "*** TDM context store start\n", 0) \
 X(36, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TDM_STORE_COMPLETE, "*** TDM context store complete\n", 0) \
 X(37, RGXFW_GROUP_CSW, RGXFW_SF_CSW_TDM_STORE_NEEDS_RESUME, "TDM context needs resume, header [%08.8X, %08.8X]\n", 2) \
+X(38, RGXFW_GROUP_CSW, RGXFW_SF_CSW_HIGHER_PRIORITY_SCHEDULED, "Higher priority context scheduled for DM %u. Prios (OSid, OSid Prio, Context Prio): Current: %u, %u, %u New: %u, %u, %u. Hard Context Switching: %u\n", 8) \
+X(39, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_STORE_PIPE_STATE, "3D context store pipe %2d (%2d) state: 0x%08.8X\n", 3) \
+X(40, RGXFW_GROUP_CSW, RGXFW_SF_CSW_3D_RESUME_PIPE_STATE, "3D context resume pipe %2d (%2d) state: 0x%08.8X\n", 3) \
 \
 X( 1, RGXFW_GROUP_BIF, RGXFW_SF_BIF_ACTIVATE, "Activate MemCtx=0x%08x BIFreq=%d secure=%d\n", 3) \
 X( 2, RGXFW_GROUP_BIF, RGXFW_SF_BIF_DEACTIVATE, "Deactivate MemCtx=0x%08x \n", 1) \
@@ -316,11 +345,35 @@ X( 8, RGXFW_GROUP_BIF, RGXFW_SF_BIF_TILECFG, "BIF Tiling Cfg %d base %08x%08x le
 X( 9, RGXFW_GROUP_BIF, RGXFW_SF_BIF_OSID0, "Wrote the Value %d to OSID0, Cat Base %d, Register's contents are now %08x %08x\n", 4) \
 X(10, RGXFW_GROUP_BIF, RGXFW_SF_BIF_OSID1, "Wrote the Value %d to OSID1, Context  %d, Register's contents are now %04x\n", 3) \
 X(11, RGXFW_GROUP_BIF, RGXFW_SF_BIF_OSIDx, "ui32OSid = %u, Catbase = %u, Reg Address = %x, Reg index = %u, Bitshift index = %u, Val = %08x%08x\n", 7) \
+X(12, RGXFW_GROUP_BIF, RGXFW_SF_BIF_MAP_GPU_MEMORY, "Map GPU memory DevVAddr 0x%x%08x, Size %u, Context ID %u, BIFREQ %u\n", 5) \
+X(13, RGXFW_GROUP_BIF, RGXFW_SF_BIF_UNMAP_GPU_MEMORY, "Unmap GPU memory (event status 0x%x)\n", 1) \
+\
+X( 1, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_WRITE, "GPIO write 0x%02x\n", 1) \
+X( 2, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_READ, "GPIO read 0x%02x\n", 1) \
+X( 3, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_ENABLED, "GPIO enabled\n", 0) \
+X( 4, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_DISABLED, "GPIO disabled\n", 0) \
+X( 5, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_STATUS, "GPIO status=%d (0=OK, 1=Disabled)\n", 1) \
+X( 6, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_AP_READ, "GPIO_AP: Read address=0x%02x (%d byte(s))\n", 2) \
+X( 7, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_AP_WRITE, "GPIO_AP: Write address=0x%02x (%d byte(s))\n", 2) \
+X( 8, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_AP_TIMEOUT, "GPIO_AP timeout!\n", 0) \
+X( 9, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_AP_ERROR, "GPIO_AP error. GPIO status=%d (0=OK, 1=Disabled)\n", 1) \
+X(10, RGXFW_GROUP_MISC, RGXFW_SF_MISC_GPIO_ALREADY_READ, "GPIO already read 0x%02x\n", 1) \
+X(11, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_CHECK_BUFFER_AVAILABLE, "SR: Check buffer %d available returned %d\n", 2) \
+X(12, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_WAITING_BUFFER_AVAILABLE, "SR: Waiting for buffer %d\n", 1) \
+X(13, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_WAIT_BUFFER_TIMEOUT, "SR: Timeout waiting for buffer %d (after %d ticks)\n", 2) \
+X(14, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_SKIP_FRAME_CHECK, "SR: Skip frame check for strip %d returned %d (0=No skip, 1=Skip frame)\n", 2) \
+X(15, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_SKIP_REMAINING_STRIPS, "SR: Skip remaining strip %d in frame\n", 1) \
+X(16, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_FRAME_SKIP_NEW_FRAME, "SR: Inform HW that strip %d is a new frame\n", 1) \
+X(17, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_SKIP_FRAME_TIMEOUT, "SR: Timeout waiting for INTERRUPT_FRAME_SKIP (after %d ticks)\n", 1) \
+X(18, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_STRIP_HEIGHT, "SR: Strip height is %d\n", 1) \
+X(19, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_STRIP_INDEX, "SR: Strip Render start (strip %d)\n", 1) \
+X(20, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_BUFFER_RENDERED, "SR: Strip Render complete (buffer %d)\n", 1) \
+X(21, RGXFW_GROUP_MISC, RGXFW_SF_MISC_SR_BUFFER_FAULT, "SR: Strip Render fault (buffer %d)\n", 1) \
 \
 X( 1, RGXFW_GROUP_PM, RGXFW_SF_PM_AMLIST, "ALIST%d SP = %u, MLIST%d SP = %u (VCE 0x%08x%08x, TE 0x%08x%08x, ALIST 0x%08x%08x)\n", 10) \
-X( 2, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_SHARED, "Is TA: %d, finished: %d on HW %u (HWRTData = 0x%08x, MemCtx = 0x%08x). FL different between TA/3D: global:%d, local:%d, mmu:%d\n", 8) \
-X( 3, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_3DBASE, "UFL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), MFL-3D-Base: 0x%08x%08x (SP = %u, 4PT = %u)\n", 14) \
-X( 4, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_TABASE, "UFL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), MFL-TA-Base: 0x%08x%08x (SP = %u, 4PT = %u)\n", 14) \
+X( 2, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_SHARED_DEPRECATED, "Is TA: %d, finished: %d on HW %u (HWRTData = 0x%08x, MemCtx = 0x%08x). FL different between TA/3D: global:%d, local:%d, mmu:%d\n", 8) \
+X( 3, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_3DBASE_DEPRECATED, "UFL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), MFL-3D-Base: 0x%08x%08x (SP = %u, 4PT = %u)\n", 14) \
+X( 4, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_TABASE_DEPRECATED, "UFL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), MFL-TA-Base: 0x%08x%08x (SP = %u, 4PT = %u)\n", 14) \
 X( 5, RGXFW_GROUP_PM, RGXFW_SF_PM_FL_GROW_COMPLETE, "Freelist grow completed [0x%08x]: added pages 0x%08x, total pages 0x%08x, new DevVirtAddr 0x%08x%08x\n", 5) \
 X( 6, RGXFW_GROUP_PM, RGXFW_SF_PM_FL_GROW_DENIED, "Grow for freelist ID=0x%08x denied by host\n", 1) \
 X( 7, RGXFW_GROUP_PM, RGXFW_SF_PM_FL_UPDATE_COMPLETE, "Freelist update completed [0x%08x]: old total pages 0x%08x, new total pages 0x%08x, new DevVirtAddr 0x%08x%08x\n", 5) \
@@ -332,6 +385,9 @@ X( 12, RGXFW_GROUP_PM, RGXFW_SF_PM_DM_UNPAUSE_ALLOC, "PM unpause TA ALLOC: PM_PA
 X( 13, RGXFW_GROUP_PM, RGXFW_SF_PM_DM_PAUSE_DALLOC, "PM pause 3D DALLOC: PM_PAGE_MANAGEOP set to 0x%x\n", 1) \
 X( 14, RGXFW_GROUP_PM, RGXFW_SF_PM_DM_UNPAUSE_DALLOC, "PM unpause 3D DALLOC: PM_PAGE_MANAGEOP set to 0x%x\n", 1) \
 X( 15, RGXFW_GROUP_PM, RGXFW_SF_PM_DM_PAUSE_FAILED, "PM ALLOC/DALLOC change was not actioned: PM_PAGE_MANAGEOP_STATUS=0x%x\n", 1) \
+X( 16, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_SHARED, "Is TA: %d, finished: %d on HW %u (HWRTData = 0x%08x, MemCtx = 0x%08x). FL different between TA/3D: global:%d, local:%d\n", 7) \
+X( 17, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_3DBASE, "UFL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-3D-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u)\n", 10) \
+X( 18, RGXFW_GROUP_PM, RGXFW_SF_PM_UFL_TABASE, "UFL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u), FL-TA-Base: 0x%08x%08x (SP = %u, 4PB = %u, 4PT = %u)\n", 10) \
 \
 X( 1, RGXFW_GROUP_RPM, RGXFW_SF_RPM_GLL_DYNAMIC_STATUS, "Global link list dynamic page count: vertex 0x%x, varying 0x%x, node 0x%x\n", 3) \
 X( 2, RGXFW_GROUP_RPM, RGXFW_SF_RPM_GLL_STATIC_STATUS, "Global link list static page count: vertex 0x%x, varying 0x%x, node 0x%x\n", 3) \
@@ -358,7 +414,7 @@ X(22, RGXFW_GROUP_RPM, RGXFW_SF_RPM_SHG_FPL_STORE, "SHG FL (0x%08x) store, roff:
 \
 X( 1, RGXFW_GROUP_RTD, RGXFW_SF_RTD_3D_RTDATA_FINISHED, "3D RTData 0x%08x finished on HW context %u\n", 2) \
 X( 2, RGXFW_GROUP_RTD, RGXFW_SF_RTD_3D_RTDATA_READY, "3D RTData 0x%08x ready on HW context %u\n", 2) \
-X( 3, RGXFW_GROUP_RTD, RGXFW_SF_RTD_PB_SET_TO, "CONTEXT_PB_BASE set to %X, FL different between TA/3D: local: %d, global: %d, mmu: %d\n", 4) \
+X( 3, RGXFW_GROUP_RTD, RGXFW_SF_RTD_PB_SET_TO_DEPRECATED, "CONTEXT_PB_BASE set to %X, FL different between TA/3D: local: %d, global: %d, mmu: %d\n", 4) \
 X( 4, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOADVFP_3D, "Loading VFP table 0x%08x%08x for 3D\n", 2) \
 X( 5, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOADVFP_TA, "Loading VFP table 0x%08x%08x for TA\n", 2) \
 X( 6, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOAD_FL_DEPRECATED, "Load Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: TotalPMPages = %d, FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 10) \
@@ -371,8 +427,8 @@ X(12, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOAD_STACK_POINTERS, "Loading stack-pointers
 X(13, RGXFW_GROUP_RTD, RGXFW_SF_RTD_STORE_PB_DEPRECATED, "Store Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: TotalPMPages = %d, FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 10) \
 X(14, RGXFW_GROUP_RTD, RGXFW_SF_RTD_TA_RTDATA_FINISHED, "TA RTData 0x%08x finished on HW context %u\n", 2) \
 X(15, RGXFW_GROUP_RTD, RGXFW_SF_RTD_TA_RTDATA_LOADED, "TA RTData 0x%08x loaded on HW context %u\n", 2) \
-X(16, RGXFW_GROUP_RTD, RGXFW_SF_RTD_STORE_PB, "Store Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
-X(17, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOAD_FL, "Load  Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
+X(16, RGXFW_GROUP_RTD, RGXFW_SF_RTD_STORE_PB_DEPRECATED2, "Store Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
+X(17, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOAD_FL_DEPRECATED2, "Load  Freelist 0x%X type: %d (0:local,1:global,2:mmu) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
 X(18, RGXFW_GROUP_RTD, RGXFW_SF_RTD_DEBUG, "Freelist 0x%X RESET!!!!!!!!\n", 1) \
 X(19, RGXFW_GROUP_RTD, RGXFW_SF_RTD_DEBUG2, "Freelist 0x%X stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 5) \
 X(20, RGXFW_GROUP_RTD, RGXFW_SF_RTD_FL_RECON_DEPRECATED, "Request reconstruction of Freelist 0x%X type: %d (0:local,1:global,2:mmu) on HW context %u\n", 3) \
@@ -384,6 +440,9 @@ X(25, RGXFW_GROUP_RTD, RGXFW_SF_RTD_TA_RTDATA_BUFFER_ADDRS, "TA Buffers: FWCtx 0
 X(26, RGXFW_GROUP_RTD, RGXFW_SF_RTD_3D_RTDATA_LOADED, "3D RTData 0x%08x loaded on HW context %u\n", 2) \
 X(27, RGXFW_GROUP_RTD, RGXFW_SF_RTD_3D_RTDATA_BUFFER_ADDRS, "3D Buffers: FWCtx 0x%08x, RT 0x%08x, RTData 0x%08x (MemCtx 0x%08x)\n", 4) \
 X(28, RGXFW_GROUP_RTD, RGXFW_SF_RTD_TA_RESTART_AFTER_PR_EXECUTED, "Restarting TA after partial render, HWRTData0State=%d, HWRTData1State=%d\n", 2) \
+X(29, RGXFW_GROUP_RTD, RGXFW_SF_RTD_PB_SET_TO, "CONTEXT_PB_BASE set to %X, FL different between TA/3D: local: %d, global: %d\n", 3) \
+X(30, RGXFW_GROUP_RTD, RGXFW_SF_RTD_STORE_FL, "Store Freelist 0x%X type: %d (0:local,1:global) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
+X(31, RGXFW_GROUP_RTD, RGXFW_SF_RTD_LOAD_FL, "Load  Freelist 0x%X type: %d (0:local,1:global) for DM%d: FL Total Pages %u (max=%u,grow size=%u), FL-addr = 0x%08x%08x, stacktop = 0x%08x%08x, Alloc Page Count = %u, Alloc MMU Page Count = %u\n", 12) \
 \
 X( 1, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZLOAD_DEPRECATED, "Force Z-Load for partial render\n", 0) \
 X( 2, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSTORE_DEPRECATED, "Force Z-Store for partial render\n", 0) \
@@ -405,17 +464,17 @@ X(17, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSTORE_ADDRESS, "ZStore address 0x%08x%08x\n
 X(18, RGXFW_GROUP_SPM, RGXFW_SF_SPM_SSTORE_ADDRESS, "SStore address 0x%08x%08x\n", 2) \
 X(19, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZLOAD_ADDRESS, "ZLoad address 0x%08x%08x\n", 2) \
 X(20, RGXFW_GROUP_SPM, RGXFW_SF_SPM_SLOAD_ADDRESS, "SLoad address 0x%08x%08x\n", 2) \
-X(21, RGXFW_GROUP_SPM, RGXFW_SF_SPM_NO_DEFERRED_ZSBUFFER, "No deferred ZS Buffer provided\n", 0) \
+X(21, RGXFW_GROUP_SPM, RGXFW_SF_SPM_NO_DEFERRED_ZSBUFFER_DEPRECATED, "No deferred ZS Buffer provided\n", 0) \
 X(22, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_POPULATED, "ZS Buffer successfully populated (ID=0x%08x)\n", 1) \
-X(23, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_POP_UNNEEDED, "No need to populate ZS Buffer (ID=0x%08x)\n", 1) \
+X(23, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_POP_UNNEEDED_DEPRECATED, "No need to populate ZS Buffer (ID=0x%08x)\n", 1) \
 X(24, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNPOPULATED, "ZS Buffer successfully unpopulated (ID=0x%08x)\n", 1) \
-X(25, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNPOP_UNNEEDED, "No need to unpopulate ZS Buffer (ID=0x%08x)\n", 1) \
-X(26, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_BACKING_REQUEST, "Send ZS-Buffer backing request to host (ID=0x%08x)\n", 1) \
-X(27, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNBACKING_REQUEST, "Send ZS-Buffer unbacking request to host (ID=0x%08x)\n", 1) \
-X(28, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_BACKING_REQUEST_PENDING, "Don't send ZS-Buffer backing request. Previous request still pending (ID=0x%08x)\n", 1) \
-X(29, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNBACKING_REQUEST_PENDING, "Don't send ZS-Buffer unbacking request. Previous request still pending (ID=0x%08x)\n", 1) \
-X(30, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZBUFFER_NOT_READY, "Partial Render waiting for ZBuffer to be backed (ID=0x%08x)\n", 1) \
-X(31, RGXFW_GROUP_SPM, RGXFW_SF_SPM_SBUFFER_NOT_READY, "Partial Render waiting for SBuffer to be backed (ID=0x%08x)\n", 1) \
+X(25, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNPOP_UNNEEDED_DEPRECATED, "No need to unpopulate ZS Buffer (ID=0x%08x)\n", 1) \
+X(26, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_BACKING_REQUEST_DEPRECATED, "Send ZS-Buffer backing request to host (ID=0x%08x)\n", 1) \
+X(27, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNBACKING_REQUEST_DEPRECATED, "Send ZS-Buffer unbacking request to host (ID=0x%08x)\n", 1) \
+X(28, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_BACKING_REQUEST_PENDING_DEPRECATED, "Don't send ZS-Buffer backing request. Previous request still pending (ID=0x%08x)\n", 1) \
+X(29, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_UNBACKING_REQUEST_PENDING_DEPRECATED, "Don't send ZS-Buffer unbacking request. Previous request still pending (ID=0x%08x)\n", 1) \
+X(30, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZBUFFER_NOT_READY_DEPRECATED, "Partial Render waiting for ZBuffer to be backed (ID=0x%08x)\n", 1) \
+X(31, RGXFW_GROUP_SPM, RGXFW_SF_SPM_SBUFFER_NOT_READY_DEPRECATED, "Partial Render waiting for SBuffer to be backed (ID=0x%08x)\n", 1) \
 X(32, RGXFW_GROUP_SPM, RGXFW_SF_SPM_STATE_NONE, "SPM State = none\n", 0) \
 X(33, RGXFW_GROUP_SPM, RGXFW_SF_SPM_STATE_PR_BLOCKED, "SPM State = PR blocked\n", 0) \
 X(34, RGXFW_GROUP_SPM, RGXFW_SF_SPM_STATE_WAIT_FOR_GROW, "SPM State = wait for grow\n", 0) \
@@ -427,8 +486,20 @@ X(39, RGXFW_GROUP_SPM, RGXFW_SF_SPM_FREELIST_MATCH, "3DMemFree matches freelist 
 X(40, RGXFW_GROUP_SPM, RGXFW_SF_SPM_3DMEMFREE_FLAG_SET, "Raise the 3DMemFreeDedected flag\n", 0) \
 X(41, RGXFW_GROUP_SPM, RGXFW_SF_SPM_STATE_WAIT_FOR_PENDING_GROW, "Wait for pending grow on Freelist 0x%08x\n", 1) \
 X(42, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ZSBUFFER_BACKING_REQUEST_FAILED, "ZS Buffer failed to be populated (ID=0x%08x)\n", 1) \
+X(43, RGXFW_GROUP_SPM, RGXFW_SF_SPM_FL_GROW_DEBUG, "Grow update inconsistency: FL addr: 0x%02x%08x, curr pages: %u, ready: %u, new: %u\n", 5) \
+X(44, RGXFW_GROUP_SPM, RGXFW_SF_SPM_RESUMED_TA, "OOM: Resumed TA with ready pages, FL addr: 0x%02x%08x, current pages: %u, SP : %u, \n", 4) \
+X(45, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ACK_GROW_UPDATE_DEPRECATED, "Received grow update, FL addr: 0x%02x%08x, current pages: %u, ready pages: %u, threshold: %u\n", 5) \
+X(46, RGXFW_GROUP_SPM, RGXFW_SF_SPM_NO_DEFERRED_PRBUFFER, "No deferred partial render FW (Type=%d) Buffer provided\n", 1) \
+X(47, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_POP_UNNEEDED, "No need to populate PR Buffer (ID=0x%08x)\n", 1) \
+X(48, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_UNPOP_UNNEEDED, "No need to unpopulate PR Buffer (ID=0x%08x)\n", 1) \
+X(49, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_BACKING_REQUEST, "Send PR Buffer backing request to host (ID=0x%08x)\n", 1) \
+X(50, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_UNBACKING_REQUEST, "Send PR Buffer unbacking request to host (ID=0x%08x)\n", 1) \
+X(51, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_BACKING_REQUEST_PENDING, "Don't send PR Buffer backing request. Previous request still pending (ID=0x%08x)\n", 1) \
+X(52, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_UNBACKING_REQUEST_PENDING, "Don't send PR Buffer unbacking request. Previous request still pending (ID=0x%08x)\n", 1) \
+X(53, RGXFW_GROUP_SPM, RGXFW_SF_SPM_BUFFER_NOT_READY, "Partial Render waiting for Buffer %d type to be backed (ID=0x%08x)\n", 2) \
+X(54, RGXFW_GROUP_SPM, RGXFW_SF_SPM_ACK_GROW_UPDATE, "Received grow update, FL addr: 0x%02x%08x, new pages: %u, ready pages: %u\n", 4) \
 \
-X( 1, RGXFW_GROUP_POW, RGXFW_SF_POW_CHECK_DEPRECATED, "Check Pow state DM%d int: 0x%X, ext: 0x%X, pow flags: 0x%X\n", 4) \
+X( 1, RGXFW_GROUP_POW, RGXFW_SF_POW_CHECK_DEPRECATED_AGAIN, "Check Pow state DM%d int: 0x%X, ext: 0x%X, pow flags: 0x%X\n", 4) \
 X( 2, RGXFW_GROUP_POW, RGXFW_SF_POW_SIDEKICK_IDLE, "Sidekick idle (might be powered down). Pow state int: 0x%X, ext: 0x%X, flags: 0x%X\n", 3) \
 X( 3, RGXFW_GROUP_POW, RGXFW_SF_POW_OSREQ, "OS requested pow off (forced = %d), DM%d, pow flags: 0x%8.8X\n", 3) \
 X( 4, RGXFW_GROUP_POW, RGXFW_SF_POW_INIOFF_DEPRECATED, "Initiate powoff query. Inactive DMs: %d %d %d %d\n", 4) \
@@ -453,13 +524,13 @@ X(23, RGXFW_GROUP_POW, RGXFW_SF_POW_APM_LATENCY_CHANGE, "Active PM latency set t
 X(24, RGXFW_GROUP_POW, RGXFW_SF_POW_CDM_CLUSTERS, "Compute cluster mask change to 0x%X, %d dusts powered.\n", 2) \
 X(25, RGXFW_GROUP_POW, RGXFW_SF_POW_NULL_CMD_INIOFF_RD, "Null command executed, repeating initiate powoff query for RD-DMs.\n", 0) \
 X(26, RGXFW_GROUP_POW, RGXFW_SF_POW_POWMON_ENERGY, "Power monitor: Estimate of dynamic energy %u\n", 1) \
-X(27, RGXFW_GROUP_POW, RGXFW_SF_POW_CHECK, "Check Pow state: Int: 0x%X, Ext: 0x%X, Pow flags: 0x%X\n", 3) \
+X(27, RGXFW_GROUP_POW, RGXFW_SF_POW_CHECK_DEPRECATED, "Check Pow state: Int: 0x%X, Ext: 0x%X, Pow flags: 0x%X\n", 3) \
 X(28, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_NEW_DEADLINE, "Proactive DVFS: New deadline, time = 0x%08x%08x\n", 2) \
 X(29, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_NEW_WORKLOAD, "Proactive DVFS: New workload, cycles = 0x%08x%08x\n", 2) \
 X(30, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_CALCULATE, "Proactive DVFS: Proactive frequency calculated = 0x%08x\n", 1) \
 X(31, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_UTILISATION, "Proactive DVFS: Reactive utilisation = 0x%08x\n", 1) \
 X(32, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_REACT, "Proactive DVFS: Reactive frequency calculated = 0x%08x%08x\n", 2) \
-X(33, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_GPIO_SEND, "Proactive DVFS: OPP Point Sent = 0x%x\n", 1) \
+X(33, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_GPIO_SEND_DEPRECATED, "Proactive DVFS: OPP Point Sent = 0x%x\n", 1) \
 X(34, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_DEADLINE_REMOVED, "Proactive DVFS: Deadline removed = 0x%08x%08x\n", 2) \
 X(35, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_WORKLOAD_REMOVED, "Proactive DVFS: Workload removed = 0x%08x%08x\n", 2) \
 X(36, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_THROTTLE, "Proactive DVFS: Throttle to a maximum = 0x%x\n", 1) \
@@ -472,6 +543,16 @@ X(42, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_DISABLED, "Proactive DVFS: Disabled: N
 X(43, RGXFW_GROUP_POW, RGXFW_SF_POW_HWREQ_RESULT, "HW Request Completed(1)/Aborted(0): %d, Ticks: %d\n", 2) \
 X(44, RGXFW_GROUP_POW, RGXFW_SF_POW_DUSTS_CHANGE_FIX_59042, "Allowed number of dusts is %d due to BRN59042.\n", 1) \
 X(45, RGXFW_GROUP_POW, RGXFW_SF_POW_HOST_TIMEOUT_NOTIFICATION, "Host timed out while waiting for a forced idle state. Pow state int: 0x%X, ext: 0x%X, flags: 0x%X\n", 3) \
+X(46, RGXFW_GROUP_POW, RGXFW_SF_POW_CHECK, "Check Pow state: Int: 0x%X, Ext: 0x%X, Pow flags: 0x%X, Fence Counters: Check: %u - Update: %u\n", 5) \
+X(47, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_GPIO_SEND, "Proactive DVFS: OPP Point Sent = 0x%x, Success = %x\n", 2) \
+X(48, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_TO_IDLE, "Proactive DVFS: GPU transitioned to idle\n", 0) \
+X(49, RGXFW_GROUP_POW, RGXFW_SF_POW_PDVFS_TO_ACTIVE, "Proactive DVFS: GPU transitioned to active\n", 0) \
+X(50, RGXFW_GROUP_POW, RGXFW_SF_POW_POWDUMP_BUFFER_SIZE, "Power counter dumping: Data truncated writing register %u. Buffer too small.\n", 1) \
+X(51, RGXFW_GROUP_POW, RGXFW_SF_POW_POWCTRL_ABORT, "Power controller returned ABORT for last request so retrying.\n", 0) \
+X(52, RGXFW_GROUP_POW, RGXFW_SF_POW_INVALID_POWER_REQUEST, "Discarding invalid power request: type 0x%x, DM %u\n", 2) \
+X(53, RGXFW_GROUP_POW, RGXFW_SF_POW_CANCEL_FORCED_IDLE_NOT_IDLE, "Detected attempt to cancel forced idle while not forced idle (pow state 0x%x, pow flags 0x%x)\n", 2) \
+X(54, RGXFW_GROUP_POW, RGXFW_SF_POW_FORCED_POW_OFF_NOT_IDLE, "Detected attempt to force power off while not forced idle (pow state 0x%x, pow flags 0x%x)\n", 2) \
+X(55, RGXFW_GROUP_POW, RGXFW_SF_POW_NUMDUST_CHANGE_NOT_IDLE, "Detected attempt to change dust count while not forced idle (pow state 0x%x)\n", 1) \
 \
 X(1, RGXFW_GROUP_HWR, RGXFW_SF_HWR_LOCKUP_DEPRECATED, "Lockup detected on DM%d, FWCtx: %08.8X\n", 2) \
 X(2, RGXFW_GROUP_HWR, RGXFW_SF_HWR_RESET_FW_DEPRECATED, "Reset fw state for DM%d, FWCtx: %08.8X, MemCtx: %08.8X\n", 3) \
@@ -526,7 +607,7 @@ X(50, RGXFW_GROUP_HWR, RGXFW_SF_HWR_DEADLINE_CHECK, "Deadline counter for DM%u i
 X(51, RGXFW_GROUP_HWR, RGXFW_SF_HWR_HOLD_SCHEDULING_DUE_TO_FREELIST_DEPRECATED, "Holding Scheduling on OSid %u due to pending freelist reconstruction\n", 1) \
 X(52, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_REQUEST, "Requesting reconstruction for freelist 0x%X (ID=%d)\n", 2) \
 X(53, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_PASSED, "Reconstruction of freelist ID=%d complete\n", 1) \
-X(54, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_NEEDED, "Reconstruction needed for freelist 0x%X (ID=%d) type: %d (0:local,1:global,2:mmu) on HW context %u\n", 4) \
+X(54, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_NEEDED_DEPRECATED, "Reconstruction needed for freelist 0x%X (ID=%d) type: %d (0:local,1:global,2:mmu) on HW context %u\n", 4) \
 X(55, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_FAILED, "Reconstruction of freelist ID=%d failed\n", 1) \
 X(56, RGXFW_GROUP_HWR, RGXFW_SF_HWR_RESTRICTING_PDS_TASKS, "Restricting PDS Tasks to help other stalling DMs (RunningMask=0x%02X, StallingMask=0x%02X, PDS_CTRL=0x%08X%08X)\n", 4) \
 X(57, RGXFW_GROUP_HWR, RGXFW_SF_HWR_UNRESTRICTING_PDS_TASKS, "Unrestricting PDS Tasks again (RunningMask=0x%02X, StallingMask=0x%02X, PDS_CTRL=0x%08X%08X)\n", 4) \
@@ -537,8 +618,11 @@ X(61, RGXFW_GROUP_HWR, RGXFW_SF_HWR_START_HW_RESET, "Begin hardware reset (HWR C
 X(62, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FINISH_HW_RESET, "Finished hardware reset (HWR Counter=%d)\n", 1) \
 X(63, RGXFW_GROUP_HWR, RGXFW_SF_HWR_HOLD_SCHEDULING_DUE_TO_FREELIST, "Holding Scheduling on DM %u for OSid %u due to pending freelist reconstruction\n", 2) \
 X(64, RGXFW_GROUP_HWR, RGXFW_SF_HWR_RESET_UMQ_READ_OFFSET, "User Mode Queue ROff reset: FWCtx 0x%08.8X, queue: 0x%08X%08X (Roff = %u becomes StreamStartOffset = %u)\n", 5) \
-X(65, RGXFW_GROUP_HWR, RGXFW_SF_HWR_MIPS_FAULT, "Mips page fault detected (BadVAddr: 0x%08x, EntryLo0: 0x%08x, EntryLo1: 0x%08x)\n", 3) \
+X(65, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_NEEDED, "Reconstruction needed for freelist 0x%X (ID=%d) type: %d (0:local,1:global) on HW context %u\n", 4) \
+X(66, RGXFW_GROUP_HWR, RGXFW_SF_HWR_MIPS_FAULT, "Mips page fault detected (BadVAddr: 0x%08x, EntryLo0: 0x%08x, EntryLo1: 0x%08x)\n", 3) \
 X(67, RGXFW_GROUP_HWR, RGXFW_SF_HWR_ANOTHER_CHANCE, "At least one other DM is running okay so DM%u will get another chance\n", 1) \
+X(68, RGXFW_GROUP_HWR, RGXFW_SF_HWR_FL_RECON_FW, "Reconstructing in FW, FL: 0x%X (ID=%d)\n", 2) \
+X(69, RGXFW_GROUP_HWR, RGXFW_SF_HWR_ZERO_RTC, "Zero RTC for FWCtx: %08.8X (RTC addr: %08X%08X, size: %d bytes)\n", 4) \
 \
 X( 1, RGXFW_GROUP_HWP, RGXFW_SF_HWP_I_CFGBLK, "Block 0x%x mapped to Config Idx %u\n", 2) \
 X( 2, RGXFW_GROUP_HWP, RGXFW_SF_HWP_I_OMTBLK, "Block 0x%x omitted from event - not enabled in HW\n", 1) \
@@ -575,8 +659,33 @@ X( 4, RGXFW_GROUP_DMA, RGXFW_SF_DMA_WAIT, "Waiting for transfer ID %u completion
 X( 5, RGXFW_GROUP_DMA, RGXFW_SF_DMA_CCB_LOADING_FAILED, "Loading of cCCB data from FW common context 0x%08x (offset: %u, size: %u) failed\n", 3) \
 X( 6, RGXFW_GROUP_DMA, RGXFW_SF_DMA_CCB_LOAD_INVALID, "Invalid load of cCCB data from FW common context 0x%08x (offset: %u, size: %u)\n", 3) \
 X( 7, RGXFW_GROUP_DMA, RGXFW_SF_DMA_POLL_FAILED, "Transfer 0x%02x request poll failure\n", 1) \
+X( 8, RGXFW_GROUP_DMA, RGXFW_SF_DMA_BOOT_TRANSFER_FAILED, "Boot transfer(s) failed (code? %u, data? %u), used slower memcpy instead\n", 2) \
 \
-X(1, RGXFW_GROUP_DBG, RGXFW_SF_DBG_INTPAIR, "0x%8.8x 0x%8.8x\n", 2) \
+X( 1, RGXFW_GROUP_DBG, RGXFW_SF_DBG_INTPAIR, "0x%08x 0x%08x\n", 2) \
+X( 2, RGXFW_GROUP_DBG, RGXFW_SF_DBG_1HEX, "0x%08x\n", 1) \
+X( 3, RGXFW_GROUP_DBG, RGXFW_SF_DBG_2HEX, "0x%08x 0x%08x\n", 2) \
+X( 4, RGXFW_GROUP_DBG, RGXFW_SF_DBG_3HEX, "0x%08x 0x%08x 0x%08x\n", 3) \
+X( 5, RGXFW_GROUP_DBG, RGXFW_SF_DBG_4HEX, "0x%08x 0x%08x 0x%08x 0x%08x\n", 4) \
+X( 6, RGXFW_GROUP_DBG, RGXFW_SF_DBG_5HEX, "0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n", 5) \
+X( 7, RGXFW_GROUP_DBG, RGXFW_SF_DBG_6HEX, "0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n", 6) \
+X( 8, RGXFW_GROUP_DBG, RGXFW_SF_DBG_7HEX, "0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n", 7) \
+X( 9, RGXFW_GROUP_DBG, RGXFW_SF_DBG_8HEX, "0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n", 8) \
+X(10, RGXFW_GROUP_DBG, RGXFW_SF_DBG_1SIGNED, "%d\n", 1) \
+X(11, RGXFW_GROUP_DBG, RGXFW_SF_DBG_2SIGNED, "%d %d\n", 2) \
+X(12, RGXFW_GROUP_DBG, RGXFW_SF_DBG_3SIGNED, "%d %d %d\n", 3) \
+X(13, RGXFW_GROUP_DBG, RGXFW_SF_DBG_4SIGNED, "%d %d %d %d\n", 4) \
+X(14, RGXFW_GROUP_DBG, RGXFW_SF_DBG_5SIGNED, "%d %d %d %d %d\n", 5) \
+X(15, RGXFW_GROUP_DBG, RGXFW_SF_DBG_6SIGNED, "%d %d %d %d %d %d\n", 6) \
+X(16, RGXFW_GROUP_DBG, RGXFW_SF_DBG_7SIGNED, "%d %d %d %d %d %d %d\n", 7) \
+X(17, RGXFW_GROUP_DBG, RGXFW_SF_DBG_8SIGNED, "%d %d %d %d %d %d %d %d\n", 8) \
+X(18, RGXFW_GROUP_DBG, RGXFW_SF_DBG_1UNSIGNED, "%u\n", 1) \
+X(19, RGXFW_GROUP_DBG, RGXFW_SF_DBG_2UNSIGNED, "%u %u\n", 2) \
+X(20, RGXFW_GROUP_DBG, RGXFW_SF_DBG_3UNSIGNED, "%u %u %u\n", 3) \
+X(21, RGXFW_GROUP_DBG, RGXFW_SF_DBG_4UNSIGNED, "%u %u %u %u\n", 4) \
+X(22, RGXFW_GROUP_DBG, RGXFW_SF_DBG_5UNSIGNED, "%u %u %u %u %u\n", 5) \
+X(23, RGXFW_GROUP_DBG, RGXFW_SF_DBG_6UNSIGNED, "%u %u %u %u %u %u\n", 6) \
+X(24, RGXFW_GROUP_DBG, RGXFW_SF_DBG_7UNSIGNED, "%u %u %u %u %u %u %u\n", 7) \
+X(25, RGXFW_GROUP_DBG, RGXFW_SF_DBG_8UNSIGNED, "%u %u %u %u %u %u %u %u\n", 8) \
 \
 X(65535, RGXFW_GROUP_NULL, RGXFW_SF_LAST, "You should not use this string\n", 15)
 
@@ -584,14 +693,14 @@ X(65535, RGXFW_GROUP_NULL, RGXFW_SF_LAST, "You should not use this string\n", 15
 /*  The symbolic names found in the table above are assigned an ui32 value of
  *  the following format:
  *  31 30 28 27       20   19  16    15  12      11            0   bits
- *  -   ---   ---- ----     ----      ----        ---- ---- ----   
+ *  -   ---   ---- ----     ----      ----        ---- ---- ----
  *     0-11: id number
  *    12-15: group id number
  *    16-19: number of parameters
  *    20-27: unused
  *    28-30: active: identify SF packet, otherwise regular int32
  *       31: reserved for signed/unsigned compatibility
- *   
+ *
  *   The following macro assigns those values to the enum generated SF ids list.
  */
 #define RGXFW_LOG_IDMARKER			(0x70000000)
@@ -600,9 +709,9 @@ X(65535, RGXFW_GROUP_NULL, RGXFW_SF_LAST, "You should not use this string\n", 15
 #define RGXFW_LOG_IDMASK			(0xFFF00000)
 #define RGXFW_LOG_VALIDID(I)		(((I) & RGXFW_LOG_IDMASK) == RGXFW_LOG_IDMARKER)
 
-typedef enum RGXFW_LOG_SFids { 
+typedef enum RGXFW_LOG_SFids {
 #define X(a, b, c, d, e) c = RGXFW_LOG_CREATESFID(a,b,e),
-	RGXFW_LOG_SFIDLIST 
+	RGXFW_LOG_SFIDLIST
 #undef X
 } RGXFW_LOG_SFids;
 

@@ -49,11 +49,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "mmu_common.h"
 #include "rgx_fwif_km.h"
 #include "rgx_fwif.h"
-#include "rgxscript.h"
 #include "cache_ops.h"
 #include "device.h"
 #include "osfunc.h"
-#include "rgxlayer_km_impl.h"
+#include "rgxlayer_impl.h"
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
 #include "hash.h"
 #endif
@@ -61,7 +60,6 @@ typedef struct _RGX_SERVER_COMMON_CONTEXT_ RGX_SERVER_COMMON_CONTEXT;
 
 typedef struct {
 	DEVMEM_MEMDESC		*psFWFrameworkMemDesc;
-	IMG_DEV_VIRTADDR	*psMCUFenceAddr;
 	IMG_DEV_VIRTADDR	*psResumeSignalAddr;
 } RGX_COMMON_CONTEXT_INFO;
 
@@ -80,24 +78,37 @@ typedef struct {
  * GPU DVFS Table
  *****************************************************************************/
 
-#define RGX_GPU_DVFS_TABLE_SIZE            100                      /* DVFS Table size */
-#define RGX_GPU_DVFS_GET_INDEX(clockfreq)  ((clockfreq) / 10000000) /* Assuming different GPU clocks are separated by at least 10MHz
-                                                                     * WARNING: this macro must be used only with nominal values of
-                                                                     * the GPU clock speed (the ones provided by the customer code) */
-#define RGX_GPU_DVFS_FIRST_CALIBRATION_TIME_US       25000          /* Time required to calibrate a clock frequency the first time */
-#define RGX_GPU_DVFS_TRANSITION_CALIBRATION_TIME_US  150000         /* Time required for a recalibration after a DVFS transition */
-#define RGX_GPU_DVFS_PERIODIC_CALIBRATION_TIME_US    10000000       /* Time before the next periodic calibration and correlation */
+#define RGX_GPU_DVFS_TABLE_SIZE                      16
+#define RGX_GPU_DVFS_FIRST_CALIBRATION_TIME_US       25000     /* Time required to calibrate a clock frequency the first time */
+#define RGX_GPU_DVFS_TRANSITION_CALIBRATION_TIME_US  150000    /* Time required for a recalibration after a DVFS transition */
+#define RGX_GPU_DVFS_PERIODIC_CALIBRATION_TIME_US    10000000  /* Time before the next periodic calibration and correlation */
+
+typedef struct _GPU_FREQ_TRACKING_DATA_
+{
+	/* Core clock speed estimated by the driver */
+	IMG_UINT32 ui32EstCoreClockSpeed;
+
+	/* Amount of successful calculations of the estimated core clock speed */
+	IMG_UINT32 ui32CalibrationCount;
+} GPU_FREQ_TRACKING_DATA;
 
 typedef struct _RGX_GPU_DVFS_TABLE_
 {
-	IMG_UINT64 ui64CalibrationCRTimestamp;              /*!< CR timestamp used to calibrate GPU frequencies (beginning of a calibration period) */
-	IMG_UINT64 ui64CalibrationOSTimestamp;              /*!< OS timestamp used to calibrate GPU frequencies (beginning of a calibration period) */
-	IMG_UINT64 ui64CalibrationCRTimediff;               /*!< CR timediff used to calibrate GPU frequencies (calibration period) */
-	IMG_UINT64 ui64CalibrationOSTimediff;               /*!< OS timediff used to calibrate GPU frequencies (calibration period) */
-	IMG_UINT32 ui32CalibrationPeriod;                   /*!< Threshold used to determine whether the current GPU frequency should be calibrated */
-	IMG_UINT32 ui32CurrentDVFSId;                       /*!< Current table entry index */
-	IMG_BOOL   bAccumulatePeriod;                       /*!< Accumulate many consecutive periods to get a better calibration at the end */
-	IMG_UINT32 aui32DVFSClock[RGX_GPU_DVFS_TABLE_SIZE]; /*!< DVFS clocks table (clocks in Hz) */
+	/* Beginning of current calibration period (in us) */
+	IMG_UINT64 ui64CalibrationCRTimestamp;
+	IMG_UINT64 ui64CalibrationOSTimestamp;
+
+	/* Calculated calibration period (in us) */
+	IMG_UINT64 ui64CalibrationCRTimediff;
+	IMG_UINT64 ui64CalibrationOSTimediff;
+
+	/* Current calibration period (in us) */
+	IMG_UINT32 ui32CalibrationPeriod;
+
+	/* System layer frequency table and frequency tracking data */
+	IMG_UINT32 ui32FreqIndex;
+	IMG_UINT32 aui32GPUFrequency[RGX_GPU_DVFS_TABLE_SIZE];
+	GPU_FREQ_TRACKING_DATA asTrackingData[RGX_GPU_DVFS_TABLE_SIZE];
 } RGX_GPU_DVFS_TABLE;
 
 
@@ -115,6 +126,7 @@ typedef struct _RGXFWIF_GPU_UTIL_STATS_
 	IMG_UINT64 ui64GpuStatBlocked;    /* GPU blocked statistic */
 	IMG_UINT64 ui64GpuStatIdle;       /* GPU idle statistic */
 	IMG_UINT64 ui64GpuStatCumulative; /* Sum of active/blocked/idle stats */
+	IMG_UINT64 ui64TimeStamp;         /* Timestamp of the most recent sample of the GPU stats */
 } RGXFWIF_GPU_UTIL_STATS;
 
 
@@ -123,6 +135,9 @@ typedef struct _RGX_REG_CONFIG_
 	IMG_BOOL               bEnabled;
 	RGXFWIF_REG_CFG_TYPE   eRegCfgTypeToPush;
 	IMG_UINT32             ui32NumRegRecords;
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	POS_LOCK               hLock;
+#endif
 } RGX_REG_CONFIG;
 
 typedef struct _PVRSRV_STUB_PBDESC_ PVRSRV_STUB_PBDESC;
@@ -142,21 +157,7 @@ typedef struct _PVRSRV_DEVICE_FEATURE_CONFIG_
 	IMG_UINT32 ui32V;
 	IMG_UINT32 ui32N;
 	IMG_UINT32 ui32C;
-	IMG_UINT32 ui32NumClusters;
-	IMG_UINT32 ui32CtrlStreamFormat;
-	IMG_UINT32 ui32FBCDCArch;
-	IMG_UINT32 ui32META;
-	IMG_UINT32 ui32MCMB;
-	IMG_UINT32 ui32MCMS;
-	IMG_UINT32 ui32MDMACount;
-	IMG_UINT32 ui32NIIP;
-	IMG_UINT32 ui32PBW;
-	IMG_UINT32 ui32STEArch;
-	IMG_UINT32 ui32SVCE;
-	IMG_UINT32 ui32SLCBanks;
-	IMG_UINT32 ui32CacheLineSize;
-	IMG_UINT32 ui32SLCSize;
-	IMG_UINT32 ui32VASB;
+	IMG_UINT32 ui32FeaturesValues[RGX_FEATURE_WITH_VALUES_MAX_IDX];
 	IMG_UINT32 ui32MAXDMCount;
 	IMG_UINT32 ui32MAXDMMTSCount;
 	IMG_UINT32 ui32MAXDustCount;
@@ -164,21 +165,43 @@ typedef struct _PVRSRV_DEVICE_FEATURE_CONFIG_
 	IMG_PCHAR  pszBVNCString;
 }PVRSRV_DEVICE_FEATURE_CONFIG;
 
+/* This is used to get the value of a specific feature.
+ * Note that it will assert if the feature is disabled or value is invalid. */
+#define RGX_GET_FEATURE_VALUE(psDevInfo, Feature) \
+			( psDevInfo->sDevFeatureCfg.ui32FeaturesValues[RGX_FEATURE_##Feature##_IDX] )
+
+/* This is used to check if the feature with value is available for the currently running bvnc or not */
+#define RGX_IS_FEATURE_VALUE_SUPPORTED(psDevInfo, Feature) \
+			( psDevInfo->sDevFeatureCfg.ui32FeaturesValues[RGX_FEATURE_##Feature##_IDX] < RGX_FEATURE_VALUE_DISABLED )
+
+/* This is used to check if the feature WITHOUT value is available for the currently running bvnc or not */
+#define RGX_IS_FEATURE_SUPPORTED(psDevInfo, Feature) \
+			( psDevInfo->sDevFeatureCfg.ui64Features & RGX_FEATURE_##Feature##_BIT_MASK)
+
+/* This is used to check if the ERN is available for the currently running bvnc or not */
+#define RGX_IS_ERN_SUPPORTED(psDevInfo, ERN) \
+			( psDevInfo->sDevFeatureCfg.ui64ErnsBrns & HW_ERN_##ERN##_BIT_MASK)
+
+/* This is used to check if the BRN is available for the currently running bvnc or not */
+#define RGX_IS_BRN_SUPPORTED(psDevInfo, BRN) \
+			( psDevInfo->sDevFeatureCfg.ui64ErnsBrns & FIX_HW_BRN_##BRN##_BIT_MASK)
+
 /* there is a corresponding define in rgxapi.h */
 #define RGX_MAX_TIMER_QUERIES 16
 
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
-/* For the workload estimation return data array */
-/* The max amount of commands the MTS can have is 255, therefore 512 (LOG2 = 9)
- * is large enough to account for all corner cases.
- */
+/*
+   For the workload estimation return data array, the max amount of commands the
+   MTS can have is 255, therefore 512 (LOG2 = 9) is large enough to account for
+   all corner cases
+*/
 #define RETURN_DATA_ARRAY_SIZE_LOG2 (9)
 #define RETURN_DATA_ARRAY_SIZE      ((1UL) << RETURN_DATA_ARRAY_SIZE_LOG2)
 #define RETURN_DATA_ARRAY_WRAP_MASK (RETURN_DATA_ARRAY_SIZE - 1)
 
-#define WORKLOAD_HASH_SIZE 64
-
-typedef struct _WORKEST_HOST_DATA_ WORKEST_HOST_DATA;
+#define WORKLOAD_HASH_SIZE_LOG2		6
+#define WORKLOAD_HASH_SIZE 			((1UL) << WORKLOAD_HASH_SIZE_LOG2)
+#define WORKLOAD_HASH_WRAP_MASK		(WORKLOAD_HASH_SIZE - 1)
 
 typedef struct _RGX_WORKLOAD_TA3D_
 {
@@ -190,22 +213,26 @@ typedef struct _RGX_WORKLOAD_TA3D_
 
 typedef struct _WORKLOAD_MATCHING_DATA_
 {
-	HASH_TABLE                  *psWorkloadDataHash;
-	RGX_WORKLOAD_TA3D           asWorkloadHashKeys[WORKLOAD_HASH_SIZE];
-	IMG_UINT64                  aui64HashCycleData[WORKLOAD_HASH_SIZE];
-	IMG_UINT32                  ui32HashArrayWO;
-	POS_LOCK                    psWorkEstHashLock;
+	POS_LOCK				psHashLock;
+	HASH_TABLE				*psHashTable;
+	RGX_WORKLOAD_TA3D		asHashKeys[WORKLOAD_HASH_SIZE];
+	IMG_UINT64				aui64HashData[WORKLOAD_HASH_SIZE];
+	IMG_UINT32				ui32HashArrayWO;
+
 } WORKLOAD_MATCHING_DATA;
 
-struct _WORKEST_HOST_DATA_{
-	WORKLOAD_MATCHING_DATA      sWorkloadMatchingDataTA;
-	WORKLOAD_MATCHING_DATA      sWorkloadMatchingData3D;
-	IMG_UINT32                  ui32WorkEstCCBReceived;
-};
-typedef struct _WORKEST_RETURN_DATA_ {
-	WORKEST_HOST_DATA           *psWorkEstHostData;
-	WORKLOAD_MATCHING_DATA      *psWorkloadMatchingData;
-	RGX_WORKLOAD_TA3D           sWorkloadCharacteristics;
+typedef struct _WORKEST_HOST_DATA_
+{
+	WORKLOAD_MATCHING_DATA	sWorkloadMatchingDataTA;
+	WORKLOAD_MATCHING_DATA	sWorkloadMatchingData3D;
+	IMG_UINT32				ui32WorkEstCCBReceived;
+} WORKEST_HOST_DATA;
+
+typedef struct _WORKEST_RETURN_DATA_
+{
+	WORKEST_HOST_DATA		*psWorkEstHostData;
+	WORKLOAD_MATCHING_DATA	*psWorkloadMatchingData;
+	RGX_WORKLOAD_TA3D		sWorkloadCharacteristics;
 } WORKEST_RETURN_DATA;
 #endif
 
@@ -240,7 +267,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	IMG_HANDLE				hDbgReqNotify;
 
 	/* Kernel mode linear address of device registers */
-	void					*pvRegsBaseKM;
+	void __iomem			*pvRegsBaseKM;
 
 	/* FIXME: The alloc for this should go through OSAllocMem in future */
 	IMG_HANDLE				hRegMapping;
@@ -254,7 +281,8 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	/* Firmware memory context info */
 	DEVMEM_CONTEXT			*psKernelDevmemCtx;
-	DEVMEM_HEAP				*psFirmwareHeap;
+	DEVMEM_HEAP				*psFirmwareMainHeap;
+	DEVMEM_HEAP				*psFirmwareConfigHeap;
 	MMU_CONTEXT				*psKernelMMUCtx;
 
 	void					*pvDeviceMemoryHeap;
@@ -277,6 +305,12 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	DEVMEM_MEMDESC			*psWorkEstFirmwareCCBMemDesc;      /*!< memdesc for Workload Estimation Firmware CCB */
 	IMG_UINT8				*psWorkEstFirmwareCCB;             /*!< kernel mapping for Workload Estimation Firmware CCB */
 
+#if defined(SUPPORT_POWER_SAMPLING_VIA_DEBUGFS)
+	/* Counter dumping */
+	DEVMEM_MEMDESC 			*psCounterBufferMemDesc;      /*!< mem desc for counter dumping buffer */
+	POS_LOCK				hCounterDumpingLock;          /*!< Lock for guarding access to counter dumping buffer */
+#endif
+
 	IMG_BOOL				bEnableFWPoisonOnFree;             /*!< Enable poisoning of FW allocations when freed */
 	IMG_BYTE				ubFWPoisonOnFreeValue;             /*!< Byte value used when poisoning FW allocations */
 
@@ -288,7 +322,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT32				ui32ClkGateStatusReg;
 	IMG_UINT32				ui32ClkGateStatusMask;
-	RGX_SCRIPTS				*psScripts;
 
 	DEVMEM_MEMDESC			*psRGXFWCodeMemDesc;
 	IMG_DEV_VIRTADDR		sFWCodeDevVAddrBase;
@@ -320,19 +353,22 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	IMG_BOOL				bDumpedKCCBCtlAlready;
 #endif
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	/*
-		Guest drivers do not support these functionalities:
-			- H/W perf & device power management
-			- F/W initialization & management
-			- GPU dvfs, trace & utilization
-	 */
-	DEVMEM_MEMDESC			*psRGXFWIfInitMemDesc;
-	RGXFWIF_DEV_VIRTADDR	sFWInitFWAddr;
-#else
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	POS_LOCK				hRGXFWIfBufInitLock;			/*!< trace buffer lock for initialisation phase */
+#endif
+
 	DEVMEM_MEMDESC			*psRGXFWIfTraceBufCtlMemDesc;	/*!< memdesc of trace buffer control structure */
 	DEVMEM_MEMDESC			*psRGXFWIfTraceBufferMemDesc[RGXFW_THREAD_NUM];	/*!< memdesc of actual FW trace (log) buffer(s) */
 	RGXFWIF_TRACEBUF		*psRGXFWIfTraceBuf;		/* structure containing trace control data and actual trace buffer */
+
+	DEVMEM_MEMDESC			*psRGXFWIfGuestTraceBufCtlMemDesc;	/*!< memdesc of trace buffer control structure */
+	RGXFWIF_TRACEBUF		*psRGXFWIfGuestTraceBuf;
+
+	DEVMEM_MEMDESC			*psRGXFWIfTBIBufferMemDesc;	/*!< memdesc of actual FW TBI buffer */
+	RGXFWIF_DEV_VIRTADDR		sRGXFWIfTBIBuffer;		/* TBI buffer data */
+
+	DEVMEM_MEMDESC			*psRGXFWIfGuestHWRInfoBufCtlMemDesc;
+	RGXFWIF_HWRINFOBUF		*psRGXFWIfGuestHWRInfoBuf;
 
 	DEVMEM_MEMDESC			*psRGXFWIfHWRInfoBufCtlMemDesc;
 	RGXFWIF_HWRINFOBUF		*psRGXFWIfHWRInfoBuf;
@@ -350,22 +386,23 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	DEVMEM_MEMDESC			*psRGXFWIfHWPerfCountersMemDesc;
 	DEVMEM_MEMDESC			*psRGXFWIfInitMemDesc;
+	DEVMEM_MEMDESC			*psRGXFWIfOSConfigDesc;
+	RGXFWIF_OS_CONFIG		*psFWIfOSConfig;
 	RGXFWIF_DEV_VIRTADDR	sFWInitFWAddr;
 
 	DEVMEM_MEMDESC			*psRGXFWIfRuntimeCfgMemDesc;
 	RGXFWIF_RUNTIME_CFG		*psRGXFWIfRuntimeCfg;
 
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
 	/* Additional guest firmware memory context info */
-	DEVMEM_HEAP				*psGuestFirmwareHeap[RGXFW_NUM_OS-1];
-	DEVMEM_MEMDESC			*psGuestFirmwareMemDesc[RGXFW_NUM_OS-1];
-#endif
+	DEVMEM_HEAP				*psGuestFirmwareRawHeap[RGXFW_NUM_OS];
+	DEVMEM_MEMDESC			*psGuestFirmwareMainMemDesc[RGXFW_NUM_OS];
+	DEVMEM_MEMDESC			*psGuestFirmwareConfigMemDesc[RGXFW_NUM_OS];
+
 	DEVMEM_MEMDESC			*psMETAT1StackMemDesc;
 
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
 	/* Array to store data needed for workload estimation when a workload
-	 * has finished and its cycle time is returned to the host.
-	 */
+	   has finished and its cycle time is returned to the host.	 */
 	WORKEST_RETURN_DATA		asReturnData[RETURN_DATA_ARRAY_SIZE];
 	IMG_UINT32				ui32ReturnDataWO;
 #endif
@@ -373,11 +410,10 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 #if defined (SUPPORT_PDVFS)
 	/**
 	 * Host memdesc and pointer to memory containing core clock rate in Hz.
-	 * Firmware (PDVFS) updates the memory on changing the core clock rate over
-	 * GPIO.
+	 * Firmware updates the memory on changing the core clock rate over GPIO.
 	 * Note: Shared memory needs atomic access from Host driver and firmware,
 	 * hence size should not be greater than memory transaction granularity.
-	 * Currently it's is chosen to be 32 bits.
+	 * Currently it is chosen to be 32 bits.
 	 */
 	DEVMEM_MEMDESC			*psRGXFWIFCoreClkRateMemDesc;
 	volatile IMG_UINT32		*pui32RGXFWIFCoreClkRate;
@@ -386,6 +422,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	 */
 	volatile IMG_UINT32		ui32CoreClkRateSnapshot;
 #endif
+
 	/*
 	   HWPerf data for the RGX device
 	 */
@@ -397,12 +434,34 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT64  ui64HWPerfFilter; /*! Event filter for FW events (settable by AppHint) */
 	IMG_HANDLE  hHWPerfStream;    /*! TL Stream buffer (L2) for firmware event stream */
+	IMG_UINT32  ui32MaxPacketSize;/*!< Max allowed packet size */
 
 	IMG_UINT32  ui32HWPerfHostFilter;      /*! Event filter for HWPerfHost stream (settable by AppHint) */
 	POS_LOCK    hLockHWPerfHostStream;     /*! Lock guarding access to HWPerfHost stream from multiple threads */
 	IMG_HANDLE  hHWPerfHostStream;         /*! TL Stream buffer for host only event stream */
 	IMG_UINT32  ui32HWPerfHostBufSize;     /*! Host side buffer size in bytes */
-	IMG_UINT32  ui32HWPerfHostNextOrdinal; /*! Ordinal number for HWPerfHost events */
+	IMG_UINT32  ui32HWPerfHostLastOrdinal; /*! Ordinal of the last packet emitted in HWPerfHost TL stream.
+	                                        *  Guarded by hLockHWPerfHostStream */
+	IMG_UINT32  ui32HWPerfHostNextOrdinal; /*! Ordinal number for HWPerfHost events. Guarded by hHWPerfHostSpinLock */
+	IMG_UINT8   *pui8DeferredEvents;       /*! List of HWPerfHost events yet to be emitted in the TL stream.
+	                                        *  Events generated from atomic context are deferred "emitted"
+											*  as the "emission" code can sleep */
+	IMG_UINT16  ui16DEReadIdx;             /*! Read index in the above deferred events buffer */
+	IMG_UINT16  ui16DEWriteIdx;            /*! Write index in the above deferred events buffer */
+	void        *pvHostHWPerfMISR;         /*! MISR to emit pending/deferred events in HWPerfHost TL stream */
+	POS_SPINLOCK hHWPerfHostSpinLock;      /*! Guards data shared between an atomic & sleepable-context */
+#if defined (PVRSRV_HWPERF_HOST_DEBUG_DEFERRED_EVENTS)
+	IMG_UINT32  ui32DEHighWatermark;       /*! High watermark of deferred events buffer usage. Protected by
+	                                        *! hHWPerfHostSpinLock*/
+	/* Max number of times DeferredEmission waited for an atomic-context to "finish" packet write */
+	IMG_UINT32  ui32WaitForAtomicCtxPktHighWatermark; /*! Protected by hLockHWPerfHostStream */
+	/* Whether warning has been logged about an atomic-context packet loss (due to too long wait for "write" finish) */
+	IMG_BOOL    bWarnedAtomicCtxPktLost;
+	/* Max number of times DeferredEmission scheduled-out to give a chance to the right-ordinal packet to be emitted */
+	IMG_UINT32  ui32WaitForRightOrdPktHighWatermark; /*! Protected by hLockHWPerfHostStream */
+	/* Whether warning has been logged about an packet loss (due to too long wait for right ordinal to emit) */
+	IMG_BOOL    bWarnedPktOrdinalBroke;
+#endif
 
 #if defined(SUPPORT_GPUTRACE_EVENTS)
 	void        *pvGpuFtraceData;
@@ -416,7 +475,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	/* Client stall detection */
 	IMG_UINT32				ui32StalledClientMask;
-#endif
 
 	IMG_BOOL				bWorkEstEnabled;
 	IMG_BOOL				bPDVFSEnabled;
@@ -429,8 +487,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	volatile IMG_UINT32		aui32SampleIRQCount[RGXFW_THREAD_NUM];
 
 	DEVMEM_MEMDESC			*psRGXFaultAddressMemDesc;
-
-	DEVMEM_MEMDESC			*psRGXFWHWBRN37200MemDesc;
 
 	DEVMEM_MEMDESC			*psSLC3FenceMemDesc;
 
@@ -451,6 +507,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT32				ui32ActivePMReqOk;
 	IMG_UINT32				ui32ActivePMReqDenied;
+	IMG_UINT32				ui32ActivePMReqNonIdle;
 	IMG_UINT32				ui32ActivePMReqTotal;
 
 	IMG_HANDLE				hProcessQueuesMISR;
@@ -472,7 +529,10 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	DEVMEM_MEMDESC			*psCompletedMemDesc;	/*!< kicks Completed on QueryId */
 	IMG_UINT32				*pui32CompletedById;	/*!< CPU mapping of the above */
 
-#if !defined(PVRSRV_GPUVIRT_GUESTDRV)
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	POS_LOCK				hTimerQueryLock;		/*!< lock to protect simultaneous access to timer query members */
+#endif
+
 	/* GPU DVFS Table */
 	RGX_GPU_DVFS_TABLE  *psGpuDVFSTable;
 
@@ -489,7 +549,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	PVRSRV_ERROR (*pfnGetGpuUtilStats) (PVRSRV_DEVICE_NODE *psDeviceNode,
 	                                    IMG_HANDLE hGpuUtilUser,
 	                                    RGXFWIF_GPU_UTIL_STATS *psReturnStats);
-#endif
 
 	POS_LOCK				hGPUUtilLock;
 
@@ -508,6 +567,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	POSWR_LOCK				hKickSyncCtxListLock;
 
 	/* Linked list of deferred KCCB commands due to a full KCCB */
+	POS_LOCK 				hLockKCCBDeferredCommandsList;
 	DLLIST_NODE				sKCCBDeferredCommandsListHead;
 
 	/* Linked lists of contexts on this device */
@@ -519,6 +579,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	DLLIST_NODE				sKickSyncCtxtListHead;
 
 	DLLIST_NODE 			sCommonCtxtListHead;
+	POSWR_LOCK				hCommonCtxtListLock;
 	IMG_UINT32				ui32CommonCtxtCurrentID;	/*!< ID assigned to the next common context */
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
@@ -530,12 +591,20 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	RGX_DUST_STATE			sDustReqState;
 
-	RGX_POWER_LAYER_PARAMS	sPowerParams;
+	RGX_LAYER_PARAMS		sLayerParams;
 
 	RGXFWIF_DM				eBPDM;					/*!< Current breakpoint data master */
 	IMG_BOOL				bBPSet;					/*!< A Breakpoint has been set */
+	POS_LOCK				hBPLock;				/*!< Lock for break point operations */
 
 	IMG_UINT32				ui32CoherencyTestsDone;
+
+	ATOMIC_T				iCCBSubmissionOrdinal; /* Rolling count used to indicate CCB submission order (all CCBs) */
+	POS_LOCK				hCCBRecoveryLock;      /* Lock to protect pvEarliestStalledClientCCB and ui32OldestSubmissionOrdinal variables*/
+	void					*pvEarliestStalledClientCCB; /* Will point to cCCB command to unblock in the event of a stall */
+	IMG_UINT32				ui32OldestSubmissionOrdinal; /* Earliest submission ordinal of CCB entry found so far */
+
+	POS_LOCK				hCCBStallCheckLock; /* Lock used to guard against multiple threads simultaneously checking for stalled CCBs */
 } PVRSRV_RGXDEV_INFO;
 
 

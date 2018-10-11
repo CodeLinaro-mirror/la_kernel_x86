@@ -50,26 +50,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxta3d.h"
 
 
-IMG_INTERNAL
-void WorkEstRCInit(WORKEST_HOST_DATA *psWorkEstData);
+void WorkEstInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData);
 
-IMG_INTERNAL
-void WorkEstRCDeInit(WORKEST_HOST_DATA *psWorkEstData,
-                     PVRSRV_RGXDEV_INFO *psDevInfo);
-IMG_INTERNAL
-PVRSRV_ERROR WorkEstEmptyWorkloadHash(	HASH_TABLE* psHash,
-										uintptr_t k,
-										uintptr_t v);
+void WorkEstDeInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData);
 
-IMG_INTERNAL
-IMG_BOOL WorkEstHashCompareTA3D(size_t uKeySize,
-								 void *pKey1,
-								 void *pKey2);
+IMG_BOOL WorkEstHashCompareTA3D(size_t uKeySize, void *pKey1, void *pKey2);
 
-IMG_INTERNAL
 IMG_UINT32 WorkEstHashFuncTA3D(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen);
 
-IMG_INTERNAL
 PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
                             WORKEST_HOST_DATA         *psWorkEstHostData,
                             WORKLOAD_MATCHING_DATA    *psWorkloadMatchingData,
@@ -80,17 +68,13 @@ PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
                             IMG_UINT64                ui64DeadlineInus,
                             RGXFWIF_WORKEST_KICK_DATA *psWorkEstKickData);
 
-IMG_INTERNAL
-PVRSRV_ERROR WorkEstWorkloadFinished(PVRSRV_RGXDEV_INFO        *psDevInfo,
-                                     RGXFWIF_WORKEST_FWCCB_CMD *psReturnCmd);
+PVRSRV_ERROR WorkEstRetire(PVRSRV_RGXDEV_INFO *psDevInfo,
+						   RGXFWIF_WORKEST_FWCCB_CMD *psReturnCmd);
 
-IMG_INTERNAL
-void WorkEstHashLockCreate(POS_LOCK *psWorkEstHashLock);
+void WorkEstHashLockCreate(POS_LOCK *ppsHashLock);
 
-IMG_INTERNAL
-void WorkEstHashLockDestroy(POS_LOCK sWorkEstHashLock);
+void WorkEstHashLockDestroy(POS_LOCK psHashLock);
 
-IMG_INTERNAL
 void WorkEstCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo);
 
 #endif /* RGXWORKEST_H */

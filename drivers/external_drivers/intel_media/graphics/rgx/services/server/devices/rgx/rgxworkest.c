@@ -46,121 +46,31 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxfwutils.h"
 #include "rgxdevice.h"
 #include "rgxpdvfs.h"
+#include "rgx_options.h"
 #include "device.h"
 #include "pvr_debug.h"
 
 #define ROUND_DOWN_TO_NEAREST_1024(number) (((number) >> 10) << 10)
 
-void WorkEstRCInit(WORKEST_HOST_DATA *psWorkEstData)
+static inline IMG_BOOL _WorkEstEnabled(void)
 {
-	/* Create hash tables for workload matching */
-	psWorkEstData->sWorkloadMatchingDataTA.psWorkloadDataHash =
-		HASH_Create_Extended(WORKLOAD_HASH_SIZE,
-							 sizeof(RGX_WORKLOAD_TA3D *),
-							 &WorkEstHashFuncTA3D,
-							 (HASH_KEY_COMP *)&WorkEstHashCompareTA3D);
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
-	/* Create a lock to protect the hash table */
-	WorkEstHashLockCreate(&(psWorkEstData->sWorkloadMatchingDataTA.psWorkEstHashLock));
-
-	psWorkEstData->sWorkloadMatchingData3D.psWorkloadDataHash =
-		HASH_Create_Extended(WORKLOAD_HASH_SIZE,
-							 sizeof(RGX_WORKLOAD_TA3D *),
-							 &WorkEstHashFuncTA3D,
-							 (HASH_KEY_COMP *)&WorkEstHashCompareTA3D);
-
-	/* Create a lock to protect the hash tables */
-	WorkEstHashLockCreate(&(psWorkEstData->sWorkloadMatchingData3D.psWorkEstHashLock));
-}
-
-void WorkEstRCDeInit(WORKEST_HOST_DATA *psWorkEstData,
-                     PVRSRV_RGXDEV_INFO *psDevInfo)
-{
-	HASH_TABLE        *psWorkloadDataHash;
-	RGX_WORKLOAD_TA3D *pasWorkloadHashKeys;
-	RGX_WORKLOAD_TA3D *psWorkloadHashKey;
-	IMG_UINT32        ui32i;
-	IMG_UINT64        *paui64WorkloadCycleData;
-
-	pasWorkloadHashKeys = psWorkEstData->sWorkloadMatchingDataTA.asWorkloadHashKeys;
-	paui64WorkloadCycleData = psWorkEstData->sWorkloadMatchingDataTA.aui64HashCycleData;
-	psWorkloadDataHash = psWorkEstData->sWorkloadMatchingDataTA.psWorkloadDataHash;
-
-	if(psWorkloadDataHash)
+	if (psPVRSRVData->sDriverInfo.sKMBuildInfo.ui32BuildOptions &
+	    psPVRSRVData->sDriverInfo.sUMBuildInfo.ui32BuildOptions &
+	    OPTIONS_WORKLOAD_ESTIMATION_MASK)
 	{
-		for(ui32i = 0; ui32i < WORKLOAD_HASH_SIZE; ui32i++)
-		{
-			if(paui64WorkloadCycleData[ui32i] > 0)
-			{
-				psWorkloadHashKey = &pasWorkloadHashKeys[ui32i];
-				HASH_Remove_Extended(psWorkloadDataHash,
-									 (uintptr_t*)&psWorkloadHashKey);
-			}
-		}
-
-		HASH_Delete(psWorkloadDataHash);
+		return IMG_TRUE;
 	}
 
-	/* Remove the hash lock */
-	WorkEstHashLockDestroy(psWorkEstData->sWorkloadMatchingDataTA.psWorkEstHashLock);
-
-	pasWorkloadHashKeys = psWorkEstData->sWorkloadMatchingData3D.asWorkloadHashKeys;
-	paui64WorkloadCycleData = psWorkEstData->sWorkloadMatchingData3D.aui64HashCycleData;
-	psWorkloadDataHash = psWorkEstData->sWorkloadMatchingData3D.psWorkloadDataHash;
-
-	if(psWorkloadDataHash)
-	{
-		for(ui32i = 0; ui32i < WORKLOAD_HASH_SIZE; ui32i++)
-		{
-			if(paui64WorkloadCycleData[ui32i] > 0)
-			{
-				psWorkloadHashKey = &pasWorkloadHashKeys[ui32i];
-				HASH_Remove_Extended(psWorkloadDataHash,
-									 (uintptr_t*)&psWorkloadHashKey);
-			}
-		}
-
-		HASH_Delete(psWorkloadDataHash);
-	}
-
-	/* Remove the hash lock */
-	WorkEstHashLockDestroy(psWorkEstData->sWorkloadMatchingData3D.psWorkEstHashLock);
-
-	return;
-}
-
-IMG_BOOL WorkEstHashCompareTA3D(size_t uKeySize,
-								void *pKey1,
-								void *pKey2)
-{
-	RGX_WORKLOAD_TA3D *psWorkload1;
-	RGX_WORKLOAD_TA3D *psWorkload2;
-
-	if(pKey1 && pKey2)
-	{
-		psWorkload1 = *((RGX_WORKLOAD_TA3D **)pKey1);
-		psWorkload2 = *((RGX_WORKLOAD_TA3D **)pKey2);
-
-		PVR_ASSERT(psWorkload1);
-		PVR_ASSERT(psWorkload2);
-
-		if(psWorkload1->ui32RenderTargetSize == psWorkload2->ui32RenderTargetSize
-		   && psWorkload1->ui32NumberOfDrawCalls == psWorkload2->ui32NumberOfDrawCalls
-		   && psWorkload1->ui32NumberOfIndices == psWorkload2->ui32NumberOfIndices
-		   && psWorkload1->ui32NumberOfMRTs == psWorkload2->ui32NumberOfMRTs)
-		{
-			/* This is added to allow this memory to be freed */
-			*(uintptr_t*)pKey2 = *(uintptr_t*)pKey1;
-			return IMG_TRUE;
-		}
-	}
 	return IMG_FALSE;
 }
 
-static inline IMG_UINT32 WorkEstDoHash(IMG_UINT32 ui32Input)
+static inline IMG_UINT32 _WorkEstDoHash(IMG_UINT32 ui32Input)
 {
 	IMG_UINT32 ui32HashPart;
 
+	 /* Hash function borrowed from hash.c */
 	ui32HashPart = ui32Input;
 	ui32HashPart += (ui32HashPart << 12);
 	ui32HashPart ^= (ui32HashPart >> 22);
@@ -174,6 +84,34 @@ static inline IMG_UINT32 WorkEstDoHash(IMG_UINT32 ui32Input)
 	return ui32HashPart;
 }
 
+IMG_BOOL WorkEstHashCompareTA3D(size_t uKeySize, void *pKey1, void *pKey2)
+{
+	RGX_WORKLOAD_TA3D *psWorkload1;
+	RGX_WORKLOAD_TA3D *psWorkload2;
+	PVR_UNREFERENCED_PARAMETER(uKeySize);
+
+	if (pKey1 && pKey2)
+	{
+		psWorkload1 = *((RGX_WORKLOAD_TA3D **)pKey1);
+		psWorkload2 = *((RGX_WORKLOAD_TA3D **)pKey2);
+
+		PVR_ASSERT(psWorkload1);
+		PVR_ASSERT(psWorkload2);
+
+		if (psWorkload1->ui32RenderTargetSize == psWorkload2->ui32RenderTargetSize
+		    && psWorkload1->ui32NumberOfDrawCalls == psWorkload2->ui32NumberOfDrawCalls
+		    && psWorkload1->ui32NumberOfIndices == psWorkload2->ui32NumberOfIndices
+		    && psWorkload1->ui32NumberOfMRTs == psWorkload2->ui32NumberOfMRTs)
+		{
+			/* This is added to allow this memory to be freed */
+			*(uintptr_t*)pKey2 = *(uintptr_t*)pKey1;
+			return IMG_TRUE;
+		}
+	}
+
+	return IMG_FALSE;
+}
+
 IMG_UINT32 WorkEstHashFuncTA3D(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen)
 {
 	RGX_WORKLOAD_TA3D *psWorkload = *((RGX_WORKLOAD_TA3D**)pKey);
@@ -181,12 +119,51 @@ IMG_UINT32 WorkEstHashFuncTA3D(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabL
 	PVR_UNREFERENCED_PARAMETER(uHashTabLen);
 	PVR_UNREFERENCED_PARAMETER(uKeySize);
 
-	ui32HashKey += WorkEstDoHash(psWorkload->ui32RenderTargetSize);
-	ui32HashKey += WorkEstDoHash(psWorkload->ui32NumberOfDrawCalls);
-	ui32HashKey += WorkEstDoHash(psWorkload->ui32NumberOfIndices);
-	ui32HashKey += WorkEstDoHash(psWorkload->ui32NumberOfMRTs);
+	/* Hash key predicated on multiple render target attributes */
+	ui32HashKey += _WorkEstDoHash(psWorkload->ui32RenderTargetSize);
+	ui32HashKey += _WorkEstDoHash(psWorkload->ui32NumberOfDrawCalls);
+	ui32HashKey += _WorkEstDoHash(psWorkload->ui32NumberOfIndices);
+	ui32HashKey += _WorkEstDoHash(psWorkload->ui32NumberOfMRTs);
 
 	return ui32HashKey;
+}
+
+void WorkEstHashLockCreate(POS_LOCK *ppsHashLock)
+{
+	if (*ppsHashLock == NULL)
+	{
+		OSLockCreate(ppsHashLock, LOCK_TYPE_DISPATCH);
+	}
+}
+
+void WorkEstHashLockDestroy(POS_LOCK psWorkEstHashLock)
+{
+	if (psWorkEstHashLock != NULL)
+	{
+		OSLockDestroy(psWorkEstHashLock);
+		psWorkEstHashLock = NULL;
+	}
+}
+
+void WorkEstCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo)
+{
+	RGXFWIF_WORKEST_FWCCB_CMD *psFwCCBCmd;
+	IMG_UINT8 *psFWCCB = psDevInfo->psWorkEstFirmwareCCB;
+	RGXFWIF_CCB_CTL *psFWCCBCtl = psDevInfo->psWorkEstFirmwareCCBCtl;
+
+	while (psFWCCBCtl->ui32ReadOffset != psFWCCBCtl->ui32WriteOffset)
+	{
+		PVRSRV_ERROR eError;
+
+		/* Point to the next command */
+		psFwCCBCmd = ((RGXFWIF_WORKEST_FWCCB_CMD *)psFWCCB) + psFWCCBCtl->ui32ReadOffset;
+
+		eError = WorkEstRetire(psDevInfo, psFwCCBCmd);
+		PVR_LOG_IF_ERROR(eError, "WorkEstCheckFirmwareCCB: WorkEstRetire failed");
+
+		/* Update read offset */
+		psFWCCBCtl->ui32ReadOffset = (psFWCCBCtl->ui32ReadOffset + 1) & psFWCCBCtl->ui32WrapMask;
+	}
 }
 
 PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
@@ -199,128 +176,89 @@ PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
                             IMG_UINT64                ui64DeadlineInus,
                             RGXFWIF_WORKEST_KICK_DATA *psWorkEstKickData)
 {
-	PVRSRV_ERROR          eError;
 	RGX_WORKLOAD_TA3D     *psWorkloadCharacteristics;
 	IMG_UINT64            *pui64CyclePrediction;
-	POS_LOCK              psWorkEstHashLock;
-	IMG_UINT64            ui64WorkloadDeadlineInus = ui64DeadlineInus;
 	IMG_UINT64            ui64CurrentTime;
-	HASH_TABLE            *psWorkloadDataHash;
 	WORKEST_RETURN_DATA   *psReturnData;
+	IMG_UINT32            ui32ReturnDataWO;
+#if defined(SUPPORT_SOC_TIMER)
+	PVRSRV_DEVICE_CONFIG  *psDevConfig;
+	IMG_UINT64            ui64CurrentSoCTime;
+#endif
+	PVRSRV_ERROR          eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-	if(psDevInfo == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"WorkEstPrepare: Device Info not available"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	if(psDevInfo->bWorkEstEnabled != IMG_TRUE)
+	if (!_WorkEstEnabled())
 	{
 		/* No error message to avoid excessive messages */
 		return PVRSRV_OK;
 	}
 
-	if(psWorkEstHostData == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		         "WorkEstPrepare: Host data not available"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
+	/* Validate all required objects required for preparing work estimation */
+	PVR_LOGR_IF_FALSE(psDevInfo, "WorkEstPrepare: Device info not available", eError);
+	PVR_LOGR_IF_FALSE(psWorkEstHostData, "WorkEstPrepare: Host data not available", eError);
+	PVR_LOGR_IF_FALSE(psWorkloadMatchingData, "WorkEstPrepare: Workload Matching Data not available", eError);
+	PVR_LOGR_IF_FALSE(psWorkloadMatchingData->psHashLock, "WorkEstPrepare: Hash lock not available", eError);
+	PVR_LOGR_IF_FALSE(psWorkloadMatchingData->psHashTable, "WorkEstPrepare: Hash table not available", eError);
 
-	if(psWorkloadMatchingData == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		         "WorkEstPrepare: Workload Matching Data not available"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	psWorkloadDataHash = psWorkloadMatchingData->psWorkloadDataHash;
-	if(psWorkloadDataHash == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"WorkEstPrepare: Hash Table not available"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	psWorkEstHashLock = psWorkloadMatchingData->psWorkEstHashLock;
-	if(psWorkEstHashLock == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstPrepare: Hash lock not available"
-		        ));
-		eError = PVRSRV_ERROR_UNABLE_TO_RETRIEVE_HASH_VALUE;
-		return eError;
-	}
+#if defined(SUPPORT_SOC_TIMER)
+	psDevConfig = psDevInfo->psDeviceNode->psDevConfig;
+	ui64CurrentSoCTime = psDevConfig->pfnSoCTimerRead(psDevConfig->hSysData);
+#endif
 
 	eError = OSClockMonotonicus64(&ui64CurrentTime);
-	if(eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		         "WorkEstPrepare: Unable to access System Monotonic clock"));
-		PVR_ASSERT(eError == PVRSRV_OK);
-		return eError;
-	}
+	PVR_LOGR_IF_ERROR(eError, "WorkEstPrepare: Unable to access System Monotonic clock");
 
 #if defined(SUPPORT_PDVFS)
 	psDevInfo->psDeviceNode->psDevConfig->sDVFS.sPDVFSData.bWorkInFrame = IMG_TRUE;
 #endif
 
-	/* Set up data for the return path to process the workload */
+	/* Select the next index for the return data and update it (is this thread safe?) */
+	ui32ReturnDataWO = psDevInfo->ui32ReturnDataWO;
+	psDevInfo->ui32ReturnDataWO = (ui32ReturnDataWO + 1) & RETURN_DATA_ARRAY_WRAP_MASK;
 
-	/* Any host side data needed for the return path is stored in an array and
-	 * only the array's index is passed to and from the firmware. This is a
-	 * similar abstraction to using handles but is optimised for this case.
-	 */
-	psReturnData =
-		&psDevInfo->asReturnData[psDevInfo->ui32ReturnDataWO];
+	/* Index for the return data passed to/from the firmware. */
+	psWorkEstKickData->ui64ReturnDataIndex = ui32ReturnDataWO;
+	if (ui64DeadlineInus > ui64CurrentTime)
+	{
+		/* Rounding is done to reduce multiple deadlines with minor spread flooding the fw workload array. */
+#if defined(SUPPORT_SOC_TIMER)
+		IMG_UINT64 ui64TimeDelta = (ui64DeadlineInus - ui64CurrentTime) * SOC_TIMER_FREQ;
+		psWorkEstKickData->ui64Deadline = ROUND_DOWN_TO_NEAREST_1024(ui64CurrentSoCTime + ui64TimeDelta);
+#else
+		psWorkEstKickData->ui64Deadline = ROUND_DOWN_TO_NEAREST_1024(ui64DeadlineInus);
+#endif
+	}
+	else
+	{
+		/* If deadline has already passed, assign zero to suggest full frequency */
+		psWorkEstKickData->ui64Deadline = 0;
+	}
 
-	/* The index for the specific data is passed to the FW */
-	psWorkEstKickData->ui64ReturnDataIndex = psDevInfo->ui32ReturnDataWO;
+	/* Set up data for the return path to process the workload; the matching data is needed
+	   as it holds the hash data, the host data is needed for completion updates */
+	psReturnData = &psDevInfo->asReturnData[ui32ReturnDataWO];
+	psReturnData->psWorkloadMatchingData = psWorkloadMatchingData;
+	psReturnData->psWorkEstHostData = psWorkEstHostData;
 
-	psDevInfo->ui32ReturnDataWO =
-		(psDevInfo->ui32ReturnDataWO + 1) & RETURN_DATA_ARRAY_WRAP_MASK;
-
-	/* The workload characteristics are needed in the return data for the
-	 * matching of future workloads via the hash.
-	 */
+	/* The workload characteristic is needed in the return data for the matching
+	   of future workloads via the hash. */
 	psWorkloadCharacteristics = &psReturnData->sWorkloadCharacteristics;
 	psWorkloadCharacteristics->ui32RenderTargetSize = ui32RenderTargetSize;
 	psWorkloadCharacteristics->ui32NumberOfDrawCalls = ui32NumberOfDrawCalls;
 	psWorkloadCharacteristics->ui32NumberOfIndices = ui32NumberOfIndices;
 	psWorkloadCharacteristics->ui32NumberOfMRTs = ui32NumberOfMRTs;
 
-	/* The matching data is needed as it holds the hash data. */
-	psReturnData->psWorkloadMatchingData = psWorkloadMatchingData;
-
-	/* The host data for the completion updates */
-	psReturnData->psWorkEstHostData = psWorkEstHostData;
-	if(ui64WorkloadDeadlineInus > ui64CurrentTime)
-	{
-		/* This is rounded to reduce multiple deadlines with a minor spread
-		 * flooding the fw workload array.
-		 */
-		psWorkEstKickData->ui64DeadlineInus =
-			ROUND_DOWN_TO_NEAREST_1024(ui64WorkloadDeadlineInus);
-	}
-	else
-	{
-		/* If the deadline has already passed assign as zero to suggest full
-		 * frequency
-		 */
-		psWorkEstKickData->ui64DeadlineInus = 0;
-	}
-
 	/* Acquire the lock to access hash */
-	OSLockAcquire(psWorkEstHashLock);
+	OSLockAcquire(psWorkloadMatchingData->psHashLock);
 
 	/* Check if there is a prediction for this workload */
-	pui64CyclePrediction =
-		(IMG_UINT64*) HASH_Retrieve(psWorkloadDataHash,
-		                            (uintptr_t)psWorkloadCharacteristics);
+	pui64CyclePrediction = (IMG_UINT64*) HASH_Retrieve(psWorkloadMatchingData->psHashTable,
+													   (uintptr_t)psWorkloadCharacteristics);
 
 	/* Release lock */
-	OSLockRelease(psWorkEstHashLock);
+	OSLockRelease(psWorkloadMatchingData->psHashLock);
 
-	if(pui64CyclePrediction != NULL)
+	if (pui64CyclePrediction != NULL)
 	{
 		/* Cycle prediction is available, store this prediction */
 		psWorkEstKickData->ui64CyclesPrediction = *pui64CyclePrediction;
@@ -334,184 +272,170 @@ PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR WorkEstWorkloadFinished(PVRSRV_RGXDEV_INFO        *psDevInfo,
-                                     RGXFWIF_WORKEST_FWCCB_CMD *psReturnCmd)
+PVRSRV_ERROR WorkEstRetire(PVRSRV_RGXDEV_INFO *psDevInfo,
+						   RGXFWIF_WORKEST_FWCCB_CMD *psReturnCmd)
 {
-	RGX_WORKLOAD_TA3D           *psWorkloadCharacteristics;
-	RGX_WORKLOAD_TA3D           *pasWorkloadHashKeys;
-	IMG_UINT64                  *paui64HashCycleData;
-	IMG_UINT32                  *pui32HashArrayWO;
-	RGX_WORKLOAD_TA3D           *psWorkloadHashKey;
-	IMG_UINT64                  *pui64CyclesTaken;
-	HASH_TABLE                  *psWorkloadHash;
-	WORKLOAD_MATCHING_DATA      *psWorkloadMatchingData;
-	POS_LOCK                    psWorkEstHashLock;
-	IMG_BOOL                    bHashSucess;
-	WORKEST_RETURN_DATA         *psReturnData;
-	WORKEST_HOST_DATA           *psWorkEstHostData;
-	PVRSRV_ERROR                eError = PVRSRV_OK;
+	RGX_WORKLOAD_TA3D      *psWorkloadCharacteristics;
+	WORKLOAD_MATCHING_DATA *psWorkloadMatchingData;
+	IMG_UINT64             *paui64WorkloadHashData;
+	RGX_WORKLOAD_TA3D      *pasWorkloadHashKeys;
+	IMG_UINT32             ui32HashArrayWO;
+	IMG_UINT64             *pui64CyclesTaken;
+	WORKEST_RETURN_DATA    *psReturnData;
+	WORKEST_HOST_DATA      *psWorkEstHostData;
+	PVRSRV_ERROR           eError = PVRSRV_ERROR_INVALID_PARAMS;
 
-	if(psDevInfo->bWorkEstEnabled != IMG_TRUE)
+	if (!_WorkEstEnabled())
 	{
 		/* No error message to avoid excessive messages */
 		return PVRSRV_OK;
 	}
 
-	if(psReturnCmd == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Missing Return Command"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
+	PVR_LOGR_IF_FALSE(psReturnCmd, "WorkEstRetire: Missing return command", eError);
+	PVR_LOGR_IF_FALSE((psReturnCmd->ui64ReturnDataIndex < RETURN_DATA_ARRAY_SIZE), "WorkEstRetire: Handle reference out-of-bounds", eError);
 
-	if(psReturnCmd->ui64ReturnDataIndex >= RETURN_DATA_ARRAY_SIZE)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Handle Reference Out of Bounds"));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	/* Retrieve the return data for this workload */
+	/* Retrieve/validate the return data from this completed workload */
 	psReturnData = &psDevInfo->asReturnData[psReturnCmd->ui64ReturnDataIndex];
-
+ 	psWorkloadCharacteristics = &psReturnData->sWorkloadCharacteristics;
 	psWorkEstHostData = psReturnData->psWorkEstHostData;
+	PVR_LOGR_IF_FALSE(psWorkEstHostData, "WorkEstRetire: Missing host data", eError);
 
-	if(psWorkEstHostData == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Missing host data"));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		return eError;
-	}
-
-	psWorkloadCharacteristics = &psReturnData->sWorkloadCharacteristics;
-
-	if(psWorkloadCharacteristics == NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Missing workload characteristics"));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto hasherror;
-	}
-
+	/* Retrieve/validate completed workload matching data */
 	psWorkloadMatchingData = psReturnData->psWorkloadMatchingData;
+	PVR_LOGG_IF_FALSE(psWorkloadMatchingData, "WorkEstRetire: Missing matching data", hasherror);
+	PVR_LOGG_IF_FALSE(psWorkloadMatchingData->psHashTable, "WorkEstRetire: Missing hash", hasherror);
+	PVR_LOGG_IF_FALSE(psWorkloadMatchingData->psHashLock, "WorkEstRetire: Missing hash/lock", hasherror);
+	paui64WorkloadHashData = psWorkloadMatchingData->aui64HashData;
+	pasWorkloadHashKeys = psWorkloadMatchingData->asHashKeys;
+	ui32HashArrayWO = psWorkloadMatchingData->ui32HashArrayWO;
 
-	psWorkloadHash = psWorkloadMatchingData->psWorkloadDataHash;
-	if(psWorkloadHash == NULL)
+	OSLockAcquire(psWorkloadMatchingData->psHashLock);
+
+	/* Update workload prediction by removing old hash entry (if any) & inserting new hash entry */
+	pui64CyclesTaken = (IMG_UINT64*) HASH_Remove_Extended(psWorkloadMatchingData->psHashTable,
+														  (uintptr_t*)&psWorkloadCharacteristics);
+
+	if (paui64WorkloadHashData[ui32HashArrayWO] > 0)
 	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Missing hash"));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto hasherror;
+		/* Out-of-space so remove the oldest hash data before it becomes overwritten */
+		RGX_WORKLOAD_TA3D *psWorkloadHashKey = &pasWorkloadHashKeys[ui32HashArrayWO];
+		(void) HASH_Remove_Extended(psWorkloadMatchingData->psHashTable, (uintptr_t*)&psWorkloadHashKey);
 	}
 
-	psWorkEstHashLock = psWorkloadMatchingData->psWorkEstHashLock;
-	if(psWorkEstHashLock == NULL)
+	if (pui64CyclesTaken == NULL)
 	{
-		PVR_DPF((PVR_DBG_ERROR,
-		        "WorkEstFinished: Missing hash lock"));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto hasherror;
-	}
-
-	OSLockAcquire(psWorkEstHashLock);
-
-	pui64CyclesTaken =
-		(IMG_UINT64*) HASH_Remove_Extended(psWorkloadHash,
-		                                   (uintptr_t*)&psWorkloadCharacteristics);
-
-	pui32HashArrayWO = &(psWorkloadMatchingData->ui32HashArrayWO);
-	paui64HashCycleData = psWorkloadMatchingData->aui64HashCycleData;
-	pasWorkloadHashKeys = psWorkloadMatchingData->asWorkloadHashKeys;
-
-	/* Remove the oldest Hash data before it becomes overwritten */
-	if(paui64HashCycleData[*pui32HashArrayWO] > 0)
-	{
-		psWorkloadHashKey = &pasWorkloadHashKeys[*pui32HashArrayWO];
-		HASH_Remove_Extended(psWorkloadHash,
-		                     (uintptr_t*)&psWorkloadHashKey);
-	}
-
-	if(pui64CyclesTaken == NULL)
-	{
-		/* There is no existing entry for these characteristics. */
-		pasWorkloadHashKeys[*pui32HashArrayWO] = *psWorkloadCharacteristics;
-
-		paui64HashCycleData[*pui32HashArrayWO] = psReturnCmd->ui64CyclesTaken;
+		/* There is no existing entry for this workload characteristics, store it */
+		paui64WorkloadHashData[ui32HashArrayWO] = psReturnCmd->ui64CyclesTaken;
+		pasWorkloadHashKeys[ui32HashArrayWO] = *psWorkloadCharacteristics;
 	}
 	else
 	{
-		*pui64CyclesTaken =
-			(*pui64CyclesTaken + psReturnCmd->ui64CyclesTaken)/2;
-
-		pasWorkloadHashKeys[*pui32HashArrayWO] = *psWorkloadCharacteristics;
-
-		paui64HashCycleData[*pui32HashArrayWO] = *pui64CyclesTaken;
-
-		/* Set the old value to 0 so it is known to be invalid */
+		/* Found prior entry for workload characteristics, average with completed; also reset the
+		   old value to 0 so it is known to be invalid */
+		paui64WorkloadHashData[ui32HashArrayWO] = (*pui64CyclesTaken + psReturnCmd->ui64CyclesTaken)/2;
+		pasWorkloadHashKeys[ui32HashArrayWO] = *psWorkloadCharacteristics;
 		*pui64CyclesTaken = 0;
 	}
 
-
-	bHashSucess = HASH_Insert((HASH_TABLE*)(psWorkloadHash),
-			(uintptr_t)&pasWorkloadHashKeys[*pui32HashArrayWO],
-			(uintptr_t)&paui64HashCycleData[*pui32HashArrayWO]);
-	PVR_ASSERT(bHashSucess);
-
-	if(*pui32HashArrayWO == WORKLOAD_HASH_SIZE-1)
+	/* Hash insertion should not fail but if it does best we can do is to exit gracefully and not
+	   update the FW received counter */
+	if (IMG_TRUE != HASH_Insert((HASH_TABLE*)psWorkloadMatchingData->psHashTable,
+								(uintptr_t)&pasWorkloadHashKeys[ui32HashArrayWO],
+								(uintptr_t)&paui64WorkloadHashData[ui32HashArrayWO]))
 	{
-		*pui32HashArrayWO = 0;
-	}
-	else
-	{
-		(*pui32HashArrayWO)++;
+		PVR_ASSERT(0);
+		PVR_LOG(("WorkEstRetire: HASH_Insert failed"));
 	}
 
-	OSLockRelease(psWorkEstHashLock);
+	psWorkloadMatchingData->ui32HashArrayWO = (ui32HashArrayWO + 1) & WORKLOAD_HASH_WRAP_MASK;
+
+	OSLockRelease(psWorkloadMatchingData->psHashLock);
 
 hasherror:
-
-	/* Update the received counter so that the FW is able to check as to whether
-	 * all the workloads connected to a render context are finished.
-	 */
+	/* Update the received counter so that the FW is able to check as to whether all
+	   the workloads connected to a render context are finished. */
 	psWorkEstHostData->ui32WorkEstCCBReceived++;
+
 	return eError;
 }
 
-void WorkEstHashLockCreate(POS_LOCK *psWorkEstHashLock)
+void WorkEstInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData)
 {
-	if(*psWorkEstHashLock == NULL)
-	{
-		OSLockCreate(psWorkEstHashLock, LOCK_TYPE_DISPATCH);
-	}
-	return;
+	HASH_TABLE *psWorkloadHashTable;
+	PVR_UNREFERENCED_PARAMETER(psDevInfo);
+
+	/* Create a lock to protect the TA hash table */
+	WorkEstHashLockCreate(&psWorkEstData->sWorkloadMatchingDataTA.psHashLock);
+
+	/* Create hash table for TA workload matching */
+	psWorkloadHashTable = HASH_Create_Extended(WORKLOAD_HASH_SIZE,
+											  sizeof(RGX_WORKLOAD_TA3D *),
+											  WorkEstHashFuncTA3D,
+											  (HASH_KEY_COMP *)WorkEstHashCompareTA3D);
+	psWorkEstData->sWorkloadMatchingDataTA.psHashTable = psWorkloadHashTable;
+
+	/* Create a lock to protect the 3D hash tables */
+	WorkEstHashLockCreate(&psWorkEstData->sWorkloadMatchingData3D.psHashLock);
+
+	/* Create hash table for 3D workload matching */
+	psWorkloadHashTable = HASH_Create_Extended(WORKLOAD_HASH_SIZE,
+											  sizeof(RGX_WORKLOAD_TA3D *),
+											  WorkEstHashFuncTA3D,
+											  (HASH_KEY_COMP *)WorkEstHashCompareTA3D);
+	psWorkEstData->sWorkloadMatchingData3D.psHashTable = psWorkloadHashTable;
 }
 
-void WorkEstHashLockDestroy(POS_LOCK sWorkEstHashLock)
+void WorkEstDeInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData)
 {
-	if(sWorkEstHashLock != NULL)
+	HASH_TABLE        *psWorkloadHashTable;
+	RGX_WORKLOAD_TA3D *pasWorkloadHashKeys;
+	RGX_WORKLOAD_TA3D *psWorkloadHashKey;
+	IMG_UINT64        *paui64WorkloadCycleData;
+	IMG_UINT32        ui32Itr;
+
+	/* Tear down TA hash */
+	pasWorkloadHashKeys = psWorkEstData->sWorkloadMatchingDataTA.asHashKeys;
+	paui64WorkloadCycleData = psWorkEstData->sWorkloadMatchingDataTA.aui64HashData;
+	psWorkloadHashTable = psWorkEstData->sWorkloadMatchingDataTA.psHashTable;
+
+	if (psWorkloadHashTable)
 	{
-		OSLockDestroy(sWorkEstHashLock);
-		sWorkEstHashLock = NULL;
+		for (ui32Itr = 0; ui32Itr < WORKLOAD_HASH_SIZE; ui32Itr++)
+		{
+			if (paui64WorkloadCycleData[ui32Itr] > 0)
+			{
+				psWorkloadHashKey = &pasWorkloadHashKeys[ui32Itr];
+				HASH_Remove_Extended(psWorkloadHashTable, (uintptr_t*)&psWorkloadHashKey);
+			}
+		}
+
+		HASH_Delete(psWorkloadHashTable);
 	}
+
+	/* Remove the hash lock */
+	WorkEstHashLockDestroy(psWorkEstData->sWorkloadMatchingDataTA.psHashLock);
+
+	/* Tear down 3D hash */
+	pasWorkloadHashKeys = psWorkEstData->sWorkloadMatchingData3D.asHashKeys;
+	paui64WorkloadCycleData = psWorkEstData->sWorkloadMatchingData3D.aui64HashData;
+	psWorkloadHashTable = psWorkEstData->sWorkloadMatchingData3D.psHashTable;
+
+	if (psWorkloadHashTable)
+	{
+		for (ui32Itr = 0; ui32Itr < WORKLOAD_HASH_SIZE; ui32Itr++)
+		{
+			if (paui64WorkloadCycleData[ui32Itr] > 0)
+			{
+				psWorkloadHashKey = &pasWorkloadHashKeys[ui32Itr];
+				HASH_Remove_Extended(psWorkloadHashTable, (uintptr_t*)&psWorkloadHashKey);
+			}
+		}
+
+		HASH_Delete(psWorkloadHashTable);
+	}
+
+	/* Remove the hash lock */
+	WorkEstHashLockDestroy(psWorkEstData->sWorkloadMatchingData3D.psHashLock);
+
 	return;
-}
-
-void WorkEstCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo)
-{
-	RGXFWIF_WORKEST_FWCCB_CMD *psFwCCBCmd;
-
-	RGXFWIF_CCB_CTL *psFWCCBCtl = psDevInfo->psWorkEstFirmwareCCBCtl;
-	IMG_UINT8 *psFWCCB = psDevInfo->psWorkEstFirmwareCCB;
-
-	while (psFWCCBCtl->ui32ReadOffset != psFWCCBCtl->ui32WriteOffset)
-	{
-		/* Point to the next command */
-		psFwCCBCmd = ((RGXFWIF_WORKEST_FWCCB_CMD *)psFWCCB) + psFWCCBCtl->ui32ReadOffset;
-
-		WorkEstWorkloadFinished(psDevInfo, psFwCCBCmd);
-
-		/* Update read offset */
-		psFWCCBCtl->ui32ReadOffset = (psFWCCBCtl->ui32ReadOffset + 1) & psFWCCBCtl->ui32WrapMask;
-	}
 }

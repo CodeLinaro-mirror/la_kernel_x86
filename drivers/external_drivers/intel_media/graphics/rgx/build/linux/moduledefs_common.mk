@@ -65,7 +65,7 @@ MODULE_ARCH_BITNESS :=
 # types should not be affected by complex code generation flags w/ LTO.
 # Set MODULE_CHECK_CFLAGS in the module makefile to enable this check.
 MODULE_CHECK_CFLAGS :=
-MODULE_ALLOWED_CFLAGS := -W% -D% -std=% -frtti -fPIC -fPIE -pie -m32
+MODULE_ALLOWED_CFLAGS := -W% -D% -std=% -frtti -fPIC -fPIE -pie -m32 -fvisibility=hidden
 
 # -L flags for library search dirs: these are relative to $(TOP), unless
 # they're absolute paths
@@ -74,14 +74,18 @@ MODULE_LIBRARY_DIR_FLAGS := $(foreach _path,$($(THIS_MODULE)_libpaths),$(if $(fi
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS :=
 # -I flags for header search dirs (same rules as for -L)
 MODULE_INCLUDE_FLAGS := $(foreach _path,$($(THIS_MODULE)_includes),$(if $(filter /%,$(_path)),-I$(call relative-to-top,$(_path)),-I$(_path)))
+# Pattern substitution in form old:new to be done to link command line
+MODULE_LIBRARY_FLAGS_SUBST :=
 
 # If the build provides some external khronos include flags, and the module
 # hasn't explicitly opted out of path substitution, prepend the system path
 # to the DDK khronos header include path. This causes the platform headers
 # to override the DDK versions. This is the default behaviour for Android.
+ifneq ($(filter-out host_%,$(MODULE_ARCH)),)
 ifneq ($(SYS_KHRONOS_INCLUDES),)
 ifneq ($($(THIS_MODULE)_force_internal_khronos_headers),1)
 MODULE_INCLUDE_FLAGS := $(patsubst -Iinclude/khronos,$(SYS_KHRONOS_INCLUDES) -isystem include/khronos,$(MODULE_INCLUDE_FLAGS))
+endif
 endif
 endif
 
@@ -119,10 +123,30 @@ MODULE_SOURCES += $(addprefix $(THIS_DIR)/,$(_THISDIR_RELATIVE_SOURCES_WITH_SLAS
 # Add generated sources
 MODULE_SOURCES += $(addprefix $(MODULE_OUT)/,$($(THIS_MODULE)_src_relative))
 
-# pkg-config integration
-# We don't support arbitrary CFLAGS yet (just includes)
-ifneq ($(PKG_CONFIG),)
-$(foreach _package,$($(THIS_MODULE)_packages),\
- $(eval MODULE_INCLUDE_FLAGS     += `$(PKG_CONFIG) --cflags-only-I $(_package)`)\
- $(eval MODULE_LIBRARY_DIR_FLAGS += `$(PKG_CONFIG) --libs-only-L $(_package)`))
+# We want to do this only for pure Android, in which case only
+# SUPPORT_ANDROID_PLATFORM will be set to 1.
+ifeq ($(SUPPORT_ANDROID_PLATFORM)$(SUPPORT_ARC_PLATFORM),1)
+ define set-flags-from-package
+  ifeq ($(1),libdrm)
+   ifeq ($(PVR_ANDROID_OLD_LIBDRM_HEADER_PATH),1)
+    $(THIS_MODULE)_includes += \
+     $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/include \
+     $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/include/libdrm
+   endif
+  else ifeq ($(1),libsync)
+   # Nothing to add in this case
+  else
+   $$(warning Unknown package for '$(THIS_MODULE)': $(1))
+   $$(error Missing mapping between package and compiler flags)
+  endif
+ endef
+
+ $(foreach _package,$($(THIS_MODULE)_packages),\
+  $(eval $(call set-flags-from-package,$(_package))))
+else ifeq ($(SUPPORT_NEUTRINO_PLATFORM),)
+ # pkg-config integration
+ # We don't support arbitrary CFLAGS yet (just includes)
+ $(foreach _package,$($(THIS_MODULE)_packages),\
+  $(eval MODULE_INCLUDE_FLAGS     += `$(PKG_CONFIG) --cflags-only-I $(_package)`)\
+  $(eval MODULE_LIBRARY_DIR_FLAGS += `$(PKG_CONFIG) --libs-only-L $(_package)`))
 endif

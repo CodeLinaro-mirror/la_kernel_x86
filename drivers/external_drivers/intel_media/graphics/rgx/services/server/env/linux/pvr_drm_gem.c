@@ -54,7 +54,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_server.h"
 #include "allocmem.h"
 #include "module_common.h"
-
+#include "osfunc.h"
+#include "osconnection_server.h"
 #if defined(PVR_DRM_USE_PRIME)
 #include "physmem_dmabuf.h"
 #endif
@@ -298,6 +299,7 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 							uiFlags,
 							OSStringLength(pszAllocName) + 1,
 							pszAllocName,
+							OSGetCurrentClientProcessIDKM(),
 							&psGEMPriv->psBackingPMR);
 			break;
 #if defined(SUPPORT_DRM_DC_MODULE)
@@ -320,7 +322,9 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 								 psObj->size,
 								 1,
 								 1,
-								 &MappingTable, 
+								 &MappingTable,
+								 OSStringNLength(pszAllocName, DEVMEM_ANNOTATION_MAX_LEN),
+								 pszAllocName,
 								 &psGEMPriv->psBackingPMR);
 			break;
 #endif
@@ -356,10 +360,7 @@ PVRSRV_ERROR PVRSRVGEMCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
 	}
 
 #if defined(PVR_RI_DEBUG)
-	eError = RIWritePMREntryKM(*ppsPMR,
-				   sizeof("GEM"),
-				   "GEM",
-				   psObj->size);
+	eError = RIWritePMREntryKM(*ppsPMR);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_WARNING,
@@ -485,7 +486,9 @@ int PVRDRMGEMToIMGHandle(struct drm_device *dev, void *arg, struct drm_file *fil
 	struct drm_gem_object *psObj;
 	int iRet;
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSAcquireBridgeLock();
+#endif
 
 	psObj = drm_gem_object_lookup(dev, file, psGEMToIMGHandle->gem_handle);
 	if (psObj == NULL)
@@ -524,7 +527,9 @@ int PVRDRMGEMToIMGHandle(struct drm_device *dev, void *arg, struct drm_file *fil
 	drm_gem_object_unreference_unlocked(psObj);
 
 ExitUnlock:
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSReleaseBridgeLock();
+#endif
 
 	return iRet;
 }
@@ -538,7 +543,9 @@ int PVRDRMIMGToGEMHandle(struct drm_device *dev, void *arg, struct drm_file *fil
 	PVRSRV_ERROR eError;
 	int iRet;
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSAcquireBridgeLock();
+#endif
 
 	eError = PVRSRVLookupHandle(psConnection->psHandleBase,
 				    (void **)&psPMR,
@@ -560,7 +567,9 @@ int PVRDRMIMGToGEMHandle(struct drm_device *dev, void *arg, struct drm_file *fil
 	iRet = drm_gem_handle_create(file, psObj, &psIMGToGEMHandle->gem_handle);
 
 ExitUnlock:
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSReleaseBridgeLock();
+#endif
 
 	return iRet;
 }
@@ -572,7 +581,9 @@ int PVRDRMGEMSyncGet(struct drm_device *dev, void *arg, struct drm_file *file)
 	struct drm_gem_object *psObj;
 	int iRet;
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSAcquireBridgeLock();
+#endif
 
 	psObj = drm_gem_object_lookup(dev, file, psGEMSyncGet->gem_handle);
 	if (psObj == NULL)
@@ -636,7 +647,9 @@ ExitUnref:
 	drm_gem_object_unreference_unlocked(psObj);
 
 ExitUnlock:
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSReleaseBridgeLock();
+#endif
 
 	return iRet;
 }
@@ -923,7 +936,7 @@ struct drm_gem_object *PVRSRVGEMGetObject(PMR *psPMR)
 {
 	PMR_GEM_PRIV *psGEMPriv;
 
-	psGEMPriv = PMRGetPrivateDataHack(psPMR, &gsPMRGEMFuncTab);
+	psGEMPriv = PMRGetPrivateData(psPMR, &gsPMRGEMFuncTab);
 	if (psGEMPriv != NULL)
 	{
 		return psGEMPriv->psObj;

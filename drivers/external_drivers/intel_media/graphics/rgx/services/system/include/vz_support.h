@@ -64,11 +64,11 @@ PVRSRV_ERROR SysVzDevInit(PVRSRV_DEVICE_CONFIG *psDevConfig);
 
  @Description 		Exit from system virtualization per device configuration
 
- @Return			Void
+ @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
+									ERROR code
  ******************************************************************************/
-void SysVzDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig);
+PVRSRV_ERROR SysVzDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig);
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
 /*!
 ******************************************************************************
  @Function			SysVzCreateDevConfig
@@ -88,10 +88,11 @@ PVRSRV_ERROR SysVzCreateDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig);
  @Description 		Guest para-virtualization deinitialization per device
 					configuration.
 
- @Return			Void
+ @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
+									ERROR code
  ******************************************************************************/
-void SysVzDestroyDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig);
-#else
+PVRSRV_ERROR SysVzDestroyDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig);
+
 /*!
 ******************************************************************************
  @Function			SysVzCreateDevConfig
@@ -101,11 +102,11 @@ void SysVzDestroyDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig);
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR SysVzCreateDevConfig(IMG_UINT32 ui32OSID,
-								  IMG_UINT32 ui32DevID,
-								  IMG_UINT32 *pui32IRQ,
-								  IMG_UINT32 *pui32RegsSize,
-								  IMG_UINT64 *pui64RegsPAddr);
+PVRSRV_ERROR SysVzPvzCreateDevConfig(IMG_UINT32 ui32OSID,
+									 IMG_UINT32 ui32DevID,
+									 IMG_UINT32 *pui32IRQ,
+									 IMG_UINT32 *pui32RegsSize,
+									 IMG_UINT64 *pui64RegsPAddr);
 
 /*!
 ******************************************************************************
@@ -116,8 +117,8 @@ PVRSRV_ERROR SysVzCreateDevConfig(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR SysVzDestroyDevConfig(IMG_UINT32 ui32OSID, IMG_UINT32 ui32DevID);
-#endif
+PVRSRV_ERROR SysVzPvzDestroyDevConfig(IMG_UINT32 ui32OSID, IMG_UINT32 ui32DevID);
+
 #endif /* _VZ_SUPPORT_H_ */
 
 /*****************************************************************************

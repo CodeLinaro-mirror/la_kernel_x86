@@ -57,7 +57,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <adf/adf_ext.h>
 
-/* for sync_fence_put */
 #include PVR_ANDROID_SYNC_HEADER
 
 #include "adf_common.h"
@@ -174,7 +173,7 @@ adf_fbdev_alloc_buffer(struct adf_fbdev_interface *interface)
 	 * being unloaded if the buffer is passed around by dmabuf.
 	 */
 	if (!try_module_get(THIS_MODULE)) {
-		pr_err("try_module_get(THIS_MODULE) failed");
+		pr_err("try_module_get(THIS_MODULE) failed\n");
 		kfree(fbdev_dmabuf);
 		return ERR_PTR(-EFAULT);
 	}
@@ -286,7 +285,8 @@ static void adf_fbdev_d_release(struct dma_buf *dmabuf)
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)) && \
-    !defined(CHROMIUMOS_WORKAROUNDS_KERNEL318)
+	(!defined(CHROMIUMOS_KERNEL) || \
+	 (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)))
 
 static int
 adf_fbdev_d_begin_cpu_access(struct dma_buf *dmabuf, size_t start, size_t len,
@@ -305,8 +305,10 @@ static void adf_fbdev_d_end_cpu_access(struct dma_buf *dmabuf, size_t start,
 	/* Framebuffer memory is cache coherent. No-op. */
 }
 
-#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)) &&
-          !defined(CHROMIUMOS_WORKAROUNDS_KERNEL318) */
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)) && \
+	* (!defined(CHROMIUMOS_KERNEL) || \
+	* (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)))
+	*/
 
 static void *
 adf_fbdev_d_kmap(struct dma_buf *dmabuf, unsigned long page_offset)
@@ -345,7 +347,8 @@ static const struct dma_buf_ops adf_fbdev_dma_buf_ops = {
 	.mmap			= adf_fbdev_d_mmap,
 	.release		= adf_fbdev_d_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)) && \
-    !defined(CHROMIUMOS_WORKAROUNDS_KERNEL318)
+	(!defined(CHROMIUMOS_KERNEL) || \
+	 (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)))
 	.begin_cpu_access	= adf_fbdev_d_begin_cpu_access,
 	.end_cpu_access		= adf_fbdev_d_end_cpu_access,
 #endif
@@ -440,7 +443,11 @@ adf_fbdev_release2(struct adf_obj *obj, struct inode *inode, struct file *file)
 {
 	struct adf_fbdev_device *dev =
 		(struct adf_fbdev_device *)obj->parent;
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 5, 0))
 	struct sync_fence *release_fence;
+#else
+	struct fence *release_fence;
+#endif
 
 	if (atomic_dec_return(&dev->refcount))
 		return;
@@ -459,7 +466,11 @@ adf_fbdev_release2(struct adf_obj *obj, struct inode *inode, struct file *file)
 		return;
 	}
 
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 5, 0))
 	sync_fence_put(release_fence);
+#else
+	fence_put(release_fence);
+#endif
 }
 
 static const struct adf_device_ops adf_fbdev_device_ops = {
@@ -772,13 +783,13 @@ static int __init init_adf_fbdev(void)
 #endif
 
 	if (!try_module_get(fb_info->fbops->owner)) {
-		pr_err("try_module_get() failed");
+		pr_err("try_module_get() failed\n");
 		goto err_unlock;
 	}
 
 	if (fb_info->fbops->fb_open &&
 	    fb_info->fbops->fb_open(fb_info, 0) != 0) {
-		pr_err("fb_open() failed");
+		pr_err("fb_open() failed\n");
 		goto err_module_put;
 	}
 
@@ -790,7 +801,7 @@ static int __init init_adf_fbdev(void)
 	err = adf_device_init(&dev_data.device.base, fb_info->dev,
 			      &adf_fbdev_device_ops, "fbdev");
 	if (err) {
-		pr_err("adf_device_init failed (%d)", err);
+		pr_err("adf_device_init failed (%d)\n", err);
 		goto err_fb_release;
 	}
 
@@ -801,7 +812,7 @@ static int __init init_adf_fbdev(void)
 				 ADF_INTF_DVI, 0, ADF_INTF_FLAG_PRIMARY,
 				 &adf_fbdev_interface_ops, "fbdev_interface");
 	if (err) {
-		pr_err("adf_interface_init failed (%d)", err);
+		pr_err("adf_interface_init failed (%d)\n", err);
 		goto err_device_destroy;
 	}
 
@@ -840,14 +851,14 @@ static int __init init_adf_fbdev(void)
 
 	err = adf_hotplug_notify_connected(&dev_data.interface.base, mode, 1);
 	if (err) {
-		pr_err("adf_hotplug_notify_connected failed (%d)", err);
+		pr_err("adf_hotplug_notify_connected failed (%d)\n", err);
 		goto err_interface_destroy;
 	}
 
 	/* This doesn't really set the mode, it just updates current_mode */
 	err = adf_interface_set_mode(&dev_data.interface.base, mode);
 	if (err) {
-		pr_err("adf_interface_set_mode failed (%d)", err);
+		pr_err("adf_interface_set_mode failed (%d)\n", err);
 		goto err_interface_destroy;
 	}
 
@@ -855,7 +866,7 @@ static int __init init_adf_fbdev(void)
 				      &adf_fbdev_overlay_engine_ops,
 				      "fbdev_overlay_engine");
 	if (err) {
-		pr_err("adf_overlay_engine_init failed (%d)", err);
+		pr_err("adf_overlay_engine_init failed (%d)\n", err);
 		goto err_interface_destroy;
 	}
 
@@ -864,7 +875,7 @@ static int __init init_adf_fbdev(void)
 				   &dev_data.interface.base);
 
 	if (err) {
-		pr_err("adf_attachment_allow failed (%d)", err);
+		pr_err("adf_attachment_allow failed (%d)\n", err);
 		goto err_overlay_engine_destroy;
 	}
 

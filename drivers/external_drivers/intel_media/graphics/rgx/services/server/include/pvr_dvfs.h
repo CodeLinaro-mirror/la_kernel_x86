@@ -43,13 +43,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _PVR_DVFS_H_
 #define _PVR_DVFS_H_
 
+#include <linux/version.h>
+
 #if defined(PVR_DVFS)
-#include <linux/devfreq.h>
+ #include <linux/devfreq.h>
+ #include <linux/thermal.h>
+
+ #if defined(CONFIG_DEVFREQ_THERMAL)
+  #include <linux/devfreq_cooling.h>
+ #endif
+
+ #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
+  #include <linux/opp.h>
+ #else
+  #include <linux/pm_opp.h>
+ #endif
 #endif
 
-#include "pvrsrv_error.h"
 #include "img_types.h"
-#include "lock.h"
 
 typedef void (*PFN_SYS_DEV_DVFS_SET_FREQUENCY)(IMG_UINT32 ui32Freq);
 typedef void (*PFN_SYS_DEV_DVFS_SET_VOLTAGE)(IMG_UINT32 ui32Volt);
@@ -77,7 +88,6 @@ typedef struct _IMG_DVFS_DEVICE_CFG_
 #if defined(CONFIG_DEVFREQ_THERMAL) && defined(PVR_DVFS)
 	struct devfreq_cooling_power *psPowerOps;
 #endif
-
 } IMG_DVFS_DEVICE_CFG;
 
 #if defined(PVR_DVFS)
@@ -97,7 +107,11 @@ typedef struct _IMG_DVFS_GOVERNOR_CFG_
 #if defined(PVR_DVFS)
 typedef struct _IMG_DVFS_DEVICE_
 {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
+	struct opp				*psOPP;
+#else
 	struct dev_pm_opp		*psOPP;
+#endif
 	struct devfreq			*psDevFreq;
 	IMG_BOOL			bEnabled;
 	IMG_HANDLE			hGpuUtilUserDVFS;

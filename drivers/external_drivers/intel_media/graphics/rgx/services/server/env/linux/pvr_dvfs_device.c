@@ -41,47 +41,30 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#if !defined(NO_HARDWARE)
+
 #include <linux/devfreq.h>
 #if defined(CONFIG_DEVFREQ_THERMAL)
 #include <linux/devfreq_cooling.h>
 #endif
 #include <linux/version.h>
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0))
-#include <linux/pm_opp.h>
-#define OPP_GET_OPP_COUNT dev_pm_opp_get_opp_count
-#define OPP_GET_FREQ dev_pm_opp_get_freq
-#define OPP_GET_VOLTAGE dev_pm_opp_get_voltage
-#define OPP_ADD dev_pm_opp_add
-#define OPP_FIND_FREQ_CEIL dev_pm_opp_find_freq_ceil
-#define OPP_FIND_FREQ_FLOOR dev_pm_opp_find_freq_floor
-#define OPP_STRUCT dev_pm_opp
-#else
-#include <linux/opp.h>
-#define OPP_GET_OPP_COUNT opp_get_opp_count
-#define OPP_GET_FREQ opp_get_freq
-#define OPP_GET_VOLTAGE opp_get_voltage
-#define OPP_ADD opp_add
-#define OPP_FIND_FREQ_CEIL opp_find_freq_ceil
-#define OPP_FIND_FREQ_FLOOR opp_find_freq_floor
-#define OPP_STRUCT opp
-#endif
-
-#include "pvrsrv_device.h"
-#include "syscommon.h"
-#include "rgxdevice.h"
-#include "rgxinit.h"
-#include "pvr_dvfs_device.h"
-#include "power.h"
-
 #include <linux/device.h>
 
-#if !defined(CHROMIUMOS_WORKAROUNDS_KERNEL318)
-#define dev_pm_opp_of_add_table of_init_opp_table
-#define dev_pm_opp_of_remove_table of_free_opp_table
-#endif
+#include "power.h"
+#include "pvrsrv.h"
+#include "pvrsrv_device.h"
 
-static PVRSRV_DEVICE_NODE* gpsDeviceNode = NULL;
+#include "rgxdevice.h"
+#include "rgxinit.h"
+#include "sofunc_rgx.h"
+
+#include "syscommon.h"
+
+#include "pvr_dvfs_device.h"
+
+#include "kernel_compatibility.h"
+
+static PVRSRV_DEVICE_NODE *gpsDeviceNode;
 
 static IMG_INT32 devfreq_target(struct device *dev, long unsigned *requested_freq, IMG_UINT32 flags)
 {
@@ -90,24 +73,39 @@ static IMG_INT32 devfreq_target(struct device *dev, long unsigned *requested_fre
 	IMG_DVFS_DEVICE_CFG	*psDVFSDeviceCfg = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
 	RGX_TIMING_INFORMATION	*psRGXTimingInfo = psRGXData->psRGXTimingInfo;
 	IMG_UINT32		ui32Freq, ui32CurFreq, ui32Volt;
-	struct OPP_STRUCT	*opp;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
+	struct opp *opp;
+#else
+	struct dev_pm_opp *opp;
+#endif
 
 	if (!psDVFSDevice->bEnabled)
 	{
+		*requested_freq = psRGXTimingInfo->ui32CoreClockSpeed;
 		return 0;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 	rcu_read_lock();
+#endif
+
 	opp = devfreq_recommended_opp(dev, requested_freq, flags);
 	if (IS_ERR(opp)) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 		rcu_read_unlock();
+#endif
 		PVR_DPF((PVR_DBG_ERROR, "Invalid OPP"));
 		return PTR_ERR(opp);
 	}
 
-	ui32Freq = OPP_GET_FREQ(opp);
-	ui32Volt = OPP_GET_VOLTAGE(opp);
+	ui32Freq = dev_pm_opp_get_freq(opp);
+	ui32Volt = dev_pm_opp_get_voltage(opp);
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 	rcu_read_unlock();
+#else
+	dev_pm_opp_put(opp);
+#endif
 
 	ui32CurFreq = psRGXTimingInfo->ui32CoreClockSpeed;
 
@@ -191,7 +189,8 @@ static IMG_INT32 devfreq_cur_freq(struct device *dev, unsigned long *freq)
 }
 #endif
 
-static struct devfreq_dev_profile img_devfreq_dev_profile = {
+static struct devfreq_dev_profile img_devfreq_dev_profile =
+{
 	.target             = devfreq_target,
 	.get_dev_status     = devfreq_get_dev_status,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
@@ -201,16 +200,15 @@ static struct devfreq_dev_profile img_devfreq_dev_profile = {
 
 static int FillOPPTable(struct device *dev)
 {
-	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg =
-		&gpsDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
 	const IMG_OPP *iopp;
 	int i, err = 0;
+	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
 
 	for (i = 0, iopp = psDVFSDeviceCfg->pasOPPTable;
 	     i < psDVFSDeviceCfg->ui32OPPTableSize;
 	     i++, iopp++)
 	{
-		err = OPP_ADD(dev, iopp->ui32Freq, iopp->ui32Volt);
+		err = dev_pm_opp_add(dev, iopp->ui32Freq, iopp->ui32Volt);
 		if (err) {
 			dev_err(dev, "Could not add OPP entry, %d\n", err);
 			return err;
@@ -225,27 +223,25 @@ static int GetOPPValues(struct device *dev,
                         unsigned long *min_volt,
                         unsigned long *max_freq)
 {
-	struct OPP_STRUCT *opp;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
+	struct opp *opp;
+#else
+	struct dev_pm_opp *opp;
+#endif
 	int count, i, err = 0;
 	unsigned long freq;
 
-	/* ChromiumOS kernels are carrying a fix which changes the type of
-	 * freq_table in struct devfreq_dev_profile to 'unsigned long'.
-	 * However, this change has not been merged upstream, so we need
-	 * to support using the older 'unsigned int' type too.
-	 */
-#if defined(CHROMIUMOS_WORKAROUNDS_KERNEL318)
-	unsigned long *freq_table;
-#else
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)) && \
+	(!defined(CHROMIUMOS_KERNEL) || (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)))
 	unsigned int *freq_table;
+#else
+	unsigned long *freq_table;
 #endif
 
-	/* Start RCU read-side critical section to access device opp_list. */
-	rcu_read_lock();
-	count = OPP_GET_OPP_COUNT(dev);
-	if (count < 0) {
+	count = dev_pm_opp_get_opp_count(dev);
+	if (count < 0)
+	{
 		dev_err(dev, "Could not fetch OPP count, %d\n", count);
-		rcu_read_unlock();
 		return count;
 	}
 
@@ -254,37 +250,40 @@ static int GetOPPValues(struct device *dev,
 #else
 	freq_table = kcalloc(count, sizeof(*freq_table), GFP_ATOMIC);
 #endif
-
-	if (!freq_table) {
-		rcu_read_unlock();
+	if (! freq_table)
+	{
 		return -ENOMEM;
 	}
 
-	/*
-	 * Iterate over OPP table.
-	 * Iteration 0 finds "opp w/ freq >= 0 Hz".
-	 */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
+	/* Start RCU read-side critical section to map frequency to OPP */
+	rcu_read_lock();
+#endif
+
+	/* Iterate over OPP table; Iteration 0 finds "opp w/ freq >= 0 Hz".	 */
 	freq = 0;
-	opp = OPP_FIND_FREQ_CEIL(dev, &freq);
-	if (IS_ERR(opp)) {
+	opp = dev_pm_opp_find_freq_ceil(dev, &freq);
+	if (IS_ERR(opp))
+	{
 		err = PTR_ERR(opp);
 		dev_err(dev, "Couldn't find lowest frequency, %d\n", err);
 		goto exit;
 	}
 
-	freq_table[0] = freq;
-	*min_freq = freq;
-	*min_volt = OPP_GET_VOLTAGE(opp);
-	dev_info(dev, "opp[%d/%d]: (%lu Hz, %lu uV)\n", 1, count,
-		freq, *min_volt);
+	*min_volt = dev_pm_opp_get_voltage(opp);
+	*max_freq = *min_freq = freq_table[0] = freq;
+	dev_info(dev, "opp[%d/%d]: (%lu Hz, %lu uV)\n", 1, count, freq, *min_volt);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
+	dev_pm_opp_put(opp);
+#endif
 
-	/*
-	 * Iteration i > 0 finds "opp w/ freq >= (opp[i-1].freq + 1)".
-	 */
-	for (i = 1; i < count; i++) {
+	/* Iteration i > 0 finds "opp w/ freq >= (opp[i-1].freq + 1)". */
+	for (i = 1; i < count; i++)
+	{
 		freq++;
-		opp = OPP_FIND_FREQ_CEIL(dev, &freq);
-		if (IS_ERR(opp)) {
+		opp = dev_pm_opp_find_freq_ceil(dev, &freq);
+		if (IS_ERR(opp))
+		{
 			err = PTR_ERR(opp);
 			dev_err(dev, "Couldn't find %dth frequency, %d\n", i, err);
 			goto exit;
@@ -292,13 +291,21 @@ static int GetOPPValues(struct device *dev,
 
 		freq_table[i] = freq;
 		*max_freq = freq;
-		dev_info(dev, "opp[%d/%d]: (%lu Hz, %lu uV)\n", i + 1, count,
-			freq, OPP_GET_VOLTAGE(opp));
+		dev_info(dev,
+				 "opp[%d/%d]: (%lu Hz, %lu uV)\n",
+				  i + 1,
+				  count,
+				  freq,
+				  dev_pm_opp_get_voltage(opp));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
+		dev_pm_opp_put(opp);
+#endif
 	}
 
 exit:
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 	rcu_read_unlock();
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 	if (!err)
@@ -309,7 +316,11 @@ exit:
 	else
 #endif
 	{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+		devm_kfree(dev, freq_table);
+#else
 		kfree(freq_table);
+#endif
 	}
 
 	return err;
@@ -317,19 +328,13 @@ exit:
 
 #if defined(CONFIG_DEVFREQ_THERMAL)
 static int RegisterCoolingDevice(struct device *dev,
-	IMG_DVFS_DEVICE *psDVFSDevice,
-	struct devfreq_cooling_power *powerOps)
+								 IMG_DVFS_DEVICE *psDVFSDevice,
+								 struct devfreq_cooling_power *powerOps)
 {
 	struct device_node *of_node;
 	int err = 0;
+	PVRSRV_VZ_RET_IF_MODE(DRIVER_MODE_GUEST, err);
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
-	/* Not supported in GuestOS drivers */
-	PVR_UNREFERENCED_PARAMETER(dev);
-	PVR_UNREFERENCED_PARAMETER(psDVFSDevice);
-	PVR_UNREFERENCED_PARAMETER(powerOps);
-	PVR_UNREFERENCED_PARAMETER(of_node);
-#else
 	if (!powerOps)
 	{
 		dev_info(dev, "Cooling: power ops not registered, not enabling cooling");
@@ -348,7 +353,6 @@ static int RegisterCoolingDevice(struct device *dev,
 	}
 
 	of_node_put(of_node);
-#endif
 
 	return err;
 }
@@ -356,7 +360,7 @@ static int RegisterCoolingDevice(struct device *dev,
 
 #define TO_IMG_ERR(err) ((err == -EPROBE_DEFER) ? PVRSRV_ERROR_PROBE_DEFER : PVRSRV_ERROR_INIT_FAILURE)
 
-PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
+PVRSRV_ERROR InitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	IMG_DVFS_DEVICE        *psDVFSDevice = NULL;
 	IMG_DVFS_DEVICE_CFG    *psDVFSDeviceCfg = NULL;
@@ -381,24 +385,43 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 	psDVFSGovernorCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSGovernorCfg;
 	psRGXTimingInfo = ((RGX_DATA *)psDeviceNode->psDevConfig->hDevData)->psRGXTimingInfo;
 
-	eError = RGXRegisterGpuUtilStats(&psDVFSDevice->hGpuUtilUserDVFS);
-	if (eError != PVRSRV_OK) {
+#if defined(SUPPORT_SOC_TIMER)
+	if (! psDeviceNode->psDevConfig->pfnSoCTimerRead)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "System layer SoC timer callback not implemented"));
+		return PVRSRV_ERROR_NOT_IMPLEMENTED;
+	}
+#endif
+
+	eError = SORgxGpuUtilStatsRegister(&psDVFSDevice->hGpuUtilUserDVFS);
+	if (eError != PVRSRV_OK)
+	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to register to the GPU utilisation stats, %d", eError));
 		return eError;
 	}
 
 #if defined(CONFIG_OF)
 	err = dev_pm_opp_of_add_table(psDev);
-	if (err) {
-		PVR_DPF((PVR_DBG_ERROR, "Failed to init opp table from devicetree, %d", err));
-		eError = TO_IMG_ERR(err);
-		goto err_exit;
+	if (err)
+	{
+		/*
+		 * If there are no device tree or system layer provided operating points
+		 * then return an error
+		 */
+		if (err != -ENODEV || !psDVFSDeviceCfg->pasOPPTable)
+		{
+			PVR_DPF((PVR_DBG_ERROR,  "Failed to init opp table from devicetree, %d", err));
+			eError = TO_IMG_ERR(err);
+			goto err_exit;
+		}
 	}
 #endif
 
-	if (psDVFSDeviceCfg->pasOPPTable) {
+	if (psDVFSDeviceCfg->pasOPPTable)
+	{
 		err = FillOPPTable(psDev);
-		if (err) {
+		if (err)
+		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to fill OPP table with data, %d", err));
 			eError = TO_IMG_ERR(err);
 			goto err_exit;
@@ -406,7 +429,8 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 	}
 
 	err = GetOPPValues(psDev, &min_freq, &min_volt, &max_freq);
-	if (err) {
+	if (err)
+	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to read OPP points, %d", err));
 		eError = TO_IMG_ERR(err);
 		goto err_exit;
@@ -425,22 +449,22 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
 	psDVFSDevice->psDevFreq = devm_devfreq_add_device(psDev,
-			&img_devfreq_dev_profile, "simple_ondemand",
-			&psDVFSDevice->data);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0))
-	psDVFSDevice->psDevFreq = devfreq_add_device(psDev,
-			&img_devfreq_dev_profile, "simple_ondemand",
-			&psDVFSDevice->data);
+													  &img_devfreq_dev_profile,
+													  "simple_ondemand",
+													  &psDVFSDevice->data);
 #else
 	psDVFSDevice->psDevFreq = devfreq_add_device(psDev,
-			&img_devfreq_dev_profile, &devfreq_simple_ondemand,
-			&psDVFSDevice->data);
+												 &img_devfreq_dev_profile,
+												 "simple_ondemand",
+												 &psDVFSDevice->data);
 #endif
 
 	if (IS_ERR(psDVFSDevice->psDevFreq))
 	{
-		PVR_DPF((PVR_DBG_ERROR, "Failed to add as devfreq device %p, %ld",
-			psDVFSDevice->psDevFreq, PTR_ERR(psDVFSDevice->psDevFreq)));
+		PVR_DPF((PVR_DBG_ERROR,
+				 "Failed to add as devfreq device %p, %ld",
+				 psDVFSDevice->psDevFreq,
+				 PTR_ERR(psDVFSDevice->psDevFreq)));
 		eError = TO_IMG_ERR(PTR_ERR(psDVFSDevice->psDevFreq));
 		goto err_exit;
 	}
@@ -449,7 +473,6 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVInit: Failed to suspend DVFS"));
-		eError = eError;
 		goto err_exit;
 	}
 
@@ -457,23 +480,26 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 	psDVFSDevice->psDevFreq->max_freq = max_freq;
 
 	err = devfreq_register_opp_notifier(psDev, psDVFSDevice->psDevFreq);
-	if (err) {
+	if (err)
+	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to register opp notifier, %d", err));
 		eError = TO_IMG_ERR(err);
 		goto err_exit;
 	}
 
 #if defined(CONFIG_DEVFREQ_THERMAL)
-	err = RegisterCoolingDevice(psDev, psDVFSDevice,
-			psDVFSDeviceCfg->psPowerOps);
-	if (err) {
+	err = RegisterCoolingDevice(psDev, psDVFSDevice, psDVFSDeviceCfg->psPowerOps);
+	if (err)
+	{
 		eError = TO_IMG_ERR(err);
 		goto err_exit;
 	}
 #endif
 
-	PVR_TRACE(("PVR DVFS activated: %lu-%lu Hz, Period: %ums", min_freq,
-			max_freq, psDVFSDeviceCfg->ui32PollMs));
+	PVR_TRACE(("PVR DVFS activated: %lu-%lu Hz, Period: %ums",
+			   min_freq,
+			   max_freq,
+			   psDVFSDeviceCfg->ui32PollMs));
 
 	return PVRSRV_OK;
 
@@ -482,16 +508,18 @@ err_exit:
 	return eError;
 }
 
-void DeinitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
+void DeinitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
-	IMG_DVFS_DEVICE      *psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
-	struct device        *psDev = psDeviceNode->psDevConfig->pvOSDevice;
-	IMG_INT32            i32Error;
+	IMG_DVFS_DEVICE *psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	struct device *psDev = psDeviceNode->psDevConfig->pvOSDevice;
+	IMG_INT32 i32Error;
 
 	PVR_ASSERT(psDeviceNode == gpsDeviceNode);
 
-	if (!psDVFSDevice)
+	if (! psDVFSDevice)
+	{
 		return;
+	}
 
 #if defined(CONFIG_DEVFREQ_THERMAL)
 	if (!IS_ERR_OR_NULL(psDVFSDevice->psDevfreqCoolingDevice))
@@ -511,6 +539,8 @@ void DeinitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 16, 0))
 		devfreq_remove_device(psDVFSDevice->psDevFreq);
+#else
+		devm_devfreq_remove_device(psDev, psDVFSDevice->psDevFreq);
 #endif
 
 		psDVFSDevice->psDevFreq = NULL;
@@ -521,11 +551,14 @@ void DeinitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 	kfree(img_devfreq_dev_profile.freq_table);
 #endif
 
-#if defined(CONFIG_OF) && ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) || defined(CHROMIUMOS_WORKAROUNDS_KERNEL318))
+#if defined(CONFIG_OF)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) || \
+	(defined(CHROMIUMOS_KERNEL) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)))
 	dev_pm_opp_of_remove_table(psDev);
 #endif
+#endif
 
-	RGXUnregisterGpuUtilStats(psDVFSDevice->hGpuUtilUserDVFS);
+	SORgxGpuUtilStatsUnregister(psDVFSDevice->hGpuUtilUserDVFS);
 	psDVFSDevice->hGpuUtilUserDVFS = NULL;
 
 	gpsDeviceNode = NULL;
@@ -533,7 +566,7 @@ void DeinitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 PVRSRV_ERROR SuspendDVFS(void)
 {
-	IMG_DVFS_DEVICE		*psDVFSDevice = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	IMG_DVFS_DEVICE	*psDVFSDevice = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
 
 	psDVFSDevice->bEnabled = IMG_FALSE;
 
@@ -542,15 +575,12 @@ PVRSRV_ERROR SuspendDVFS(void)
 
 PVRSRV_ERROR ResumeDVFS(void)
 {
-	IMG_DVFS_DEVICE		*psDVFSDevice = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	IMG_DVFS_DEVICE	*psDVFSDevice = &gpsDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
 
-#if defined(PVRSRV_GPUVIRT_GUESTDRV)
 	/* Not supported in GuestOS drivers */
-	psDVFSDevice->bEnabled = IMG_FALSE;
-#else
-	psDVFSDevice->bEnabled = IMG_TRUE;
-#endif
+	psDVFSDevice->bEnabled = !PVRSRV_VZ_MODE_IS(DRIVER_MODE_GUEST);
 
 	return PVRSRV_OK;
 }
 
+#endif /* !NO_HARDWARE */

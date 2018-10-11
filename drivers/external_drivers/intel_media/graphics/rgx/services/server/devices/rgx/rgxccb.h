@@ -113,6 +113,9 @@ typedef struct _RGX_CCB_CMD_HELPER_DATA_ {
 
 	/* Workload kick information */
 	RGXFWIF_WORKEST_KICK_DATA	*psWorkEstKickData;
+
+	/* Robustness reset reason address */
+	IMG_DEV_VIRTADDR			sRobustnessResetReason;
 } RGX_CCB_CMD_HELPER_DATA;
 
 #define PADDING_COMMAND_SIZE	(sizeof(RGXFWIF_CCB_CMD_HEADER))
@@ -192,7 +195,7 @@ PVRSRV_ERROR RGXAcquireCCB(RGX_CLIENT_CCB *psClientCCB,
 										void			**ppvBufferSpace,
 										IMG_UINT32		ui32PDumpFlags);
 
-IMG_INTERNAL void RGXReleaseCCB(RGX_CLIENT_CCB *psClientCCB,
+void RGXReleaseCCB(RGX_CLIENT_CCB *psClientCCB,
 								IMG_UINT32		ui32CmdSize,
 								IMG_UINT32		ui32PDumpFlags);
 
@@ -220,7 +223,9 @@ PVRSRV_ERROR RGXCmdHelperInitCmdCCB(RGX_CLIENT_CCB            *psClientCCB,
                                     IMG_UINT32                ui32PDumpFlags,
                                     RGXFWIF_WORKEST_KICK_DATA *psWorkEstKickData,
                                     IMG_CHAR                  *pszCommandName,
-                                    RGX_CCB_CMD_HELPER_DATA   *psCmdHelperData);
+                                    IMG_BOOL                  bCCBStateOpen,
+                                    RGX_CCB_CMD_HELPER_DATA   *psCmdHelperData,
+									IMG_DEV_VIRTADDR		  sRobustnessResetReason);
 
 PVRSRV_ERROR RGXCmdHelperAcquireCmdCCB(IMG_UINT32 ui32CmdCount,
 									   RGX_CCB_CMD_HELPER_DATA *asCmdHelperData);
@@ -250,5 +255,7 @@ void DumpCCB(PVRSRV_RGXDEV_INFO *psDevInfo,
 			void *pvDumpDebugFile);
 #endif
 
-PVRSRV_ERROR CheckForStalledCCB(RGX_CLIENT_CCB  *psCurrentClientCCB, RGX_KICK_TYPE_DM eKickTypeDM);
+PVRSRV_ERROR CheckForStalledCCB(PVRSRV_DEVICE_NODE *psDevNode, RGX_CLIENT_CCB  *psCurrentClientCCB, RGX_KICK_TYPE_DM eKickTypeDM);
+
+void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo);
 #endif /* __RGXCCB_H__ */

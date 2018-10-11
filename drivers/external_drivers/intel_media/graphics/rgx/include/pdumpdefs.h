@@ -198,6 +198,13 @@ typedef enum
 	PDUMP_MMU_TYPE_LAST
 } PDUMP_MMU_TYPE;
 
+/*!
+	PDump states
+	These values are used by the bridge call PVRSRVPDumpGetState
+*/
+#define PDUMP_STATE_CAPTURE_FRAME	(1)		/*!< Flag represents the PDump being in capture range or not*/
+#define PDUMP_STATE_CONNECTED		(2)		/*!< Flag represents the PDump Client App being connected on not */
+
 #endif /* __PDUMPDEFS_H__ */
 
 /*****************************************************************************

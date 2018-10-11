@@ -55,12 +55,12 @@ typedef struct _DEVMEM_CONTEXT_ DEVMEM_CONTEXT;		/*!< Convenience typedef for st
 typedef struct _DEVMEM_HEAP_ DEVMEM_HEAP;			/*!< Convenience typedef for struct _DEVMEM_HEAP_ */
 typedef struct _DEVMEM_MEMDESC_ DEVMEM_MEMDESC;		/*!< Convenience typedef for struct _DEVMEM_MEMDESC_ */
 typedef struct _DEVMEM_PAGELIST_ DEVMEM_PAGELIST;	/*!< Convenience typedef for struct _DEVMEM_PAGELIST_ */
-typedef PVRSRV_MEMALLOCFLAGS_T DEVMEM_FLAGS_T;		/*!< Conveneince typedef for PVRSRV_MEMALLOCFLAGS_T */
+typedef PVRSRV_MEMALLOCFLAGS_T DEVMEM_FLAGS_T;		/*!< Convenience typedef for PVRSRV_MEMALLOCFLAGS_T */
 
-typedef IMG_HANDLE /* FIXME: should be a SID */ DEVMEM_EXPORTHANDLE; /*!< Typedef for DeviceMem Export Handle */
-typedef IMG_UINT64 DEVMEM_EXPORTKEY;                                /*!< Typedef for DeviceMem Export Key */
-typedef IMG_DEVMEM_SIZE_T DEVMEM_SIZE_T;                            /*!< Typedef for DeviceMem SIZE_T */
-typedef IMG_DEVMEM_LOG2ALIGN_T DEVMEM_LOG2ALIGN_T;                  /*!< Typedef for DeviceMem LOG2 Alignment */
+typedef IMG_HANDLE DEVMEM_EXPORTHANDLE;             /*!< Typedef for DeviceMem Export Handle */
+typedef IMG_UINT64 DEVMEM_EXPORTKEY;                /*!< Typedef for DeviceMem Export Key */
+typedef IMG_DEVMEM_SIZE_T DEVMEM_SIZE_T;            /*!< Typedef for DeviceMem SIZE_T */
+typedef IMG_DEVMEM_LOG2ALIGN_T DEVMEM_LOG2ALIGN_T;  /*!< Typedef for DeviceMem LOG2 Alignment */
 
 typedef struct _DEVMEMX_PHYS_MEMDESC_ DEVMEMX_PHYSDESC;    /*!< Convenience typedef for DevmemX physical */
 typedef struct _DEVMEMX_VIRT_MEMDESC_ DEVMEMX_VIRTDESC;    /*!< Convenience typedef for DevmemX virtual */
@@ -68,9 +68,7 @@ typedef struct _DEVMEMX_VIRT_MEMDESC_ DEVMEMX_VIRTDESC;    /*!< Convenience type
 /*! calling code needs all the info in this struct, to be able to pass it around */
 typedef struct
 {
-    /*! A handle to the PMR.  Should be a SID.  FIXME: decide whether
-       this is right... as the PMR would have to be a cross-process
-       handle */
+    /*! A handle to the PMR. */
     IMG_HANDLE hPMRExportHandle;
     /*! The "key" to prove we have authorization to use this PMR */
     IMG_UINT64 uiPMRExportPassword;
@@ -125,9 +123,19 @@ typedef enum Resize {
 	SPARSE_MAP_CPU_ADDR = 8
 }SPARSE_MEM_RESIZE_FLAGS;
 
+/* To be used with all the sparse allocations that get mapped to CPU Virtual space
+ * The sparse allocation CPU mapping is torn down and re-mapped every time the
+ * sparse allocation layout changes */
+#define PVRSRV_UNMAP_ON_SPARSE_CHANGE 1
+
 /* To use with DevmemSubAllocate() as the default factor if no
  * over-allocation is desired. */
 #define DEVMEM_NO_PRE_ALLOCATE_MULTIPLIER 1
+
+/* Defines the max length for PMR, MemDesc, Device memory
+ * History and RI debug annotations stored in memory, including
+ * the null terminator. */
+#define DEVMEM_ANNOTATION_MAX_LEN (PVR_ANNOTATION_MAX_LEN + 1)
 
 #endif /* #ifndef DEVICEMEM_TYPEDEFS_H */
 

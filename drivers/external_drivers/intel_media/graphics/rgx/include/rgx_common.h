@@ -150,6 +150,44 @@ typedef enum _RGX_KICK_TYPE_DM_
 #endif
 #endif
 
+/*
+ * Data Master Tags to be appended to resources created on behalf of each RGX
+ * Context.
+ */
+#define RGX_RI_DM_TAG_KS   'K'
+#define RGX_RI_DM_TAG_CDM  'C'
+#define RGX_RI_DM_TAG_RC   'R' // To be removed once TA/3D Timelines are split
+#define RGX_RI_DM_TAG_TA   'V'
+#define RGX_RI_DM_TAG_3D   'P'
+#define RGX_RI_DM_TAG_TDM  'T'
+#define RGX_RI_DM_TAG_TQ2D '2'
+#define RGX_RI_DM_TAG_TQ3D 'Q'
+
+/*
+ * Client API Tags to be appended to resources created on behalf of each
+ * Client API.
+ */
+#define RGX_RI_CLIENT_API_GLES1    '1'
+#define RGX_RI_CLIENT_API_GLES3    '3'
+#define RGX_RI_CLIENT_API_VULKAN   'V'
+#define RGX_RI_CLIENT_API_EGL      'E'
+#define RGX_RI_CLIENT_API_OPENCL   'C'
+#define RGX_RI_CLIENT_API_OPENGL   'G'
+#define RGX_RI_CLIENT_API_SERVICES 'S'
+#define RGX_RI_CLIENT_API_WSEGL    'W'
+#define RGX_RI_CLIENT_API_ANDROID  'A'
+#define RGX_RI_CLIENT_API_LWS      'L'
+
+/*
+ * Format a RI annotation for a given RGX Data Master context
+ */
+#define RGX_RI_FORMAT_DM_ANNOTATION(annotation, dmTag, clientAPI) do         \
+	{                                                                        \
+		annotation[0] = dmTag;                                               \
+		annotation[1] = clientAPI;                                           \
+		annotation[2] = '\0';                                                \
+	} while (0)
+
 /*!
  ******************************************************************************
  * RGXFW Compiler alignment definitions

@@ -73,7 +73,8 @@ static ssize_t read_file_dma_buf(struct file *file, char __user *user_buf,
 		goto err_put;
 
 	/* Calculate the number of pages we need to process based on the
-	 * remaining dma buffer size or the available um buffer size. */
+	 * remaining dma buffer size or the available um buffer size.
+	 */
 	iend = istart + min((size_t)(dma_buf->size - *ppos), count) / PAGE_SIZE;
 
 	res = dma_buf_begin_cpu_access(dma_buf, DMA_FROM_DEVICE);
@@ -81,7 +82,8 @@ static ssize_t read_file_dma_buf(struct file *file, char __user *user_buf,
 		goto err_put;
 
 	/* dma_buf_kmap only allows mapping one page, so we have to loop until
-	 * the um buffer is full. */
+	 * the um buffer is full.
+	 */
 	while (i < iend) {
 		loff_t dummy = 0; /* We ignore that */
 		void *map = dma_buf_kmap(dma_buf, i);
@@ -91,7 +93,8 @@ static ssize_t read_file_dma_buf(struct file *file, char __user *user_buf,
 			goto err_access;
 		}
 		/* Read PAGE_SIZE or the remaining buffer size worth of
-		 * data. Whichever is smaller. */
+		 * data. Whichever is smaller.
+		 */
 		res = simple_read_from_buffer(&user_buf[wb], count - wb,
 			&dummy, map,
 			min((size_t)PAGE_SIZE,
@@ -125,7 +128,7 @@ int debugfs_dma_buf_init(const char *name)
 {
 	int err = 0;
 
-	g_debugfs_dentry = debugfs_create_file(name, S_IRUSR, NULL,
+	g_debugfs_dentry = debugfs_create_file(name, 0400, NULL,
 					       NULL, &fops_dma_buf);
 	if (IS_ERR(g_debugfs_dentry)) {
 		err = PTR_ERR(g_debugfs_dentry);

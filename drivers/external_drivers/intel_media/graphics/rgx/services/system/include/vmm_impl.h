@@ -50,7 +50,219 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
-typedef struct _VMM_PVZ_CONNECTION_ VMM_PVZ_CONNECTION;
+/*
+ 	 Virtual machine manager para-virtualization (PVZ) connection:
+		- Type is implemented by host and guest drivers
+			- Assumes synchronous function call semantics
+			- Unidirectional semantics
+				- For Host  (vmm -> host)
+				- For Guest (guest -> vmm)
+			- Parameters can be IN/OUT/INOUT
+
+		- Host pvz entries are pre-implemented by IMG
+			- For host implementation, see vmm_pvz_server.c
+			- Called by host side hypercall handler or VMM
+
+		- Guest pvz entries are supplied by 3rd-party
+			- These are specific to hypervisor (VMM) type
+			- These implement the actual hypercalls mechanism
+
+	 Para-virtualization call runtime sequence:
+		1 - Guest driver in guest VM calls PVZ function
+		1.1 - Guest PVZ connection calls
+		1.2 - Guest VM Manager type which
+		1.2.1 - Performs any pre-processing like parameter packing, etc.
+		1.2.2 - Issues hypercall (blocking synchronous call)
+
+		2 - VM Manager (hypervisor) receives hypercall
+		2.1 - Hypercall handler:
+		2.1.1 - Performs any pre-processing
+		2.1.2 - If call terminates in VM Manager: perform action and return from hypercall
+		2.1.3 - Otherwise forward to host driver (implementation specific call)
+
+		3 - Host driver receives call from VM Manager
+		3.1 - Host VM manager type:
+		3.1.1 - Performs any pre-processing like parameter unpacking, etc.
+		3.1.2 - Acquires host driver PVZ handler and calls the appropriate entry
+		3.2 - Host PVZ connection calls corresponding host system virtualisation layer
+		3.3 - Host driver system virtualisation layer:
+		3.3.1 - Perform action requested by guest driver
+		3.3.2 - Return to host VM Manager type
+		3.4 - Host VM Manager type:
+		3.4.1 - Prepare to return from hypercall
+		3.4.2 - Perform any post-processing like result packing, etc.
+		3.4.3 - Issue return from hypercall
+
+		4 - VM Manager (hypervisor)
+		4.1 - Perform any post-processing
+		4.2 - Return control to guest driver
+
+		5 - Guest driver in guest VM
+		5.1 - Perform any post-processing like parameter unpacking, etc.
+		5.2 - Continue execution in guest VM
+ */
+typedef struct _VMM_PVZ_CONNECTION_
+{
+	struct {
+		/*
+		   This pair must be implemented if the device configuration is
+		   not provided during guest build or if the device interrupt 
+		   is dynamically mapped into the VM virtual interrupt line.
+		   If not implemented, return PVRSRV_ERROR_NOT_IMPLEMENTED.
+		 */
+		PVRSRV_ERROR (*pfnCreateDevConfig)(IMG_UINT32 ui32FuncID,
+										   IMG_UINT32 ui32DevID,
+										   IMG_UINT32 *pui32IRQ,
+										   IMG_UINT32 *pui32RegsSize,
+										   IMG_UINT64 *pui64RegsPBase);
+
+		PVRSRV_ERROR (*pfnDestroyDevConfig)(IMG_UINT32 ui32FuncID,
+											IMG_UINT32 ui32DevID);
+
+		/*
+		   This pair must be implemented if the host is responsible for
+		   allocating the physical heaps on behalf of the guest; these
+		   physical heaps Addr/Size are allocated in the host domain
+		   and are communicated to the guest so must be re-expressed
+		   relative to the guest VM IPA space. The guest assumes said
+		   memory is not managed by the underlying GuestOS kernel.
+   		   If not implemented, return PVRSRV_ERROR_NOT_IMPLEMENTED.
+		 */
+		PVRSRV_ERROR (*pfnCreateDevPhysHeaps)(IMG_UINT32 ui32FuncID,
+											  IMG_UINT32 ui32DevID,
+											  IMG_UINT32 *peType,
+											  IMG_UINT64 *pui64FwSize,
+											  IMG_UINT64 *pui64FwPAddr,
+											  IMG_UINT64 *pui64GpuSize,
+											  IMG_UINT64 *pui64GpuPAddr);
+
+		PVRSRV_ERROR (*pfnDestroyDevPhysHeaps)(IMG_UINT32 ui32FuncID,
+											   IMG_UINT32 ui32DevID);
+
+		/*
+		   This pair must be implemented if the guest is responsible
+		   for allocating the physical heap that backs its firmware
+		   allocations, this is the default configuration. The physical
+		   heap is allocated within the guest VM IPA space and this
+		   IPA Addr/Size must be re-expressed as PA space Addr/Size
+		   by the VM manager before forwarding request to host.
+   		   If not implemented, return PVRSRV_ERROR_NOT_IMPLEMENTED.
+		 */
+		PVRSRV_ERROR (*pfnMapDevPhysHeap)(IMG_UINT32 ui32FuncID,
+										  IMG_UINT32 ui32DevID,
+										  IMG_UINT64 ui64Size,
+										  IMG_UINT64 ui64PAddr);
+
+		PVRSRV_ERROR (*pfnUnmapDevPhysHeap)(IMG_UINT32 ui32FuncID,
+											IMG_UINT32 ui32DevID);
+	} sHostFuncTab;
+
+	struct {
+		/*
+			Corresponding server side entries to handle guest PVZ calls
+			NOTE:
+				 - Pvz function ui32OSID parameter
+				 	 - OSID determination is responsibility of VM manager
+				 	 - Actual OSID value must be supplied by VM manager
+					 	- This can be done either in client/VMM/host side
+					 - Must be done before host pvz function(s) are called
+				 	 - Host pvz function assumes valid OSID
+		 */
+		PVRSRV_ERROR (*pfnCreateDevConfig)(IMG_UINT32 ui32OSID,
+										   IMG_UINT32 ui32FuncID,
+										   IMG_UINT32 ui32DevID,
+										   IMG_UINT32 *pui32IRQ,
+										   IMG_UINT32 *pui32RegsSize,
+										   IMG_UINT64 *pui64RegsPBase);
+
+		PVRSRV_ERROR (*pfnDestroyDevConfig)(IMG_UINT32 ui32OSID,
+											IMG_UINT32 ui32FuncID,
+											IMG_UINT32 ui32DevID);
+
+		PVRSRV_ERROR (*pfnCreateDevPhysHeaps)(IMG_UINT32 ui32OSID,
+											  IMG_UINT32 ui32FuncID,
+											  IMG_UINT32 ui32DevID,
+											  IMG_UINT32 *peType,
+											  IMG_UINT64 *pui64FwSize,
+											  IMG_UINT64 *pui64FwPAddr,
+											  IMG_UINT64 *pui64GpuSize,
+											  IMG_UINT64 *pui64GpuPAddr);
+
+		PVRSRV_ERROR (*pfnDestroyDevPhysHeaps)(IMG_UINT32 ui32OSID,
+											   IMG_UINT32 ui32FuncID,
+											   IMG_UINT32 ui32DevID);
+
+		PVRSRV_ERROR (*pfnMapDevPhysHeap)(IMG_UINT32 ui32OSID,
+										  IMG_UINT32 ui32FuncID,
+										  IMG_UINT32 ui32DevID,
+										  IMG_UINT64 ui64Size,
+										  IMG_UINT64 ui64PAddr);
+
+		PVRSRV_ERROR (*pfnUnmapDevPhysHeap)(IMG_UINT32 ui32OSID,
+											IMG_UINT32 ui32FuncID,
+											IMG_UINT32 ui32DevID);
+	} sGuestFuncTab;
+
+	struct {
+		/*
+		   This configuration interface specifies which driver host/guest is
+		   responsible for allocating the physical memory backing the guest 
+		   driver(s) physical heap. Both the host and guest(s) must agree to
+		   use the same policy. It must be implemented and should return
+		   PVRSRV_OK.
+		 */
+		PVRSRV_ERROR (*pfnGetDevPhysHeapOrigin)(PVRSRV_DEVICE_CONFIG *psDevConfig,
+												PVRSRV_DEVICE_PHYS_HEAP eHeap,
+												PVRSRV_DEVICE_PHYS_HEAP_ORIGIN *peOrigin);
+
+		/*
+			If the host is responsible for allocating the backing memory for
+			the physical heap, the function should return heap Addr/Size value
+			pairs obtained in sHostFuncTab->pfnCreateDevPhysHeaps().
+
+			If the guest is responsible for allocating the backing memory for
+			the physical heap, the function should return the proper values to
+			direct the guest driver on which allocation method to use. This is
+			communicated by using the returned pui64Addr/pui64Size value pairs
+			as show below:
+
+				For UMA platforms:
+					- For GPU physical heap
+						- 0/0							=> UMA
+						- 0/0x[hex-value]				=> DMA
+						- 0x[hex-value]/0x[hex-value]	=> UMA/carve-out
+
+					- For FW physical heap
+						- 0/0x[hex-value]				=> DMA
+						- 0x[hex-value]/0x[hex-value]	=> UMA/carve-out
+
+				For LMA platforms:
+					- For GPU physical heap
+						- 0x/0x[hex-value]				=> LMA
+
+					- For FW physical heap
+						- 0x/0x[hex-value]				=> LMA
+		*/
+		PVRSRV_ERROR (*pfnGetDevPhysHeapAddrSize)(PVRSRV_DEVICE_CONFIG *psDevConfig,
+												  PVRSRV_DEVICE_PHYS_HEAP eHeap,
+												  IMG_UINT64 *pui64Size,
+												  IMG_UINT64 *pui64Addr);
+	} sConfigFuncTab;
+
+	struct {
+		/*
+		   This is used by the VM manager to report pertinent runtime guest VM
+		   information to the host; these events may in turn be forwarded to 
+		   the firmware
+		 */
+		PVRSRV_ERROR (*pfnOnVmOnline)(IMG_UINT32 ui32OSID, IMG_UINT32 ui32Priority);
+
+		PVRSRV_ERROR (*pfnOnVmOffline)(IMG_UINT32 ui32OSID);
+
+		PVRSRV_ERROR (*pfnVMMConfigure)(VMM_CONF_PARAM eVMMParamType, IMG_UINT32 ui32ParamValue);
+
+	} sVmmFuncTab;
+} VMM_PVZ_CONNECTION;
 
 /*!
 ******************************************************************************
@@ -69,6 +281,3 @@ void VMMDestroyPvzConnection(VMM_PVZ_CONNECTION *psPvzConnection);
 
 #endif /* _VMM_IMPL_H_ */
 
-/*****************************************************************************
- End of file (vmm_impl.h)
-*****************************************************************************/

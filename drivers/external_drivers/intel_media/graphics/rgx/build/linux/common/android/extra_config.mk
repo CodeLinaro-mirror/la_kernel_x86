@@ -46,6 +46,7 @@ $(eval $(call UserConfigMake,libpthread_ldflags,))
 $(eval $(call UserConfigMake,librt_ldflags,))
 
 $(eval $(call UserConfigMake,LIBCXX_INCLUDE_PATH,$(LIBCXX_INCLUDE_PATH)))
+$(eval $(call UserConfigMake,LIBCXX_INCLUDE_PATH_HOST,$(LIBCXX_INCLUDE_PATH_HOST)))
 
 $(eval $(call UserConfigMake,TARGET_ROOT,$(TARGET_ROOT)))
 $(eval $(call UserConfigMake,TARGET_DEVICE,$(TARGET_DEVICE)))
@@ -61,10 +62,13 @@ $(eval $(call KernelConfigC,SUPPORT_ION,))
 $(eval $(call UserConfigC,SUPPORT_ANDROID_PLATFORM,))
 
 
+
+
 # These are set automatically according to the platform version.
 
-# These are user-tunable.
+# Renderscript-only config.
 
+# These are user-tunable.
 $(eval $(call TunableBothConfigC,PVR_ANDROID_HAS_SW_INCOMPATIBLE_FRAMEBUFFER,,\
 Enable this to support running Android$(apos)s software GLES renderer_\
 with gralloc from the DDK._\
@@ -74,12 +78,17 @@ with gralloc from the DDK._\
 
 
 
+$(eval $(call TunableUserConfigBoth,PVR_ANDROID_GRALLOC_ALLOC_SECURE,))
+
 # These are set automatically according to the platform version.
 
 # These are user-tunable.
 
 
 
+$(eval $(call TunableUserConfigBoth,PVR_ANDROID_GRALLOC_ALLOC_SECURE,,\
+Enables a gralloc extension to allocate secure buffers through ION._\
+))
 
 ifeq ($(NO_HARDWARE),1)
  override PVR_ANDROID_COMPOSERHAL := null
@@ -119,9 +128,11 @@ $(eval $(call TunableKernelConfigC,ADF_FBDEV_NUM_PREFERRED_BUFFERS,))
 # Newer Android versions have moved the libdrm includes in an incompatible
 # way. We need to compile-time detect the new location, and if it's missing,
 # use the old structure.
-ifeq ($(wildcard $(ANDROID_ROOT)/external/libdrm/include/drm),)
-$(eval $(call UserConfigC,PVR_ANDROID_OLD_LIBDRM_HEADER_PATH,))
-$(eval $(call UserConfigMake,PVR_ANDROID_OLD_LIBDRM_HEADER_PATH,1))
+ifeq ($(NDK_ROOT),)
+ ifeq ($(wildcard $(ANDROID_ROOT)/external/libdrm/include/drm),)
+  $(eval $(call UserConfigC,PVR_ANDROID_OLD_LIBDRM_HEADER_PATH,))
+  $(eval $(call UserConfigMake,PVR_ANDROID_OLD_LIBDRM_HEADER_PATH,1))
+ endif
 endif
 
 # Most development systems will have at least one copy of java, but some may

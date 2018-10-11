@@ -45,9 +45,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define _DEVICEMEM_HISTORY_SERVER_H_
 
 #include "img_defs.h"
-#include "mm_common.h"
 #include "pvrsrv_error.h"
 #include "rgxmem.h"
+#include "devicemem_utils.h"
 
 extern PVRSRV_ERROR
 DevicememHistoryInitKM(void);
@@ -55,27 +55,20 @@ DevicememHistoryInitKM(void);
 extern void
 DevicememHistoryDeInitKM(void);
 
-extern PVRSRV_ERROR
-DevicememHistoryMapKM(IMG_DEV_VIRTADDR sDevVAddr, size_t uiSize, const char szText[DEVICEMEM_HISTORY_TEXT_BUFSZ]);
-
-extern PVRSRV_ERROR
-DevicememHistoryUnmapKM(IMG_DEV_VIRTADDR sDevVAddr, size_t uiSize, const char szText[DEVICEMEM_HISTORY_TEXT_BUFSZ]);
-
-
-PVRSRV_ERROR DevicememHistoryMapNewKM(PMR *psPMR,
+PVRSRV_ERROR DevicememHistoryMapKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *pui32AllocationIndexOut);
 
-PVRSRV_ERROR DevicememHistoryUnmapNewKM(PMR *psPMR,
+PVRSRV_ERROR DevicememHistoryUnmapKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *pui32AllocationIndexOut);
@@ -84,7 +77,7 @@ PVRSRV_ERROR DevicememHistoryMapVRangeKM(IMG_DEV_VIRTADDR sBaseDevVAddr,
 							IMG_UINT32 ui32StartPage,
 							IMG_UINT32 ui32NumPages,
 							IMG_DEVMEM_SIZE_T uiAllocSize,
-							const IMG_CHAR szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const IMG_CHAR szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32Log2PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *ui32AllocationIndexOut);
@@ -93,7 +86,7 @@ PVRSRV_ERROR DevicememHistoryUnmapVRangeKM(IMG_DEV_VIRTADDR sBaseDevVAddr,
 							IMG_UINT32 ui32StartPage,
 							IMG_UINT32 ui32NumPages,
 							IMG_DEVMEM_SIZE_T uiAllocSize,
-							const IMG_CHAR szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const IMG_CHAR szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32Log2PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *ui32AllocationIndexOut);
@@ -102,7 +95,7 @@ PVRSRV_ERROR DevicememHistorySparseChangeKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32PageSize,
 							IMG_UINT32 ui32AllocPageCount,
 							IMG_UINT32 *paui32AllocPageIndices,
@@ -129,7 +122,7 @@ typedef struct _DEVICEMEM_HISTORY_QUERY_IN_
 
 typedef struct _DEVICEMEM_HISTORY_QUERY_OUT_RESULT_
 {
-	IMG_CHAR szString[DEVICEMEM_HISTORY_TEXT_BUFSZ];
+	IMG_CHAR szString[DEVMEM_ANNOTATION_MAX_LEN];
 	IMG_DEV_VIRTADDR sBaseDevVAddr;
 	size_t uiSize;
 	IMG_BOOL bMap;

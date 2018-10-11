@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @Title          Direct client bridge for pvrtl
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
@@ -37,7 +37,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #include "client_pvrtl_bridge.h"
 #include "img_defs.h"
@@ -49,25 +49,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "tlserver.h"
 
-
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLOpenStream(IMG_HANDLE hBridge,
-							  const IMG_CHAR *puiName,
+							  const IMG_CHAR *
+							  puiName,
 							  IMG_UINT32 ui32Mode,
-							  IMG_HANDLE *phSD,
-							  IMG_HANDLE *phTLPMR)
+							  IMG_HANDLE * phSD,
+							  IMG_HANDLE * phTLPMR)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
-	PMR * psTLPMRInt;
+	TL_STREAM_DESC *psSDInt;
+	PMR *psTLPMRInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
-	eError =
-		TLServerOpenStreamKM(
-					puiName,
-					ui32Mode,
-					&psSDInt,
-					&psTLPMRInt);
+	eError = TLServerOpenStreamKM(puiName, ui32Mode, &psSDInt, &psTLPMRInt);
 
 	*phSD = psSDInt;
 	*phTLPMR = psTLPMRInt;
@@ -78,116 +72,110 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLCloseStream(IMG_HANDLE hBridge,
 							   IMG_HANDLE hSD)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
-	eError =
-		TLServerCloseStreamKM(
-					psSDInt);
+	eError = TLServerCloseStreamKM(psSDInt);
 
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLAcquireData(IMG_HANDLE hBridge,
 							   IMG_HANDLE hSD,
-							   IMG_UINT32 *pui32ReadOffset,
-							   IMG_UINT32 *pui32ReadLen)
+							   IMG_UINT32 *
+							   pui32ReadOffset,
+							   IMG_UINT32 *
+							   pui32ReadLen)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
-	eError =
-		TLServerAcquireDataKM(
-					psSDInt,
-					pui32ReadOffset,
-					pui32ReadLen);
+	eError = TLServerAcquireDataKM(psSDInt, pui32ReadOffset, pui32ReadLen);
 
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLReleaseData(IMG_HANDLE hBridge,
 							   IMG_HANDLE hSD,
-							   IMG_UINT32 ui32ReadOffset,
-							   IMG_UINT32 ui32ReadLen)
+							   IMG_UINT32
+							   ui32ReadOffset,
+							   IMG_UINT32
+							   ui32ReadLen)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
-	eError =
-		TLServerReleaseDataKM(
-					psSDInt,
-					ui32ReadOffset,
-					ui32ReadLen);
+	eError = TLServerReleaseDataKM(psSDInt, ui32ReadOffset, ui32ReadLen);
 
 	return eError;
 }
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLDiscoverStreams(IMG_HANDLE hBridge,
-							       const IMG_CHAR *puiNamePattern,
-							       IMG_UINT32 ui32Max,
-							       IMG_UINT32 *pui32Streams,
-							       IMG_UINT32 *pui32NumFound)
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLDiscoverStreams(IMG_HANDLE
+							       hBridge,
+							       const IMG_CHAR *
+							       puiNamePattern,
+							       IMG_UINT32
+							       ui32Size,
+							       IMG_CHAR *
+							       puiStreams,
+							       IMG_UINT32 *
+							       pui32NumFound)
 {
 	PVRSRV_ERROR eError;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
-
 	eError =
-		TLServerDiscoverStreamsKM(
-					puiNamePattern,
-					ui32Max,
-					pui32Streams,
-					pui32NumFound);
+	    TLServerDiscoverStreamsKM(puiNamePattern,
+				      ui32Size, puiStreams, pui32NumFound);
 
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLReserveStream(IMG_HANDLE hBridge,
 							     IMG_HANDLE hSD,
-							     IMG_UINT32 *pui32BufferOffset,
-							     IMG_UINT32 ui32Size,
-							     IMG_UINT32 ui32SizeMin,
-							     IMG_UINT32 *pui32Available)
+							     IMG_UINT32 *
+							     pui32BufferOffset,
+							     IMG_UINT32
+							     ui32Size,
+							     IMG_UINT32
+							     ui32SizeMin,
+							     IMG_UINT32 *
+							     pui32Available)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
 	eError =
-		TLServerReserveStreamKM(
-					psSDInt,
-					pui32BufferOffset,
-					ui32Size,
-					ui32SizeMin,
-					pui32Available);
+	    TLServerReserveStreamKM(psSDInt,
+				    pui32BufferOffset,
+				    ui32Size, ui32SizeMin, pui32Available);
 
 	return eError;
 }
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLCommitStream(IMG_HANDLE hBridge,
 							    IMG_HANDLE hSD,
-							    IMG_UINT32 ui32ReqSize)
+							    IMG_UINT32
+							    ui32ReqSize)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
-	eError =
-		TLServerCommitStreamKM(
-					psSDInt,
-					ui32ReqSize);
+	eError = TLServerCommitStreamKM(psSDInt, ui32ReqSize);
 
 	return eError;
 }
@@ -195,20 +183,15 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLCommitStream(IMG_HANDLE hBridge,
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeTLWriteData(IMG_HANDLE hBridge,
 							 IMG_HANDLE hSD,
 							 IMG_UINT32 ui32Size,
-							 IMG_BYTE *psData)
+							 IMG_BYTE * psData)
 {
 	PVRSRV_ERROR eError;
-	TL_STREAM_DESC * psSDInt;
+	TL_STREAM_DESC *psSDInt;
 	PVR_UNREFERENCED_PARAMETER(hBridge);
 
 	psSDInt = (TL_STREAM_DESC *) hSD;
 
-	eError =
-		TLServerWriteDataKM(
-					psSDInt,
-					ui32Size,
-					psData);
+	eError = TLServerWriteDataKM(psSDInt, ui32Size, psData);
 
 	return eError;
 }
-

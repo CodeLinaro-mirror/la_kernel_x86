@@ -3,9 +3,9 @@
 @Title          Device Memory Management
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description    This file defines flags used on memory allocations and mappings
-                These flags are relevant throughout the memory management 
-                software stack and are specified by users of services and 
-                understood by all levels of the memory management in both 
+                These flags are relevant throughout the memory management
+                software stack and are specified by users of services and
+                understood by all levels of the memory management in both
                 client and server.
 @License        Dual MIT/GPLv2
 
@@ -49,9 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_MEMALLOCFLAGS_H
 
 #include "img_types.h"
-#if defined(SUPPORT_RGX)
 #include "rgx_memallocflags.h"
-#endif
 typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 
 /*
@@ -170,7 +168,7 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 
 	The following defines are used to control the GPU cache bit field.
 	The defines are mutually exclusive.
-	
+
 	A helper macro, PVRSRV_GPU_CACHE_MODE, is provided to obtain just the GPU cache
 	bit field from the flags. This should be used whenever the GPU cache mode
 	needs to be determined.
@@ -207,9 +205,8 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 /*! PVRSRV_MEMALLOCFLAG_GPU_CACHE_INCOHERENT
 
    GPU domain. Request cached memory, but not coherent (i.e. no cache snooping).
-   This means that if the allocation needs to transition from one device
-   to another services has to be informed so it can flush/invalidate the 
-   appropriate caches.
+   Services will flush the GPU internal caches after every GPU task so no
+   cache maintenance requests from the users are necessary.
 
     Note: We reserve 3 bits in the CPU/GPU cache mode to allow for future
     expansion.
@@ -354,7 +351,7 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 
 /*!
     PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE
- 
+
     Indicates that the PMR created due to this allocation will support
     in-kernel CPU mappings.  Only privileged processes may use this
     flag as it may cause wastage of precious kernel virtual memory on
@@ -425,6 +422,13 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 #define PVRSRV_MEMALLOCFLAG_CPU_CACHE_CLEAN				(1U<<20)
 #define PVRSRV_CHECK_CPU_CACHE_CLEAN(uiFlags)			(((uiFlags) & PVRSRV_MEMALLOCFLAG_CPU_CACHE_CLEAN) != 0)
 
+/*! PVRSRV_MEMALLOCFLAG_FW_CONFIG
+ *
+ * Indicates that the particular allocation will exist at the FW Config heap
+ * residing right after the end of the FW Main heap
+ */
+#define PVRSRV_MEMALLOCFLAG_FW_CONFIG					(1U<<21)
+#define PVRSRV_CHECK_FW_CONFIG(uiFlags)				(((uiFlags) & PVRSRV_MEMALLOCFLAG_FW_CONFIG) != 0)
 
 /*
  *
@@ -541,6 +545,7 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
                                             PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC | \
                                             PVRSRV_MEMALLOCFLAG_SPARSE_NO_DUMMY_BACKING | \
                                             PVRSRV_MEMALLOCFLAG_FW_LOCAL | \
+                                            PVRSRV_MEMALLOCFLAG_FW_CONFIG | \
                                             PVRSRV_MEMALLOCFLAG_CPU_LOCAL)
 
 /*!

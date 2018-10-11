@@ -139,6 +139,18 @@ PVRSRV_ERROR OSLockDestroy(POS_LOCK hLock);
 IMG_INTERNAL
 void OSLockAcquire(POS_LOCK hLock);
 
+/**************************************************************************/ /*!
+@Function       OSTryLockAcquire
+@Description    Try to acquire an operating system lock.
+                NB. If lock is acquired successfully in the first attempt,
+                then the function returns true and else it will return false.
+@Input          hLock            The lock to be acquired.
+@Return         IMG_TRUE if lock acquired successfully,
+                IMG_FALSE otherwise.
+ */ /**************************************************************************/
+IMG_INTERNAL
+IMG_BOOL OSTryLockAcquire(POS_LOCK hLock);
+
 /* Nested notation isn't used in UM or other OS's */
 /**************************************************************************/ /*!
 @Function       OSLockAcquireNested
@@ -211,7 +223,7 @@ IMG_BOOL OSLockIsLocked(POS_LOCK hLock);
 @Return         The value of the atomic variable
 */ /**************************************************************************/
 IMG_INTERNAL
-IMG_INT OSAtomicRead(ATOMIC_T *pCounter);
+IMG_INT OSAtomicRead(const ATOMIC_T *pCounter);
 
 /*************************************************************************/ /*!
 @Function       OSAtomicWrite

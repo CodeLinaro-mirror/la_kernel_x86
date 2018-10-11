@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for pdump
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_PDUMP_BRIDGE_H
 #define CLIENT_PDUMP_BRIDGE_H
@@ -54,25 +54,77 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "common_pdump_bridge.h"
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevmemPDumpBitmap(IMG_HANDLE hBridge,
-							       IMG_CHAR *puiFileName,
-							       IMG_UINT32 ui32FileOffset,
-							       IMG_UINT32 ui32Width,
-							       IMG_UINT32 ui32Height,
-							       IMG_UINT32 ui32StrideInBytes,
-							       IMG_DEV_VIRTADDR sDevBaseAddr,
-							       IMG_HANDLE hDevmemCtx,
-							       IMG_UINT32 ui32Size,
-							       PDUMP_PIXEL_FORMAT ePixelFormat,
-							       IMG_UINT32 ui32AddrMode,
-							       IMG_UINT32 ui32PDumpFlags);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevmemPDumpBitmap(IMG_HANDLE
+							       hBridge,
+							       IMG_CHAR *
+							       puiFileName,
+							       IMG_UINT32
+							       ui32FileOffset,
+							       IMG_UINT32
+							       ui32Width,
+							       IMG_UINT32
+							       ui32Height,
+							       IMG_UINT32
+							       ui32StrideInBytes,
+							       IMG_DEV_VIRTADDR
+							       sDevBaseAddr,
+							       IMG_HANDLE
+							       hDevmemCtx,
+							       IMG_UINT32
+							       ui32Size,
+							       PDUMP_PIXEL_FORMAT
+							       ePixelFormat,
+							       IMG_UINT32
+							       ui32AddrMode,
+							       IMG_UINT32
+							       ui32PDumpFlags);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpComment(IMG_HANDLE hBridge,
-								IMG_CHAR *puiComment,
-								IMG_UINT32 ui32Flags);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePDumpImageDescriptor(IMG_HANDLE
+								  hBridge,
+								  IMG_HANDLE
+								  hDevmemCtx,
+								  IMG_UINT32
+								  ui32StringSize,
+								  const IMG_CHAR
+								  * puiFileName,
+								  IMG_DEV_VIRTADDR
+								  sDataDevAddr,
+								  IMG_UINT32
+								  ui32DataSize,
+								  IMG_UINT32
+								  ui32LogicalWidth,
+								  IMG_UINT32
+								  ui32LogicalHeight,
+								  IMG_UINT32
+								  ui32PhysicalWidth,
+								  IMG_UINT32
+								  ui32PhysicalHeight,
+								  PDUMP_PIXEL_FORMAT
+								  ePixelFormat,
+								  IMG_MEMLAYOUT
+								  eMemLayout,
+								  IMG_FB_COMPRESSION
+								  eFBCompression,
+								  const
+								  IMG_UINT32 *
+								  pui32FBCClearColour,
+								  IMG_DEV_VIRTADDR
+								  sHeaderDevAddr,
+								  IMG_UINT32
+								  ui32HeaderSize,
+								  IMG_UINT32
+								  ui32PDumpFlags);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpSetFrame(IMG_HANDLE hBridge,
-								 IMG_UINT32 ui32Frame);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpComment(IMG_HANDLE
+								hBridge,
+								IMG_CHAR *
+								puiComment,
+								IMG_UINT32
+								ui32Flags);
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpSetFrame(IMG_HANDLE
+								 hBridge,
+								 IMG_UINT32
+								 ui32Frame);
 
 #endif /* CLIENT_PDUMP_BRIDGE_H */

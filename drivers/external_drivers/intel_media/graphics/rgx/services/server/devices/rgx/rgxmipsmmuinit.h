@@ -46,12 +46,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
    being otherwise cluttered by the contents of the latter */
 
 #ifndef _SRVKM_RGXMIPSMMUINIT_H_
-#define _SRVKM_RGXMMIPSMUINIT_H_
+#define _SRVKM_RGXMIPSMMUINIT_H_
 
 #include "device.h"
 #include "img_types.h"
 #include "mmu_common.h"
 #include "img_defs.h"
+#include "rgx_mips.h"
 
 /*
 
@@ -86,42 +87,8 @@ Page Table entry #
 #define RGX_MIPS_MMUCTRL_PD_DATA_READ_ONLY_EN        (0U)
 
 
-/* PT entries related definitions */
-#define RGX_MIPS_MMUCTRL_PT_DATA_READ_INHIBIT_SHIFT  (31U)
-#define RGX_MIPS_MMUCTRL_PT_DATA_READ_INHIBIT_CLRMSK (0X7FFFFFFF)
-#define RGX_MIPS_MMUCTRL_PT_DATA_READ_INHIBIT_EN     (0X80000000)
-
-#define RGX_MIPS_MMUCTRL_PT_DATA_WRITABLE_SHIFT      (2U)
-#define RGX_MIPS_MMUCTRL_PT_DATA_WRITABLE_CLRMSK     (0XFFFFFFFB)
-#define RGX_MIPS_MMUCTRL_PT_DATA_WRITABLE_EN         (0X00000004)
-
-#define RGX_MIPS_MMUCTRL_PT_DATA_VALID_SHIFT         (1U)
-#define RGX_MIPS_MMUCTRL_PT_DATA_VALID_CLRMSK        (0XFFFFFFFD)
-#define RGX_MIPS_MMUCTRL_PT_DATA_VALID_EN            (0X00000002)
-
-#define RGX_MIPS_MMUCTRL_PT_DATA_GLOBAL_SHIFT        (0U)
-#define RGX_MIPS_MMUCTRL_PT_DATA_GLOBAL_CLRMSK       (0XFFFFFFFE)
-#define RGX_MIPS_MMUCTRL_PT_DATA_GLOBAL_EN           (0X00000001)
-
-#define RGX_MIPS_MMUCTRL_PT_CACHE_POLICY_SHIFT       (3U)
-#define RGX_MIPS_MMUCTRL_PT_CACHE_POLICY_CLRMSK      (0XFFFFFFC7)
-
-/* "Uncached" caching policy*/
-#define RGX_MIPS_MMUCTRL_PT_UNCACHED_POLICY          (0X00000007)
-/* "Write-back write-allocate" caching policy*/
-#define RGX_MIPS_MMUCTRL_PT_CACHED_POLICY            (0X00000003)
-
-/* Physical page number inside MIPS MMU entries */
-#define RGX_MIPS_MMUCTRL_PT_PFN_SHIFT                (6U)
-#define RGX_MIPS_MMUCTRL_PT_PFN_CLRMSK               (0XFC00003F)
-
-/* Flags MIPS MMU entries */
-#define RGX_MIPS_MMUCTRL_PT_FLAGS_SHIFT              (0U)
-#define RGX_MIPS_MMUCTRL_PT_FLAGS_CLRMSK             (0XFFFFFFC0)
-
-
-IMG_EXPORT PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode);
-IMG_EXPORT PVRSRV_ERROR RGXMipsMMUInit_Unregister(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR RGXMipsMMUInit_Register(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR RGXMipsMMUInit_Unregister(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 
 #endif /* #ifndef _SRVKM_RGXMIPSMMUINIT_H_ */

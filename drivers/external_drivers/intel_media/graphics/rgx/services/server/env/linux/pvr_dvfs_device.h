@@ -2,8 +2,6 @@
 @File           pvr_dvfs.c
 @Title          System level interface for DVFS
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    This file defined the API between services and system layer
-                required for Ion integration.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -45,12 +43,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _PVR_DVFS_DEVICE_H_
 #define _PVR_DVFS_DEVICE_H_
 
+#include "opaque_types.h"
 #include "pvrsrv_error.h"
-#include "img_types.h"
 
-PVRSRV_ERROR InitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode);
 
-void DeinitDVFS(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR InitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode);
+
+void DeinitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode);
 
 PVRSRV_ERROR SuspendDVFS(void);
 

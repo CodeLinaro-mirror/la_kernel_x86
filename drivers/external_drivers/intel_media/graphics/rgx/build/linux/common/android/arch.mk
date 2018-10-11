@@ -40,59 +40,106 @@
 
 include ../common/android/platform_version.mk
 
-# Now we have included the platform_version.mk file, we know we have a
-# correctly configured OUT_DIR and can probe it to figure out our
-# architecture.
-ifneq ($(BUILD_PROP),)
-$(eval $(subst #,$(newline),$(shell cat $(BUILD_PROP) | \
-    grep '^ro.product.cpu.abilist=\|^ro.product.cpu.abilist32=' | \
-    sed -e 's,ro.product.cpu.abilist=,JNI_CPU_ABI=,' \
-        -e 's,ro.product.cpu.abilist32=,JNI_CPU_ABI_2ND=,' | \
-    tr ',' ' ' | tr '\n' '#')))
+TARGET_ARCH ?= $(ARCH)
+
+# Remap kbuild architectures that do not match Android architectures
+
+ifeq ($(ARCH),i386)
+ TARGET_ARCH := x86
 endif
 
-# If ARCH is set, use that to remap to an "Android" ARCH..
-TARGET_ARCH := $(filter arm arm64 x86 x86_64,$(ARCH))
+# Remap primary architectures with identically-named secondary architectures
+# If you want to build for MIPS64 *only* you will *have* to set both ARCH
+# and TARGET_ARCH manually.
 
-# x86 is special and has another legacy ARCH name which is remapped
-ifeq ($(ARCH),i386)
-TARGET_ARCH := x86
+ifeq ($(TARGET_2ND_ARCH),mips)
+ TARGET_ARCH := mips64
+endif
+
+# If the TARGET_ARCH wasn't possible to detect (user did not set kbuild ARCH)
+# then we might be able to use the BUILD_PROP to infer it. However, this is
+# only possible when there *is* a build.prop.
+
+ifeq ($(TARGET_ARCH),)
+ ifneq ($(BUILD_PROP),)
+  $(eval $(subst #,$(newline),$(shell cat $(BUILD_PROP) | \
+      grep '^ro.product.cpu.abilist=\|^ro.product.cpu.abilist32=' | \
+      sed -e 's,ro.product.cpu.abilist=,JNI_CPU_ABI=,' \
+          -e 's,ro.product.cpu.abilist32=,JNI_CPU_ABI_2ND=,' | \
+      tr ',' ' ' | tr '\n' '#')))
+  ifneq ($(filter arm64-v8a,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := arm64
+  else ifneq ($(filter armeabi-v7a armeabi,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := arm
+  else ifneq ($(filter mips64,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := mips64
+  else ifneq ($(filter mips,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := mips
+  else ifneq ($(filter x86_64,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := x86_64
+  else ifneq ($(filter x86,$(JNI_CPU_ABI)),)
+   TARGET_ARCH := x86
+  else
+   $(error TARGET_ARCH was not set and JNI_CPU_ABI=$(JNI_CPU_ABI) was not remappable)
+  endif
+  JNI_CPU_ABI := $(word 1,$(JNI_CPU_ABI))
+  JNI_CPU_ABI_2ND := $(word 1,$(JNI_CPU_ABI_2ND))
+ endif
 endif
 
 ifeq ($(TARGET_ARCH),)
-# ..otherwise, try to use the ABI list to figure it out.
-# We check 64-bit variants before 32, as a 64-build may be backwards compatible,
-# so the abilist contain both 64- and 32-bit variants
-ifneq ($(filter arm64-v8a,$(JNI_CPU_ABI)),)
-TARGET_ARCH=arm64
-else ifneq ($(filter armeabi-v7a armeabi,$(JNI_CPU_ABI)),)
-TARGET_ARCH=arm
-else ifneq ($(filter mips64,$(JNI_CPU_ABI)),)
-TARGET_ARCH=mips64
-else ifneq ($(filter mips,$(JNI_CPU_ABI)),)
-TARGET_ARCH=mips
-else ifneq ($(filter x86_64,$(JNI_CPU_ABI)),)
-TARGET_ARCH=x86_64
-else ifneq ($(filter x86,$(JNI_CPU_ABI)),)
-TARGET_ARCH=x86
-else
-$(error ARCH not set and JNI_CPU_ABI=$(JNI_CPU_ABI) was not remappable)
-endif
+ $(error TARGET_ARCH was not set and build.prop was not available to infer it)
 endif
 
-JNI_CPU_ABI := $(word 1,$(JNI_CPU_ABI))
-JNI_CPU_ABI_2ND := $(word 1,$(JNI_CPU_ABI_2ND))
+# Set up some defaults for the secondary architecture. This prefers multiarch
+# builds, but you can still set MULTIARCH=64only to disable it. We can also
+# use this block to validate TARGET_ARCH, and set-up the JNI ABIs if they are
+# unset.
+
+ifeq ($(TARGET_ARCH),arm64)
+ ifneq ($(MULTIARCH),64only)
+  TARGET_2ND_ARCH ?= arm
+  JNI_CPU_ABI_2ND ?= armeabi-v7a
+ endif
+ JNI_CPU_ABI      ?= arm64-v8a
+else ifeq ($(TARGET_ARCH),mips64)
+ ifneq ($(MULTIARCH),64only)
+  TARGET_2ND_ARCH ?= mips
+  JNI_CPU_ABI_2ND ?= mips
+ endif
+ JNI_CPU_ABI      ?= mips64
+else ifeq ($(TARGET_ARCH),x86_64)
+ ifneq ($(MULTIARCH),64only)
+  TARGET_2ND_ARCH ?= x86
+  JNI_CPU_ABI_2ND ?= x86
+ endif
+ JNI_CPU_ABI      ?= x86_64
+else ifeq ($(TARGET_ARCH),arm)
+ JNI_CPU_ABI      ?= armeabi-v7a
+ JNI_CPU_ABI_2ND  ?= armeabi
+else ifeq ($(TARGET_ARCH),mips)
+ JNI_CPU_ABI      ?= mips
+else ifeq ($(TARGET_ARCH),x86)
+ JNI_CPU_ABI      ?= x86
+else
+ $(error Unsupported primary architecture TARGET_ARCH=$(TARGET_ARCH))
+endif
+
+# If TARGET_2ND_ARCH is unset by this point, it's either a pure 32-bit
+# architecture or MULTIARCH was set to 64only. Don't validate the
+# TARGET_2ND_ARCH or fiddle with MULTIARCH in this case.
+
+ifneq ($(TARGET_2ND_ARCH),)
+ ifeq ($(filter arm mips x86,$(TARGET_2ND_ARCH)),)
+  $(error Unsupported secondary architecture TARGET_2ND_ARCH=$(TARGET_2ND_ARCH))
+ endif
+ $(warning *** 64-bit architecture detected. Enabling MULTIARCH=1.)
+ $(warning *** If you want a 64-bit only build, use MULTIARCH=64only.)
+ export MULTIARCH := 1
+endif
 
 include ../common/android/arch_common.mk
 
 ifneq ($(filter x86 x86_64,$(TARGET_ARCH)),)
 KERNEL_CROSS_COMPILE ?= undef
-endif
-
-ifneq ($(filter arm64 mips64 x86_64,$(TARGET_ARCH)),)
-ifeq ($(MULTIARCH),)
-$(warning *** 64-bit architecture detected. Enabling MULTIARCH=1.)
-$(warning *** If you want a 64-bit only build, use MULTIARCH=64only.)
-export MULTIARCH := 1
-endif
 endif

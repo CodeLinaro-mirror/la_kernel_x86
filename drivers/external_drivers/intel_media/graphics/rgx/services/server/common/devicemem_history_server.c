@@ -42,6 +42,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #include "allocmem.h"
+#include "img_defs.h"
 #include "pmr.h"
 #include "pvrsrv.h"
 #include "pvrsrv_device.h"
@@ -84,7 +85,7 @@ typedef struct _RECORD_ALLOCATION_
 	/* index of next allocation in the list */
 	ALLOC_INDEX_T ui32Next;
 	/* annotation/name of this allocation */
-	IMG_CHAR szName[DEVICEMEM_HISTORY_TEXT_BUFSZ];
+	IMG_CHAR szName[DEVMEM_ANNOTATION_MAX_LEN];
 } RECORD_ALLOCATION;
 
 /* each command in the circular buffer is prefixed with an 8-bit value
@@ -186,7 +187,7 @@ typedef struct _RECORDS_
 
 	IMG_UINT32 ui32Head;
 	IMG_UINT32 ui32Tail;
-	COMMAND_WRAPPER *pasCircularBuffer;;
+	COMMAND_WRAPPER *pasCircularBuffer;
 } RECORDS;
 
 typedef struct _DEVICEMEM_HISTORY_DATA_
@@ -198,7 +199,7 @@ typedef struct _DEVICEMEM_HISTORY_DATA_
 	POS_LOCK hLock;
 } DEVICEMEM_HISTORY_DATA;
 
-static DEVICEMEM_HISTORY_DATA gsDevicememHistoryData = { 0 };
+static DEVICEMEM_HISTORY_DATA gsDevicememHistoryData;
 
 static void DevicememHistoryLock(void)
 {
@@ -254,7 +255,7 @@ static void TimeStampPack(COMMAND_TIMESTAMP *psTimeStamp, IMG_UINT64 ui64Now)
 {
 	IMG_UINT32 i;
 
-	for(i = 0; i < IMG_ARR_NUM_ELEMS(psTimeStamp->aui8TimeNs); i++)
+	for (i = 0; i < ARRAY_SIZE(psTimeStamp->aui8TimeNs); i++)
 	{
 		psTimeStamp->aui8TimeNs[i] = ui64Now & 0xFF;
 		ui64Now >>= 8;
@@ -276,10 +277,10 @@ static IMG_UINT64 TimeStampUnpack(COMMAND_TIMESTAMP *psTimeStamp)
 	IMG_UINT64 ui64TimeNs = 0;
 	IMG_UINT32 i;
 
-	for(i = IMG_ARR_NUM_ELEMS(psTimeStamp->aui8TimeNs); i > 0; i--)
+	for (i = ARRAY_SIZE(psTimeStamp->aui8TimeNs); i > 0; i--)
 	{
 		ui64TimeNs <<= 8;
-		ui64TimeNs |= psTimeStamp->aui8TimeNs[i - 1];
+		ui64TimeNs |= (IMG_UINT64) psTimeStamp->aui8TimeNs[i - 1];
 	}
 
 	return ui64TimeNs;
@@ -430,7 +431,7 @@ static void MapRangePack(COMMAND_MAP_RANGE *psMapRange,
 
 	ui64Data = (((IMG_UINT64) ui32StartPage) << 12) | ui32Count;
 
-	for(i = 0; i < IMG_ARR_NUM_ELEMS(psMapRange->aui8Data); i++)
+	for (i = 0; i < ARRAY_SIZE(psMapRange->aui8Data); i++)
 	{
 		psMapRange->aui8Data[i] = ui64Data & 0xFF;
 		ui64Data >>= 8;
@@ -448,10 +449,10 @@ static void MapRangeUnpack(COMMAND_MAP_RANGE *psMapRange,
 	IMG_UINT64 ui64Data = 0;
 	IMG_UINT32 i;
 
-	for(i = IMG_ARR_NUM_ELEMS(psMapRange->aui8Data); i > 0; i--)
+	for (i = ARRAY_SIZE(psMapRange->aui8Data); i > 0; i--)
 	{
 		ui64Data <<= 8;
-		ui64Data |= psMapRange->aui8Data[i - 1];
+		ui64Data |= (IMG_UINT64) psMapRange->aui8Data[i - 1];
 	}
 
 	*pui32StartPage = (ui64Data >> 12);
@@ -637,52 +638,6 @@ static IMG_UINT32 GetFreeAllocation(void)
 	return ui32Alloc;
 }
 
-/* FindAllocation:
- * Searches the list of allocations and returns the index if an allocation
- * is found which matches the given properties
- */
-static IMG_UINT32 FindAllocation(const IMG_CHAR *pszName,
-							IMG_UINT64 ui64Serial,
-							IMG_PID uiPID,
-							IMG_DEV_VIRTADDR sDevVAddr,
-							IMG_DEVMEM_SIZE_T uiSize)
-{
-	IMG_UINT32 ui32Head, ui32Index;
-	RECORD_ALLOCATION *psAlloc;
-
-	ui32Head = ui32Index = gsDevicememHistoryData.sRecords.ui32AllocationsListHead;
-
-	if(IsAllocationListEmpty(ui32Index))
-	{
-		goto not_found;
-	}
-
-	do
-	{
-		psAlloc = &gsDevicememHistoryData.sRecords.pasAllocations[ui32Index];
-
-		if(	(psAlloc->ui64Serial == ui64Serial) &&
-			(psAlloc->sDevVAddr.uiAddr == sDevVAddr.uiAddr) &&
-			(psAlloc->uiSize == uiSize) &&
-			(strcmp(psAlloc->szName, pszName) == 0))
-		{
-			goto found;
-		}
-
-		ui32Index = psAlloc->ui32Next;
-	} while(ui32Index != ui32Head);
-
-not_found:
-	/* not found */
-	ui32Index = END_OF_LIST;
-
-found:
-	/* if the allocation was not found then we return END_OF_LIST.
-	 * otherwise, we return the index of the allocation
-	 */
-
-	return ui32Index;
-}
 
 /* InitialiseAllocation:
  * Initialise the given allocation structure with the given properties
@@ -695,8 +650,7 @@ static void InitialiseAllocation(RECORD_ALLOCATION *psAlloc,
 							IMG_DEVMEM_SIZE_T uiSize,
 							IMG_UINT32 ui32Log2PageSize)
 {
-	OSStringNCopy(psAlloc->szName, pszName, sizeof(psAlloc->szName));
-	psAlloc->szName[sizeof(psAlloc->szName) - 1] = '\0';
+	OSStringLCopy(psAlloc->szName, pszName, sizeof(psAlloc->szName));
 	psAlloc->ui64Serial = ui64Serial;
 	psAlloc->uiPID = uiPID;
 	psAlloc->sDevVAddr = sDevVAddr;
@@ -765,7 +719,7 @@ static IMG_BOOL MatchAllocation(IMG_UINT32 ui32AllocationIndex,
 			(psAlloc->sDevVAddr.uiAddr == sDevVAddr.uiAddr) &&
 			(psAlloc->uiSize == uiSize) &&
 			(psAlloc->ui32Log2PageSize == ui32Log2PageSize) &&
-			(strcmp(psAlloc->szName, pszName) == 0);
+			(OSStringCompare(psAlloc->szName, pszName) == 0);
 }
 
 /* FindOrCreateAllocation:
@@ -786,12 +740,16 @@ static PVRSRV_ERROR FindOrCreateAllocation(IMG_UINT32 ui32AllocationIndexHint,
 							IMG_BOOL *pbCreated)
 {
 	IMG_UINT32 ui32AllocationIndex;
+	PVRSRV_ERROR eError;
 
 	if(ui32AllocationIndexHint != DEVICEMEM_HISTORY_ALLOC_INDEX_NONE)
 	{
 		IMG_BOOL bHaveAllocation;
 
-		/* first, try to match against the index given by the client */
+		/* first, try to match against the index given by the client.
+		 * if the caller provided a hint but the allocation record is no longer
+		 * there, it must have been purged, so go ahead and create a new allocation
+		 */
 		bHaveAllocation = MatchAllocation(ui32AllocationIndexHint,
 								ui64Serial,
 								sDevVAddr,
@@ -807,53 +765,32 @@ static PVRSRV_ERROR FindOrCreateAllocation(IMG_UINT32 ui32AllocationIndexHint,
 		}
 	}
 
-	/* if matching against the client-supplied index fails then check
-	 * if the allocation exists in the list
-	 */
-	ui32AllocationIndex = FindAllocation(pszName,
-						ui64Serial,
-						uiPID,
-						sDevVAddr,
-						uiSize);
-
 	/* if there is no record of the allocation then we
 	 * create it now
 	 */
-	if(ui32AllocationIndex == END_OF_LIST)
+	eError = CreateAllocation(pszName,
+					ui64Serial,
+					uiPID,
+					sDevVAddr,
+					uiSize,
+					ui32Log2PageSize,
+					IMG_TRUE,
+					&ui32AllocationIndex);
+
+	if(eError == PVRSRV_OK)
 	{
-		PVRSRV_ERROR eError;
-		eError = CreateAllocation(pszName,
-						ui64Serial,
-						uiPID,
-						sDevVAddr,
-						uiSize,
-						ui32Log2PageSize,
-						IMG_TRUE,
-						&ui32AllocationIndex);
-
-		if(eError == PVRSRV_OK)
-		{
-			*pui32AllocationIndexOut = ui32AllocationIndex;
-			*pbCreated = IMG_TRUE;
-		}
-		else
-		{
-			PVR_DPF((PVR_DBG_ERROR,
-				"%s: Failed to create record for allocation %s",
-									__func__,
-									pszName));
-		}
-
-		return eError;
+		*pui32AllocationIndexOut = ui32AllocationIndex;
+		*pbCreated = IMG_TRUE;
 	}
 	else
 	{
-		/* found existing record */
-		*pui32AllocationIndexOut = ui32AllocationIndex;
-		*pbCreated = IMG_FALSE;
-		return PVRSRV_OK;
+		PVR_DPF((PVR_DBG_ERROR,
+			"%s: Failed to create record for allocation %s",
+								__func__,
+								pszName));
 	}
 
+	return eError;
 }
 
 /* GenerateMapUnmapCommandsForSparsePMR:
@@ -1017,11 +954,11 @@ static void GenerateMapUnmapCommandsForChangeList(IMG_UINT32 ui32NumPages,
  *                          This may be a new value if we just created the
  *                          allocation record.
  */
-PVRSRV_ERROR DevicememHistoryMapNewKM(PMR *psPMR,
+PVRSRV_ERROR DevicememHistoryMapKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32Log2PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *pui32AllocationIndexOut)
@@ -1136,7 +1073,7 @@ PVRSRV_ERROR DevicememHistoryMapVRangeKM(IMG_DEV_VIRTADDR sBaseDevVAddr,
 						IMG_UINT32 ui32StartPage,
 						IMG_UINT32 ui32NumPages,
 						IMG_DEVMEM_SIZE_T uiAllocSize,
-						const IMG_CHAR szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+						const IMG_CHAR szName[DEVMEM_ANNOTATION_MAX_LEN],
 						IMG_UINT32 ui32Log2PageSize,
 						IMG_UINT32 ui32AllocationIndex,
 						IMG_UINT32 *pui32AllocationIndexOut)
@@ -1201,7 +1138,7 @@ PVRSRV_ERROR DevicememHistoryUnmapVRangeKM(IMG_DEV_VIRTADDR sBaseDevVAddr,
 						IMG_UINT32 ui32StartPage,
 						IMG_UINT32 ui32NumPages,
 						IMG_DEVMEM_SIZE_T uiAllocSize,
-						const IMG_CHAR szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+						const IMG_CHAR szName[DEVMEM_ANNOTATION_MAX_LEN],
 						IMG_UINT32 ui32Log2PageSize,
 						IMG_UINT32 ui32AllocationIndex,
 						IMG_UINT32 *pui32AllocationIndexOut)
@@ -1278,11 +1215,11 @@ out_unlock:
  *                          This may be a new value if we just created the
  *                          allocation record.
  */
-PVRSRV_ERROR DevicememHistoryUnmapNewKM(PMR *psPMR,
+PVRSRV_ERROR DevicememHistoryUnmapKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32Log2PageSize,
 							IMG_UINT32 ui32AllocationIndex,
 							IMG_UINT32 *pui32AllocationIndexOut)
@@ -1376,7 +1313,7 @@ PVRSRV_ERROR DevicememHistorySparseChangeKM(PMR *psPMR,
 							IMG_UINT32 ui32Offset,
 							IMG_DEV_VIRTADDR sDevVAddr,
 							IMG_DEVMEM_SIZE_T uiSize,
-							const char szName[DEVICEMEM_HISTORY_TEXT_BUFSZ],
+							const char szName[DEVMEM_ANNOTATION_MAX_LEN],
 							IMG_UINT32 ui32Log2PageSize,
 							IMG_UINT32 ui32AllocPageCount,
 							IMG_UINT32 *paui32AllocPageIndices,
@@ -1695,8 +1632,7 @@ found_pid:
 			{
 				DEVICEMEM_HISTORY_QUERY_OUT_RESULT *psResult = &psQueryOut->sResults[psQueryOut->ui32NumResults];
 
-				OSStringNCopy(psResult->szString, psAlloc->szName, sizeof(psResult->szString));
-				psResult->szString[DEVICEMEM_HISTORY_TEXT_BUFSZ - 1] = '\0';
+				OSStringLCopy(psResult->szString, psAlloc->szName, sizeof(psResult->szString));
 				psResult->sBaseDevVAddr = psAlloc->sDevVAddr;
 				psResult->uiSize = psAlloc->uiSize;
 				psResult->bMap = bMap;
@@ -1747,7 +1683,6 @@ static void DeviceMemHistoryFmt(IMG_CHAR szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN],
 							IMG_UINT64 ui64TimeNs)
 {
 
-	szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN - 1] = '\0';
 	OSSNPrintf(szBuffer, PVR_MAX_DEBUG_MESSAGE_LEN,
 				/* PID NAME MAP/UNMAP MIN-MAX SIZE AbsUS AgeUS*/
 				"%04u %-40s %-10s "
@@ -1883,8 +1818,10 @@ static PVRSRV_ERROR CreateRecords(void)
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
 
+	/* Allocated and initialise the circular buffer with zeros so every
+	 * command is initialised as a command of type COMMAND_TYPE_NONE. */
 	gsDevicememHistoryData.sRecords.pasCircularBuffer =
-			OSAllocMem(sizeof(COMMAND_WRAPPER) * CIRCULAR_BUFFER_NUM_COMMANDS);
+			OSAllocZMem(sizeof(COMMAND_WRAPPER) * CIRCULAR_BUFFER_NUM_COMMANDS);
 
 	if(gsDevicememHistoryData.sRecords.pasCircularBuffer == NULL)
 	{
@@ -1919,13 +1856,6 @@ static void InitialiseRecords(void)
 	gsDevicememHistoryData.sRecords.pasAllocations[ALLOCATION_LIST_NUM_ENTRIES - 1].ui32Next = 0;
 
 	gsDevicememHistoryData.sRecords.ui32AllocationsListHead = 0;
-
-	/* initialise the circular buffer with zeros so every command
-	 * is initialised as a command of type COMMAND_TYPE_NONE
-	 */
-	OSCachedMemSet(gsDevicememHistoryData.sRecords.pasCircularBuffer,
-								COMMAND_TYPE_NONE,
-			sizeof(gsDevicememHistoryData.sRecords.pasCircularBuffer[0]) * CIRCULAR_BUFFER_NUM_COMMANDS);
 }
 
 PVRSRV_ERROR DevicememHistoryInitKM(void)
@@ -1977,48 +1907,4 @@ void DevicememHistoryDeInitKM(void)
 	OSLockDestroy(gsDevicememHistoryData.hLock);
 }
 
-PVRSRV_ERROR DevicememHistoryMapKM(IMG_DEV_VIRTADDR sDevVAddr, size_t uiSize, const char szString[DEVICEMEM_HISTORY_TEXT_BUFSZ])
-{
-	IMG_UINT32 ui32AllocationIndex = DEVICEMEM_HISTORY_ALLOC_INDEX_NONE;
-	IMG_UINT32 ui32Log2PageSize;
-	IMG_UINT32 ui32StartPage;
-	IMG_UINT32 ui32NumPages;
 
-	/* assume 4K page size */
-	ui32Log2PageSize = 12;
-
-	ui32StartPage = 0;
-	ui32NumPages = (uiSize + 4095) / 4096;
-
-	return DevicememHistoryMapVRangeKM(sDevVAddr,
-								ui32StartPage,
-								ui32NumPages,
-								uiSize,
-								szString,
-								ui32Log2PageSize,
-								ui32AllocationIndex,
-								&ui32AllocationIndex);
-}
-
-PVRSRV_ERROR DevicememHistoryUnmapKM(IMG_DEV_VIRTADDR sDevVAddr, size_t uiSize, const char szString[DEVICEMEM_HISTORY_TEXT_BUFSZ])
-{
-	IMG_UINT32 ui32AllocationIndex = DEVICEMEM_HISTORY_ALLOC_INDEX_NONE;
-	IMG_UINT32 ui32Log2PageSize;
-	IMG_UINT32 ui32StartPage;
-	IMG_UINT32 ui32NumPages;
-
-	/* assume 4K page size */
-	ui32Log2PageSize = 12;
-
-	ui32StartPage = 0;
-	ui32NumPages = (uiSize + 4095) / 4096;
-
-	return DevicememHistoryUnmapVRangeKM(sDevVAddr,
-								ui32StartPage,
-								ui32NumPages,
-								uiSize,
-								szString,
-								ui32Log2PageSize,
-								ui32AllocationIndex,
-								&ui32AllocationIndex);
-}

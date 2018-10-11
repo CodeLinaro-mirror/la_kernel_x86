@@ -42,8 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _RGXCONFIG_KM_15_V_1_64_H_
 #define _RGXCONFIG_KM_15_V_1_64_H_
 
-/***** Automatically generated file (24/08/2016 07:01:09): Do not edit manually ********************/
-/***** Timestamp:  (24/08/2016 07:01:09)************************************************************/
+/***** Automatically generated file (04/06/2018 07:01:05): Do not edit manually ********************/
+/***** Timestamp:  (04/06/2018 07:01:05)************************************************************/
 
 #define RGX_BNC_KM_B 15
 #define RGX_BNC_KM_N 1
@@ -52,23 +52,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /******************************************************************************
  * DDK Defines
  *****************************************************************************/
-#define RGX_FEATURE_PHYS_BUS_WIDTH (40)
-#define RGX_FEATURE_PERFBUS 
-#define RGX_FEATURE_AXI_ACELITE 
-#define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
-#define RGX_FEATURE_DYNAMIC_DUST_POWER 
 #define RGX_FEATURE_NUM_CLUSTERS (1)
-#define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
-#define RGX_FEATURE_SLC_BANKS (1)
-#define RGX_FEATURE_GS_RTA_SUPPORT 
-#define RGX_FEATURE_NUM_ISP_IPP_PIPES (2)
 #define RGX_FEATURE_META (LTP217)
-#define RGX_FEATURE_FBCDC_ARCHITECTURE (1)
-#define RGX_FEATURE_GPU_VIRTUALISATION 
-#define RGX_FEATURE_SLC_SIZE_IN_BYTES (64*1024)
 #define RGX_FEATURE_META_COREMEM_SIZE (0)
+#define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
+#define RGX_FEATURE_PERFBUS 
+#define RGX_FEATURE_GS_RTA_SUPPORT 
 #define RGX_FEATURE_COMPUTE 
 #define RGX_FEATURE_ROGUEXE 
+#define RGX_FEATURE_NUM_RASTER_PIPES (1)
+#define RGX_FEATURE_DYNAMIC_DUST_POWER 
+#define RGX_FEATURE_NUM_ISP_IPP_PIPES (2)
+#define RGX_FEATURE_FBCDC_ARCHITECTURE (1)
+#define RGX_FEATURE_FBCDC_ALGORITHM (2)
+#define RGX_FEATURE_AXI_ACELITE 
+#define RGX_FEATURE_PHYS_BUS_WIDTH (40)
+#define RGX_FEATURE_SLC_SIZE_IN_BYTES (64*1024)
+#define RGX_FEATURE_SLC_BANKS (1)
+#define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
+#define RGX_FEATURE_GPU_VIRTUALISATION 
+#define RGX_FEATURE_GPU_VIRTUALISATION_NUM_OS (8)
 
 
 #endif /* _RGXCONFIG_15_V_1_64_H_ */

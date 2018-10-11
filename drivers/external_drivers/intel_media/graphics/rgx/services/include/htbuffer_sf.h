@@ -133,6 +133,8 @@ X( 5,  HTB_GROUP_MAIN,  HTB_SF_MAIN_KICK_SHG,           "Kick SHG: FWCtx %08X @ 
 X( 6,  HTB_GROUP_MAIN,  HTB_SF_MAIN_KICK_2D,            "Kick 2D: FWCtx %08X @ %d\n", 2) \
 X( 7,  HTB_GROUP_MAIN,  HTB_SF_MAIN_KICK_UNCOUNTED,     "Kick (uncounted) for all DMs\n", 0) \
 X( 8,  HTB_GROUP_MAIN,  HTB_SF_MAIN_FWCCB_CMD,          "FW CCB Cmd: %d\n", 1) \
+X( 9,  HTB_GROUP_MAIN,  HTB_SF_MAIN_PRE_POWER,		"Pre-power duration @ phase [%d] (0-shutdown,1-startup) RGX: %llu ns SYS: %llu ns\n", 3) \
+X(10,  HTB_GROUP_MAIN,  HTB_SF_MAIN_POST_POWER,		"Post-power duration @ phase [%d] (0-shutdown,1-startup) SYS: %llu ns RGX: %llu ns\n", 3) \
 \
 X( 1,  HTB_GROUP_BRG,   HTB_SF_BRG_BRIDGE_CALL,         "Bridge call: start: %010u: bid %03d fid %d\n", 3) \
 X( 2,  HTB_GROUP_BRG,   HTB_SF_BRG_BRIDGE_CALL_ERR,     "Bridge call: start: %010u: bid %03d fid %d error %d\n", 4) \

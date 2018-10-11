@@ -41,12 +41,15 @@
 
 # Little endian, mips64r6, regular ABI, with synci instruction
 MIPS_ABI_FLAGS := -EL -march=mips64r6 -mabi=64 -msynci
+
 ifeq ($(cc-is-clang),true)
 MIPS_ABI_FLAGS := $(filter-out -msynci,$(MIPS_ABI_FLAGS))
-endif
-
+MODULE_CC := $(CC) $(MIPS_ABI_FLAGS) -fintegrated-as
+MODULE_CXX := $(CXX) $(MIPS_ABI_FLAGS) -fintegrated-as
+else
 MODULE_CC := $(CC) $(MIPS_ABI_FLAGS)
 MODULE_CXX := $(CXX) $(MIPS_ABI_FLAGS)
+endif
 
 MODULE_CFLAGS := $(ALL_CFLAGS) $($(THIS_MODULE)_cflags) $(MIPS_ABI_FLAGS)
 MODULE_CXXFLAGS := $(ALL_CXXFLAGS) $($(THIS_MODULE)_cxxflags) $(MIPS_ABI_FLAGS)
@@ -60,16 +63,42 @@ MODULE_INCLUDE_FLAGS := \
 
 ifneq ($(SUPPORT_ANDROID_PLATFORM),)
 
+MODULE_EXE_LDFLAGS := \
+ -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker64 -lc
+
+override LIBGCC := $(shell $(patsubst @%,%,$(MODULE_CC)) -print-libgcc-file-name)
+ifeq ($(cc-is-clang),true)
+ ifeq ($(wildcard $(LIBGCC)),)
+  override LIBGCC := \
+   $(shell $(CROSS_COMPILE)gcc $(MIPS_ABI_FLAGS) -print-libgcc-file-name)
+  ifeq ($(wildcard $(LIBGCC)),)
+   $(error Primary clang -print-libgcc-file-name workaround failed)
+  endif
+ endif
+endif
+
+MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC)
+
+ifeq ($(NDK_ROOT),)
+
 _obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj
+_lib := lib
 
 # Linker flags used to find system libraries.
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
- -L$(_obj)/lib \
- -Xlinker -rpath-link=$(_obj)/lib \
+ -L$(_obj)/$(_lib) \
+ -Xlinker -rpath-link=$(_obj)/$(_lib) \
  -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64 \
  -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64
-
-ifeq ($(NDK_ROOT),)
+ifneq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib64
+else
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib64
+endif
 
 MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libc/arch-mips64/include \
@@ -77,47 +106,77 @@ MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libm/include/mips \
  $(MODULE_INCLUDE_FLAGS)
 
+MODULE_ARCH_TAG := $(_obj)
+
 else # NDK_ROOT
 
-_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-mips64/usr
+MODULE_INCLUDE_FLAGS := \
+ -isystem $(NDK_SYSROOT)/usr/include/$(CROSS_TRIPLE) \
+ $(MODULE_INCLUDE_FLAGS)
+
+# Take RScpp from TARGET_ROOT, as the NDK lacks 64r6 support
+MODULE_LIBRARY_FLAGS_SUBST := \
+ art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libart.so \
+ RScpp:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/STATIC_LIBRARIES/libRScpp_static_intermediates/libRScpp_static.a
+
+ifeq ($(wildcard $(NDK_ROOT)/out/local/mips64/libc++.so),)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/mips64/libc++_static.a$$(space)$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/mips64/libc++abi.a \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+else
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/out/local/mips64/libc++.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -Xlinker -rpath-link=$(NDK_ROOT)/out/local/mips64
+endif
+
+ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
+
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64
+
+# Substitutions performed on MODULE_LIBRARY_FLAGS (NDK workarounds)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ nativewindow:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libnativewindow.so \
+ sync:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libsync.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+
+endif # !VNDK
+
+_obj := $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-mips64/usr
+_lib := lib64
 
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS := \
- -L$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/mips64 \
+ -L$(_obj)/$(_lib) \
+ -Xlinker -rpath-link=$(_obj)/$(_lib) \
  $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
+
+# Workaround; the VNDK platforms root lacks the crt files
+_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-mips64/usr
+_lib := lib64
+
+MODULE_EXE_LDFLAGS := $(MODULE_EXE_LDFLAGS) $(LIBGCC) -Wl,--as-needed -ldl
+
+MODULE_ARCH_TAG := mips64
 
 endif # NDK_ROOT
 
-MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
-
-MODULE_EXE_LDFLAGS := \
- -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker64 -lc
-
 MODULE_LIB_LDFLAGS := $(MODULE_EXE_LDFLAGS)
 
-MODULE_EXE_CRTBEGIN := $(_obj)/lib/crtbegin_dynamic.o
-MODULE_EXE_CRTEND := $(_obj)/lib/crtend_android.o
+MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
 
-MODULE_LIB_CRTBEGIN := $(_obj)/lib/crtbegin_so.o
-MODULE_LIB_CRTEND := $(_obj)/lib/crtend_so.o
+MODULE_EXE_CRTBEGIN := $(_obj)/$(_lib)/crtbegin_dynamic.o
+MODULE_EXE_CRTEND := $(_obj)/$(_lib)/crtend_android.o
 
-MODULE_LIBGCC := $(shell $(patsubst @%,%,$(MODULE_CC)) -print-libgcc-file-name)
-ifeq ($(cc-is-clang),true)
- ifeq ($(wildcard $(MODULE_LIBGCC)),)
-  MODULE_LIBGCC := $(shell $(CROSS_COMPILE)gcc \
-   $(MIPS_ABI_FLAGS) -print-libgcc-file-name)
-  ifeq ($(wildcard $(MODULE_LIBGCC)),)
-   $(error Primary clang -print-libgcc-file-name workaround failed)
-  endif
- endif
-endif
-MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(MODULE_LIBGCC)
-
-MODULE_ARCH_TAG := $(_obj)
+MODULE_LIB_CRTBEGIN := $(_obj)/$(_lib)/crtbegin_so.o
+MODULE_LIB_CRTEND := $(_obj)/$(_lib)/crtend_so.o
 
 else # SUPPORT_ANDROID_PLATFORM
 
 # this is probably wrong...
-MODULE_ARCH_TAG := mips64 
+MODULE_ARCH_TAG := mips64el
 
 endif # SUPPORT_ANDROID_PLATFORM
 

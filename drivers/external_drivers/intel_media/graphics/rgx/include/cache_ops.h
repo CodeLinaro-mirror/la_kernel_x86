@@ -52,19 +52,4 @@ typedef IMG_UINT32 PVRSRV_CACHE_OP;				/*!< Type represents cache maintenance op
 #define PVRSRV_CACHE_OP_INVALIDATE			0x2	/*!< Invalidate w/o flush */
 #define PVRSRV_CACHE_OP_FLUSH				0x3	/*!< Flush w/ invalidate */
 
-#define CACHEFLUSH_UM_X86					0x1	/*!< Intel x86/x64 specific UM range-based cache flush */
-#define CACHEFLUSH_UM_ARM64					0x2	/*!< ARM Aarch64 specific UM range-based cache flush */
-#define CACHEFLUSH_UM_GENERIC				0x3	/*!< Generic UM/KM cache flush (i.e. CACHEFLUSH_KM_TYPE) */
-#define CACHEFLUSH_UM_X86_ONLY				0x4	/*!< Force x86/x64 UM flush exclusively */
-#define CACHEFLUSH_UM_ARM64_ONLY			0x5	/*!< Force ARM Aarch64 UM flush exclusively */
-#ifndef CACHEFLUSH_UM_TYPE
-	#if defined(__i386__) || defined(__x86_64__)
-		#define CACHEFLUSH_UM_TYPE CACHEFLUSH_UM_X86
-	#elif defined(__aarch64__)
-		#define CACHEFLUSH_UM_TYPE CACHEFLUSH_UM_ARM64
-	#else
-		#define CACHEFLUSH_UM_TYPE CACHEFLUSH_UM_GENERIC
-	#endif
-#endif
-
 #endif	/* _CACHE_OPS_H_ */

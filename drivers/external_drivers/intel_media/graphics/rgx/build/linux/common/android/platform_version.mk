@@ -39,19 +39,26 @@
 ### ###########################################################################
 
 ifeq ($(__included_platform_version_mk),)
-ifeq ($(PLATFORM_RELEASE),)
 
 __included_platform_version_mk := true
 
 include ../common/android/paths.mk
+
+ifeq ($(PLATFORM_RELEASE),)
+
+$(warning PLATFORM_RELEASE was not set. Attempting to determine version using \
+build.prop.)
+$(warning Consider setting PLATFORM_RELEASE, as platform autodetection is \
+now deprecated.)
 
 # If there's no build.prop file in the expected location, bail out. Tell the
 # user which file we were trying to read in case TARGET_DEVICE was not set.
 #
 BUILD_PROP := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/build.prop
 ifeq ($(wildcard $(BUILD_PROP)),)
-$(warning *** Could not determine Android version.  Did you set ANDROID_ROOT,\
-OUT_DIR and TARGET_DEVICE in your environment correctly?)
+$(warning *** Could not determine Android version using build.prop fallback!)
+$(warning *** Did you set ANDROID_ROOT, OUT_DIR and TARGET_DEVICE in your \
+environment correctly?)
 $(error Error reading $(BUILD_PROP))
 endif
 
@@ -85,31 +92,31 @@ endef
 # ordering. You need to make sure that strings that are sub-strings of other
 # checked strings appear _later_ in this list.
 #
-# e.g. 'LollipopMR1' starts with 'Lollipop', but it is not Lollipop.
-#
-# NOTE: The version codenames for Android stopped after KitKat, don't read
-# too much into the below names. They are mostly placeholders/reminders.
+# e.g. 'NougatMR1' starts with 'Nougat', but it is not Nougat.
 #
 ifeq ($(call release-starts-with,LollipopMR1),1)
-PLATFORM_RELEASE := 5.1
-else ifeq ($(call release-starts-with,Lollipop),1)
-PLATFORM_RELEASE := 5.0
+override PLATFORM_RELEASE := 5.1
 else ifeq ($(call release-starts-with,Marshmallow),1)
-PLATFORM_RELEASE := 6.0
+override PLATFORM_RELEASE := 6.0
+else ifeq ($(call release-starts-with,NougatMR),1)
+override PLATFORM_RELEASE := 7.1
 else ifeq ($(call release-starts-with,Nougat),1)
-PLATFORM_RELEASE := 7.0
-else ifeq ($(PLATFORM_BUILDID),NYC)
-# AOSP (master) will normally have PLATFORM_CODENAME set to AOSP
-PLATFORM_RELEASE := 7.1.70
+override PLATFORM_RELEASE := 7.0
+else ifeq ($(call release-starts-with,OreoMR),1)
+override PLATFORM_RELEASE := 8.1
+else ifeq ($(call release-starts-with,Oreo),1)
+override PLATFORM_RELEASE := 8.0
+else ifeq ($(PLATFORM_BUILDID),OC)
+override PLATFORM_RELEASE := 8.1.80
 else ifeq ($(shell echo $(PLATFORM_RELEASE) | grep -qE "[A-Za-z]+"; echo $$?),0)
-PLATFORM_RELEASE := 7.2
+override PLATFORM_RELEASE := 8.2
 endif
 
 # Workaround for master. Sometimes there is an AOSP version ahead of
 # the current master version number, but master still has more features.
 #
-ifeq ($(PLATFORM_RELEASE),7.1.70)
-PLATFORM_RELEASE := 7.2
+ifeq ($(PLATFORM_RELEASE),8.1.80)
+override PLATFORM_RELEASE := 8.1
 is_aosp_master := 1
 endif
 
@@ -137,11 +144,17 @@ is_at_least_nougat_mr1 := \
 	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 7 || \
 				( test $(PLATFORM_RELEASE_MAJ) -eq 7 && \
 				  test $(PLATFORM_RELEASE_MIN) -gt 0 ) ) && echo 1 || echo 0)
+is_at_least_oreo := \
+	$(shell ( test $(PLATFORM_RELEASE_MAJ) -ge 8 ) && echo 1 || echo 0)
+is_at_least_oreo_mr1 := \
+	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 8 || \
+				( test $(PLATFORM_RELEASE_MAJ) -eq 8 && \
+				  test $(PLATFORM_RELEASE_MIN) -gt 0 ) ) && echo 1 || echo 0)
 
-# Assume "future versions" are >7.1, but we don't really know
+# Assume "future versions" are >8.1, but we don't really know
 is_future_version := \
-	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 7 || \
-				( test $(PLATFORM_RELEASE_MAJ) -eq 7 && \
+	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 8 || \
+				( test $(PLATFORM_RELEASE_MAJ) -eq 8 && \
 				  test $(PLATFORM_RELEASE_MIN) -gt 1 ) ) && echo 1 || echo 0)
 
 # Picking an exact match of API_LEVEL for the platform we're building
@@ -150,8 +163,18 @@ is_future_version := \
 # This is also a good place to select the right jack toolchain.
 #
 ifeq ($(is_future_version),1)
-JACK_VERSION ?= 4.25.BETA
-API_LEVEL := 25
+JACK_VERSION ?= 4.32.CANDIDATE
+API_LEVEL := 27
+else ifeq ($(is_at_least_oreo-mr1),1)
+ifeq ($(is_aosp_master),1)
+override JACK_VERSION :=
+else
+JACK_VERSION ?= 4.32.CANDIDATE
+endif
+API_LEVEL := 27
+else ifeq ($(is_at_least_oreo),1)
+JACK_VERSION ?= 4.31.CANDIDATE
+API_LEVEL := 26
 else ifeq ($(is_at_least_nougat_mr1),1)
 JACK_VERSION ?= 3.36.CANDIDATE
 API_LEVEL := 25
@@ -170,7 +193,9 @@ endif
 
 # If the NDK is enabled, check it has API_LEVEL support for us
 ifneq ($(NDK_ROOT),)
- NDK_PLATFORMS_ROOT ?= $(NDK_ROOT)/platforms
+ VNDK_ROOT ?= $(NDK_ROOT)
+ NDK_PLATFORMS_ROOT ?= $(VNDK_ROOT)/platforms
+ NDK_SYSROOT ?= $(VNDK_ROOT)/sysroot
  ifeq ($(strip $(wildcard $(NDK_PLATFORMS_ROOT)/android-*)),)
   $(error NDK_PLATFORMS_ROOT does not point to a valid location)
  endif

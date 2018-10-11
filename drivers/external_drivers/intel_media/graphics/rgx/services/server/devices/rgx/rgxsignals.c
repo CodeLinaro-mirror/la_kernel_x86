@@ -50,7 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxfwutils.h"
 
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXNotifySignalUpdateKM(CONNECTION_DATA *psConnection,
 	                                   PVRSRV_DEVICE_NODE	*psDeviceNode,
 	                                   IMG_HANDLE hMemCtxPrivData,

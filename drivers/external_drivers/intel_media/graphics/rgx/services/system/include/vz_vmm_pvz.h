@@ -41,8 +41,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#ifndef _VZ_VMM_PVZ_CONNECTION_H_
-#define _VZ_VMM_PVZ_CONNECTION_H_
+#ifndef _VZ_VMM_PVZ_H_
+#define _VZ_VMM_PVZ_H_
 
 #include "pvrsrv.h"
 #include "img_types.h"
@@ -78,7 +78,7 @@ void SysVzPvzConnectionDeInit(void);
 VMM_PVZ_CONNECTION* SysVzPvzConnectionAcquire(void);
 void SysVzPvzConnectionRelease(VMM_PVZ_CONNECTION *psPvzConnection);
 
-#endif /* _VZ_VMM_PVZ_CONNECTION_H_ */
+#endif /* _VZ_VMM_PVZ_H_ */
 
 /*****************************************************************************
  End of file (vz_vmm_pvz.h)

@@ -35,7 +35,7 @@
 #include "osfunc.h"
 #include "rgxdebug.h"
 #include "dfrgx_utilstats.h"
-#include "pvr_tlcommon.h"
+#include "pvrsrv_tlcommon.h"
 #include "img_types.h"
 #include "pvrsrv.h"
 #include "rgxdevice.h"
@@ -138,7 +138,7 @@ unsigned int gpu_rgx_utilstats_init_obj(void){
 	}
 
 	pDFRGX_Obj->prgx_dev_info = (PVRSRV_RGXDEV_INFO*)pDFRGX_Obj->pdev_node->pvDevice;
-	RGXRegisterGpuUtilStats(&pDFRGX_Obj->gpu_util_user);
+	SORgxGpuUtilStatsRegister(&pDFRGX_Obj->gpu_util_user);
 go_out:
 	return error;
 go_free_obj:
@@ -154,7 +154,7 @@ unsigned int gpu_rgx_utilstats_deinit_obj(void){
 		return 0;
 	}
 
-	RGXUnregisterGpuUtilStats(pDFRGX_Obj->gpu_util_user);
+	SORgxGpuUtilStatsUnregister(pDFRGX_Obj->gpu_util_user);
 
 	kfree(pDFRGX_Obj);
 	pDFRGX_Obj = NULL;

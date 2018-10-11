@@ -61,7 +61,7 @@ define calculate-compiler-preferred-target
   ifneq ($$(filter i386-% i486-% i586-% i686-%,$$($(1)_compiler_preferred_target)),)
    $(1)_compiler_preferred_target := i386-linux-gnu
   endif
-  ifneq ($$(filter armv7a-cros-linux-gnueabi,$$($(1)_compiler_preferred_target)),)
+  ifneq ($$(filter armv7a-cros-linux-gnueabi armv7l-tizen-linux-gnueabi,$$($(1)_compiler_preferred_target)),)
    $(1)_compiler_preferred_target := arm-linux-gnueabi
   endif
   ifneq ($$(filter arm-linux-android,$$($(1)_compiler_preferred_target)),)
@@ -112,6 +112,10 @@ ifeq ($(host_compiler_preferred_target),i386-linux-gnu)
  HOST_PRIMARY_ARCH := host_i386
  HOST_32BIT_ARCH   := host_i386
 else
+ifeq ($(host_compiler_preferred_target),arm-linux-gnueabi)
+ HOST_PRIMARY_ARCH := host_armel
+ HOST_32BIT_ARCH   := host_armel
+else
 ifeq ($(host_compiler_preferred_target),arm-linux-gnueabihf)
  HOST_PRIMARY_ARCH := host_armhf
  HOST_32BIT_ARCH   := host_armhf
@@ -121,6 +125,7 @@ ifeq ($(host_compiler_preferred_target),aarch64-linux-gnu)
  HOST_32BIT_ARCH   := host_armhf
 else
  $(error Unknown host compiler target architecture $(host_compiler_preferred_target))
+endif
 endif
 endif
 endif
@@ -188,6 +193,23 @@ $(eval $(call cross-compiler-name,_cc_secondary,$(if $(CROSS_COMPILE_SECONDARY),
 $(eval $(call calculate-compiler-preferred-target,target,$(_cc)))
 $(eval $(call include-compiler-file,$(target_compiler_preferred_target)))
 
+ifneq ($(SUPPORT_ANDROID_PLATFORM),1)
+ifeq ($(MULTIARCH),1)
+ ifneq ($(MAKECMDGOALS),kbuild)
+  ifneq ($(COMPONENTS),)
+   $(eval $(call calculate-compiler-preferred-target,target_secondary,$(_cc_secondary)))
+   ifneq ($(target_compiler_preferred_target),$(target_secondary_compiler_preferred_target))
+    $(eval $(call include-compiler-file,$(target_secondary_compiler_preferred_target)))
+
+    ifeq ($(TARGET_SECONDARY_ARCH),)
+     $(error $(CROSS_COMPILE_SECONDARY) not supported for MULTIARCH builds)
+    endif
+   endif
+  endif
+ endif
+endif
+endif
+
 define remap-arch
 $(if $(INTERNAL_ARCH_REMAP_$(1)),$(INTERNAL_ARCH_REMAP_$(1)),$(1))
 endef
@@ -243,20 +265,21 @@ LIBGCC_SECONDARY := $(shell $(_cc_secondary) $(TARGET_FORCE_32BIT) -print-libgcc
 # We used to test if the auto-discovered libgcc.a existed before falling
 # back to GCC, but this no longer works because the Android clang can
 # return incorrect guesses which are real files. We need to force.
-
-ifeq ($(_CLANG),true)
- ifeq ($(filter-out %-android- %-androideabi-,$(CROSS_COMPILE)),)
-  LIBGCC := $(shell $(CROSS_COMPILE)gcc -print-libgcc-file-name)
-  ifeq ($(wildcard $(LIBGCC)),)
-   $(error Primary clang -print-libgcc-file-name workaround failed)
-  endif
-  ifeq ($(CROSS_COMPILE_SECONDARY),)
-   LIBGCC_SECONDARY := $(shell $(CROSS_COMPILE)gcc $(TARGET_FORCE_32BIT) -print-libgcc-file-name)
-  else
-   LIBGCC_SECONDARY := $(shell $(CROSS_COMPILE_SECONDARY)gcc $(TARGET_FORCE_32BIT) -print-libgcc-file-name)
-  endif
-  ifeq ($(wildcard $(LIBGCC_SECONDARY)),)
-   $(error Secondary clang -print-libgcc-file-name workaround failed)
+ifeq ($(SUPPORT_ARC_PLATFORM),)
+ ifeq ($(_CLANG),true)
+  ifeq ($(filter-out %-android- %-androideabi-,$(CROSS_COMPILE)),)
+   LIBGCC := $(shell $(CROSS_COMPILE)gcc -print-libgcc-file-name)
+   ifeq ($(wildcard $(LIBGCC)),)
+    $(error Primary clang -print-libgcc-file-name workaround failed)
+   endif
+   ifeq ($(CROSS_COMPILE_SECONDARY),)
+    LIBGCC_SECONDARY := $(shell $(CROSS_COMPILE)gcc $(TARGET_FORCE_32BIT) -print-libgcc-file-name)
+   else
+    LIBGCC_SECONDARY := $(shell $(CROSS_COMPILE_SECONDARY)gcc $(TARGET_FORCE_32BIT) -print-libgcc-file-name)
+   endif
+   ifeq ($(wildcard $(LIBGCC_SECONDARY)),)
+    $(error Secondary clang -print-libgcc-file-name workaround failed)
+   endif
   endif
  endif
 endif

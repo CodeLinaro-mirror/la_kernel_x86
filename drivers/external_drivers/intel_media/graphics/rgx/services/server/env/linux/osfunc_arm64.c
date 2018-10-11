@@ -52,7 +52,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if defined(CONFIG_OUTER_CACHE)
   /* If you encounter a 64-bit ARM system with an outer cache, you'll need
-   * to add the necessary code to manage that cache.  See osfunc_arm.c	
+   * to add the necessary code to manage that cache. See osfunc_arm.c
    * for an example of how to do so.
    */
 	#error "CONFIG_OUTER_CACHE not supported on arm64."
@@ -61,27 +61,134 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 static void per_cpu_cache_flush(void *arg)
 {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0))
-	static IMG_BOOL bLog = IMG_TRUE;
-	/*
-		NOTE: Regarding arm64 global flush support on >= Linux v4.2:
-		- Global cache flush support is deprecated from v4.2 onwards
-		- Cache maintenance is done using UM/KM VA maintenance _only_
-		- If you find that more time is spent in VA cache maintenance
-			- Implement arm64 assembly sequence for global flush here
-				- asm volatile ();
-		- If you do not want to implement the global cache assembly
-			- Disable KM cache maintenance support in UM cache.c
-			- Remove this PVR_LOG message
-	*/
-	if (bLog)
+	unsigned long irqflags;
+	signed long Clidr, Csselr, LoC, Assoc, Nway, Nsets, Level, Lsize, Var;
+	static DEFINE_SPINLOCK(spinlock);
+
+	spin_lock_irqsave(&spinlock, irqflags);
+
+	/* Read cache level ID register */
+	asm volatile (
+		"dmb sy\n\t"
+		"mrs %[rc], clidr_el1\n\t"
+		: [rc] "=r" (Clidr));
+
+	/* Exit if there is no cache level of coherency */
+	LoC = (Clidr & (((1UL << 3)-1) << 24)) >> 23;
+	if (! LoC)
 	{
-		PVR_LOG(("Global d-cache flush assembly not implemented, using rangebased flush"));
-		bLog = IMG_FALSE;
+		goto e0;
 	}
+
+	/*
+		This walks the cache hierarchy until the LLC/LOC cache, at each level skip
+		only instruction caches and determine the attributes at this dcache level.
+	*/
+	for (Level = 0; LoC > Level; Level += 2)
+	{
+		/* Mask off this CtypeN bit, skip if not unified cache or separate
+		   instruction and data caches */
+		Var = (Clidr >> (Level + (Level >> 1))) & ((1UL << 3) - 1);
+		if (Var < 2)
+		{
+			continue;
+		}
+
+		/* Select this dcache level for query */
+		asm volatile (
+			"msr csselr_el1, %[val]\n\t"
+			"isb\n\t"
+			"mrs %[rc], ccsidr_el1\n\t"
+			: [rc] "=r" (Csselr) : [val] "r" (Level));
+
+		/* Look-up this dcache organisation attributes */
+		Nsets = (Csselr >> 13) & ((1UL << 15) - 1);
+		Assoc = (Csselr >> 3) & ((1UL << 10) - 1);
+		Lsize = (Csselr & ((1UL << 3) - 1)) + 4;
+		Nway = 0;
+
+		/* For performance, do these in assembly; foreach dcache level/set,
+		   foreach dcache set/way, construct the "DC CISW" instruction
+		   argument and issue instruction */
+		asm volatile (
+			"mov x6, %[val0]\n\t"
+			"mov x9, %[rc1]\n\t"
+			"clz w9, w6\n\t"
+			"mov %[rc1], x9\n\t"
+			"lsetloop:\n\t"
+			"mov %[rc5], %[val0]\n\t"
+			"swayloop:\n\t"
+			"lsl x6, %[rc5], %[rc1]\n\t"
+			"orr x9, %[val2], x6\n\t"
+			"lsl x6, %[rc3], %[val4]\n\t"
+			"orr x9, x9, x6\n\t"
+			"dc	cisw, x9\n\t"
+			"subs %[rc5], %[rc5], #1\n\t"
+			"b.ge swayloop\n\t"
+			"subs %[rc3], %[rc3], #1\n\t"
+			"b.ge lsetloop\n\t"
+			: [rc1] "+r" (Nway), [rc3] "+r" (Nsets), [rc5] "+r" (Var)
+			: [val0] "r" (Assoc), [val2] "r" (Level), [val4] "r" (Lsize)
+			: "x6", "x9", "cc");
+	}
+
+e0:
+	/* Re-select L0 d-cache as active level, issue barrier before exit */
+	Var = 0;
+	asm volatile (
+		"msr csselr_el1, %[val]\n\t"
+		"dsb sy\n\t"
+		"isb\n\t"
+		: : [val] "r" (Var));
+
+	spin_unlock_irqrestore(&spinlock, irqflags);
 #else
 	flush_cache_all();
 #endif
 	PVR_UNREFERENCED_PARAMETER(arg);
+}
+
+static inline void FlushRange(void *pvRangeAddrStart,
+							  void *pvRangeAddrEnd,
+							  PVRSRV_CACHE_OP eCacheOp)
+{
+	IMG_UINT32 ui32CacheLineSize = OSCPUCacheAttributeSize(PVR_DCACHE_LINE_SIZE);
+	IMG_BYTE *pbStart = pvRangeAddrStart;
+	IMG_BYTE *pbEnd = pvRangeAddrEnd;
+	IMG_BYTE *pbBase;
+
+	/*
+	  On arm64, the TRM states in D5.8.1 (data and unified caches) that if cache
+	  maintenance is performed on a memory location using a VA, the effect of
+	  that cache maintenance is visible to all VA aliases of the physical memory
+	  location. So here it's quicker to issue the machine cache maintenance
+	  instruction directly without going via the Linux kernel DMA framework as
+	  this is sufficient to maintain the CPU d-caches on arm64.
+	 */
+	pbEnd = (IMG_BYTE *) PVR_ALIGN((uintptr_t)pbEnd, (uintptr_t)ui32CacheLineSize);
+	for (pbBase = pbStart; pbBase < pbEnd; pbBase += ui32CacheLineSize)
+	{
+		switch (eCacheOp)
+		{
+			case PVRSRV_CACHE_OP_CLEAN:
+				asm volatile ("dc cvac, %0" :: "r" (pbBase));
+				break;
+
+			case PVRSRV_CACHE_OP_INVALIDATE:
+				asm volatile ("dc ivac, %0" :: "r" (pbBase));
+				break;
+
+			case PVRSRV_CACHE_OP_FLUSH:
+				asm volatile ("dc civac, %0" :: "r" (pbBase));
+				break;
+
+			default:
+				PVR_DPF((PVR_DBG_ERROR,
+						"%s: Cache maintenance operation type %d is invalid",
+						__FUNCTION__, eCacheOp));
+				break;
+		}
+	}
 }
 
 PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
@@ -94,9 +201,6 @@ PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
 		case PVRSRV_CACHE_OP_FLUSH:
 		case PVRSRV_CACHE_OP_INVALIDATE:
 			on_each_cpu(per_cpu_cache_flush, NULL, 1);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0))
-			eError = PVRSRV_ERROR_NOT_IMPLEMENTED;
-#endif
 			break;
 
 		case PVRSRV_CACHE_OP_NONE:
@@ -114,52 +218,72 @@ PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
 	return eError;
 }
 
-void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheFlushRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 							void *pvVirtStart,
 							void *pvVirtEnd,
 							IMG_CPU_PHYADDR sCPUPhysStart,
 							IMG_CPU_PHYADDR sCPUPhysEnd)
 {
-	struct dma_map_ops *dma_ops = get_dma_ops(psDevNode->psDevConfig->pvOSDevice);
+	struct device *dev;
+	const struct dma_map_ops *dma_ops;
 
-	PVR_UNREFERENCED_PARAMETER(pvVirtStart);
-	PVR_UNREFERENCED_PARAMETER(pvVirtEnd);
+	if (pvVirtStart)
+	{
+		FlushRange(pvVirtStart, pvVirtEnd, PVRSRV_CACHE_OP_FLUSH);
+		return;
+	}
 
-	dma_ops->sync_single_for_device(NULL, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_TO_DEVICE);
-	dma_ops->sync_single_for_cpu(NULL, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_FROM_DEVICE);
+	dev = psDevNode->psDevConfig->pvOSDevice;
+
+	dma_ops = get_dma_ops(dev);
+	dma_ops->sync_single_for_device(dev, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_TO_DEVICE);
+	dma_ops->sync_single_for_cpu(dev, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_FROM_DEVICE);
 }
 
-void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheCleanRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 							void *pvVirtStart,
 							void *pvVirtEnd,
 							IMG_CPU_PHYADDR sCPUPhysStart,
 							IMG_CPU_PHYADDR sCPUPhysEnd)
 {
-	struct dma_map_ops *dma_ops = get_dma_ops(psDevNode->psDevConfig->pvOSDevice);
+	struct device *dev;
+	const struct dma_map_ops *dma_ops;
 
-	PVR_UNREFERENCED_PARAMETER(pvVirtStart);
-	PVR_UNREFERENCED_PARAMETER(pvVirtEnd);
+	if (pvVirtStart)
+	{
+		FlushRange(pvVirtStart, pvVirtEnd, PVRSRV_CACHE_OP_CLEAN);
+		return;
+	}
 
-	dma_ops->sync_single_for_device(NULL, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_TO_DEVICE);
+	dev = psDevNode->psDevConfig->pvOSDevice;
+
+	dma_ops = get_dma_ops(psDevNode->psDevConfig->pvOSDevice);
+	dma_ops->sync_single_for_device(dev, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_TO_DEVICE);
 }
 
-void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheInvalidateRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 								 void *pvVirtStart,
 								 void *pvVirtEnd,
 								 IMG_CPU_PHYADDR sCPUPhysStart,
 								 IMG_CPU_PHYADDR sCPUPhysEnd)
 {
-	struct dma_map_ops *dma_ops = get_dma_ops(psDevNode->psDevConfig->pvOSDevice);
+	struct device *dev;
+	const struct dma_map_ops *dma_ops;
 
-	PVR_UNREFERENCED_PARAMETER(pvVirtStart);
-	PVR_UNREFERENCED_PARAMETER(pvVirtEnd);
+	if (pvVirtStart)
+	{
+		FlushRange(pvVirtStart, pvVirtEnd, PVRSRV_CACHE_OP_INVALIDATE);
+		return;
+	}
 
-	dma_ops->sync_single_for_cpu(NULL, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_FROM_DEVICE);
+	dev = psDevNode->psDevConfig->pvOSDevice;
+
+	dma_ops = get_dma_ops(psDevNode->psDevConfig->pvOSDevice);
+	dma_ops->sync_single_for_cpu(dev, sCPUPhysStart.uiAddr, sCPUPhysEnd.uiAddr - sCPUPhysStart.uiAddr, DMA_FROM_DEVICE);
 }
 
-PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(PVRSRV_CACHE_OP uiCacheOp)
+PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(void)
 {
-	PVR_UNREFERENCED_PARAMETER(uiCacheOp);
 	return PVRSRV_CACHE_OP_ADDR_TYPE_PHYSICAL;
 }
 

@@ -39,11 +39,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/version.h>
 #include <linux/pci.h>
 
 #if defined(CONFIG_MTRR)
 #include <asm/mtrr.h>
-#include <linux/version.h>
 #endif
 
 #include "pci_support.h"
@@ -54,6 +54,9 @@ typedef	struct _PVR_PCI_DEV_TAG
 	struct pci_dev		*psPCIDev;
 	HOST_PCI_INIT_FLAGS	ePCIFlags;
 	IMG_BOOL		abPCIResourceInUse[DEVICE_COUNT_RESOURCE];
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+	int			iMTRR[DEVICE_COUNT_RESOURCE];
+#endif
 } PVR_PCI_DEV;
 
 /*************************************************************************/ /*!
@@ -106,10 +109,13 @@ PVRSRV_PCI_DEV_HANDLE OSPCISetDev(void *pvPCICookie, HOST_PCI_INIT_FLAGS eFlags)
 #endif
 }
 
-	/* Initialise the PCI resource tracking array */
+	/* Initialise the PCI resource and MTRR tracking array */
 	for (i = 0; i < DEVICE_COUNT_RESOURCE; i++)
 	{
 		psPVRPCI->abPCIResourceInUse[i] = IMG_FALSE;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+		psPVRPCI->iMTRR[i] = -1;
+#endif
 	}
 
 	return (PVRSRV_PCI_DEV_HANDLE)psPVRPCI;
@@ -581,30 +587,42 @@ PVRSRV_ERROR OSPCIClearResourceMTRRs(PVRSRV_PCI_DEV_HANDLE hPVRPCI, IMG_UINT32 u
 {
 	PVR_PCI_DEV *psPVRPCI = (PVR_PCI_DEV *)hPVRPCI;
 	resource_size_t start, end;
-	int err;
+	int res;
 
 	start = pci_resource_start(psPVRPCI->psPCIDev, ui32Index);
 	end = pci_resource_end(psPVRPCI->psPCIDev, ui32Index) + 1;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
-	err = arch_phys_wc_add(start, end - start);
-	if (err < 0)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
+	res = arch_io_reserve_memtype_wc(start, end - start);
+	if (res)
 	{
 		return PVRSRV_ERROR_PCI_CALL_FAILED;
 	}
+#endif
+	res = arch_phys_wc_add(start, end - start);
+	if (res < 0)
+	{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
+		arch_io_free_memtype_wc(start, end - start);
+#endif
+
+		return PVRSRV_ERROR_PCI_CALL_FAILED;
+	}
+	psPVRPCI->iMTRR[ui32Index] = res;
 #else
 
-	err = mtrr_add(start, end - start, MTRR_TYPE_UNCACHABLE, 0);
-	if (err < 0)
+	res = mtrr_add(start, end - start, MTRR_TYPE_UNCACHABLE, 0);
+	if (res < 0)
 	{
-		printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", err);
+		printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", res);
 		return PVRSRV_ERROR_PCI_CALL_FAILED;
 	}
 
-	err = mtrr_del(err, start, end - start);
-	if (err < 0)
+	res = mtrr_del(res, start, end - start);
+	if (res < 0)
 	{
-		printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_del failed (%d)", err);
+		printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_del failed (%d)", res);
 		return PVRSRV_ERROR_PCI_CALL_FAILED;
 	}
 
@@ -619,8 +637,8 @@ PVRSRV_ERROR OSPCIClearResourceMTRRs(PVRSRV_PCI_DEV_HANDLE hPVRPCI, IMG_UINT32 u
 		 * WRBACK is incompatible with some PCI devices, so try to split
 		 * the UNCACHABLE regions up and insert a WRCOMB region instead.
 		 */
-		err = mtrr_add(start, end - start, MTRR_TYPE_WRBACK, 0);
-		if (err < 0)
+		res = mtrr_add(start, end - start, MTRR_TYPE_WRBACK, 0);
+		if (res < 0)
 		{
 			/* If this fails, services has probably run before and created
 			 * a write-combined MTRR for the test chip. Assume it has, and
@@ -629,31 +647,31 @@ PVRSRV_ERROR OSPCIClearResourceMTRRs(PVRSRV_PCI_DEV_HANDLE hPVRPCI, IMG_UINT32 u
 			return PVRSRV_OK;
 		}
 
-		if(err == 0)
+		if (res == 0)
 			bGotMTRR0 = IMG_TRUE;
 
-		err = mtrr_del(err, start, end - start);
-		if(err < 0)
+		res = mtrr_del(res, start, end - start);
+		if (res < 0)
 		{
-			printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_del failed (%d)", err);
+			printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_del failed (%d)", res);
 			return PVRSRV_ERROR_PCI_CALL_FAILED;
 		}
 
-		if(bGotMTRR0)
+		if (bGotMTRR0)
 		{
 			/* Replace 0 with a non-overlapping WRBACK MTRR */
-			err = mtrr_add(0, start, MTRR_TYPE_WRBACK, 0);
-			if(err < 0)
+			res = mtrr_add(0, start, MTRR_TYPE_WRBACK, 0);
+			if (res < 0)
 			{
-				printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", err);
+				printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", res);
 				return PVRSRV_ERROR_PCI_CALL_FAILED;
 			}
 
 			/* Add a WRCOMB MTRR for the PCI device memory bar */
-			err = mtrr_add(start, end - start, MTRR_TYPE_WRCOMB, 0);
-			if(err < 0)
+			res = mtrr_add(start, end - start, MTRR_TYPE_WRCOMB, 0);
+			if (res < 0)
 			{
-				printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", err);
+				printk(KERN_ERR "OSPCIClearResourceMTRRs: mtrr_add failed (%d)", res);
 				return PVRSRV_ERROR_PCI_CALL_FAILED;
 			}
 		}
@@ -663,4 +681,36 @@ PVRSRV_ERROR OSPCIClearResourceMTRRs(PVRSRV_PCI_DEV_HANDLE hPVRPCI, IMG_UINT32 u
 	return PVRSRV_OK;
 }
 
+/*************************************************************************/ /*!
+@Function       OSPCIReleaseResourceMTRRs
+@Description    Release resources allocated by OSPCIClearResourceMTRRs 
+@Input          hPVRPCI                 PCI device handle
+@Input          ui32Index               Address range index
+*/ /**************************************************************************/
+void OSPCIReleaseResourceMTRRs(PVRSRV_PCI_DEV_HANDLE hPVRPCI, IMG_UINT32 ui32Index)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+	PVR_PCI_DEV *psPVRPCI = (PVR_PCI_DEV *)hPVRPCI;
+
+	if (psPVRPCI->iMTRR[ui32Index] >= 0)
+	{
+		arch_phys_wc_del(psPVRPCI->iMTRR[ui32Index]);
+		psPVRPCI->iMTRR[ui32Index] = -1;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
+		{
+			resource_size_t start, end;
+
+			start = pci_resource_start(psPVRPCI->psPCIDev, ui32Index);
+			end = pci_resource_end(psPVRPCI->psPCIDev, ui32Index) + 1;
+
+			arch_io_free_memtype_wc(start, end - start);
+		}
+#endif
+	}
+#else
+	PVR_UNREFERENCED_PARAMETER(hPVRPCI);
+	PVR_UNREFERENCED_PARAMETER(ui32Index);
+#endif
+}
 #endif /* defined(CONFIG_MTRR) */

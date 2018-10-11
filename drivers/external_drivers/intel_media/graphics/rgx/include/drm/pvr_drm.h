@@ -45,16 +45,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(__PVR_DRM_H__)
 #define __PVR_DRM_H__
 
-#include <linux/types.h>
+#include "pvr_drm_core.h"
 
-#if defined(__KERNEL__)
-#include <drm/drm.h>
-#elif defined(SUPPORT_ANDROID_PLATFORM) && \
-     !defined(PVR_ANDROID_OLD_LIBDRM_HEADER_PATH)
-#include <drm.h>
-#else
-#include <libdrm/drm.h>
-#endif
+#define __pvrsrv_defined_struct_enum__
 #include "drm_shared.h"
 
 /*
@@ -93,9 +86,11 @@ struct drm_pvr_dbgdrv_cmd {
  * These defines must be prefixed with "DRM_".
  */
 #define DRM_PVR_SRVKM_CMD		DRM_PVR_RESERVED1 /* Used for PVR Services ioctls */
+#define DRM_PVR_DBGDRV_CMD		1 /* Debug driver (PDUMP) ioctls */
 
 
 /* These defines must be prefixed with "DRM_IOCTL_". */
 #define	DRM_IOCTL_PVR_SRVKM_CMD		DRM_IOWR(DRM_COMMAND_BASE + DRM_PVR_SRVKM_CMD, struct drm_pvr_srvkm_cmd)
+#define	DRM_IOCTL_PVR_DBGDRV_CMD	DRM_IOWR(DRM_COMMAND_BASE + DRM_PVR_DBGDRV_CMD, struct drm_pvr_dbgdrv_cmd)
 
 #endif /* defined(__PVR_DRM_H__) */

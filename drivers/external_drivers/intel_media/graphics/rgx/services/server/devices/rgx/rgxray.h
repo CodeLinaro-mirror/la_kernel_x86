@@ -89,6 +89,9 @@ struct _RGX_SERVER_RPM_CONTEXT_
 	 * will be mapped when the grow occurs (using sparse dev mem API). */
 	IMG_UINT32				ui32SceneMemorySparseMappingIndex;
 	IMG_UINT32				ui32RPMPageTableSparseMappingIndex;
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	POS_LOCK                     hLock;
+#endif
 };
 
 /*
@@ -163,7 +166,6 @@ struct _RGX_RPM_FREELIST_ {
  * @param	ppsFreeList
  * @param	bIsExternal
  */
-IMG_EXPORT
 PVRSRV_ERROR RGXCreateRPMFreeList(CONNECTION_DATA *psConnection,
 							   PVRSRV_DEVICE_NODE	 *psDeviceNode, 
 							   RGX_SERVER_RPM_CONTEXT	*psRPMContext,
@@ -184,13 +186,11 @@ PVRSRV_ERROR RGXGrowRPMFreeList(RGX_RPM_FREELIST *psFreeList,
 /*!
  *	RGXDestroyRPMFreeList
  */
-IMG_EXPORT
 PVRSRV_ERROR RGXDestroyRPMFreeList(RGX_RPM_FREELIST *psFreeList);
 
 /*!
  * RGXCreateRPMContext
  */
-IMG_EXPORT
 PVRSRV_ERROR RGXCreateRPMContext(CONNECTION_DATA *psConnection,
 								 PVRSRV_DEVICE_NODE	 *psDeviceNode, 
 								 RGX_SERVER_RPM_CONTEXT	**ppsRPMContext,
@@ -207,13 +207,11 @@ PVRSRV_ERROR RGXCreateRPMContext(CONNECTION_DATA *psConnection,
 /*!
  * RGXDestroyRPMContext
  */
-IMG_EXPORT
 PVRSRV_ERROR RGXDestroyRPMContext(RGX_SERVER_RPM_CONTEXT *psCleanupData);
 
 /*!
 	RGXProcessRequestRPMGrow
 */
-IMG_EXPORT
 void RGXProcessRequestRPMGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
 							  IMG_UINT32 ui32FreelistID);
 
@@ -221,7 +219,6 @@ void RGXProcessRequestRPMGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
 /*! 
 	RGXAddBlockToRPMFreeListKM
 */
-IMG_EXPORT
 PVRSRV_ERROR RGXAddBlockToRPMFreeListKM(RGX_RPM_FREELIST *psFreeList,
 										IMG_UINT32 ui32NumPages);
 
@@ -240,7 +237,6 @@ PVRSRV_ERROR RGXAddBlockToRPMFreeListKM(RGX_RPM_FREELIST *psFreeList,
  @Input psRTUCCBMemDesc - RTU CCB Memory descriptor
  @Input psRTUCCBCtlMemDesc - RTU CCB Ctrl Memory descriptor
  @Input ui32Priority - context priority
- @Input sMCUFenceAddr - MCU Fence device virtual address
  @Input sVRMCallStackAddr - VRM call stack device virtual address
  @Input ui32FrameworkRegisterSize - framework register size
  @Input pbyFrameworkRegisters - ptr to framework register
@@ -252,11 +248,9 @@ PVRSRV_ERROR RGXAddBlockToRPMFreeListKM(RGX_RPM_FREELIST *psFreeList,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXCreateRayContextKM(CONNECTION_DATA				*psConnection,
 											PVRSRV_DEVICE_NODE			*psDeviceNode,
 											IMG_UINT32					ui32Priority,
-											IMG_DEV_VIRTADDR			sMCUFenceAddr,
 											IMG_DEV_VIRTADDR			sVRMCallStackAddr,
 											IMG_UINT32					ui32FrameworkCommandSize,
 											IMG_PBYTE					pabyFrameworkCommand,
@@ -277,7 +271,6 @@ PVRSRV_ERROR PVRSRVRGXCreateRayContextKM(CONNECTION_DATA				*psConnection,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXDestroyRayContextKM(RGX_SERVER_RAY_CONTEXT *psRayContext);
 
 
@@ -296,27 +289,31 @@ PVRSRV_ERROR PVRSRVRGXDestroyRayContextKM(RGX_SERVER_RAY_CONTEXT *psRayContext);
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXKickRSKM(RGX_SERVER_RAY_CONTEXT		*psRayContext,
 								IMG_UINT32					ui32ClientCacheOpSeqNum,
 								IMG_UINT32					ui32ClientFenceCount,
-								SYNC_PRIMITIVE_BLOCK			**pauiClientFenceUFOSyncPrimBlock,
+								SYNC_PRIMITIVE_BLOCK		**pauiClientFenceUFOSyncPrimBlock,
 								IMG_UINT32					*paui32ClientFenceOffset,
 								IMG_UINT32					*paui32ClientFenceValue,
 								IMG_UINT32					ui32ClientUpdateCount,
-								SYNC_PRIMITIVE_BLOCK			**pauiClientUpdateUFOSyncPrimBlock,
+								SYNC_PRIMITIVE_BLOCK		**pauiClientUpdateUFOSyncPrimBlock,
 								IMG_UINT32					*paui32ClientUpdateOffset,
 								IMG_UINT32					*paui32ClientUpdateValue,
 								IMG_UINT32					ui32ServerSyncPrims,
 								IMG_UINT32					*paui32ServerSyncFlags,
 								SERVER_SYNC_PRIMITIVE 		**pasServerSyncs,
+								PVRSRV_FENCE				iCheckFence,
+								PVRSRV_TIMELINE				iUpdateTimeline,
+								PVRSRV_FENCE				*piUpdateFence,
+								IMG_CHAR					szUpdateFenceName[32],
 								IMG_UINT32					ui32CmdSize,
 								IMG_PBYTE					pui8DMCmd,
 								IMG_UINT32					ui32FCCmdSize,
 								IMG_PBYTE					pui8FCDMCmd,
 								IMG_UINT32					ui32FrameContextID,
 								IMG_UINT32					ui32PDumpFlags,
-								IMG_UINT32					ui32ExtJobRef);
+								IMG_UINT32					ui32ExtJobRef,
+								IMG_DEV_VIRTADDR			sRobustnessResetReason);
 /*!
 *******************************************************************************
 
@@ -332,24 +329,28 @@ PVRSRV_ERROR PVRSRVRGXKickRSKM(RGX_SERVER_RAY_CONTEXT		*psRayContext,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXKickVRDMKM(RGX_SERVER_RAY_CONTEXT		*psRayContext,
 								 IMG_UINT32					ui32ClientCacheOpSeqNum,
 								 IMG_UINT32					ui32ClientFenceCount,
-								 SYNC_PRIMITIVE_BLOCK			**pauiClientFenceUFOSyncPrimBlock,
+								 SYNC_PRIMITIVE_BLOCK		**pauiClientFenceUFOSyncPrimBlock,
 								 IMG_UINT32					*paui32ClientFenceOffset,
 								 IMG_UINT32					*paui32ClientFenceValue,
 								 IMG_UINT32					ui32ClientUpdateCount,
-								 SYNC_PRIMITIVE_BLOCK			**pauiClientUpdateUFOSyncPrimBlock,
+								 SYNC_PRIMITIVE_BLOCK		**pauiClientUpdateUFOSyncPrimBlock,
 								 IMG_UINT32					*paui32ClientUpdateOffset,
 								 IMG_UINT32					*paui32ClientUpdateValue,
 								 IMG_UINT32					ui32ServerSyncPrims,
 								 IMG_UINT32					*paui32ServerSyncFlags,
 								 SERVER_SYNC_PRIMITIVE 		**pasServerSyncs,
+								 PVRSRV_FENCE				iCheckFence,
+								 PVRSRV_TIMELINE			iUpdateTimeline,
+								 PVRSRV_FENCE				*piUpdateFence,
+								 IMG_CHAR					szUpdateFenceName[32],
 								 IMG_UINT32					ui32CmdSize,
 								 IMG_PBYTE					pui8DMCmd,
 								 IMG_UINT32					ui32PDumpFlags,
-								 IMG_UINT32					ui32ExtJobRef);
+								 IMG_UINT32					ui32ExtJobRef,
+								 IMG_DEV_VIRTADDR			sRobustnessResetReason);
 
 PVRSRV_ERROR PVRSRVRGXSetRayContextPriorityKM(CONNECTION_DATA *psConnection,
                                               PVRSRV_DEVICE_NODE *psDevNode,

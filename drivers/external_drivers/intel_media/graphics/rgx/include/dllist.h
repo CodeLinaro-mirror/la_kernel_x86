@@ -168,7 +168,7 @@ void dllist_add_to_tail(PDLLIST_NODE psListHead, PDLLIST_NODE psNewNode)
 static INLINE
 IMG_BOOL dllist_node_is_in_list(PDLLIST_NODE psNode)
 {
-	return (IMG_BOOL) (psNode->psNextNode != 0);
+	return (IMG_BOOL) (psNode->psNextNode != NULL);
 }
 
 /*************************************************************************/ /*!
@@ -211,8 +211,8 @@ void dllist_remove_node(PDLLIST_NODE psListNode)
 	psListNode->psPrevNode->psNextNode = psListNode->psNextNode;
 
 	/* Clear the node to show it's not on a list */
-	psListNode->psPrevNode = 0;
-	psListNode->psNextNode = 0;
+	psListNode->psPrevNode = NULL;
+	psListNode->psNextNode = NULL;
 }
 
 /*************************************************************************/ /*!
@@ -256,7 +256,8 @@ void dllist_replace_head(PDLLIST_NODE psOldHead, PDLLIST_NODE psNewHead)
 /*************************************************************************/ /*!
 @Function       dllist_foreach_node
 
-@Description    Walk through all the nodes on the list
+@Description    Walk through all the nodes on the list.
+				Safe against removal of (node).
 
 @Input          list_head			List node to start the operation
 @Input			node				Current list node
@@ -268,5 +269,10 @@ void dllist_replace_head(PDLLIST_NODE psOldHead, PDLLIST_NODE psNewHead)
 	for (node = (list_head)->psNextNode, next = (node)->psNextNode;		\
 		 node != (list_head);											\
 		 node = next, next = (node)->psNextNode)
+
+#define dllist_foreach_node_backwards(list_head, node, prev)			\
+	for (node = (list_head)->psPrevNode, prev = (node)->psPrevNode;		\
+		 node != (list_head);											\
+		 node = prev, prev = (node)->psPrevNode)
 
 #endif	/* _DLLIST_ */

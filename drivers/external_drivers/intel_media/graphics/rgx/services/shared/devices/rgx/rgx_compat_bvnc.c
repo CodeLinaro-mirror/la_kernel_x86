@@ -60,7 +60,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /**************************************************************************//**
  * C library strlen function.
  *****************************************************************************/
-static INLINE IMG_UINT32 OSStringLength(const IMG_CHAR* pszInput)
+static INLINE __maybe_unused IMG_UINT32 OSStringLength(const IMG_CHAR* pszInput)
 {
 	const IMG_CHAR* pszTemp = pszInput;
 

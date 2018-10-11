@@ -63,7 +63,14 @@ KERNEL_CROSS_COMPILE ?= arm-eabi-
 include ../common/android/arch.mk
 include ../common/android/features.mk
 
+# Heap names should be defined as per the labels used in the kernel.
+# Kernels >=4.12, support heap query so we use heap names 
+# to get the correct heap id.
+# For kernels <4.12, we use heap_id_mask defined in this Makefile.
+# Heap names defined here are for reference only.
+ION_DEFAULT_HEAP_NAME := \"cma\"
 ION_DEFAULT_HEAP_ID_MASK := (1 << ION_HEAP_TYPE_DMA)
+ION_FALLBACK_HEAP_NAME := \"carveout\"
 ION_FALLBACK_HEAP_ID_MASK := (1 << ION_HEAP_TYPE_CARVEOUT)
 
 DISPLAY_CONTROLLER ?= adf_sunxi
@@ -72,6 +79,10 @@ KERNEL_COMPONENTS += $(DISPLAY_CONTROLLER)
 PDUMP_STREAMBUF_SIZE_MB := 10
 
 RGX_TIMECORR_CLOCK := sched
+
+# Don't use dma_alloc_coherent because it falls back to allocate 
+# highmem pages and maps them to vmalloc space which exhausts quickly
+PVR_LINUX_PHYSMEM_SUPPRESS_DMA_AC := 1
 
 include ../config/core.mk
 include ../common/android/extra_config.mk

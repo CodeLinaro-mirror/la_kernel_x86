@@ -60,7 +60,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  segments in a table index by pvr_log2(segment size). ie Each table index
  n holds 'free' segments in the size range 2^n -> 2^(n+1) - 1.
 
- Allocation policy is based on an *almost* good fit strategy. 
+ Allocation policy is based on an *almost* good fit strategy.
 
  Allocated segments are inserted into a self scaling hash table which
  maps the base resource of the span to the relevant boundary
@@ -146,13 +146,13 @@ struct _BT_
 	/* doubly linked un-ordered list of free segments with the same flags. */
 	struct _BT_ * next_free;
 	struct _BT_ * prev_free;
-	
+
 	/* a user reference associated with this span, user references are
 	 * currently only provided in the callback mechanism */
-    IMG_HANDLE hPriv;
+	IMG_HANDLE hPriv;
 
-    /* Flags to match on this span */
-    IMG_UINT32 uFlags;
+	/* Flags to match on this span */
+	IMG_UINT32 uFlags;
 
 };
 typedef struct _BT_ BT;
@@ -169,22 +169,22 @@ struct _RA_ARENA_
 
 	/* import interface, if provided */
 	PVRSRV_ERROR (*pImportAlloc)(RA_PERARENA_HANDLE h,
-							 RA_LENGTH_T uSize,
-							 IMG_UINT32 uFlags,
-							 const IMG_CHAR *pszAnnotation,
-							 RA_BASE_T *pBase,
-							 RA_LENGTH_T *pActualSize,
-                             RA_PERISPAN_HANDLE *phPriv);
+								 RA_LENGTH_T uSize,
+								 IMG_UINT32 uFlags,
+								 const IMG_CHAR *pszAnnotation,
+								 RA_BASE_T *pBase,
+								 RA_LENGTH_T *pActualSize,
+								 RA_PERISPAN_HANDLE *phPriv);
 	void (*pImportFree) (RA_PERARENA_HANDLE,
-                         RA_BASE_T,
-                         RA_PERISPAN_HANDLE hPriv);
+						 RA_BASE_T,
+						 RA_PERISPAN_HANDLE hPriv);
 
 	/* arbitrary handle provided by arena owner to be passed into the
 	 * import alloc and free hooks */
 	void *pImportHandle;
 
 	IMG_PSPLAY_TREE per_flags_buckets;
-	
+
 	/* resource segment list */
 	BT *pHeadSegment;
 
@@ -219,12 +219,12 @@ struct _RA_ARENA_
 */ /**************************************************************************/
 static PVRSRV_ERROR
 _RequestAllocFail (RA_PERARENA_HANDLE _h,
-                   RA_LENGTH_T _uSize,
-                   IMG_UINT32 _uFlags,
-                   const IMG_CHAR *_pszAnnotation,
-                   RA_BASE_T *_pBase,
-                   RA_LENGTH_T *_pActualSize,
-                   RA_PERISPAN_HANDLE *_phPriv)
+				   RA_LENGTH_T _uSize,
+				   IMG_UINT32 _uFlags,
+				   const IMG_CHAR *_pszAnnotation,
+				   RA_BASE_T *_pBase,
+				   RA_LENGTH_T *_pActualSize,
+				   RA_PERISPAN_HANDLE *_phPriv)
 {
 	PVR_UNREFERENCED_PARAMETER (_h);
 	PVR_UNREFERENCED_PARAMETER (_uSize);
@@ -239,14 +239,14 @@ _RequestAllocFail (RA_PERARENA_HANDLE _h,
 
 
 #if defined (PVR_CTZLL)
-    /* make sure to trigger an error if someone change the buckets or the bHasEltsMapping size
-       the bHasEltsMapping is used to quickly determine the smallest bucket containing elements.
-       therefore it must have at least as many bits has the buckets array have buckets. The RA
-       implementation actually uses one more bit. */
-    static_assert((sizeof(((IMG_PSPLAY_TREE) 0)->buckets) / sizeof(((IMG_PSPLAY_TREE) 0)->buckets[0]))
+	/* make sure to trigger an error if someone change the buckets or the bHasEltsMapping size
+	   the bHasEltsMapping is used to quickly determine the smallest bucket containing elements.
+	   therefore it must have at least as many bits has the buckets array have buckets. The RA
+	   implementation actually uses one more bit. */
+	static_assert((sizeof(((IMG_PSPLAY_TREE) 0)->buckets) / sizeof(((IMG_PSPLAY_TREE) 0)->buckets[0]))
 				  < 8 * sizeof(((IMG_PSPLAY_TREE) 0)->bHasEltsMapping),
 				  "Too many buckets for bHasEltsMapping bitmap");
-#endif 
+#endif
 
 
 /*************************************************************************/ /*!
@@ -262,7 +262,7 @@ _RequestAllocFail (RA_PERARENA_HANDLE _h,
    if someone changes RA_LENGTH to unsigned long, then use __builtin_clzl
    if it changes to unsigned int, use __builtin_clz
 
-   if it changes for something bigger than unsigned long long, 
+   if it changes for something bigger than unsigned long long,
    then revert the pvr_log2 to the classic implementation */
 static_assert(sizeof(RA_LENGTH_T) == sizeof(unsigned long long),
 			  "RA log routines not tuned for sizeof(RA_LENGTH_T)");
@@ -302,8 +302,7 @@ pvr_log2 (RA_LENGTH_T n)
                 IMG_TRUE   BT was in the arena's segment list.
 */ /**************************************************************************/
 static IMG_BOOL
-_IsInSegmentList (RA_ARENA *pArena,
-                  BT *pBT)
+_IsInSegmentList (RA_ARENA *pArena, BT *pBT)
 {
 	BT*  pBTScan;
 
@@ -330,8 +329,7 @@ _IsInSegmentList (RA_ARENA *pArena,
                 IMG_TRUE   BT was in the arena's free list.
 */ /**************************************************************************/
 static IMG_BOOL
-_IsInFreeList (RA_ARENA *pArena,
-               BT *pBT)
+_IsInFreeList (RA_ARENA *pArena, BT *pBT)
 {
 	BT*  pBTScan;
 	IMG_UINT32  uIndex;
@@ -382,8 +380,8 @@ static int is_arena_valid(struct _RA_ARENA_ * arena)
 			/* checks the correctness of the type field */
 			PVR_ASSERT(_IsInFreeList(arena, chunk));
 
-		    /* check that there can't be two consecutive free chunks.
-		       Indeed, instead of having two consecutive free chunks,
+			/* check that there can't be two consecutive free chunks.
+			   Indeed, instead of having two consecutive free chunks,
 			   there should be only one that span the size of the two. */
 			PVR_ASSERT((chunk->is_leftmost) || (chunk->pPrevSegment->type != btt_free));
 			PVR_ASSERT((chunk->is_rightmost) || (chunk->pNextSegment->type != btt_free));
@@ -409,21 +407,21 @@ static int is_arena_valid(struct _RA_ARENA_ * arena)
 	}
 
 #if defined(PVR_CTZLL)
-    if (arena->per_flags_buckets != NULL)
+	if (arena->per_flags_buckets != NULL)
 	{
 		for (i = 0; i < FREE_TABLE_LIMIT; ++i)
 		{
 			/* verify that the bHasEltsMapping is correct for this flags bucket */
-			PVR_ASSERT( 
+			PVR_ASSERT(
 				((arena->per_flags_buckets->buckets[i] == NULL) &&
 				 (( (arena->per_flags_buckets->bHasEltsMapping & ((IMG_ELTS_MAPPINGS) 1 << i)) == 0)))
 				||
 				((arena->per_flags_buckets->buckets[i] != NULL) &&
 				 ((  (arena->per_flags_buckets->bHasEltsMapping & ((IMG_ELTS_MAPPINGS) 1 << i)) != 0)))
-				);		
+				);
 		}
 	}
-#endif	
+#endif
 
 	/* if arena was not valid, one of the assert before should have triggered */
 	return 1;
@@ -491,7 +489,7 @@ static void
 _SegmentListRemove (RA_ARENA *pArena, BT *pBT)
 {
 	PVR_ASSERT (_IsInSegmentList(pArena, pBT));
-	
+
 	if (pBT->pPrevSegment == NULL)
 		pArena->pHeadSegment = pBT->pNextSegment;
 	else
@@ -511,28 +509,23 @@ _SegmentListRemove (RA_ARENA *pArena, BT *pBT)
 @Return         Boundary tag or NULL
 */ /**************************************************************************/
 static BT *
-_BuildBT (RA_BASE_T base,
-          RA_LENGTH_T uSize,
-          RA_FLAGS_T uFlags
-          )
+_BuildBT (RA_BASE_T base, RA_LENGTH_T uSize, RA_FLAGS_T uFlags)
 {
 	BT *pBT;
 
-	pBT = OSAllocMem(sizeof(BT));
-    if (pBT == NULL)
+	pBT = OSAllocZMem(sizeof(BT));
+	if (pBT == NULL)
 	{
 		return NULL;
 	}
 
-	OSCachedMemSet(pBT, 0, sizeof(BT));
-
 	pBT->is_leftmost = 1;
 	pBT->is_rightmost = 1;
+	/* pBT->free_import = 0; */
 	pBT->type = btt_live;
 	pBT->base = base;
 	pBT->uSize = uSize;
-    pBT->uFlags = uFlags;
-	pBT->free_import = 0;
+	pBT->uFlags = uFlags;
 
 	return pBT;
 }
@@ -555,10 +548,10 @@ _SegmentSplit (BT *pBT, RA_LENGTH_T uSize)
 	BT *pNeighbour;
 
 	pNeighbour = _BuildBT(pBT->base + uSize, pBT->uSize - uSize, pBT->uFlags);
-    if (pNeighbour == NULL)
-    {
-        return NULL;
-    }
+	if (pNeighbour == NULL)
+	{
+		return NULL;
+	}
 
 	_SegmentListInsertAfter(pBT, pNeighbour);
 
@@ -606,7 +599,7 @@ _FreeListInsert (RA_ARENA *pArena, BT *pBT)
 
 #if defined(PVR_CTZLL)
 	/* tells that bucket[index] now contains elements */
-    pArena->per_flags_buckets->bHasEltsMapping |= ((IMG_ELTS_MAPPINGS) 1 << uIndex);
+	pArena->per_flags_buckets->bHasEltsMapping |= ((IMG_ELTS_MAPPINGS) 1 << uIndex);
 #endif
 }
 
@@ -651,7 +644,6 @@ _FreeListRemove (RA_ARENA *pArena, BT *pBT)
 		}
 #endif
 	}
-	
 
 	PVR_ASSERT (!_IsInFreeList(pArena, pBT));
 	pBT->type = btt_live;
@@ -669,11 +661,8 @@ _FreeListRemove (RA_ARENA *pArena, BT *pBT)
                 NULL on failure
 */ /**************************************************************************/
 static BT *
-_InsertResource (RA_ARENA *pArena,
-                 RA_BASE_T base,
-                 RA_LENGTH_T uSize,
-                 RA_FLAGS_T uFlags
-                 )
+_InsertResource (RA_ARENA *pArena, RA_BASE_T base, RA_LENGTH_T uSize,
+				 RA_FLAGS_T uFlags)
 {
 	BT *pBT;
 	PVR_ASSERT (pArena!=NULL);
@@ -688,7 +677,7 @@ _InsertResource (RA_ARENA *pArena,
 			OSFreeMem(pBT);
 			return NULL;
 		}
-		
+
 		pArena->per_flags_buckets = tmp;
 		_SegmentListInsert (pArena, pBT);
 		_FreeListInsert (pArena, pBT);
@@ -780,7 +769,7 @@ _FreeBT (RA_ARENA *pArena, BT *pBT)
 
 		pBT->uSize += pNeighbour->uSize;
 		pBT->is_leftmost = pNeighbour->is_leftmost;
-        OSFreeMem(pNeighbour);
+		OSFreeMem(pNeighbour);
 	}
 
 	/* try to coalesce with right neighbour */
@@ -802,7 +791,7 @@ _FreeBT (RA_ARENA *pArena, BT *pBT)
 		_FreeListInsert (pArena, pBT);
 		PVR_ASSERT( (!pBT->is_rightmost) || (!pBT->is_leftmost) || (!pBT->free_import) );
 	}
-	
+
 	PVR_ASSERT(is_arena_valid(pArena));
 }
 
@@ -818,7 +807,7 @@ _FreeBT (RA_ARENA *pArena, BT *pBT)
   nb_max_try is used to limit the number of elements considered.
   This is used to only consider the first nb_max_try elements in the
   free-list. The special value ~0 is used to say unlimited i.e. consider
-  all elements in the free list 
+  all elements in the free list
  */
 static INLINE
 struct _BT_ * find_chunk_in_bucket(struct _BT_ * first_elt,
@@ -833,7 +822,7 @@ struct _BT_ * find_chunk_in_bucket(struct _BT_ * first_elt,
 		const RA_BASE_T aligned_base = (uAlignment > 1) ?
 			(walker->base + uAlignment - 1) & ~(uAlignment - 1)
 			: walker->base;
-		
+
 		if (walker->base + walker->uSize >= aligned_base + uSize)
 		{
 			return walker;
@@ -858,7 +847,7 @@ struct _BT_ * find_chunk_in_bucket(struct _BT_ * first_elt,
 @Output         phPriv		 The user references associated with
                              the imported segment. (optional)
 @Input          flags        Allocation flags
-@Input          uAlignment   Required uAlignment, or 0. 
+@Input          uAlignment   Required uAlignment, or 0.
                              Must be a power of 2 if not 0
 @Output         base         Allocated resource base (non optional, must not be NULL)
 @Return         IMG_FALSE failure
@@ -874,8 +863,8 @@ _AttemptAllocAligned (RA_ARENA *pArena,
 {
 
 	IMG_UINT32 index_low;
-	IMG_UINT32 index_high; 
-	IMG_UINT32 i; 
+	IMG_UINT32 index_high;
+	IMG_UINT32 i;
 	struct _BT_ * pBT = NULL;
 	RA_BASE_T aligned_base;
 
@@ -891,7 +880,7 @@ _AttemptAllocAligned (RA_ARENA *pArena,
 
 	index_low = pvr_log2(uSize);
 	index_high = pvr_log2(uSize + uAlignment - 1);
-	
+
 	PVR_ASSERT(index_low < FREE_TABLE_LIMIT);
 	PVR_ASSERT(index_high < FREE_TABLE_LIMIT);
 	PVR_ASSERT(index_low <= index_high);
@@ -899,7 +888,7 @@ _AttemptAllocAligned (RA_ARENA *pArena,
 #if defined(PVR_CTZLL)
 	i = PVR_CTZLL((IMG_ELTS_MAPPINGS) (~((1 << (index_high + 1)) - 1)) & pArena->per_flags_buckets->bHasEltsMapping);
 #else
- 	for (i = index_high + 1; (i < FREE_TABLE_LIMIT) && (pArena->per_flags_buckets->buckets[i] == NULL); ++i)
+	for (i = index_high + 1; (i < FREE_TABLE_LIMIT) && (pArena->per_flags_buckets->buckets[i] == NULL); ++i)
 	{
 	}
 #endif
@@ -963,23 +952,23 @@ _AttemptAllocAligned (RA_ARENA *pArena,
 			_FreeListInsert (pArena, pBT);
 			return IMG_FALSE;
 		}
-	
+
 		_FreeListInsert (pArena, pNeighbour);
 	}
 nosplit:
 	pBT->type = btt_live;
-	
+
 	if (!HASH_Insert_Extended (pArena->pSegmentHash, &pBT->base, (uintptr_t)pBT))
 	{
 		_FreeBT (pArena, pBT);
 		return IMG_FALSE;
 	}
-	
+
 	if (phPriv != NULL)
 		*phPriv = pBT->hPriv;
-	
+
 	*base = pBT->base;
-	
+
 	return IMG_TRUE;
 }
 
@@ -1003,17 +992,17 @@ IMG_INTERNAL RA_ARENA *
 RA_Create (IMG_CHAR *name,
 		   RA_LOG2QUANTUM_T uLog2Quantum,
 		   IMG_UINT32 ui32LockClass,
-		   PVRSRV_ERROR (*imp_alloc)(RA_PERARENA_HANDLE h, 
-                                 RA_LENGTH_T uSize,
-                                 RA_FLAGS_T _flags, 
-                                 const IMG_CHAR *pszAnnotation,
-                                 /* returned data */
-                                 RA_BASE_T *pBase,
-                                 RA_LENGTH_T *pActualSize,
-                                 RA_PERISPAN_HANDLE *phPriv),
+		   PVRSRV_ERROR (*imp_alloc)(RA_PERARENA_HANDLE h,
+								 RA_LENGTH_T uSize,
+								 RA_FLAGS_T _flags,
+								 const IMG_CHAR *pszAnnotation,
+								 /* returned data */
+								 RA_BASE_T *pBase,
+								 RA_LENGTH_T *pActualSize,
+								 RA_PERISPAN_HANDLE *phPriv),
 		   void (*imp_free) (RA_PERARENA_HANDLE,
-                             RA_BASE_T,
-                             RA_PERISPAN_HANDLE),
+							 RA_BASE_T,
+							 RA_PERISPAN_HANDLE),
 		   RA_PERARENA_HANDLE arena_handle,
 		   IMG_BOOL bNoSplit)
 {
@@ -1025,11 +1014,11 @@ RA_Create (IMG_CHAR *name,
 		PVR_DPF ((PVR_DBG_ERROR, "RA_Create: invalid parameter 'name' (NULL not accepted)"));
 		return NULL;
 	}
-	
+
 	PVR_DPF ((PVR_DBG_MESSAGE, "RA_Create: name='%s'", name));
 
 	pArena = OSAllocMem(sizeof (*pArena));
-    if (pArena == NULL)
+	if (pArena == NULL)
 	{
 		goto arena_fail;
 	}
@@ -1165,10 +1154,16 @@ RA_Add (RA_ARENA *pArena,
 		return IMG_FALSE;
 	}
 
+	if(uSize == 0)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "RA_Add: invalid size 0 added to arena %s", pArena->name));
+		return IMG_FALSE;
+	}
+
 	OSLockAcquireNested(pArena->hLock, pArena->ui32LockClass);
 	PVR_ASSERT(is_arena_valid(pArena));
 	PVR_DPF ((PVR_DBG_MESSAGE, "RA_Add: name='%s', "
-              "base=0x%llx, size=0x%llx", pArena->name,
+			  "base=0x%llx, size=0x%llx", pArena->name,
 			  (unsigned long long)base, (unsigned long long)uSize));
 
 	uSize = (uSize + pArena->uQuantum - 1) & ~(pArena->uQuantum - 1);
@@ -1220,7 +1215,7 @@ RA_Alloc (RA_ARENA *pArena,
 	if (pArena == NULL || uImportMultiplier == 0 || uSize == 0)
 	{
 		PVR_DPF ((PVR_DBG_ERROR,
-		          "RA_Alloc: One of the necessary parameters is 0"));
+				  "RA_Alloc: One of the necessary parameters is 0"));
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
@@ -1236,10 +1231,10 @@ RA_Alloc (RA_ARENA *pArena,
 	PVR_ASSERT((uAlignment == 0) || (uAlignment & (uAlignment - 1)) == 0);
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-	          "RA_Alloc: arena='%s', size=0x%llx(0x%llx), "
-	          "alignment=0x%llx", pArena->name,
-	          (unsigned long long)uSize, (unsigned long long)uRequestSize,
-	          (unsigned long long)uAlignment));
+			  "RA_Alloc: arena='%s', size=0x%llx(0x%llx), "
+			  "alignment=0x%llx", pArena->name,
+			  (unsigned long long)uSize, (unsigned long long)uRequestSize,
+			  (unsigned long long)uAlignment));
 
 	/* if allocation failed then we might have an import source which
 	   can provide more resource, else we will have to fail the
@@ -1267,10 +1262,10 @@ RA_Alloc (RA_ARENA *pArena,
 		uImportSize = (uImportSize + pArena->uQuantum - 1) & ~(pArena->uQuantum - 1);
 
 		eError = pArena->pImportAlloc (pArena->pImportHandle,
-		                               uImportSize, uImportFlags,
-		                               pszAnnotation,
-		                               &import_base, &uImportSize,
-		                               &hPriv);
+									   uImportSize, uImportFlags,
+									   pszAnnotation,
+									   &import_base, &uImportSize,
+									   &hPriv);
 		if (PVRSRV_OK != eError)
 		{
 			OSLockRelease(pArena->hLock);
@@ -1289,8 +1284,8 @@ RA_Alloc (RA_ARENA *pArena,
 				pArena->pImportFree(pArena->pImportHandle, import_base, hPriv);
 
 				PVR_DPF ((PVR_DBG_MESSAGE, "RA_Alloc: name='%s', "
-				          "size=0x%llx failed!", pArena->name,
-				          (unsigned long long)uSize));
+						  "size=0x%llx failed!", pArena->name,
+						  (unsigned long long)uSize));
 				/* RA_Dump (arena); */
 
 				OSLockRelease(pArena->hLock);
@@ -1303,8 +1298,8 @@ RA_Alloc (RA_ARENA *pArena,
 			if (!bResult)
 			{
 				PVR_DPF ((PVR_DBG_ERROR,
-				          "RA_Alloc: name='%s' second alloc failed!",
-				          pArena->name));
+						  "RA_Alloc: name='%s' second alloc failed!",
+						  pArena->name));
 
 				/*
 				  On failure of _AttemptAllocAligned() depending on the exact point
@@ -1322,8 +1317,8 @@ RA_Alloc (RA_ARENA *pArena,
 				if (*base < import_base  ||  *base > (import_base + uImportSize))
 				{
 					PVR_DPF ((PVR_DBG_ERROR,
-					          "RA_Alloc: name='%s' alloc did not occur in the imported span!",
-					          pArena->name));
+							  "RA_Alloc: name='%s' alloc did not occur in the imported span!",
+							  pArena->name));
 
 					/*
 					  Remove the imported span which should not be in use (if it is then
@@ -1336,7 +1331,7 @@ RA_Alloc (RA_ARENA *pArena,
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE, "RA_Alloc: name='%s', size=0x%llx, "
-              "*base=0x%llx = %d",pArena->name, (unsigned long long)uSize,
+			  "*base=0x%llx = %d",pArena->name, (unsigned long long)uSize,
 			  (unsigned long long)*base, bResult));
 
 	PVR_ASSERT(is_arena_valid(pArena));

@@ -263,17 +263,14 @@ PVRSRV_ERROR PhysmemNewTDSecureBufPMR(CONNECTION_DATA *psConnection,
 	                      psPrivData,
 	                      PMR_TYPE_TDSECBUF,
 	                      &psPMR,
-	                      IMG_FALSE);
+	                      PDUMP_NONE);
 	if (eError != PVRSRV_OK)
 	{
 		goto errorOnCreatePMR;
 	}
 
 #if defined(PVR_RI_DEBUG)
-	eError = RIWritePMREntryKM(psPMR,
-	                           sizeof("TDSecureBuffer"),
-	                           "TDSecureBuffer",
-	                           psPrivData->ui64Size);
+	eError = RIWritePMREntryKM(psPMR);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_WARNING,
@@ -486,6 +483,7 @@ PVRSRV_ERROR PhysmemNewTDSecureBufPMR(CONNECTION_DATA *psConnection,
 	                                  psPrivData->ui32Log2PageSize,
 	                                  uiFlags,
 	                                  "TDSECUREBUF_OSMEM",
+	                                  OSGetCurrentClientProcessIDKM(),
 	                                  &psOSPMR);
 	if (eError != PVRSRV_OK)
 	{
@@ -507,17 +505,14 @@ PVRSRV_ERROR PhysmemNewTDSecureBufPMR(CONNECTION_DATA *psConnection,
 	                      psPrivData,
 	                      PMR_TYPE_TDSECBUF,
 	                      &psPMR,
-	                      IMG_FALSE);
+	                      PDUMP_NONE);
 	if (eError != PVRSRV_OK)
 	{
 		goto errorOnCreateTDPMR;
 	}
 
 #if defined(PVR_RI_DEBUG)
-	eError = RIWritePMREntryKM(psPMR,
-	                           sizeof("TDSecureBuffer"),
-	                           "TDSecureBuffer",
-	                           psPrivData->ui64Size);
+	eError = RIWritePMREntryKM(psPMR);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_WARNING,

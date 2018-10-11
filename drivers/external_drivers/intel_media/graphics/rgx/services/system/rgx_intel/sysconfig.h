@@ -142,7 +142,7 @@ static PVRSRV_DEVICE_CONFIG sDevices[] =
 		.pui32BIFTilingHeapConfigs =
 			&gauiBIFTilingHeapXStrides[0],
 		.ui32BIFTilingHeapCount	=
-			IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides),
+			ARRAY_SIZE(gauiBIFTilingHeapXStrides),
 		.pfnSysDevFeatureDepInit = NULL
 	}
 };

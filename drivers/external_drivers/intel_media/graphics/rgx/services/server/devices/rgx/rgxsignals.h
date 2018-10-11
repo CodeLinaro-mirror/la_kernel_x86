@@ -63,7 +63,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ******************************************************************************/
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXNotifySignalUpdateKM(CONNECTION_DATA *psConnection,
                                            PVRSRV_DEVICE_NODE *psDeviceNode,
                                            IMG_HANDLE hMemCtxPrivData,

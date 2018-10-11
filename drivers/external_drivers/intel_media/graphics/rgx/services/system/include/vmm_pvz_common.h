@@ -41,8 +41,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#ifndef _VMM_PVZ_CONNECTION_COMMON_H_
-#define _VMM_PVZ_CONNECTION_COMMON_H_
+#ifndef _VMM_PVZ_COMMON_H_
+#define _VMM_PVZ_COMMON_H_
 
 #define PVZ_BRIDGE_DEFAULT					0UL
 #define PVZ_BRIDGE_CREATEDEVICECONFIG		(PVZ_BRIDGE_DEFAULT + 1)
@@ -53,7 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVZ_BRIDGE_UNMAPDEVICEPHYSHEAP		(PVZ_BRIDGE_MAPDEVICEPHYSHEAP   + 1)
 #define PVZ_BRIDGE_LAST						(PVZ_BRIDGE_UNMAPDEVICEPHYSHEAP + 1)
 
-#endif /* _VMM_PVZ_CONNECTION_COMMON_H_ */
+#endif /* _VMM_PVZ_COMMON_H_ */
 
 /*****************************************************************************
  End of file (vmm_pvz_common.h)

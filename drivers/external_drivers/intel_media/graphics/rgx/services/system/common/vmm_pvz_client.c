@@ -43,32 +43,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvrsrv.h"
 #include "img_types.h"
-#include "pvrsrv_vz.h"
 #include "pvrsrv_error.h"
 
+#include "vmm_impl.h"
 #include "vz_vmm_pvz.h"
 #include "vz_physheap.h"
 #include "vmm_pvz_client.h"
-#include "vmm_impl_client.h"
 
-static void
+
+static inline void
 PvzClientLockAcquire(void)
 {
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzDaata;
-
-	psPVRSRVVzDaata = psPVRSRVData->hVzData;
-	OSLockAcquire(psPVRSRVVzDaata->hPvzLock);
+	OSLockAcquire(psPVRSRVData->hPvzConnectionLock);
 }
 
-static void
+static inline void
 PvzClientLockRelease(void)
 {
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-	PVRSRV_VIRTZ_DATA *psPVRSRVVzDaata;
-
-	psPVRSRVVzDaata = psPVRSRVData->hVzData;
-	OSLockRelease(psPVRSRVVzDaata->hPvzLock);
+	OSLockRelease(psPVRSRVData->hPvzConnectionLock);
 }
 
 /*
@@ -128,13 +122,14 @@ PvzClientCreateDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig,
 		psDevConfig->ui32IRQ = ui32IRQ;
 	}
 
+	PVR_ASSERT(psDevConfig->sRegsCpuPBase.uiAddr);
+	PVR_ASSERT(psDevConfig->ui32RegsSize);
+	PVR_ASSERT(psDevConfig->ui32IRQ);
+
 e0:
 	PvzClientLockRelease();
 	SysVzPvzConnectionRelease(psVmmPvz);
 
-	PVR_ASSERT(psDevConfig->sRegsCpuPBase.uiAddr);
-	PVR_ASSERT(psDevConfig->ui32RegsSize);
-	PVR_ASSERT(psDevConfig->ui32IRQ);
 	PVR_ASSERT(eError == PVRSRV_OK);
 	return eError;
 }

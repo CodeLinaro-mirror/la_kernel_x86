@@ -53,7 +53,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 static void per_cpu_cache_flush(void *arg)
 {
     PVR_UNREFERENCED_PARAMETER(arg);
+#if !defined(CONFIG_L4)
     wbinvd();
+#endif
 }
 
 PVRSRV_ERROR OSCPUOperation(PVRSRV_CACHE_OP uiCacheOp)
@@ -96,12 +98,14 @@ static void x86_flush_cache_range(const void *pvStart, const void *pvEnd)
 	mb();
 	for(pbBase = pbStart; pbBase < pbEnd; pbBase += boot_cpu_data.x86_clflush_size)
 	{
+#if !defined(CONFIG_L4)
 		clflush(pbBase);
+#endif
 	}
 	mb();
 }
 
-void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheFlushRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
@@ -115,7 +119,7 @@ void OSFlushCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 }
 
 
-void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheCleanRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                             void *pvVirtStart,
                             void *pvVirtEnd,
                             IMG_CPU_PHYADDR sCPUPhysStart,
@@ -129,7 +133,7 @@ void OSCleanCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 	x86_flush_cache_range(pvVirtStart, pvVirtEnd);
 }
 
-void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
+void OSCPUCacheInvalidateRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
                                  void *pvVirtStart,
                                  void *pvVirtEnd,
                                  IMG_CPU_PHYADDR sCPUPhysStart,
@@ -143,9 +147,8 @@ void OSInvalidateCPUCacheRangeKM(PVRSRV_DEVICE_NODE *psDevNode,
 	x86_flush_cache_range(pvVirtStart, pvVirtEnd);
 }
 
-PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(PVRSRV_CACHE_OP uiCacheOp)
+PVRSRV_CACHE_OP_ADDR_TYPE OSCPUCacheOpAddressType(void)
 {
-	PVR_UNREFERENCED_PARAMETER(uiCacheOp);
 	return PVRSRV_CACHE_OP_ADDR_TYPE_VIRTUAL;
 }
 

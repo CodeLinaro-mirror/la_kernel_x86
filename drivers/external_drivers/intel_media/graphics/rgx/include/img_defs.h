@@ -45,7 +45,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined (__IMG_DEFS_H__)
 #define __IMG_DEFS_H__
 
+#if defined(LINUX) && defined(__KERNEL__)
+#include <linux/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "img_types.h"
 
@@ -77,10 +81,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* True if the GCC version is at least the given version. False for older
  * versions of GCC, or other compilers.
  */
-#define GCC_VERSION_AT_LEAST(major, minor)						\
-	(defined(__GNUC__) && (										\
-		__GNUC__ > (major) ||									\
-		(__GNUC__ == (major) && __GNUC_MINOR__ >= (minor))))
+#define GCC_VERSION_AT_LEAST(major, minor) \
+	(__GNUC__ > (major) || \
+	(__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
 
 /* Ensure Clang's __has_extension macro is defined for all compilers so we
  * can use it safely in preprocessor conditionals.
@@ -192,19 +195,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#endif
 #endif /* UNDER_WDDM */
 #else
-	#if defined(LINUX) || defined(__METAG) || defined(__QNXNTO__)
-
+	#if (defined(LINUX) || defined(__QNXNTO__)) && defined(__KERNEL__)
+		#define IMG_INTERNAL
+		#define IMG_EXPORT
+		#define IMG_CALLCONV	
+	#elif defined(LINUX) || defined(__METAG) || defined(__QNXNTO__)
 		#define IMG_CALLCONV
 		#define C_CALLCONV
-		#if defined(__linux__) || defined(__QNXNTO__)
-			#define IMG_INTERNAL	__attribute__((visibility("hidden")))
-		#else
-			#define IMG_INTERNAL
-		#endif
-		#define IMG_EXPORT		__attribute__((visibility("default")))
-		#define IMG_IMPORT
-		#define IMG_RESTRICT	__restrict__
 
+		#if defined(__METAG)
+			#define IMG_INTERNAL
+		#else
+			#define IMG_INTERNAL    __attribute__((visibility("hidden")))
+		#endif
+
+		#define IMG_EXPORT      __attribute__((visibility("default")))
+		#define IMG_RESTRICT    __restrict__
 	#elif defined(INTEGRITY_OS)
 		#define IMG_CALLCONV
 		#define IMG_INTERNAL
@@ -212,17 +218,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		#define IMG_RESTRICT
 		#define C_CALLCONV
 		#define __cdecl
-		/* IMG_IMPORT is defined as IMG_EXPORT so that headers and implementations match.
-		 * Some compilers require the header to be declared IMPORT, while the implementation is declared EXPORT 
-		 */
-		#define	IMG_IMPORT	IMG_EXPORT 
-		#ifndef USE_CODE
-		#define IMG_ABORT()	printf("IMG_ABORT was called.\n")
 
+		#ifndef USE_CODE
+			#define IMG_ABORT() printf("IMG_ABORT was called.\n")
 		#endif
 	#else
 		#error("define an OS")
 	#endif
+
 #endif
 
 // Use default definition if not overridden
@@ -250,11 +253,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#define __malloc           __attribute__((malloc))
 
 	/* Bionic's <sys/cdefs.h> might have defined these already */
+	/* See https://android.googlesource.com/platform/bionic.git/+/master/libc/include/sys/cdefs.h */
 	#if !defined(__packed)
 		#define __packed           __attribute__((packed))
 	#endif
 	#if !defined(__aligned)
 		#define __aligned(n)       __attribute__((aligned(n)))
+	#endif
+	#if !defined(__noreturn)
+		#define __noreturn         __attribute__((noreturn))
 	#endif
 
 	/* That one compiler that supports attributes but doesn't support
@@ -265,6 +272,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		#define __printf(fmt, va)
 	#endif /* defined(__GNUC__) */
 
+	#define __user
+	#define __force
+	#define __iomem
 #else
 	/* Silently ignore those attributes */
 	#define __printf(fmt, va)
@@ -273,6 +283,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#define __must_check
 	#define __maybe_unused
 	#define __malloc
+
+	#if defined(_MSC_VER) || defined(CC_ARM)
+		#define __noreturn __declspec(noreturn)
+	#else
+		#define __noreturn
+	#endif
+
+	#define __user
+	#define __force
+	#define __iomem
 #endif
 
 
@@ -307,16 +327,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#define unlikely(x) (x)
 #endif
 
-
-#if defined(__noreturn)
-	/* Already defined by the Kernel */
-#elif defined(_MSC_VER) || defined(CC_ARM)
-	#define __noreturn __declspec(noreturn)
-#elif defined(__GNUC__) || defined(HAS_GNUC_ATTRIBUTES)
-	#define __noreturn __attribute__((noreturn))
-#else
-	#define __noreturn
+/* These two macros are also provided by the kernel */
+#ifndef BIT
+#define BIT(b) (1UL << (b))
 #endif
+
+#ifndef BIT_ULL
+#define BIT_ULL(b) (1ULL << (b))
+#endif
+
+#define BIT_SET(f, b)     BITMASK_SET((f),    BIT_ULL(b))
+#define BIT_UNSET(f, b)   BITMASK_UNSET((f),  BIT_ULL(b))
+#define BIT_TOGGLE(f, b)  BITMASK_TOGGLE((f), BIT_ULL(b))
+#define BIT_ISSET(f, b)   BITMASK_HAS((f),    BIT_ULL(b))
+
+#define BITMASK_SET(f, m)     (void) ((f) |= (m))
+#define BITMASK_UNSET(f, m)   (void) ((f) &= ~(m))
+#define BITMASK_TOGGLE(f, m)  (void) ((f) ^= (m))
+#define BITMASK_HAS(f, m)     (((f) & (m)) == (m)) /* the bits from the mask are all set */
 
 #ifndef MAX
 #define MAX(a,b) 					(((a) > (b)) ? (a) : (b))
@@ -326,17 +354,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define MIN(a,b) 					(((a) < (b)) ? (a) : (b))
 #endif
 
+#ifndef CLAMP
+#define CLAMP(min, max, n)  ((n) < (min) ? (min) : ((n) > (max) ? (max) : (n)))
+#endif
+
+
+#if defined(LINUX) && defined(__KERNEL__)
+	#include <linux/kernel.h>
+	#include <linux/bug.h>
+#endif
+
 /* Get a structures address from the address of a member */
 #define IMG_CONTAINER_OF(ptr, type, member) \
-	(type *) ((IMG_UINT8 *) (ptr) - offsetof(type, member))
+	(type *) ((uintptr_t) (ptr) - offsetof(type, member))
 
-/* The number of elements in a fixed-sized array, IMGs ARRAY_SIZE macro */
-#define IMG_ARR_NUM_ELEMS(ARR) \
-	(sizeof(ARR) / sizeof((ARR)[0]))
+/* The number of elements in a fixed-sized array */
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(ARR) (sizeof(ARR) / sizeof((ARR)[0]))
+#endif
 
 /* To guarantee that __func__ can be used, define it as a macro here if it
    isn't already provided by the compiler. */
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || (defined(__cplusplus) && __cplusplus < 201103L)
 #define __func__ __FUNCTION__
 #endif
 
@@ -349,7 +388,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	void operator=(const C&)
 #endif
 
-#if defined(SUPPORT_PVR_VALGRIND) && !defined(__METAG)
+#if defined(SUPPORT_PVR_VALGRIND) && !defined(__METAG) && !defined(__mips)
 	#include "/usr/include/valgrind/memcheck.h"
 
 	#define VG_MARK_INITIALIZED(pvData,ui32Size)  VALGRIND_MAKE_MEM_DEFINED(pvData,ui32Size)
@@ -394,7 +433,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * memory allocations. Some pointers are made 'volatile' to prevent
  * this optimisations being applied to writes through that particular pointer.
  */
-#if defined(__clang__) && defined(__aarch64__)
+#if defined(__clang__) && (defined(__arm64__) || defined(__aarch64__))
 #define NOLDSTOPT volatile
 /* after applying 'volatile' to a pointer, we may need to cast it to 'void *'
  * to keep it compatible with its existing uses

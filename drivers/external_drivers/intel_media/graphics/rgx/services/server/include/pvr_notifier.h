@@ -52,7 +52,10 @@ Command Complete Notifier Interface
 */ /***************************************************************************/
 
 typedef IMG_HANDLE PVRSRV_CMDCOMP_HANDLE;
+#ifndef _CMDCOMPNOTIFY_PFN_
 typedef void (*PFN_CMDCOMP_NOTIFY)(PVRSRV_CMDCOMP_HANDLE hCmdCompHandle);
+#define _CMDCOMPNOTIFY_PFN_
+#endif
 
 /**************************************************************************/ /*!
 @Function       PVRSRVCmdCompleteInit
@@ -122,6 +125,7 @@ Debug Notifier Interface
 #define DEBUG_REQUEST_SYNCCHECKPOINT    5
 #define DEBUG_REQUEST_HTB               6
 #define DEBUG_REQUEST_APPHINT           7
+#define DEBUG_REQUEST_FALLBACKSYNC      8
 
 #define DEBUG_REQUEST_VERBOSITY_LOW		0
 #define DEBUG_REQUEST_VERBOSITY_MEDIUM	1
@@ -135,22 +139,27 @@ Debug Notifier Interface
  * required as a local variable to serve as a file identifier for the printf
  * function if required.
  */
-#define PVR_DUMPDEBUG_LOG(...)             \
-	do                                          \
-	{                                           \
-			PVR_LOG((__VA_ARGS__));      \
+#define PVR_DUMPDEBUG_LOG(...)                                            \
+	do                                                                \
+	{                                                                 \
+		if (pfnDumpDebugPrintf)                                   \
+			pfnDumpDebugPrintf(pvDumpDebugFile, __VA_ARGS__); \
+		else                                                      \
+			PVR_LOG((__VA_ARGS__));                           \
 	} while(0)
 
 struct _PVRSRV_DEVICE_NODE_;
 
 typedef IMG_HANDLE PVRSRV_DBGREQ_HANDLE;
+#ifndef _DBGNOTIFY_PFNS_
 typedef void (DUMPDEBUG_PRINTF_FUNC)(void *pvDumpDebugFile,
 					const IMG_CHAR *pszFormat, ...);
 typedef void (*PFN_DBGREQ_NOTIFY)(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle,
 					IMG_UINT32 ui32VerbLevel,
 					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					void *pvDumpDebugFile);
-
+#define _DBGNOTIFY_PFNS_
+#endif
 
 /**************************************************************************/ /*!
 @Function       PVRSRVRegisterDbgTable

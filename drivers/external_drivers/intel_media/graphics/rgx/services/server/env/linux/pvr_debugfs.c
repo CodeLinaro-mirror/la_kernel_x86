@@ -59,7 +59,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVR_DEBUGFS_PVR_DPF_LEVEL      0
 #endif
 
-static struct dentry *gpsPVRDebugFSEntryDir = NULL;
+static struct dentry *gpsPVRDebugFSEntryDir;
 
 /* Lock used when adjusting refCounts and deleting entries */
 static struct mutex gDebugFSLock;
@@ -72,7 +72,7 @@ static struct mutex gDebugFSLock;
 typedef struct _PVR_DEBUGFS_RAW_DRIVER_STAT_
 {
 	OS_STATS_PRINT_FUNC *pfStatsPrint;
-	PVR_DEBUGFS_ENTRY_DATA *pvDebugFsEntry;
+	PPVR_DEBUGFS_ENTRY_DATA pvDebugFsEntry;
 } PVR_DEBUGFS_RAW_DRIVER_STAT;
 #endif
 
@@ -83,13 +83,13 @@ typedef struct _PVR_DEBUGFS_DRIVER_STAT_
 	PVRSRV_INC_STAT_MEM_REFCOUNT_FUNC	*pfnIncStatMemRefCount;
 	PVRSRV_DEC_STAT_MEM_REFCOUNT_FUNC	*pfnDecStatMemRefCount;
 	IMG_UINT32				ui32RefCount;
-	PVR_DEBUGFS_ENTRY_DATA	*pvDebugFSEntry;
+	PPVR_DEBUGFS_ENTRY_DATA	pvDebugFSEntry;
 } PVR_DEBUGFS_DRIVER_STAT;
 
 typedef struct _PVR_DEBUGFS_DIR_DATA_
 {
 	struct dentry *psDir;
-	PVR_DEBUGFS_DIR_DATA *psParentDir;
+	PPVR_DEBUGFS_DIR_DATA psParentDir;
 	IMG_UINT32	ui32RefCount;
 } PVR_DEBUGFS_DIR_DATA;
 
@@ -100,6 +100,13 @@ typedef struct _PVR_DEBUGFS_ENTRY_DATA_
 	IMG_UINT32	ui32RefCount;
 	PVR_DEBUGFS_DRIVER_STAT *psStatData;
 } PVR_DEBUGFS_ENTRY_DATA;
+
+typedef struct _PVR_DEBUGFS_BLOB_ENTRY_DATA_
+{
+	struct dentry *psEntry;
+	PVR_DEBUGFS_DIR_DATA *psParentDir;
+	struct debugfs_blob_wrapper blob;
+} PVR_DEBUGFS_BLOB_ENTRY_DATA;
 
 typedef struct _PVR_DEBUGFS_PRIV_DATA_
 {
@@ -113,8 +120,7 @@ typedef struct _PVR_DEBUGFS_PRIV_DATA_
 } PVR_DEBUGFS_PRIV_DATA;
 
 static IMG_BOOL _RefDirEntry(PVR_DEBUGFS_DIR_DATA *psDirEntry);
-static inline void _UnrefAndMaybeDestroyDirEntry(PVR_DEBUGFS_DIR_DATA **ppsDirEntry);
-static void _UnrefAndMaybeDestroyDirEntryWhileLocked(PVR_DEBUGFS_DIR_DATA **ppsDirEntry);
+static void _UnrefAndMaybeDestroyDirEntry(PVR_DEBUGFS_DIR_DATA **ppsDirEntry);
 static IMG_BOOL _RefDebugFSEntryNoLock(PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry);
 static void _UnrefAndMaybeDestroyDebugFSEntry(PVR_DEBUGFS_ENTRY_DATA **ppsDebugFSEntry);
 static IMG_BOOL _RefStatEntry(PVR_DEBUGFS_DRIVER_STAT *psStatEntry);
@@ -171,6 +177,11 @@ static void _DebugFSStatisticSeqStop(struct seq_file *psSeqFile, void *pvData)
 		{
 			/* drop reference on psStatData (held for duration of stat iteration) */
 			_UnrefAndMaybeDestroyStatEntry((void*)psStatData);
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: PVR_DEBUGFS_DRIVER_STAT has zero refcount",
+											__func__));
 		}
 	}
 	else
@@ -247,8 +258,8 @@ static int _DebugFSFileOpen(struct inode *psINode, struct file *psFile)
 {
 	PVR_DEBUGFS_PRIV_DATA *psPrivData;
 	int iResult = -EIO;
-	IMG_BOOL bRefRet = IMG_FALSE;
-	PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry = NULL;
+	IMG_BOOL bRefRet;
+	PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry;
 
 	mutex_lock(&gDebugFSLock);
 
@@ -327,7 +338,7 @@ static int _DebugFSFileClose(struct inode *psINode, struct file *psFile)
 	{
 		_UnrefAndMaybeDestroyDebugFSEntry(&psPrivData->psDebugFSEntry);
 	}
-	if (psPrivData->pfDecPvDataRefCnt)
+	if (psPrivData && psPrivData->pfDecPvDataRefCnt)
 	{
 		psPrivData->pfDecPvDataRefCnt(psPrivData->pvData);
 	}
@@ -348,7 +359,7 @@ static ssize_t _DebugFSFileWrite(struct file *psFile,
 		return -EIO;
 	}
 
-	return psPrivData->pfnWrite(pszBuffer, uiCount, *puiPosition, psPrivData->pvData);
+	return psPrivData->pfnWrite(pszBuffer, uiCount, puiPosition, psPrivData->pvData);
 }
 
 static const struct file_operations gsPVRDebugFSFileOps =
@@ -506,6 +517,8 @@ void PVRDebugFSRemoveEntryDir(PVR_DEBUGFS_DIR_DATA **ppsDir)
 @Input			psReadOps		Pointer to structure containing the necessary
 								functions to read from the entry.
 @Input			pfnWrite		Callback function used to write to the entry.
+								This function must update the offset pointer
+								before it returns.
 @Input			pvData			Private data to be passed to the read
 								functions, in the seq_file private member, and
 								the write function callback.
@@ -871,25 +884,43 @@ static IMG_BOOL _RefDirEntry(PVR_DEBUGFS_DIR_DATA *psDirEntry)
 	return bStatus;
 }
 
-static void _UnrefAndMaybeDestroyDirEntryWhileLocked(PVR_DEBUGFS_DIR_DATA **ppsDirEntry)
+/* decrements refCount on a directory and removes it if the count reaches
+ * 0, this function also walks recursively over parent directories and
+ * decrements refCount on them too
+ * note: it's safe to call this function with *ppsDirEntry pointing to NULL */
+static void _UnrefAndMaybeDestroyDirEntry(PVR_DEBUGFS_DIR_DATA **ppsDirEntry)
 {
-	PVR_DEBUGFS_DIR_DATA *psDirEntry = *ppsDirEntry;
+	PVR_DEBUGFS_DIR_DATA *psDirEntry, *psParentDir = NULL;
+	struct dentry *psDir = NULL;
 
-	PVR_ASSERT(psDirEntry != NULL && psDirEntry->psDir != NULL);
+	PVR_ASSERT(ppsDirEntry != NULL);
+
+	psDirEntry = *ppsDirEntry;
+
+	/* it's ok to call this function with NULL pointer */
+	if (psDirEntry == NULL)
+	{
+		return;
+	}
+
+	mutex_lock(&gDebugFSLock);
+
+	PVR_ASSERT(psDirEntry->psDir != NULL);
 
 	if (psDirEntry->ui32RefCount > 0)
 	{
 		/* Decrement refCount and free if now zero */
 		if (--psDirEntry->ui32RefCount == 0)
 		{
-			/* if parent directory is not gpsPVRDebugFSEntryDir, decrement its refCount */
-			debugfs_remove(psDirEntry->psDir);
-			if (psDirEntry->psParentDir)
-			{
-				_UnrefAndMaybeDestroyDirEntryWhileLocked(&psDirEntry->psParentDir);
-			}
-			OSFreeMemNoStats(psDirEntry);
+			psDir = psDirEntry->psDir;
+			psParentDir = psDirEntry->psParentDir;
+
+			psDirEntry->psDir = NULL;
+			psDirEntry->psParentDir = NULL;
+
 			*ppsDirEntry = NULL;
+
+			OSFreeMemNoStats(psDirEntry);
 		}
 	}
 	else
@@ -898,18 +929,20 @@ static void _UnrefAndMaybeDestroyDirEntryWhileLocked(PVR_DEBUGFS_DIR_DATA **ppsD
 		        " when ui32RefCount is zero", __FUNCTION__,
 		        psDirEntry->psDir->d_iname));
 	}
-}
 
-static inline void _UnrefAndMaybeDestroyDirEntry(PVR_DEBUGFS_DIR_DATA **ppsDirEntry)
-{
-	mutex_lock(&gDebugFSLock);
-	_UnrefAndMaybeDestroyDirEntryWhileLocked(ppsDirEntry);
+	/* unlock here so we don't have any relation with the locks that might
+	 * be taken in debugfs_remove() */
 	mutex_unlock(&gDebugFSLock);
+
+	debugfs_remove(psDir);
+
+	/* decrement refcount of parent directory */
+	_UnrefAndMaybeDestroyDirEntry(&psParentDir);
 }
 
 static IMG_BOOL _RefDebugFSEntryNoLock(PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry)
 {
-	IMG_BOOL bResult = IMG_FALSE;
+	IMG_BOOL bResult;
 
 	PVR_ASSERT(psDebugFSEntry != NULL);
 
@@ -926,8 +959,11 @@ static IMG_BOOL _RefDebugFSEntryNoLock(PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry)
 static void _UnrefAndMaybeDestroyDebugFSEntry(PVR_DEBUGFS_ENTRY_DATA **ppsDebugFSEntry)
 {
 	PVR_DEBUGFS_ENTRY_DATA *psDebugFSEntry;
+	PVR_DEBUGFS_DIR_DATA *psParentDir = NULL;
+	struct dentry *psEntry = NULL;
 
 	mutex_lock(&gDebugFSLock);
+
 	/* Decrement refCount of psDebugFSEntry, and free if now zero */
 	psDebugFSEntry = *ppsDebugFSEntry;
 	PVR_ASSERT(psDebugFSEntry != NULL);
@@ -936,44 +972,55 @@ static void _UnrefAndMaybeDestroyDebugFSEntry(PVR_DEBUGFS_ENTRY_DATA **ppsDebugF
 	{
 		if (--psDebugFSEntry->ui32RefCount == 0)
 		{
-			struct dentry *psEntry = psDebugFSEntry->psEntry;
+			psEntry = psDebugFSEntry->psEntry;
+			psParentDir = psDebugFSEntry->psParentDir;
 
 			if (psEntry)
 			{
-				/* Free any private data that was provided to debugfs_create_file() */
-				if (psEntry->d_inode->i_private != NULL)
-				{
-					PVR_DEBUGFS_PRIV_DATA *psPrivData = (PVR_DEBUGFS_PRIV_DATA*)psDebugFSEntry->psEntry->d_inode->i_private;
+				PVR_DEBUGFS_PRIV_DATA *psPrivData =
+				       (PVR_DEBUGFS_PRIV_DATA*) psEntry->d_inode->i_private;
 
+				/* set to NULL so nothing can reference this pointer, we have
+				 * a copy that will be used to free the memory */
+				*ppsDebugFSEntry = NULL;
+
+				/* Free any private data that was provided to debugfs_create_file() */
+				if (psPrivData != NULL)
+				{
 					psPrivData->bValid = IMG_FALSE;
 					psPrivData->psDebugFSEntry = NULL;
-					OSFreeMemNoStats(psEntry->d_inode->i_private);
 					psEntry->d_inode->i_private = NULL;
+					OSFreeMemNoStats(psPrivData);
 				}
-				debugfs_remove(psEntry);
-			}
-			/* decrement refcount of parent directory */
-			if (psDebugFSEntry->psParentDir)
-			{
-				_UnrefAndMaybeDestroyDirEntryWhileLocked(&psDebugFSEntry->psParentDir);
 			}
 
 			/* now free the memory allocated for psDebugFSEntry */
 			OSFreeMemNoStats(psDebugFSEntry);
-			*ppsDebugFSEntry = NULL;
 		}
 	}
 	else
 	{
-		PVR_DPF((PVR_DEBUGFS_PVR_DPF_LEVEL, "%s: Called to unref psDebugFSEntry '%s' when ui32RefCount is zero", __FUNCTION__, psDebugFSEntry->psEntry->d_iname));
+		PVR_DPF((PVR_DEBUGFS_PVR_DPF_LEVEL, "%s: Called to unref psDebugFSEntry"
+		        " '%s' when ui32RefCount is zero", __func__,
+		        psDebugFSEntry->psEntry->d_iname));
 	}
 
+	/* unlock here so we don't have any relation with the locks that might
+	 * be taken in debugfs_remove() */
 	mutex_unlock(&gDebugFSLock);
+
+	/* we should be able to do it outside of the lock now since
+	 * even if something opens the file the private data is already
+	 * NULL*/
+	debugfs_remove(psEntry);
+
+	/* decrement refcount of parent directory */
+	_UnrefAndMaybeDestroyDirEntry(&psParentDir);
 }
 
 static IMG_BOOL _RefStatEntry(PVR_DEBUGFS_DRIVER_STAT *psStatEntry)
 {
-	IMG_BOOL bResult = IMG_FALSE;
+	IMG_BOOL bResult;
 
 	PVR_ASSERT(psStatEntry != NULL);
 
@@ -1035,4 +1082,85 @@ static IMG_BOOL _UnrefAndMaybeDestroyStatEntry(PVR_DEBUGFS_DRIVER_STAT *psStatEn
 	}
 
 	return bResult;
+}
+
+int PVRDebugFSCreateBlobEntry(const char *pszName,
+			  PVR_DEBUGFS_DIR_DATA *psParentDir,
+			  void *pvData,
+			  unsigned long size,
+			  PVR_DEBUGFS_BLOB_ENTRY_DATA **ppsNewEntry)
+{
+	PVR_DEBUGFS_BLOB_ENTRY_DATA *psDebugFSEntry;
+	struct dentry *psEntry;
+	umode_t uiMode;
+
+	PVR_ASSERT(gpsPVRDebugFSEntryDir != NULL);
+
+	psDebugFSEntry = OSAllocMemNoStats(sizeof(*psDebugFSEntry));
+	if (psDebugFSEntry == NULL)
+	{
+		return -ENOMEM;
+	}
+
+	uiMode = S_IFREG | S_IRUGO;
+
+	psDebugFSEntry->psParentDir = psParentDir;
+	psDebugFSEntry->blob.data = pvData;
+	psDebugFSEntry->blob.size = size;
+
+	if (psDebugFSEntry->psParentDir)
+	{
+		/* increment refCount of parent directory */
+		if (!_RefDirEntry(psDebugFSEntry->psParentDir))
+		{
+			OSFreeMemNoStats(psDebugFSEntry);
+			return -EFAULT;
+		}
+	}
+
+	psEntry = debugfs_create_blob(pszName,
+			                      uiMode,
+								  (psParentDir != NULL) ? psParentDir->psDir : gpsPVRDebugFSEntryDir,
+								  &psDebugFSEntry->blob);
+	if (IS_ERR(psEntry))
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+			 "%s: Cannot create debugfs '%s' blob file",
+			 __FUNCTION__, pszName));
+
+		OSFreeMemNoStats(psDebugFSEntry);
+		return PTR_ERR(psEntry);
+	}
+
+	psDebugFSEntry->psEntry = psEntry;
+	*ppsNewEntry = (void*)psDebugFSEntry;
+
+	return 0;
+}
+
+void PVRDebugFSRemoveBlobEntry(PVR_DEBUGFS_BLOB_ENTRY_DATA **ppsDebugFSEntry)
+{
+	PVR_DEBUGFS_BLOB_ENTRY_DATA *psDebugFSEntry;
+	PVR_DEBUGFS_DIR_DATA *psParentDir = NULL;
+
+	mutex_lock(&gDebugFSLock);
+
+	PVR_ASSERT(ppsDebugFSEntry != NULL);
+	PVR_ASSERT(*ppsDebugFSEntry != NULL);
+
+	psDebugFSEntry = *ppsDebugFSEntry;
+	psParentDir = psDebugFSEntry->psParentDir;
+
+	*ppsDebugFSEntry = NULL;
+
+	mutex_unlock(&gDebugFSLock);
+
+	debugfs_remove(psDebugFSEntry->psEntry);
+
+	/* now free the memory allocated for psDebugFSEntry */
+	OSFreeMemNoStats(psDebugFSEntry);
+	*ppsDebugFSEntry = NULL;
+
+	/* decrement refcount of parent directory */
+	_UnrefAndMaybeDestroyDirEntry(&psParentDir);
 }

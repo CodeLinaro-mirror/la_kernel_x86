@@ -54,16 +54,30 @@ MODULE_INCLUDE_FLAGS := \
 
 ifneq ($(SUPPORT_ANDROID_PLATFORM),)
 
-_obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj
+MODULE_EXE_LDFLAGS := \
+ -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker64 -lc
 
-# Linker flags used to find system libraries.
-MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
- -L$(_obj)/lib \
- -Xlinker -rpath-link=$(_obj)/lib \
- -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64 \
- -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64
+MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC)
 
 ifeq ($(NDK_ROOT),)
+
+_obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj
+_lib := lib
+
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(_obj)/$(_lib) \
+ -Xlinker -rpath-link=$(_obj)/$(_lib) \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64
+ifneq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib64
+else
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib64
+endif
 
 MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libc/arch-arm64/include \
@@ -71,32 +85,71 @@ MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libm/include/arm64 \
  $(MODULE_INCLUDE_FLAGS)
 
+MODULE_ARCH_TAG := $(_obj)
+
 else # NDK_ROOT
 
-_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-arm64/usr
+MODULE_INCLUDE_FLAGS := \
+ -isystem $(NDK_SYSROOT)/usr/include/$(CROSS_TRIPLE) \
+ $(MODULE_INCLUDE_FLAGS)
+
+MODULE_LIBRARY_FLAGS_SUBST := \
+ art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libart.so \
+ RScpp:$(NDK_ROOT)/toolchains/renderscript/prebuilt/$(HOST_OS)-$(HOST_ARCH)/platform/arm64/libRScpp_static.a
+
+ifeq ($(wildcard $(NDK_ROOT)/out/local/arm64-v8a/libc++.so),)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_static.a$$(space)$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++abi.a \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+else
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/out/local/arm64-v8a/libc++.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -Xlinker -rpath-link=$(NDK_ROOT)/out/local/arm64-v8a
+endif
+
+ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
+
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64 \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64
+
+# Substitutions performed on MODULE_LIBRARY_FLAGS (NDK workarounds)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ nativewindow:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libnativewindow.so \
+ sync:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libsync.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+
+endif # !VNDK
+
+_obj := $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-arm64/usr
+_lib := lib
 
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS := \
- -L$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/arm64-v8a \
+ -L$(_obj)/$(_lib) \
+ -Xlinker -rpath-link=$(_obj)/$(_lib) \
  $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
+
+# Workaround; the VNDK platforms root lacks the crt files
+_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-arm64/usr
+_lib := lib
+
+MODULE_EXE_LDFLAGS := $(MODULE_EXE_LDFLAGS) $(LIBGCC) -Wl,--as-needed -ldl
+
+MODULE_ARCH_TAG := arm64-v8a
 
 endif # NDK_ROOT
 
-MODULE_EXE_CRTBEGIN := $(_obj)/lib/crtbegin_dynamic.o
-MODULE_EXE_CRTEND := $(_obj)/lib/crtend_android.o
-
-MODULE_LIB_CRTBEGIN := $(_obj)/lib/crtbegin_so.o
-MODULE_LIB_CRTEND := $(_obj)/lib/crtend_so.o
-
-MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
-
-MODULE_EXE_LDFLAGS := \
- -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker64 -lc
-
 MODULE_LIB_LDFLAGS := $(MODULE_EXE_LDFLAGS)
 
-MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC)
+MODULE_EXE_CRTBEGIN := $(_obj)/$(_lib)/crtbegin_dynamic.o
+MODULE_EXE_CRTEND := $(_obj)/$(_lib)/crtend_android.o
 
-MODULE_ARCH_TAG := $(_obj)
+MODULE_LIB_CRTBEGIN := $(_obj)/$(_lib)/crtbegin_so.o
+MODULE_LIB_CRTEND := $(_obj)/$(_lib)/crtend_so.o
+
+MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
 
 endif # SUPPORT_ANDROID_PLATFORM
 

@@ -53,7 +53,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <asm/hardirq.h>
 #include <linux/timer.h>
 #include <linux/capability.h>
-#include <asm/uaccess.h>
+#include <linux/freezer.h>
+#include <linux/uaccess.h>
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
@@ -61,13 +62,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "event.h"
 #include "pvr_debug.h"
 #include "pvrsrv.h"
+#include "pvr_bridge_k.h"
 
 #include "osfunc.h"
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 /* Returns pointer to task_struct that belongs to thread which acquired
  * bridge lock. */
 extern struct task_struct *BridgeLockGetOwner(void);
 extern IMG_BOOL BridgeLockIsLocked(void);
+#endif
 
 
 typedef struct PVRSRV_LINUX_EVENT_OBJECT_LIST_TAG
@@ -87,6 +91,11 @@ typedef struct PVRSRV_LINUX_EVENT_OBJECT_TAG
 #endif
 	wait_queue_head_t sWait;
 	struct list_head sList;
+	enum {
+		PVRSRV_LINUX_EVENT_OBJECT_NONE = 0,
+		PVRSRV_LINUX_EVENT_OBJECT_ALLOC = 1,
+		PVRSRV_LINUX_EVENT_OBJECT_FREE = 2
+	} eState;
 	PVRSRV_LINUX_EVENT_OBJECT_LIST *psLinuxEventObjectList;
 } PVRSRV_LINUX_EVENT_OBJECT;
 
@@ -178,6 +187,9 @@ PVRSRV_ERROR LinuxEventObjectDelete(IMG_HANDLE hOSEventObject)
 		PVRSRV_LINUX_EVENT_OBJECT *psLinuxEventObject = (PVRSRV_LINUX_EVENT_OBJECT *)hOSEventObject;
 		PVRSRV_LINUX_EVENT_OBJECT_LIST *psLinuxEventObjectList = psLinuxEventObject->psLinuxEventObjectList;
 
+		/* Mark for deletion to avoid race condition */
+		psLinuxEventObject->eState = PVRSRV_LINUX_EVENT_OBJECT_FREE;
+
 		write_lock_bh(&psLinuxEventObjectList->sLock);
 		list_del(&psLinuxEventObject->sList);
 		write_unlock_bh(&psLinuxEventObjectList->sLock);
@@ -223,6 +235,7 @@ PVRSRV_ERROR LinuxEventObjectAdd(IMG_HANDLE hOSEventObjectList, IMG_HANDLE *phOS
 	}
 
 	INIT_LIST_HEAD(&psLinuxEventObject->sList);
+	psLinuxEventObject->eState = PVRSRV_LINUX_EVENT_OBJECT_ALLOC;
 
 	atomic_set(&psLinuxEventObject->sTimeStamp, 0);
 	psLinuxEventObject->ui32TimeStampPrevious = 0;
@@ -269,14 +282,28 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
 	{
 
 		psLinuxEventObject = (PVRSRV_LINUX_EVENT_OBJECT *)list_entry(psListEntry, PVRSRV_LINUX_EVENT_OBJECT, sList);
-
-		atomic_inc(&psLinuxEventObject->sTimeStamp);
-		wake_up_interruptible(&psLinuxEventObject->sWait);
+		if (psLinuxEventObject->eState == PVRSRV_LINUX_EVENT_OBJECT_ALLOC) {
+			/* only access the struct if the object was not marked for deletion */
+			atomic_inc(&psLinuxEventObject->sTimeStamp);
+			wake_up_interruptible(&psLinuxEventObject->sWait);
+		}
 	}
 	read_unlock_bh(&psLinuxEventObjectList->sLock);
 
 	return 	PVRSRV_OK;
 
+}
+
+static void _TryToFreeze(void)
+{
+	/* if we reach zero it means that all of the threads called try_to_freeze */
+	LinuxBridgeNumActiveKernelThreadsDecrement();
+
+	/* Returns true if the thread was frozen, should we do anything with this
+	* information? What do we return? Which one is the error case? */
+	try_to_freeze();
+
+	LinuxBridgeNumActiveKernelThreadsIncrement();
 }
 
 /*!
@@ -295,10 +322,15 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
  @Return   PVRSRV_ERROR  :  Error code
 
 ******************************************************************************/
-PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT64 ui64Timeoutus, IMG_BOOL bHoldBridgeLock)
+PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject,
+                                  IMG_UINT64 ui64Timeoutus,
+                                  IMG_BOOL bHoldBridgeLock,
+                                  IMG_BOOL bFreezable)
 {
 	IMG_UINT32 ui32TimeStamp;
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 	IMG_BOOL bReleasePVRLock;
+#endif
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 	IMG_UINT32 ui32Remainder;
 	long timeOutJiffies;
@@ -327,9 +359,11 @@ PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT64 ui64Time
 
 		if(psLinuxEventObject->ui32TimeStampPrevious != ui32TimeStamp)
 		{
+			/* there is a pending signal so return without waiting */
 			break;
 		}
 
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 		/* Check thread holds the current PVR/bridge lock before obeying the
 		 * 'release before deschedule' behaviour. Some threads choose not to
 		 * hold the bridge lock in their implementation.
@@ -339,14 +373,23 @@ PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT64 ui64Time
 		{
 			OSReleaseBridgeLock();
 		}
+#else
+		PVR_UNREFERENCED_PARAMETER(bHoldBridgeLock);
+#endif
 
 		timeOutJiffies = schedule_timeout(timeOutJiffies);
 
+		if (bFreezable)
+		{
+			_TryToFreeze();
+		}
+
+#if defined(PVRSRV_USE_BRIDGE_LOCK)
 		if (bReleasePVRLock == IMG_TRUE)
 		{
 			OSAcquireBridgeLock();
 		}
-
+#endif
 #if defined(DEBUG)
 		psLinuxEventObject->ui32Stats++;
 #endif

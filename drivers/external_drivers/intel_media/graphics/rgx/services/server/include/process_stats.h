@@ -98,7 +98,8 @@ void  PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE eAllocType,
 								   void *pvCpuVAddr,
 								   IMG_CPU_PHYADDR sCpuPAddr,
 								   size_t uiBytes,
-								   void *pvPrivateData);
+								   void *pvPrivateData,
+								   IMG_PID uiPid);
 
 #if defined(PVRSRV_DEBUG_LINUX_MEMORY_STATS) && defined(DEBUG)
 void  _PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE eAllocType,
@@ -106,13 +107,17 @@ void  _PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE eAllocType,
 									IMG_CPU_PHYADDR sCpuPAddr,
 									size_t uiBytes,
 									void *pvPrivateData,
+									IMG_PID uiPid,
 									void *pvAllocFromFile, IMG_UINT32 ui32AllocFromLine);
 #endif
 void  PVRSRVStatsRemoveMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE eAllocType,
-									  IMG_UINT64 ui64Key);
+									  IMG_UINT64 ui64Key,
+									  IMG_PID uiPid);
 
 void PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE eAllocType,
-								 size_t uiBytes);
+								 size_t uiBytes,
+								 IMG_PID uiPid);
+
 /*
  * Increases the memory stat for eAllocType. Tracks the allocation size value
  * by inserting a value into a hash table with uiCpuVAddr as key.
@@ -120,10 +125,12 @@ void PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE eAllocType,
  */
 void PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE eAllocType,
 										 size_t uiBytes,
-										 IMG_UINT64 uiCpuVAddr);
+										 IMG_UINT64 uiCpuVAddr,
+										 IMG_PID uiPid);
 
 void PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE eAllocType,
-								 size_t uiBytes);
+								 size_t uiBytes,
+								 IMG_PID uiPid);
 
 void PVRSRVStatsDecrMemKAllocStat(size_t uiBytes,
 								  IMG_PID decrPID);
@@ -158,11 +165,12 @@ void  PVRSRVStatsUpdateFreelistStats(IMG_UINT32 ui32NumGrowReqByApp,
 									 IMG_UINT32 ui32InitFLPages,
 									 IMG_UINT32 ui32NumHighPages,
 									 IMG_PID	ownerPid);
-
+#if defined(PVRSRV_ENABLE_CACHEOP_STATS)
 void  PVRSRVStatsUpdateCacheOpStats(PVRSRV_CACHE_OP uiCacheOp,
 									IMG_UINT32 ui32OpSeqNum,
-#if defined(PVR_RI_DEBUG)
+#if defined(PVR_RI_DEBUG)  && defined(DEBUG)
 									IMG_DEV_VIRTADDR sDevVAddr,
+									IMG_DEV_PHYADDR sDevPAddr,
 									IMG_UINT32 eFenceOpType,
 #endif
 									IMG_DEVMEM_SIZE_T uiOffset,
@@ -170,10 +178,11 @@ void  PVRSRVStatsUpdateCacheOpStats(PVRSRV_CACHE_OP uiCacheOp,
 									IMG_UINT64 ui64ExecuteTimeMs,
 									IMG_BOOL bRangeBasedFlush,
 									IMG_BOOL bUserModeFlush,
-									IMG_BOOL bIsTimeline,
 									IMG_BOOL bIsFence,
 									IMG_PID ownerPid);
+#endif
 
+#if defined(PVRSRV_ENABLE_PROCESS_STATS)
 /* Update pre/post power transition timing statistics */
 void InsertPowerTimeStatistic(IMG_UINT64 ui64SysStartTime, IMG_UINT64 ui64SysEndTime,
                               IMG_UINT64 ui64DevStartTime, IMG_UINT64 ui64DevEndTime,
@@ -181,9 +190,25 @@ void InsertPowerTimeStatistic(IMG_UINT64 ui64SysStartTime, IMG_UINT64 ui64SysEnd
 
 void InsertPowerTimeStatisticExtraPre(IMG_UINT64 ui64StartTimer, IMG_UINT64 ui64Stoptimer);
 void InsertPowerTimeStatisticExtraPost(IMG_UINT64 ui64StartTimer, IMG_UINT64 ui64StopTimer);
+#else
+/* Update pre/post power transition timing statistics */
+static inline
+void InsertPowerTimeStatistic(IMG_UINT64 ui64SysStartTime, IMG_UINT64 ui64SysEndTime,
+                              IMG_UINT64 ui64DevStartTime, IMG_UINT64 ui64DevEndTime,
+                              IMG_BOOL bForced, IMG_BOOL bPowerOn, IMG_BOOL bPrePower) {}
+static inline
+void InsertPowerTimeStatisticExtraPre(IMG_UINT64 ui64StartTimer, IMG_UINT64 ui64Stoptimer) {}
+
+static inline
+void InsertPowerTimeStatisticExtraPost(IMG_UINT64 ui64StartTimer, IMG_UINT64 ui64StopTimer) {}
+#endif
 
 void SetFirmwareStartTime(IMG_UINT32 ui32TimeStamp);
 
 void SetFirmwareHandshakeIdleTime(IMG_UINT64 ui64Duration);
+
+/* Functions used for calculating the memory usage statistics of a process */
+PVRSRV_ERROR PVRSRVFindProcessMemStats(IMG_PID pid, IMG_UINT32 ui32ArrSize,
+                                       IMG_BOOL bAllProcessStats, IMG_UINT32 *ui32MemoryStats);
 
 #endif /* __PROCESS_STATS_H__ */

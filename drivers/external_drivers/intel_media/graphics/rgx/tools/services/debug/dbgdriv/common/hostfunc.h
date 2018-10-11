@@ -45,7 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*****************************************************************************
  Defines
 *****************************************************************************/
-#define HOST_PAGESIZE			(4096)
+#define HOST_PAGESIZE			(4096UL)
 #define DBG_MEMORY_INITIALIZER	(0xe2)
 
 /*****************************************************************************
@@ -65,6 +65,9 @@ void HostCreateRegDeclStreams(void);
 
 /* Direct macros for Linux to avoid LockDep false-positives from occurring */
 #if defined(LINUX) && defined(__KERNEL__)
+
+#undef HOST_PAGESIZE
+#define HOST_PAGESIZE (PAGE_SIZE)
 
 #include <linux/mutex.h>
 #include <linux/slab.h>

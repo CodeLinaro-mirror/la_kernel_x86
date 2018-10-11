@@ -44,16 +44,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "interrupt_support.h"
 #include "pvrsrv_device.h"
 #include "syscommon.h"
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-#include "vz_support.h"
-#endif
 #include "sysinfo.h"
 #include "sysconfig.h"
 #include "physheap.h"
 #if defined(SUPPORT_ION)
 #include "ion_support.h"
 #endif
+#include "vz_support.h"
 
+#include <linux/dma-mapping.h>
 #include <mach/platform.h>
 #include <mach/irqs.h>
 #include "sunxi_init.h"
@@ -62,12 +61,7 @@ static RGX_TIMING_INFORMATION	gsRGXTimingInfo;
 static RGX_DATA					gsRGXData;
 static PVRSRV_DEVICE_CONFIG 	gsDevices[1];
 static PHYS_HEAP_FUNCTIONS		gsPhysHeapFuncs;
-
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
 static PHYS_HEAP_CONFIG			gsPhysHeapConfig[2];
-#else
-static PHYS_HEAP_CONFIG			gsPhysHeapConfig[1];
-#endif
 
 /*
 	CPU to Device physical address translation
@@ -124,9 +118,11 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 		return PVRSRV_ERROR_INVALID_DEVICE;
 	}
 
+	dma_set_mask(pvOSDevice, DMA_BIT_MASK(40));
+
 	/* Sunxi Init */
 	RgxSunxiInit(&gsDevices[0]);
-	
+
 	/*
 	 * Setup information about physical memory heap(s) we have
 	 */
@@ -164,20 +160,21 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	gsDevices[0].sRegsCpuPBase.uiAddr   = SUNXI_GPU_PBASE;
 	gsDevices[0].ui32RegsSize           = SUNXI_GPU_SIZE;
 	gsDevices[0].ui32IRQ                = SUNXI_IRQ_GPU;
-	gsDevices[0].eCacheSnoopingMode     = PVRSRV_DEVICE_SNOOP_NONE;
+	gsDevices[0].eCacheSnoopingMode     = PVRSRV_DEVICE_SNOOP_EMULATED;
 
 	/* Device's physical heaps */
 	gsDevices[0].pasPhysHeaps = gsPhysHeapConfig;
-	gsDevices[0].ui32PhysHeapCount = IMG_ARR_NUM_ELEMS(gsPhysHeapConfig);
+	gsDevices[0].ui32PhysHeapCount = ARRAY_SIZE(gsPhysHeapConfig);
 
 	/* Device's physical heap IDs */
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = 0;
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_CPU_LOCAL] = 0;
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = 0;
+	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_EXTERNAL] = 0;
 
 	gsDevices[0].eBIFTilingMode = geBIFTilingMode;
 	gsDevices[0].pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides;
-	gsDevices[0].ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
+	gsDevices[0].ui32BIFTilingHeapCount = ARRAY_SIZE(gauiBIFTilingHeapXStrides);
 
 	/* Power management on SUNXI system */
 	gsDevices[0].pfnPrePowerState       = AwPrePowerState;
@@ -203,19 +200,14 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	IonInit(NULL);
 #endif
 
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	PVR_ASSERT(ui32NextPhysHeapID < IMG_ARR_NUM_ELEMS(gsPhysHeapConfig));
-
 	/* Virtualization support services needs to know which heap ID corresponds to FW */
+	PVR_ASSERT(ui32NextPhysHeapID < ARRAY_SIZE(gsPhysHeapConfig));
 	gsDevices[0].aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_FW_LOCAL] = ui32NextPhysHeapID;
 	gsPhysHeapConfig[ui32NextPhysHeapID].ui32PhysHeapID = ui32NextPhysHeapID;
 	gsPhysHeapConfig[ui32NextPhysHeapID].pszPDumpMemspaceName = "SYSMEM";
 	gsPhysHeapConfig[ui32NextPhysHeapID].eType = PHYS_HEAP_TYPE_UMA;
 	gsPhysHeapConfig[ui32NextPhysHeapID].psMemFuncs = &gsPhysHeapFuncs;
 	gsPhysHeapConfig[ui32NextPhysHeapID].hPrivData = NULL;
-
-	SysVzDevInit(&gsDevices[0]);
-#endif
 
 	*ppsDevConfig = &gsDevices[0];
 
@@ -224,10 +216,6 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 
 void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
 {
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
-	SysVzDevDeInit(psDevConfig);
-#endif
-
 	/* Sunxi DeInit */
 	RgxSunxiDeInit();
 
@@ -245,16 +233,9 @@ PVRSRV_ERROR SysInstallDeviceLISR(IMG_HANDLE hSysData,
 								  void *pvData,
 								  IMG_HANDLE *phLISRData)
 {
-	IMG_UINT32 ui32IRQFlags = SYS_IRQ_FLAG_TRIGGER_DEFAULT;
-
 	PVR_UNREFERENCED_PARAMETER(hSysData);
-
-#if defined(PVRSRV_GPUVIRT_MULTIDRV_MODEL)
-	ui32IRQFlags |= SYS_IRQ_FLAG_SHARED;
-#endif
-
 	return OSInstallSystemLISR(phLISRData, ui32IRQ, pszName, pfnLISR, pvData,
-							   ui32IRQFlags);
+							   SYS_IRQ_FLAG_TRIGGER_DEFAULT);
 }
 
 PVRSRV_ERROR SysUninstallDeviceLISR(IMG_HANDLE hLISRData)

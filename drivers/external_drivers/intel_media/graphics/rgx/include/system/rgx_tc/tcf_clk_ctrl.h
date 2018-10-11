@@ -45,6 +45,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define _TCF_CLK_CTRL_H_
 
 /*
+ * The following register definitions are valid if register 0x28 has value 0.
+ */
+
+/*
 	Register FPGA_ID_REG
 */
 #define TCF_CLK_CTRL_FPGA_ID_REG            0x0000
@@ -139,6 +143,72 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TCF_CORE_DES_REV_2_MASK             0xFFFFFFFFU
 #define TCF_CORE_DES_REV_2_SHIFT            0
 #define TCF_CORE_DES_REV_2_SIGNED           0
+
+
+/*
+ * The following register definitions are valid if register 0x28 has value 1.
+ */
+
+/*
+	Register ID
+*/
+#define TCF_CLK_CTRL_ID                     0x0000
+#define VARIANT_MASK                        0x0000FFFFU
+#define VARIANT_SHIFT                       0
+#define VARIANT_SIGNED                      0
+
+#define ID_MASK                             0xFFFF0000U
+#define ID_SHIFT                            16
+#define ID_SIGNED                           0
+
+/*
+	Register REL
+*/
+#define TCF_CLK_CTRL_REL                    0x0008
+#define MINOR_MASK                          0x0000FFFFU
+#define MINOR_SHIFT                         0
+#define MINOR_SIGNED                        0
+
+#define MAJOR_MASK                          0xFFFF0000U
+#define MAJOR_SHIFT                         16
+#define MAJOR_SIGNED                        0
+
+/*
+	Register CHANGE_SET
+*/
+#define TCF_CLK_CTRL_CHANGE_SET             0x0010
+#define SET_MASK                            0xFFFFFFFFU
+#define SET_SHIFT                           0
+#define SET_SIGNED                          0
+
+/*
+	Register USER_ID
+*/
+#define TCF_CLK_CTRL_USER_ID                0x0018
+#define USER_ID_MASK                        0x0000000FU
+#define USER_ID_SHIFT                       0
+#define USER_ID_SIGNED                      0
+
+/*
+	Register USER_BUILD
+*/
+#define TCF_CLK_CTRL_USER_BUILD             0x0020
+#define BUILD_MASK                          0xFFFFFFFFU
+#define BUILD_SHIFT                         0
+#define BUILD_SIGNED                        0
+
+/*
+	Register SW_IF_VERSION
+*/
+#define TCF_CLK_CTRL_SW_IF_VERSION          0x0028
+#define VERSION_MASK                        0x0000FFFFU
+#define VERSION_SHIFT                       0
+#define VERSION_SIGNED                      0
+
+/*
+ * The following register definitions are valid for all Apollo builds,
+ * even if some of the registers are not available for certain cores.
+ */
 
 /*
 	Register SCB_GENERAL_CONTROL
@@ -319,6 +389,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PCI_TEST_OFFSET_MASK                0xF8000000U
 #define PCI_TEST_OFFSET_SHIFT               27
 #define PCI_TEST_OFFSET_SIGNED              0
+
+#define PDP1_HOST_MEM_SELECT_MASK           0x00000200U
+#define PDP1_HOST_MEM_SELECT_SHIFT          9
+#define PDP1_HOST_MEM_SELECT_SIGNED         0
 
 #define HOST_PHY_MODE_MASK                  0x00000100U
 #define HOST_PHY_MODE_SHIFT                 8
@@ -633,17 +707,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	Register TCF_SPI_MST_ADDR_RDNWR
 */
 #define TCF_CLK_CTRL_TCF_SPI_MST_ADDR_RDNWR 0x0160
-#define TCF_SPI_MST_ADDR_MASK               0x00000FFFU
+#define TCF_SPI_MST_ADDR_MASK               0x0003FFFFU
 #define TCF_SPI_MST_ADDR_SHIFT              0
 #define TCF_SPI_MST_ADDR_SIGNED             0
 
-#define TCF_SPI_MST_RDNWR_MASK              0x00001000U
-#define TCF_SPI_MST_RDNWR_SHIFT             12
+#define TCF_SPI_MST_RDNWR_MASK              0x00040000U
+#define TCF_SPI_MST_RDNWR_SHIFT             18
 #define TCF_SPI_MST_RDNWR_SIGNED            0
 
-#define TCF_SPI_MST_SLAVE_ID_MASK           0x00010000U
-#define TCF_SPI_MST_SLAVE_ID_SHIFT          16
+#define TCF_SPI_MST_SLAVE_ID_MASK           0x00080000U
+#define TCF_SPI_MST_SLAVE_ID_SHIFT          19
 #define TCF_SPI_MST_SLAVE_ID_SIGNED         0
+
+#define TCF_SPI_MST_MASTER_ID_MASK          0x00300000U
+#define TCF_SPI_MST_MASTER_ID_SHIFT         20
+#define TCF_SPI_MST_MASTER_ID_SIGNED        0
 
 /*
 	Register TCF_SPI_MST_WDATA
@@ -800,6 +878,138 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define HOST_PHY_OFFSET_MASK                0xFFFFFFFFU
 #define HOST_PHY_OFFSET_SHIFT               0
 #define HOST_PHY_OFFSET_SIGNED              0
+
+/*
+	Register DEBUG_REG_SEL
+*/
+#define TCF_CLK_CTRL_DEBUG_REG_SEL          0x01F8
+#define DEBUG_REG_SELECT_MASK               0xFFFFFFFFU
+#define DEBUG_REG_SELECT_SHIFT              0
+#define DEBUG_REG_SELECT_SIGNED             0
+
+/*
+	Register DEBUG_REG
+*/
+#define TCF_CLK_CTRL_DEBUG_REG              0x0200
+#define DEBUG_REG_VALUE_MASK                0xFFFFFFFFU
+#define DEBUG_REG_VALUE_SHIFT               0
+#define DEBUG_REG_VALUE_SIGNED              0
+
+/*
+	Register JTAG_CTRL
+*/
+#define TCF_CLK_CTRL_JTAG_CTRL              0x0208
+#define JTAG_TRST_MASK                      0x00000001U
+#define JTAG_TRST_SHIFT                     0
+#define JTAG_TRST_SIGNED                    0
+
+#define JTAG_TMS_MASK                       0x00000002U
+#define JTAG_TMS_SHIFT                      1
+#define JTAG_TMS_SIGNED                     0
+
+#define JTAG_TCK_MASK                       0x00000004U
+#define JTAG_TCK_SHIFT                      2
+#define JTAG_TCK_SIGNED                     0
+
+#define JTAG_TDO_MASK                       0x00000008U
+#define JTAG_TDO_SHIFT                      3
+#define JTAG_TDO_SIGNED                     0
+
+#define JTAG_TDI_MASK                       0x00000010U
+#define JTAG_TDI_SHIFT                      4
+#define JTAG_TDI_SIGNED                     0
+
+#define JTAG_DASH_N_REG_MASK                0x40000000U
+#define JTAG_DASH_N_REG_SHIFT               30
+#define JTAG_DASH_N_REG_SIGNED              0
+
+#define JTAG_DISABLE_MASK                   0x80000000U
+#define JTAG_DISABLE_SHIFT                  31
+#define JTAG_DISABLE_SIGNED                 0
+
+/*
+	Register SAI_DEBUG_RDNWR
+*/
+#define TCF_CLK_CTRL_SAI_DEBUG_RDNWR        0x0300
+#define SAI_DEBUG_REG_ADDR_MASK             0x000001FFU
+#define SAI_DEBUG_REG_ADDR_SHIFT            0
+#define SAI_DEBUG_REG_ADDR_SIGNED           0
+
+#define SAI_DEBUG_REG_RDNWR_MASK            0x00000200U
+#define SAI_DEBUG_REG_RDNWR_SHIFT           9
+#define SAI_DEBUG_REG_RDNWR_SIGNED          0
+
+/*
+	Register SAI_DEBUG_WDATA
+*/
+#define TCF_CLK_CTRL_SAI_DEBUG_WDATA        0x0308
+#define SAI_DEBUG_REG_WDATA_MASK            0xFFFFFFFFU
+#define SAI_DEBUG_REG_WDATA_SHIFT           0
+#define SAI_DEBUG_REG_WDATA_SIGNED          0
+
+/*
+	Register SAI_DEBUG_RDATA
+*/
+#define TCF_CLK_CTRL_SAI_DEBUG_RDATA        0x0310
+#define SAI_DEBUG_REG_RDATA_MASK            0xFFFFFFFFU
+#define SAI_DEBUG_REG_RDATA_SHIFT           0
+#define SAI_DEBUG_REG_RDATA_SIGNED          0
+
+/*
+	Register SAI_DEBUG_GO
+*/
+#define TCF_CLK_CTRL_SAI_DEBUG_GO           0x0318
+#define SAI_DEBUG_REG_GO_MASK               0x00000001U
+#define SAI_DEBUG_REG_GO_SHIFT              0
+#define SAI_DEBUG_REG_GO_SIGNED             0
+
+/*
+	Register AUX_DUT_RESETS
+*/
+#define TCF_CLK_CTRL_AUX_DUT_RESETS         0x0320
+#define AUX_DUT_RESETS_MASK                 0x0000000FU
+#define AUX_DUT_RESETS_SHIFT                0
+#define AUX_DUT_RESETS_SIGNED               0
+
+/*
+	Register DUT_CLK_CTRL
+*/
+#define TCF_CLK_CTRL_DUT_CLK_CTRL           0x0328
+#define MEM_REQ_PHSE_MASK                   0x0000FFFFU
+#define MEM_REQ_PHSE_SHIFT                  0
+#define MEM_REQ_PHSE_SIGNED                 0
+
+/*
+	Register DUT_CLK_STATUS
+*/
+#define TCF_CLK_CTRL_DUT_CLK_STATUS         0x0330
+#define MEM_REQ_PHSE_SET_MASK               0x00000003U
+#define MEM_REQ_PHSE_SET_SHIFT              0
+#define MEM_REQ_PHSE_SET_SIGNED             0
+
+/*
+	Register DUT_CLK_INFO
+*/
+#define TCF_CLK_CTRL_DUT_CLK_INFO           0x0340
+#define CORE_MASK                           0x0000FFFFU
+#define CORE_SHIFT                          0
+#define CORE_SIGNED                         0
+
+#define MEM_MASK                            0xFFFF0000U
+#define MEM_SHIFT                           16
+#define MEM_SIGNED                          0
+
+/*
+	Register DUT_CLK_PHSE
+*/
+#define TCF_CLK_CTRL_DUT_CLK_PHSE           0x0348
+#define MEM_REQ_MASK                        0x0000FFFFU
+#define MEM_REQ_SHIFT                       0
+#define MEM_REQ_SIGNED                      0
+
+#define MEM_RD_MASK                         0xFFFF0000U
+#define MEM_RD_SHIFT                        16
+#define MEM_RD_SIGNED                       0
 
 #endif /* !defined(_TCF_CLK_CTRL_H_) */
 

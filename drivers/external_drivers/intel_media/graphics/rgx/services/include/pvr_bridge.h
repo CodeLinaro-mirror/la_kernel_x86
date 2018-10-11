@@ -84,6 +84,9 @@ extern "C" {
 #include "common_syncsexport_bridge.h"
 #endif
 #endif
+#if defined(SUPPORT_SECURE_EXPORT)
+#include "common_smm_bridge.h"
+#endif
 #if !defined(EXCLUDE_HTBUFFER_BRIDGE)
 #include "common_htbuffer_bridge.h"
 #endif
@@ -106,6 +109,10 @@ extern "C" {
 
 #if defined(SUPPORT_SYNCTRACKING_BRIDGE)
 #include "common_synctracking_bridge.h"
+#endif
+
+#if defined(SUPPORT_FALLBACK_FENCE_SYNC)
+#include "common_syncfallback_bridge.h"
 #endif
 
 /* 
@@ -340,10 +347,20 @@ extern "C" {
 #define PVRSRV_BRIDGE_SYNCTRACKING_DISPATCH_LAST (PVRSRV_BRIDGE_MMEXTMEM_DISPATCH_LAST)
 #endif
 
+/*  24: Sync tracking functions */
+#define PVRSRV_BRIDGE_SYNCFALLBACK				   24UL
+#if defined(SUPPORT_FALLBACK_FENCE_SYNC)
+#define PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_FIRST (PVRSRV_BRIDGE_SYNCTRACKING_DISPATCH_LAST + 1)
+#define PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_LAST  (PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_FIRST + PVRSRV_BRIDGE_SYNCFALLBACK_CMD_LAST)
+#else
+#define PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_FIRST 0
+#define PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_LAST (PVRSRV_BRIDGE_SYNCTRACKING_DISPATCH_LAST)
+#endif
+
 /* NB PVRSRV_BRIDGE_LAST below must be the last bridge group defined above (PVRSRV_BRIDGE_FEATURE) */
-#define PVRSRV_BRIDGE_LAST       			(PVRSRV_BRIDGE_SYNCTRACKING)
+#define PVRSRV_BRIDGE_LAST       			(PVRSRV_BRIDGE_SYNCFALLBACK)
 /* NB PVRSRV_BRIDGE_DISPATCH LAST below must be the last dispatch entry defined above (PVRSRV_BRIDGE_FEATURE_DISPATCH_LAST) */
-#define PVRSRV_BRIDGE_DISPATCH_LAST			(PVRSRV_BRIDGE_SYNCTRACKING_DISPATCH_LAST)
+#define PVRSRV_BRIDGE_DISPATCH_LAST			(PVRSRV_BRIDGE_SYNCFALLBACK_DISPATCH_LAST)
 
 /* bit mask representing the enabled PVR bridges */
 
@@ -406,6 +423,9 @@ static const IMG_UINT32 gui32PVRBridges =
 #if defined(SUPPORT_SYNCTRACKING_BRIDGE)
 	| (1U << (PVRSRV_BRIDGE_SYNCTRACKING - PVRSRV_BRIDGE_FIRST))
 #endif
+#if defined(SUPPORT_FALLBACK_FENCE_SYNC)
+	| (1U << (PVRSRV_BRIDGE_SYNCFALLBACK - PVRSRV_BRIDGE_FIRST))
+#endif
 	;
 
 /* bit field representing which PVR bridge groups may optionally not
@@ -431,9 +451,9 @@ typedef struct PVRSRV_BRIDGE_PACKAGE_TAG
 	IMG_UINT32				ui32BridgeID;			/*!< ioctl bridge group */
 	IMG_UINT32				ui32FunctionID;         /*!< ioctl function index */
 	IMG_UINT32				ui32Size;				/*!< size of structure */
-	void					*pvParamIn;				/*!< input data buffer */
+	void __user				*pvParamIn;				/*!< input data buffer */
 	IMG_UINT32				ui32InBufferSize;		/*!< size of input data buffer */
-	void					*pvParamOut;			/*!< output data buffer */
+	void __user				*pvParamOut;			/*!< output data buffer */
 	IMG_UINT32				ui32OutBufferSize;		/*!< size of output data buffer */
 }PVRSRV_BRIDGE_PACKAGE;
 

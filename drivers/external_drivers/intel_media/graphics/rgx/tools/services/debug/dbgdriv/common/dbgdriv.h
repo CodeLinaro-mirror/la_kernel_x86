@@ -58,6 +58,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 *****************************************************************************/
 extern void *	g_pvAPIMutex;
 
+extern DBGKM_SERVICE_TABLE g_sDBGKMServices;
+
 extern IMG_INT dbgdrv_init(void);
 extern void dbgdrv_cleanup(void);
 

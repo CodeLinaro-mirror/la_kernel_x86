@@ -5,7 +5,7 @@
 @Platform       Generic
 @Description    This file contains some helper code to make TBI logging possible
                 Specifically, it uses the SFIDLIST xmacro to trace ids back to
-				the original strings.
+                the original strings.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -54,34 +54,22 @@ static IMG_CHAR *const groups[]= {
 #undef X
 };
 
-typedef struct {
-	IMG_UINT32 id;
-	IMG_CHAR *name;
-} tuple; /*  pair of string format id and string formats */
-
-/*  The tuple pairs that will be generated using XMacros will be stored here.
- *   This macro definition must match the definition of SFids in rgx_fwif_sf.h */
-static const tuple SFs[]= {
-#define X(a, b, c, d, e) { RGXFW_LOG_CREATESFID(a,b,e) , d },
-	RGXFW_LOG_SFIDLIST
-#undef X
-};
- 
 /*  idToStringID : Search SFs tuples {id,string} for a matching id.
  *   return index to array if found or RGXFW_SF_LAST if none found.
  *   bsearch could be used as ids are in increasing order. */
-static IMG_UINT32 idToStringID(IMG_UINT32 ui32CheckData)
+static IMG_UINT32 idToStringID(IMG_UINT32 ui32CheckData, const RGXFW_STID_FMT *const psSFs)
 {
-	IMG_UINT32 i = 0 ;
-	for ( i = 0 ; SFs[i].id != RGXFW_SF_LAST ; i++)
+	IMG_UINT32 i = 0, ui32Id = RGXFW_SF_LAST ;
+
+	for ( i = 0 ; psSFs[i].ui32Id != RGXFW_SF_LAST ; i++)
 	{
-		if ( ui32CheckData == SFs[i].id )
+		if ( ui32CheckData == psSFs[i].ui32Id )
 		{
-			return i;
+			ui32Id = i;
+			break;
 		}
 	}
-	/* Nothing found, return max value */
-	return RGXFW_SF_LAST;
+	return ui32Id;
 }
 
 #endif /* _RGXFW_LOG_HELPER_H_ */

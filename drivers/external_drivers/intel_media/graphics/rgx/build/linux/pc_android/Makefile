@@ -56,8 +56,6 @@ include ../config/preconfig.mk
 RGX_BVNC ?= 1.82.4.5
 # TC BONNIE:
 #RGX_BVNC ?= 4.31.4.55
-# TC 5:
-#RGX_BVNC ?= 12.4.1.48
 
 include ../common/android/arch.mk
 include ../common/android/features.mk
@@ -65,20 +63,27 @@ include ../common/android/features.mk
 ifeq ($(NO_HARDWARE),1)
  PVR_SYSTEM := rgx_nohw
 else
- PVR_SYSTEM := rgx_linux_apollo
- DMABUF_IMPORT_PHYSHEAP_ID := 1
+ PVR_SYSTEM := rgx_linux_tc
  PVR_LDM_PLATFORM_PRE_REGISTERED := 1
+ # Heap names should be defined as per the labels used in the kernel.
+ # Kernels >=4.12, support heap query so we use heap names 
+ # to get the correct heap id.
+ # For kernels <4.12, we use heap_id_mask defined in this Makefile.
+ # Heap names defined here are for reference only.
+ ION_DEFAULT_HEAP_NAME := \"tc-pdp\"
  ION_DEFAULT_HEAP_ID_MASK := (1 << (ION_HEAP_TYPE_CUSTOM + 2))
  override TC_DISPLAY_MEM_SIZE := 384
+endif
+
+ifeq ($(call kernel-version-at-least,4,9),true)
+PVR_ANDROID_COMPOSERHAL ?= drm
 endif
 
 ifneq ($(NO_HARDWARE),1)
  ifeq ($(VIRTUAL_PLATFORM),1)
   DISPLAY_CONTROLLER ?= adf_pdp
  else
-   ifeq ($(RGX_BVNC),12.4.1.48)
-    DISPLAY_CONTROLLER ?= adf_tc5_pdp
-   else ifeq ($(PVR_ANDROID_COMPOSERHAL),drm)
+   ifeq ($(PVR_ANDROID_COMPOSERHAL),drm)
     DISPLAY_CONTROLLER ?= drm_pdp
     PVR_DRM_MODESET_DRIVER_NAME := pdp
     PVR_ANDROID_COMPOSERHAL_OVERRIDE_DEFAULT_MODE := 1
@@ -88,18 +93,23 @@ ifneq ($(NO_HARDWARE),1)
     DISPLAY_CONTROLLER ?= adf_pdp
    endif
  endif
- KERNEL_COMPONENTS += $(DISPLAY_CONTROLLER) apollo
+ KERNEL_COMPONENTS += tc $(DISPLAY_CONTROLLER)
 endif
 
 ifeq ($(SUPPORT_RGX),0)
 KERNEL_COMPONENTS := $(filter-out srvkm,$(KERNEL_COMPONENTS))
 endif
 
+# Turn this on to clear FBCDC memory in kernel mode
+# PVR_ANDROID_DEFER_CLEAR needs to be turned off
+#PVR_ANDROID_ION_FBCDC_ALLOC ?= 1
+
 PVR_ANDROID_DEFER_CLEAR ?= 1
-APOLLO_FAKE_INTERRUPTS ?= 0
+TC_FAKE_INTERRUPTS ?= 0
 
 ifeq ($(SUPPORT_FAKE_SECURE_ION_HEAP),1)
   ION_SECURE_HEAP_ID_MASK := (1 << (ION_HEAP_TYPE_CUSTOM + 3))
+  ION_SECURE_HEAP_NAME := \"tc-secure\"
   PVR_ANDROID_GRALLOC_ALLOC_SECURE := 1
 endif
 

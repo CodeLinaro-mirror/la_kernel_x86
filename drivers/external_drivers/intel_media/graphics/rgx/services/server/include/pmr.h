@@ -69,14 +69,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* services/server/include/ */
 #include "pmr_impl.h"
 #include "physheap.h"
+#include "opaque_types.h"
 
 #define PMR_MAX_TRANSLATION_STACK_ALLOC				(32)
 
 typedef IMG_UINT64 PMR_BASE_T;
 typedef IMG_UINT64 PMR_SIZE_T;
-#define PMR_SIZE_FMTSPEC "0x%010llX"
+#define PMR_SIZE_FMTSPEC "0x%010"IMG_UINT64_FMTSPECX
 #define PMR_VALUE32_FMTSPEC "0x%08X"
-#define PMR_VALUE64_FMTSPEC "0x%016llX"
+#define PMR_VALUE64_FMTSPEC "0x%016"IMG_UINT64_FMTSPECX
 typedef IMG_UINT32 PMR_LOG2ALIGN_T;
 typedef IMG_UINT64 PMR_PASSWORD_T;
 
@@ -90,14 +91,12 @@ struct _PMR_MAPPING_TABLE_
 };
 
 #define TRANSLATION_INVALID 0xFFFFFFFFUL
-#define INVALID_PAGE 0ULL
 
 typedef struct _PMR_EXPORT_ PMR_EXPORT;
 
 typedef struct _PMR_PAGELIST_ PMR_PAGELIST;
 
-typedef struct _CONNECTION_DATA_ CONNECTION_DATA;
-typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
+//typedef struct _PVRSRV_DEVICE_NODE_ *PPVRSRV_DEVICE_NODE;
 
 /*
  * PMRCreatePMR
@@ -172,7 +171,7 @@ typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
  *
  */
 extern PVRSRV_ERROR
-PMRCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
+PMRCreatePMR(PPVRSRV_DEVICE_NODE psDevNode,
              PHYS_HEAP *psPhysHeap,
              PMR_SIZE_T uiLogicalSize,
              PMR_SIZE_T uiChunkSize,
@@ -186,7 +185,7 @@ PMRCreatePMR(PVRSRV_DEVICE_NODE *psDevNode,
              PMR_IMPL_PRIVDATA pvPrivData,
              PMR_IMPL_TYPE eType,
              PMR **ppsPMRPtr,
-             IMG_BOOL bForcePersistent);
+             IMG_UINT32 ui32PDumpFlags);
 
 /*
  * PMRLockSysPhysAddresses()
@@ -374,9 +373,7 @@ PMRUnexportPMR(PMR_EXPORT *psPMRExport);
  * promising to later call PhysmemPMRUnimport()
  */
 extern PVRSRV_ERROR
-PMRImportPMR(CONNECTION_DATA *psConnection,
-             PVRSRV_DEVICE_NODE *psDevNode,
-             PMR_EXPORT *psPMRExport,
+PMRImportPMR(PMR_EXPORT *psPMRExport,
              PMR_PASSWORD_T uiPassword,
              PMR_SIZE_T uiSize,
              PMR_LOG2ALIGN_T uiLog2Contig,
@@ -424,8 +421,9 @@ PMRReleaseKernelMappingData(PMR *psPMR,
 #if defined(INTEGRITY_OS)
 extern PVRSRV_ERROR
 PMRMapMemoryObject(PMR *psPMR,
-                   IMG_HANDLE *phMemObj,
-                   IMG_HANDLE hPriv);
+                  IMG_HANDLE *phMemObj,
+                  void **pvClientAddr,
+                  IMG_HANDLE *phPrivOut);
 extern PVRSRV_ERROR
 PMRUnmapMemoryObject(PMR *psPMR,
                      IMG_HANDLE hPriv);
@@ -515,8 +513,17 @@ PMRUnrefPMR(PMR *psPMR);
 extern PVRSRV_ERROR
 PMRUnrefUnlockPMR(PMR *psPMR);
 
-extern PVRSRV_DEVICE_NODE *
+extern PPVRSRV_DEVICE_NODE
 PMR_DeviceNode(const PMR *psPMR);
+
+/*
+ * PMRIsPMRLive()
+ *
+ * This function returns true if the PMR is in use and false otherwise.
+ * This function is not thread safe and hence the caller
+ * needs to ensure the thread safety by explicitly taking
+ * the lock on the PMR or through other means */
+IMG_BOOL  PMRIsPMRLive(PMR *psPMR);
 
 /*
  * PMR_Flags()
@@ -534,11 +541,16 @@ PMR_Flags(const PMR *psPMR);
 extern IMG_BOOL
 PMR_IsSparse(const PMR *psPMR);
 
-
+extern IMG_BOOL
+PMR_IsUnpinned(const PMR *psPMR);
 
 extern PVRSRV_ERROR
 PMR_LogicalSize(const PMR *psPMR,
 				IMG_DEVMEM_SIZE_T *puiLogicalSize);
+
+extern PVRSRV_ERROR
+PMR_PhysicalSize(const PMR *psPMR,
+				 IMG_DEVMEM_SIZE_T *puiPhysicalSize);
 
 extern PHYS_HEAP *
 PMR_PhysHeap(const PMR *psPMR);
@@ -548,6 +560,10 @@ PMR_GetMappigTable(const PMR *psPMR);
 
 extern IMG_UINT32
 PMR_GetLog2Contiguity(const PMR *psPMR);
+
+extern const IMG_CHAR *
+PMR_GetAnnotation(const PMR *psPMR);
+
 /*
  * PMR_IsOffsetValid()
  *
@@ -625,7 +641,7 @@ PVRSRV_ERROR PMR_ChangeSparseMem(PMR *psPMR,
                                  IMG_UINT32 *pai32AllocIndices,
                                  IMG_UINT32 ui32FreePageCount,
                                  IMG_UINT32 *pai32FreeIndices,
-                                 IMG_UINT32	uiFlags);
+                                 IMG_UINT32	uiSparseFlags);
 
 /*
  * PMR_ChangeSparseMemCPUMap()
@@ -656,8 +672,8 @@ PDumpPMRMallocPMR(PMR *psPMR,
                   IMG_UINT32 uiLog2Contiguity,
                   IMG_BOOL bInitialise,
                   IMG_UINT32 ui32InitValue,
-                  IMG_BOOL bForcePersistent,
-                  IMG_HANDLE *phPDumpAllocInfoPtr);
+                  IMG_HANDLE *phPDumpAllocInfoPtr,
+                  IMG_UINT32 ui32PDumpFlags);
 
 extern void
 PDumpPMRFreePMR(PMR *psPMR,
@@ -719,6 +735,21 @@ PMRPDumpLoadMemValue32(PMR *psPMR,
                      PDUMP_FLAGS_T uiPDumpFlags);
 
 /*
+ * PMRPDumpCopyMem32
+ *
+ * Adds in the pdump script stream a copy of a dword in one PMR memory location
+ * to another PMR memory location.
+ *
+ */
+extern PVRSRV_ERROR
+PMRPDumpCopyMem32(PMR *psDstPMR,
+                  IMG_DEVMEM_OFFSET_T uiDstLogicalOffset,
+                  PMR *psSrcPMR,
+                  IMG_DEVMEM_OFFSET_T uiSrcLogicalOffset,
+                  const IMG_CHAR *pszTmpVar,
+                  PDUMP_FLAGS_T uiPDumpFlags);
+
+/*
  * PMRPDumpLoadMemValue64()
  *
  * writes the current contents of a dword in PMR memory to the pdump
@@ -731,6 +762,21 @@ PMRPDumpLoadMemValue64(PMR *psPMR,
 			         IMG_DEVMEM_OFFSET_T uiLogicalOffset,
                      IMG_UINT64 ui64Value,
                      PDUMP_FLAGS_T uiPDumpFlags);
+
+/*
+ * PMRPDumpCopyMem64
+ *
+ * Adds in the pdump script stream a copy of a quadword in one PMR memory location
+ * to another PMR memory location.
+ *
+ */
+extern PVRSRV_ERROR
+PMRPDumpCopyMem64(PMR *psDstPMR,
+                  IMG_DEVMEM_OFFSET_T uiDstLogicalOffset,
+                  PMR *psSrcPMR,
+                  IMG_DEVMEM_OFFSET_T uiSrcLogicalOffset,
+                  const IMG_CHAR *pszTmpVar,
+                  PDUMP_FLAGS_T uiPDumpFlags);
 
 /*
  * PMRPDumpLoadMem()
@@ -782,8 +828,8 @@ PDumpPMRMallocPMR(PMR *psPMR,
                   IMG_UINT32 uiLog2Contiguity,
                   IMG_BOOL bInitialise,
                   IMG_UINT32 ui32InitValue,
-                  IMG_BOOL bForcePersistent,
-                  IMG_HANDLE *phPDumpAllocInfoPtr)
+                  IMG_HANDLE *phPDumpAllocInfoPtr,
+                  IMG_UINT32 ui32PDumpFlags)
 {
 	PVR_UNREFERENCED_PARAMETER(psPMR);
 	PVR_UNREFERENCED_PARAMETER(uiSize);
@@ -794,8 +840,8 @@ PDumpPMRMallocPMR(PMR *psPMR,
 	PVR_UNREFERENCED_PARAMETER(uiLog2Contiguity);
 	PVR_UNREFERENCED_PARAMETER(bInitialise);
 	PVR_UNREFERENCED_PARAMETER(ui32InitValue);
-	PVR_UNREFERENCED_PARAMETER(bForcePersistent);
 	PVR_UNREFERENCED_PARAMETER(phPDumpAllocInfoPtr);
+	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
 }
 
 #ifdef INLINE_IS_PRAGMA
@@ -944,8 +990,8 @@ PMRPDumpSaveToFile(const PMR *psPMR,
    a bug in the implementation of the pmr subtype if this assertion
    ever fails. */
 extern void *
-PMRGetPrivateDataHack(const PMR *psPMR,
-                      const PMR_IMPL_FUNCTAB *psFuncTab);
+PMRGetPrivateData(const PMR *psPMR,
+                  const PMR_IMPL_FUNCTAB *psFuncTab);
 
 extern PVRSRV_ERROR
 PMRZeroingPMR(PMR *psPMR,
@@ -1024,6 +1070,9 @@ PMRPDumpCBP(const PMR *psPMR,
 	return PVRSRV_OK;
 }
 #endif
+
+extern PPVRSRV_DEVICE_NODE PMRGetExportDeviceNode(PMR_EXPORT *psExportPMR);
+
 /*
  * PMRInit()
  *

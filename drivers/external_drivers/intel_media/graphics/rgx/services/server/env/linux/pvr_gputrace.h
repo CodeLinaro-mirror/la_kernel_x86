@@ -44,7 +44,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVR_GPUTRACE_H_
 
 #include "img_types.h"
-#include "rgx_hwperf_km.h"
+#include "rgx_hwperf.h"
+#include "device.h"
 
 
 /******************************************************************************
@@ -56,6 +57,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   platform module to set and retrieve the feature's on/off state.
 */
 extern PVRSRV_ERROR PVRGpuTraceEnabledSet(IMG_BOOL bNewValue);
+extern PVRSRV_ERROR PVRGpuTraceEnabledSetNoBridgeLock(
+		PVRSRV_DEVICE_NODE *psDeviceNode,
+		IMG_BOOL bNewValue);
 
 /******************************************************************************
  Module In-bound API
@@ -70,6 +74,7 @@ typedef enum {
 } PVR_GPUTRACE_SWITCH_TYPE;
 
 void PVRGpuTraceClientWork(
+		PVRSRV_DEVICE_NODE *psDevNode,
 		const IMG_UINT32 ui32ExtJobRef,
 		const IMG_UINT32 ui32IntJobRef,
 		const IMG_CHAR* pszKickType);
@@ -103,18 +108,18 @@ void PVRGpuTraceEventsLost(
 		const IMG_UINT32 ui32CurrOrdinal);
 
 /* Early initialisation of GPU Ftrace events logic.
- * This function creates debugfs entry and initialises some necessary
- * structures. */
-PVRSRV_ERROR PVRGpuTraceInit(PVRSRV_DEVICE_NODE *psDeviceNode);
+ * This function initialises some necessary structures. */
+PVRSRV_ERROR PVRGpuTraceSupportInit(void);
+void PVRGpuTraceSupportDeInit(void);
 
-void PVRGpuTraceDeInit(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRGpuTraceInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
+void PVRGpuTraceDeInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 IMG_BOOL PVRGpuTraceEnabled(void);
-void PVRGpuTraceSetEnabled(IMG_BOOL bEnabled);
-IMG_BOOL PVRGpuTracePreEnabled(void);
-void PVRGpuTraceSetPreEnabled(IMG_BOOL bEnabled);
 
-/* FTrace events callbacks */
+void PVRGpuTraceInitAppHintCallbacks(const PVRSRV_DEVICE_NODE *psDeviceNode);
+
+/* FTrace events callbacks interface */
 
 void PVRGpuTraceEnableUfoCallback(void);
 void PVRGpuTraceDisableUfoCallback(void);

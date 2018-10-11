@@ -44,6 +44,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __RGX_HEAPS_H__
 
 #include "km/rgxdefs_km.h"
+#include "img_defs.h"
 #include "log2.h"
 #include "pvr_debug.h"
 
@@ -54,23 +55,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_GENERAL_SVM_HEAP_ID					0				/*!< RGX General SVM (shared virtual memory) Heap ID */
 #define RGX_GENERAL_HEAP_ID						1				/*!< RGX General Heap ID */
 #define RGX_GENERAL_NON4K_HEAP_ID				2				/*!< RGX General none-4K Heap ID */
-#define RGX_RGNHDR_BRN_63142__ID				3				/*!< RGX General Heap ID */
-#define RGX_PDSCODEDATA_HEAP_ID					4				/*!< RGX PDS Code/Data Heap ID */
-#define RGX_USCCODE_HEAP_ID						5				/*!< RGX USC Code Heap ID */
-#define RGX_FIRMWARE_HEAP_ID					6				/*!< RGX Firmware Heap ID */
-#define RGX_TQ3DPARAMETERS_HEAP_ID				7				/*!< RGX Firmware Heap ID */
-#define RGX_BIF_TILING_HEAP_1_ID				8				/*!< RGX BIF Tiling Heap 1 ID */
-#define RGX_BIF_TILING_HEAP_2_ID				9				/*!< RGX BIF Tiling Heap 2 ID */
-#define RGX_BIF_TILING_HEAP_3_ID				10				/*!< RGX BIF Tiling Heap 3 ID */
-#define RGX_BIF_TILING_HEAP_4_ID				11				/*!< RGX BIF Tiling Heap 4 ID */
-#define RGX_HWBRN37200_HEAP_ID					12				/*!< RGX HWBRN37200 */
-#define RGX_DOPPLER_HEAP_ID						13				/*!< Doppler Heap ID */
-#define RGX_DOPPLER_OVERFLOW_HEAP_ID			14				/*!< Doppler Overflow Heap ID */
-#define RGX_SERVICES_SIGNALS_HEAP_ID			15				/*!< Services Signals Heap ID */
-#define RGX_SIGNALS_HEAP_ID						16				/*!< Signals Heap ID */
-#define RGX_TDM_TPU_YUV_COEFFS_HEAP_ID          17
-#define RGX_GUEST_FIRMWARE_HEAP_ID				18				/*!< Additional OSIDs Firmware */
-#define RGX_MAX_HEAP_ID     	(RGX_GUEST_FIRMWARE_HEAP_ID + RGXFW_NUM_OS)	/*!< Max Valid Heap ID */
+#define RGX_RGNHDR_BRN_63142_HEAP_ID			3				/*!< RGX RgnHdr BRN63142 Heap ID */
+#define RGX_MMU_INIA_BRN_65273_ID				4				/*!< RGX MMU INIA Heap ID */
+#define RGX_MMU_INIB_BRN_65273_ID				5				/*!< RGX MMU INIB Heap ID */
+#define RGX_PDSCODEDATA_HEAP_ID					6				/*!< RGX PDS Code/Data Heap ID */
+#define RGX_USCCODE_HEAP_ID						7				/*!< RGX USC Code Heap ID */
+#define RGX_FIRMWARE_MAIN_HEAP_ID				8				/*!< RGX Main Firmware Heap ID */
+#define RGX_TQ3DPARAMETERS_HEAP_ID				9				/*!< RGX Firmware Heap ID */
+#define RGX_BIF_TILING_HEAP_1_ID				10				/*!< RGX BIF Tiling Heap 1 ID */
+#define RGX_BIF_TILING_HEAP_2_ID				11				/*!< RGX BIF Tiling Heap 2 ID */
+#define RGX_BIF_TILING_HEAP_3_ID				12				/*!< RGX BIF Tiling Heap 3 ID */
+#define RGX_BIF_TILING_HEAP_4_ID				13				/*!< RGX BIF Tiling Heap 4 ID */
+#define RGX_DOPPLER_HEAP_ID						14				/*!< Doppler Heap ID */
+#define RGX_DOPPLER_OVERFLOW_HEAP_ID			15				/*!< Doppler Overflow Heap ID */
+#define RGX_SERVICES_SIGNALS_HEAP_ID			16				/*!< Services Signals Heap ID */
+#define RGX_SIGNALS_HEAP_ID						17				/*!< Signals Heap ID */
+#define RGX_TDM_TPU_YUV_COEFFS_HEAP_ID			18
+#define RGX_FIRMWARE_CONFIG_HEAP_ID				19				/*!< Additional OSIDs Firmware */
+#define RGX_GUEST_FIRMWARE_RAW_HEAP_ID			21			/*!< Additional OSIDs Firmware */
+#define RGX_MAX_HEAP_ID		(RGX_GUEST_FIRMWARE_RAW_HEAP_ID + RGXFW_NUM_OS)	/*!< Max Valid Heap ID */
+
+
 
 /*
   Identify heaps by their names
@@ -79,6 +84,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_GENERAL_HEAP_IDENT 			"General"               /*!< RGX General Heap Identifier */
 #define RGX_GENERAL_NON4K_HEAP_IDENT	"General NON-4K"        /*!< RGX General non-4K Heap Identifier */
 #define RGX_RGNHDR_BRN_63142_HEAP_IDENT "RgnHdr BRN63142"       /*!< RGX RgnHdr BRN63142 Heap Identifier */
+#define RGX_MMU_INIA_BRN_65273_HEAP_IDENT "MMU INIA BRN65273"   /*!< MMU BRN65273 Heap A Identifier */
+#define RGX_MMU_INIB_BRN_65273_HEAP_IDENT "MMU INIB BRN65273"   /*!< MMU BRN65273 Heap B Identifier */
 #define RGX_PDSCODEDATA_HEAP_IDENT 		"PDS Code and Data"     /*!< RGX PDS Code/Data Heap Identifier */
 #define RGX_USCCODE_HEAP_IDENT			"USC Code"              /*!< RGX USC Code Heap Identifier */
 #define RGX_TQ3DPARAMETERS_HEAP_IDENT	"TQ3DParameters"        /*!< RGX TQ 3D Parameters Heap Identifier */
@@ -92,6 +99,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_SIGNALS_HEAP_IDENT	        "Signals"		        /*!< Signals Heap Identifier */
 #define RGX_VISTEST_HEAP_IDENT			"VisTest"				/*!< VisTest heap */
 #define RGX_TDM_TPU_YUV_COEFFS_HEAP_IDENT "TDM TPU YUV Coeffs"
+#define RGX_FIRMWARE_MAIN_HEAP_IDENT		"Firmware Main"
+#define RGX_FIRMWARE_CONFIG_HEAP_IDENT		"Firmware Config"
+#define RGX_FIRMWARE_GUEST_RAW_HEAP_IDENT	"Firmware Raw Guest %d"
 
 /* BIF tiling heaps have specific buffer requirements based on their XStride
  * configuration. This is detailed in the BIF tiling documentation and ensures
@@ -141,7 +151,7 @@ static INLINE IMG_UINT32 RGXHeapDerivePageSize(IMG_UINT32 uiLog2PageSize)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
 				"%s: Provided incompatible log2 page size %u",
-				__FUNCTION__,
+				__func__,
 				uiLog2PageSize));
 		PVR_ASSERT(0);
 		return 0;

@@ -60,23 +60,48 @@ OPK_DEFAULT := libpvrANDROID_WSEGL.so
 #
 KERNEL_COMPONENTS := srvkm
 
-# Kernel modules are always installed here under Android
+# Make sure all driver memory is zeroed at first use. This is a requirement
+# of the Android security model and should not be disabled.
 #
-ifeq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
-PVRSRV_MODULE_BASEDIR := /system/modules/
-APP_DESTDIR := /data/app
-BIN_DESTDIR := /system/vendor/bin
-FW_DESTDIR := /system/vendor/firmware
-else
-ifeq ($(is_at_least_nougat),0)
-# Platform versions prior to Nougat do not support installing system apps
-# without Java code (only natives) to /vendor due to a bug in ClassLoader.
-PVR_ANDROID_FORCE_APP_NATIVE_UNPACKED ?= 1
+PVR_LINUX_PHYSMEM_ZERO_ALL_PAGES ?= 1
+
+# If we are not using the VNDK (it's a full/standalone build) we probably
+# have build.prop files, ensuring that the system and vendor directories
+# exist under $OUT_DIR. We can use these to detect the partitioning.
+#
+ifeq ($(VNDK_ROOT),)
+ ifeq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
+  PVRSRV_MODULE_BASEDIR := /system/modules/
+  APP_DESTDIR := /data/app
+  BIN_DESTDIR := /system/vendor/bin
+  FW_DESTDIR := /system/vendor/firmware
+ endif
 endif
-PVRSRV_MODULE_BASEDIR := /vendor/modules/
-APP_DESTDIR := /vendor/app
-BIN_DESTDIR := /vendor/bin
-FW_DESTDIR := /vendor/firmware
+
+# If these weren't already set up, assume the /vendor partition exists
+# and install the DDK accordingly.
+#
+ifeq ($(PVRSRV_MODULE_BASEDIR)$(APP_DESTDIR)$(BIN_DESTDIR)$(FW_DESTDIR),)
+ ifeq ($(is_at_least_nougat),0)
+  # Platform versions prior to Nougat do not support installing system apps
+  # without Java code (only natives) to /vendor due to a bug in ClassLoader.
+  PVR_ANDROID_FORCE_APP_NATIVE_UNPACKED ?= 1
+ endif
+ PVRSRV_MODULE_BASEDIR := /vendor/modules/
+ APP_DESTDIR := /vendor/app
+ BIN_DESTDIR := /vendor/bin
+ FW_DESTDIR := /vendor/firmware
+endif
+
+# Some builds opt into 'compact installs', which avoids polluting the system
+# or vendor image with test applications, native executables or debugging
+# scripts.
+#
+SUPPORT_ANDROID_COMPACT_INSTALL ?= 0
+ifeq ($(SUPPORT_ANDROID_COMPACT_INSTALL),1)
+ APP_DESTDIR := /data/app
+ # This will be prepended to $($(THIS_MODULE)_target) by the build system
+ TEST_DESTDIR := /data/nativetest
 endif
 
 # Disable server sync and multi sync features in Services
@@ -95,31 +120,35 @@ FORTIFY ?= 1
 #
 COMPRESS_DEBUG_SECTIONS ?= 1
 
-# If the vncserver is being built, don't rely on libvncserver for now, and use
-# the IMG rfblite feature instead
-#
-REMOTE_WITH_LIBVNCSERVER ?= 0
-
 # Enable the memtrack_stats file required to support the Android memtrackhal
 #
 PVRSRV_ENABLE_MEMTRACK_STATS_FILE := 1
 
-# Enable stack trace functions by default
+# The <system/window.h> file provides the buffer_handle_t typedef
 #
-PVRSRV_NEED_PVR_STACKTRACE ?= 1
+PVR_ANDROID_SYSTEM_WINDOW_HAS_BUFFER_HANDLE_T := 1
 
-# If the Android tree has the testkey.pk8 file, set it up and enable firmware
-# signing. If the kernel source tree has a DER formatted version of the
-# testkey.x509.pem file, in-kernel signature verification can also be enabled,
+# Enable stack trace functions by default. This uses libutils.
+#
+ifeq ($(SUPPORT_ARC_PLATFORM),)
+PVRSRV_NEED_PVR_STACKTRACE_NATIVE ?= 1
+endif
+
+# If the kernel source tree has a DER formatted version of the
+# testkey.x509.pem file, in-kernel signature verification can be enabled,
 # and the Signer and KeyID fields will be added to the signature header.
 #
 RGX_FW_X509 ?= $(wildcard $(KERNELDIR)/testkey.x509)
 ifeq ($(RGX_FW_X509),)
 RGX_FW_X509 := $(wildcard $(KERNELDIR)/source/testkey.x509)
 endif
-RGX_FW_PK8 ?= $(wildcard $(ANDROID_ROOT)/build/target/product/security/testkey.pk8)
+RGX_FW_PK8 ?= build/linux/common/android/testkey.pk8
 ifneq ($(RGX_FW_PK8),)
-RGX_FW_SIGNED ?= 1
+ ifeq ($(call kernel-version-at-least,4,6),true)
+  $(warning Firmware signing is not implemented for kernels >= 4.6)
+ else
+  RGX_FW_SIGNED ?= 1
+ endif
 endif
 
 ##############################################################################
@@ -151,14 +180,16 @@ endif
 #
 SYS_CXXFLAGS := -fuse-cxa-atexit $(SYS_CFLAGS)
 ifeq ($(SUPPORT_ARC_PLATFORM),)
-SYS_CXXFLAGS += \
- -isystem $(LIBCXX_INCLUDE_PATH) -D_USING_LIBCXX
-SYS_KHRONOS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/frameworks/native/opengl/include
-ifeq ($(is_at_least_nougat),1)
-SYS_KHRONOS_INCLUDES += \
- -isystem $(ANDROID_ROOT)/frameworks/native/vulkan/include
-endif
+ SYS_CXXFLAGS += \
+  -isystem $(LIBCXX_INCLUDE_PATH) -D_USING_LIBCXX
+ ifeq ($(NDK_ROOT),)
+  SYS_KHRONOS_INCLUDES := \
+   -isystem $(ANDROID_ROOT)/frameworks/native/opengl/include
+  ifeq ($(is_at_least_nougat),1)
+   SYS_KHRONOS_INCLUDES += \
+    -isystem $(ANDROID_ROOT)/frameworks/native/vulkan/include
+  endif
+ endif
 endif
 
 ##############################################################################
@@ -206,6 +237,23 @@ SUPPORT_ANDROID_APPHINTS := 0
 PVR_ANDROID_HAS_HAL_PIXEL_FORMAT_sRGB ?= 1
 
 ##############################################################################
+# When building with the Android NDK at any API_LEVEL, always use the new
+# <android/sync.h> header instead of the old location. The NDK header layout
+# does not vary depending on API_LEVEL and it uses the modern scheme.
+#
+ifneq ($(NDK_ROOT),)
+PVR_ANDROID_HAS_ANDROID_SYNC_H ?= 1
+endif
+
+##############################################################################
+# Versions of Android prior to Marshmallow do not have clang atomics support,
+# so some platform library use require libcutils to be linked.
+#
+ifeq ($(is_at_least_marshmallow),0)
+LEGACY_USE_CUTILS ?= 1
+endif
+
+##############################################################################
 # Versions of Android prior to Nougat required Java 7 (OpenJDK).
 #
 ifeq ($(is_at_least_nougat),0)
@@ -240,7 +288,6 @@ endif
 #
 ifeq ($(is_at_least_marshmallow),1)
 PVR_ANDROID_HAS_SET_BUFFERS_DATASPACE ?= 1
-PVR_ANDROID_HAS_HAL_PIXEL_FORMAT_sRGB := 0
 endif
 
 ##############################################################################
@@ -316,11 +363,15 @@ endif
 #
 ifeq ($(is_at_least_nougat),1)
  ifeq ($(GLSLC),)
-  GLSLC ?= $(OUT_DIR)/host/$(HOST_OS)-$(HOST_ARCH)/bin/glslc
+  ifeq ($(NDK_ROOT),)
+   GLSLC ?= $(OUT_DIR)/host/$(HOST_OS)-$(HOST_PREBUILT_ARCH)/bin/glslc
+  else
+   GLSLC ?= $(NDK_ROOT)/shader-tools/$(HOST_OS)-$(HOST_ARCH)/glslc
+  endif
   ifeq ($(wildcard $(GLSLC)),)
    GLSLC := $(shell $(SHELL) -c "command -v glslc")
    ifeq ($(GLSLC),)
-    $(warning glslc could not be found. vkbonjour will be disabled.)
+    $(warning glslc could not be found.)
    endif
   endif
  endif
@@ -334,17 +385,137 @@ PVR_ANDROID_HAS_HAL_PIXEL_FORMAT_FLEX := 1
 endif
 
 ##############################################################################
+# Nougat changed the behaviour of core Surface class functions
+#
+ifeq ($(is_at_least_nougat),1)
+PVR_ANDROID_QUEUE_CANCEL_BUFFER_CLOSES_FENCE_ON_ERROR := 1
+endif
+
+##############################################################################
 # Nougat MR1 supports the new gralloc v1 API
 #
 ifeq ($(is_at_least_nougat_mr1),1)
 PVR_ANDROID_HAS_GRALLOC_1 ?= 1
 endif
 
-##############################################################################
-# Currently a lot of deqp/conformance tests can't deal with this extension.
-# Turn it off for the time being.
+# On Android O, we can't use the blob cache from the OpenCL driver, because
+# it is not an updatable component yet it depends on libIMGegl.so which is
+# updatable. We need to avoid binary conflicts by avoiding direct or indirect
+# linkage to libIMGegl.so.
 #
-EGL_EXTENSION_YUV_SURFACE := 0
+ifeq ($(is_at_least_oreo),1)
+OCL_USE_KERNEL_BLOB_CACHE ?= 0
+OCL_USE_EGL_SHARING ?= 0
+OCL_USE_GRALLOC_IMAGE_SHARING ?= 1
+endif
+
+# On Android O, we want to insulate the OpenCL library more from other DDK
+# components, so it can remain non-updated and the other parts can be updated
+# from the Play Store. We therefore need to eliminate its dependency on the
+# runtime loadable version of the uniflex writer.
+#
+ifeq ($(is_at_least_oreo),1)
+OCL_ONLINE_COMPILER_DIRECTLY_LINKED ?= 1
+endif
+
+# On Android O, link the pvrANDROID_WSEGL module directly into IMGEGL. This
+# cuts down on unnecessary dynamic library dependencies.
+#
+ifeq ($(is_at_least_oreo),1)
+EGL_WSEGL_DIRECTLY_LINKED ?= 1
+endif
+
+# On Android O, the renderscript cache directory must be queried directly
+# from the context, rather than being inferred by the driver.
+#
+ifeq ($(is_at_least_oreo),1)
+override PVR_ANDROID_RS_CONTEXT_HAS_GET_CACHE_DIR := 1
+endif
+
+# On Android O, gralloc1 must advertise the 'layered buffers' capability.
+#
+ifeq ($(is_at_least_oreo),1)
+PVR_ANDROID_HAS_GRALLOC1_CAPABILITY_LAYERED_BUFFERS ?= 1
+endif
+
+# On Android O, gralloc1 RELEASE implies object deletion and this must be
+# advertised to the framework. On N MR1, gralloc1 continues to use the old
+# RELEASE behaviour.
+#
+ifeq ($(is_at_least_oreo),1)
+override PVR_ANDROID_HAS_GRALLOC1_CAPABILITY_RELEASE_IMPLY_DELETE := 1
+endif
+
+# On Android O, new pixel formats must be supported by gralloc.
+#
+ifeq ($(is_at_least_oreo),1)
+PVR_ANDROID_HAS_HAL_PIXEL_FORMAT_RGBA_1010102 ?= 1
+PVR_ANDROID_HAS_HAL_PIXEL_FORMAT_RGBA_FP16 ?= 1
+PVR_ANDROID_HAS_HAL_DATASPACE_SCRGB ?= 1
+PVR_ANDROID_HAS_HAL_DATASPACE_DISPLAY_P3 ?= 1
+PVR_ANDROID_HAS_HAL_DATASPACE_BT2020 ?= 1
+endif
+
+# On Android O, composition timings can be obtained directly from the
+# platform without workarounds. Use the new method on O.
+ifeq ($(is_at_least_oreo),1)
+PVR_ANDROID_HAS_COMPOSITION_TIMINGS ?= 1
+endif
+
+# On Android O, there is a new hardware_buffer interface that the DDK must
+# use. This is provided by the VNDK.
+#
+ifeq ($(is_at_least_oreo),1)
+override PVR_ANDROID_HAS_HARDWARE_BUFFER := 1
+endif
+
+# On Android O, the <sync/sync.h> file was moved to <android/sync.h> for
+# DDK use. A symlink was left for legacy reasons, but it conflicts with
+# the NDK. Tell the driver to avoid using the symlink compatibility.
+#
+ifeq ($(is_at_least_oreo),1)
+override PVR_ANDROID_HAS_ANDROID_SYNC_H := 1
+endif
+
+# On Android O, a new native window query has been added to test a window
+# for validity. This is called by apps and the framework so it must be
+# supported in our 'testwrap' framework.
+# NOTE: This feature has not been reconciled into AOSP master.
+#
+ifeq ($(is_at_least_oreo),1)
+PVR_ANDROID_HAS_NATIVE_WINDOW_IS_VALID ?= 1
+endif
+
+# From Android O mr1, use the HIDL interface.
+ifeq ($(is_at_least_oreo_mr1),1)
+PVR_DEBUGGER_SUPPORTS_HIDL_API ?= 1
+endif
+
+# If this is newer than oreo-mr1, <system/window.h> provides the typedef for
+# buffer_handle_t. Otherwise, it is provided by <cutils/native_handle.h>.
+# Handle this build issue here.
+#
+ifeq ($(is_at_least_oreo_mr1),1)
+override PVR_ANDROID_SYSTEM_WINDOW_HAS_BUFFER_HANDLE_T := 0
+endif
+
+# Oreo has the neural networks hal
+#
+ifeq ($(is_at_least_oreo_mr1),1)
+ ifeq ($(filter nnhal,$(EXCLUDED_APIS)),)
+  ifeq ($(filter opencl,$(EXCLUDED_APIS)),)
+   COMPONENTS += nnhal nnhal_init_rc nnhal_unit_test
+  else
+   $(warning Excluding nnhal because opencl is excluded in this build.)
+  endif
+ endif
+endif
+
+ifeq ($(is_aosp_master),1)
+# libutilscallstack is a private VNDK-SP which not be exposed to vendors and
+# libunwind and libbacktrace are in the same position.
+ PVRSRV_NEED_PVR_STACKTRACE_NATIVE := 0
+endif
 
 # Placeholder for future version handling
 #

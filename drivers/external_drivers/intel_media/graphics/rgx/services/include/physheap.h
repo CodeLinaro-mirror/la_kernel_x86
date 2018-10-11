@@ -78,8 +78,9 @@ typedef enum _PHYS_HEAP_TYPE_
 	PHYS_HEAP_TYPE_UNKNOWN = 0,
 	PHYS_HEAP_TYPE_UMA,
 	PHYS_HEAP_TYPE_LMA,
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
 	PHYS_HEAP_TYPE_DMA,
+#if defined(SUPPORT_WRAP_EXTMEMOBJECT)
+	PHYS_HEAP_TYPE_WRAP,
 #endif
 } PHYS_HEAP_TYPE;
 
@@ -88,10 +89,8 @@ typedef struct _PHYS_HEAP_REGION_
 	IMG_CPU_PHYADDR			sStartAddr;
 	IMG_DEV_PHYADDR			sCardBase;
 	IMG_UINT64				uiSize;
-#if defined(SUPPORT_PVRSRV_GPUVIRT)
+
 	IMG_HANDLE				hPrivData;
-	IMG_BOOL				bDynAlloc;
-#endif
 } PHYS_HEAP_REGION;
 
 typedef struct _PHYS_HEAP_CONFIG_
@@ -103,6 +102,7 @@ typedef struct _PHYS_HEAP_CONFIG_
 
 	PHYS_HEAP_REGION		*pasRegions;
 	IMG_UINT32				ui32NumOfRegions;
+	IMG_BOOL				bDynAlloc;
 
 	IMG_HANDLE				hPrivData;
 } PHYS_HEAP_CONFIG;

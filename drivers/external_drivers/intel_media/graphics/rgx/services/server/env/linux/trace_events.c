@@ -39,6 +39,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/version.h>
 #include <linux/sched.h>
 
 #include "img_types.h"
@@ -47,6 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define CREATE_TRACE_POINTS
 #endif
 #include "rogue_trace_events.h"
+#include "sync_checkpoint_external.h"
 
 static bool fence_update_event_enabled, fence_check_event_enabled;
 
@@ -66,9 +68,17 @@ bool trace_rogue_are_fence_checks_traced(void)
  * simply a no-op, there is no harm in it.
  */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+int trace_fence_update_enabled_callback(void)
+#else
 void trace_fence_update_enabled_callback(void)
+#endif
 {
 	fence_update_event_enabled = true;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+	return 0;
+#endif
 }
 
 void trace_fence_update_disabled_callback(void)
@@ -76,9 +86,17 @@ void trace_fence_update_disabled_callback(void)
 	fence_update_event_enabled = false;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+int trace_fence_check_enabled_callback(void)
+#else
 void trace_fence_check_enabled_callback(void)
+#endif
 {
 	fence_check_event_enabled = true;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+	return 0;
+#endif
 }
 
 void trace_fence_check_disabled_callback(void)
@@ -99,7 +117,7 @@ void trace_rogue_fence_updates(const char *cmd, const char *dm, IMG_UINT32 ui32F
 	for (i = 0; i < uCount; i++)
 	{
 		trace_rogue_fence_update(current->comm, cmd, dm, ui32FWContext, ui32Offset,
-								 pauiAddresses[i].ui32Addr, paui32Values[i]);
+								 pauiAddresses[i].ui32Addr, PVRSRV_SYNC_CHECKPOINT_SIGNALLED);
 	}
 }
 
@@ -113,7 +131,7 @@ void trace_rogue_fence_checks(const char *cmd, const char *dm, IMG_UINT32 ui32FW
 	for (i = 0; i < uCount; i++)
 	{
 		trace_rogue_fence_check(current->comm, cmd, dm, ui32FWContext, ui32Offset,
-							  pauiAddresses[i].ui32Addr, paui32Values[i]);
+							  pauiAddresses[i].ui32Addr, PVRSRV_SYNC_CHECKPOINT_SIGNALLED);
 	}
 }
 
@@ -194,4 +212,20 @@ void trace_rogue_ufo_checks_fail(IMG_UINT64 ui64OSTimestamp,
 	}
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
+
+int PVRGpuTraceEnableUfoCallbackWrapper(void)
+{
+	PVRGpuTraceEnableUfoCallback();
+
+	return 0;
+}
+
+int PVRGpuTraceEnableFirmwareActivityCallbackWrapper(void)
+{
+	PVRGpuTraceEnableFirmwareActivityCallback();
+
+	return 0;
+}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)) */
 #endif /* defined(SUPPORT_GPUTRACE_EVENTS) */

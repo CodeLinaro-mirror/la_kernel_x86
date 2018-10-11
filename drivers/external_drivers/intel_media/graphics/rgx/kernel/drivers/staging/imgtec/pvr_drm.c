@@ -59,38 +59,31 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrversion.h"
 #include "services_kernel_client.h"
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0))
-#define DRIVER_RENDER 0
-#define DRM_RENDER_ALLOW 0
-#endif
+#include "kernel_compatibility.h"
 
 #define PVR_DRM_DRIVER_NAME PVR_DRM_NAME
 #define PVR_DRM_DRIVER_DESC "Imagination Technologies PVR DRM"
-#define	PVR_DRM_DRIVER_DATE "20110701"
+#define	PVR_DRM_DRIVER_DATE "20170530"
 
-static struct _PVRSRV_DEVICE_NODE_ *gpsdev_node;
-
-void *pvr_device_acquire(void)
-{
-	return (void *)gpsdev_node;
-}
 
 static int pvr_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
+	struct pvr_drm_private *priv = ddev->dev_private;
 
 	DRM_DEBUG_DRIVER("device %p\n", dev);
 
-	return PVRSRVCommonDeviceSuspend(gpsdev_node);
+	return PVRSRVCommonDeviceSuspend(priv->dev_node);
 }
 
 static int pvr_pm_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
+	struct pvr_drm_private *priv = ddev->dev_private;
 
 	DRM_DEBUG_DRIVER("device %p\n", dev);
 
-	return PVRSRVCommonDeviceResume(gpsdev_node);
+	return PVRSRVCommonDeviceResume(priv->dev_node);
 }
 
 const struct dev_pm_ops pvr_pm_ops = {
@@ -98,22 +91,48 @@ const struct dev_pm_ops pvr_pm_ops = {
 	.resume = pvr_pm_resume,
 };
 
- int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0))
+static
+#endif
+int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
 {
-	struct _PVRSRV_DEVICE_NODE_ *dev_node = NULL;
+	struct pvr_drm_private *priv;
 	enum PVRSRV_ERROR srv_err;
-	int err;
+	int err, deviceId;
 
 	DRM_DEBUG_DRIVER("device %p\n", ddev->dev);
 
-	/*
-	 * The equivalent is done for PCI modesetting drivers by
-	 * drm_get_pci_dev()
-	 */
-	if (ddev->platformdev)
-		platform_set_drvdata(ddev->platformdev, ddev);
+	dev_set_drvdata(ddev->dev, ddev);
 
-	srv_err = PVRSRVDeviceCreate(ddev->dev, &dev_node);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0))
+	/* older kernels do not have render drm_minor member in drm_device,
+	 * so we fallback to primary node for device identification */
+	deviceId = ddev->primary->index;
+#else
+	if (ddev->render)
+		deviceId = ddev->render->index;
+	else /* when render node is NULL, fallback to primary node */
+		deviceId = ddev->primary->index;
+#endif
+
+	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
+	if (!priv) {
+		err = -ENOMEM;
+		goto err_exit;
+	}
+	ddev->dev_private = priv;
+
+#if defined(SUPPORT_BUFFER_SYNC) || defined(SUPPORT_NATIVE_FENCE_SYNC)
+	priv->fence_status_wq = create_freezable_workqueue("pvr_fce_status");
+	if (!priv->fence_status_wq) {
+		DRM_ERROR("failed to create fence status workqueue\n");
+		err = -ENOMEM;
+		goto err_free_priv;
+	}
+#endif
+
+	srv_err = PVRSRVDeviceCreate(ddev->dev, deviceId, &priv->dev_node);
 	if (srv_err != PVRSRV_OK) {
 		DRM_ERROR("failed to create device node for device %p (%s)\n",
 			  ddev->dev, PVRSRVGetErrorStringKM(srv_err));
@@ -121,39 +140,66 @@ const struct dev_pm_ops pvr_pm_ops = {
 			err = -EPROBE_DEFER;
 		else
 			err = -ENODEV;
-		goto err_exit;
+		goto err_workqueue_destroy;
 	}
 
-	err = PVRSRVCommonDeviceInit(dev_node);
+	err = PVRSRVCommonDeviceInit(priv->dev_node);
 	if (err) {
 		DRM_ERROR("device %p initialisation failed (err=%d)\n",
 			  ddev->dev, err);
 		goto err_device_destroy;
 	}
 
-	gpsdev_node = dev_node;
+	drm_mode_config_init(ddev);
 
 	return 0;
 
 err_device_destroy:
-	PVRSRVDeviceDestroy(dev_node);
+	PVRSRVDeviceDestroy(priv->dev_node);
+err_workqueue_destroy:
+#if defined(SUPPORT_BUFFER_SYNC) || defined(SUPPORT_NATIVE_FENCE_SYNC)
+	destroy_workqueue(priv->fence_status_wq);
+err_free_priv:
+#endif
+	kfree(priv);
 err_exit:
 	return err;
 }
 
-static int pvr_drm_unload(struct drm_device *ddev)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0))
+static
+#endif
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
+int pvr_drm_unload(struct drm_device *ddev)
+#else
+void pvr_drm_unload(struct drm_device *ddev)
+#endif
 {
+	struct pvr_drm_private *priv = ddev->dev_private;
+
 	DRM_DEBUG_DRIVER("device %p\n", ddev->dev);
 
-	PVRSRVCommonDeviceDeinit(gpsdev_node);
+	drm_mode_config_cleanup(ddev);
 
-	PVRSRVDeviceDestroy(gpsdev_node);
-	gpsdev_node = NULL;
+	PVRSRVCommonDeviceDeinit(priv->dev_node);
+
+	PVRSRVDeviceDestroy(priv->dev_node);
+
+#if defined(SUPPORT_BUFFER_SYNC) || defined(SUPPORT_NATIVE_FENCE_SYNC)
+	destroy_workqueue(priv->fence_status_wq);
+#endif
+
+	kfree(priv);
+	ddev->dev_private = NULL;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 	return 0;
+#endif
 }
 
 static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 {
+	struct pvr_drm_private *priv = ddev->dev_private;
 	int err;
 
 	if (!try_module_get(THIS_MODULE)) {
@@ -161,7 +207,7 @@ static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 		return -ENOENT;
 	}
 
-	err = PVRSRVCommonDeviceOpen(gpsdev_node, dfile);
+	err = PVRSRVCommonDeviceOpen(priv->dev_node, dfile);
 	if (err)
 		module_put(THIS_MODULE);
 
@@ -170,7 +216,9 @@ static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 
 static void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
 {
-	PVRSRVCommonDeviceRelease(gpsdev_node, dfile);
+	struct pvr_drm_private *priv = ddev->dev_private;
+
+	PVRSRVCommonDeviceRelease(priv->dev_node, dfile);
 
 	module_put(THIS_MODULE);
 }
@@ -243,8 +291,13 @@ const struct drm_driver pvr_drm_generic_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_RENDER,
 
 	.dev_priv_size		= 0,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+	.load			= NULL,
+	.unload			= NULL,
+#else
 	.load			= pvr_drm_load,
 	.unload			= pvr_drm_unload,
+#endif
 	.open			= pvr_drm_open,
 	.postclose		= pvr_drm_release,
 

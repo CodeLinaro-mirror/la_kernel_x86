@@ -171,6 +171,10 @@ IMG_INTERNAL PVRSRV_ERROR
 DevmemGetSize(DEVMEM_MEMDESC *psMemDesc,
 			  IMG_DEVMEM_SIZE_T* puiSize);
 
+IMG_INTERNAL PVRSRV_ERROR
+DevmemGetAnnotation(DEVMEM_MEMDESC *psMemDesc,
+			        IMG_CHAR **pszAnnotation);
+
 /*
  * DevmemCreateContext()
  *
@@ -442,6 +446,17 @@ DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC *psMemDesc);
  */
 PVRSRV_ERROR DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
                                       void **ppvCpuVirtAddr);
+
+/*
+ * DevmemReacquireCpuVirtAddr()
+ *
+ * (Re)acquires license to use the cpu virtual address of this mapping
+ * if (and only if) there is already a pre-existing license to use the
+ * cpu virtual address for the mapping, returns NULL otherwise.
+ */
+void DevmemReacquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
+                                void **ppvCpuVirtAddr);
+
 /*
  * DevmemReleaseDevVirtAddr()
  *
@@ -647,5 +662,18 @@ IMG_INTERNAL PVRSRV_ERROR
 RegisterDevmemPFNotify(DEVMEM_CONTEXT *psContext,
                        IMG_UINT32     ui32PID,
                        IMG_BOOL       bRegister);
+
+/**************************************************************************/ /*!
+@Function       GetMaxDevMemSize
+@Description    Get the amount of device memory on current platform
+		(memory size in Bytes)
+@Output         puiLMASize            LMA memory size
+@Output         puiUMASize            UMA memory size
+@Return         Error code
+*/ /***************************************************************************/
+IMG_INTERNAL PVRSRV_ERROR
+GetMaxDevMemSize(SHARED_DEV_CONNECTION psConnection,
+		 IMG_DEVMEM_SIZE_T *puiLMASize,
+		 IMG_DEVMEM_SIZE_T *puiUMASize);
 
 #endif /* #ifndef SRVCLIENT_DEVICEMEM_CLIENT_H */

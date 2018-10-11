@@ -244,15 +244,6 @@ IMG_UINT32 PDumpOSDebugDriverWrite(IMG_HANDLE psStream,
 */ /**************************************************************************/
 PVRSRV_ERROR PDumpOSBufprintf(IMG_HANDLE hBuf, IMG_UINT32 ui32ScriptSizeMax, IMG_CHAR* pszFormat, ...) __printf(3, 4);
 
-/**************************************************************************/ /*!
-@Function       PDumpOSDebugPrintf
-@Description    Debug message during PDumping. This function is only called
-                if PDUMP is defined.
-@Input          pszFormat            format string
-@Return         None
-*/ /**************************************************************************/
-void PDumpOSDebugPrintf(IMG_CHAR* pszFormat, ...) __printf(1, 2);
-
 /*
  * Write into a IMG_CHAR* on all OSes. Can be allocated on the stack or heap.
  */

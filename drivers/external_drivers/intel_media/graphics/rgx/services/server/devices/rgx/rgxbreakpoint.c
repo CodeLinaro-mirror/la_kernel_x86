@@ -65,9 +65,16 @@ PVRSRV_ERROR PVRSRVRGXSetBreakpointKM(CONNECTION_DATA    * psConnection,
 	RGXFWIF_KCCB_CMD 	sBPCmd;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hBPLock);
+#endif
+
 	if (psDevInfo->bBPSet == IMG_TRUE)
-		return PVRSRV_ERROR_BP_ALREADY_SET;
+	{
+		eError = PVRSRV_ERROR_BP_ALREADY_SET;
+		goto unlock;
+	}
 	
 	sBPCmd.eCmdType = RGXFWIF_KCCB_CMD_BP;
 	sBPCmd.uCmdData.sBPData.ui32BPAddr = ui32BPAddr;
@@ -90,7 +97,7 @@ PVRSRV_ERROR PVRSRVRGXSetBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXSetBreakpointKM: RGXScheduleCommand failed. Error:%u", eError));
-		return eError;
+		goto unlock;
 	}
 
 	/* Wait for FW to complete */
@@ -98,12 +105,17 @@ PVRSRV_ERROR PVRSRVRGXSetBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVRGXSetBreakpointKM: Wait for completion aborted with error (%u)", eError));
-		return eError;
+		goto unlock;
 	}
 
 	psDevInfo->eBPDM = eFWDataMaster;
 	psDevInfo->bBPSet = IMG_TRUE;
-	
+
+unlock:
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hBPLock);
+#endif
+
 	return eError;
 }
 
@@ -123,7 +135,11 @@ PVRSRV_ERROR PVRSRVRGXClearBreakpointKM(CONNECTION_DATA    * psConnection,
 	sBPCmd.uCmdData.sBPData.ui32HandlerAddr = 0;
 	sBPCmd.uCmdData.sBPData.bEnable = IMG_FALSE;
 	sBPCmd.uCmdData.sBPData.ui32Flags = RGXFWIF_BPDATA_FLAGS_WRITE | RGXFWIF_BPDATA_FLAGS_CTL;
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hBPLock);
+#endif
+
 	RGXSetFirmwareAddress(&sBPCmd.uCmdData.sBPData.psFWMemContext, 
 				psFWMemContextMemDesc, 
 				0 , 
@@ -138,7 +154,7 @@ PVRSRV_ERROR PVRSRVRGXClearBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXClearBreakpointKM: RGXScheduleCommand failed. Error:%u", eError));
-		return eError;
+		goto unlock;
 	}
 
 	/* Wait for FW to complete */
@@ -146,11 +162,16 @@ PVRSRV_ERROR PVRSRVRGXClearBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVRGXClearBreakpointKM: Wait for completion aborted with error (%u)", eError));
-		return eError;
+		goto unlock;
 	}
 
 	psDevInfo->bBPSet = IMG_FALSE;
-	
+
+unlock:
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hBPLock);
+#endif
+
 	return eError;
 }
 
@@ -165,9 +186,16 @@ PVRSRV_ERROR PVRSRVRGXEnableBreakpointKM(CONNECTION_DATA    * psConnection,
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hBPLock);
+#endif
+
 	if (psDevInfo->bBPSet == IMG_FALSE)
-		return PVRSRV_ERROR_BP_NOT_SET;
-	
+	{
+		eError = PVRSRV_ERROR_BP_NOT_SET;
+		goto unlock;
+	}
+
 	sBPCmd.eCmdType = RGXFWIF_KCCB_CMD_BP;
 	sBPCmd.uCmdData.sBPData.bEnable = IMG_TRUE;
 	sBPCmd.uCmdData.sBPData.ui32Flags = RGXFWIF_BPDATA_FLAGS_CTL;
@@ -186,7 +214,7 @@ PVRSRV_ERROR PVRSRVRGXEnableBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXEnableBreakpointKM: RGXScheduleCommand failed. Error:%u", eError));
-		return eError;
+		goto unlock;
 	}
 
 	/* Wait for FW to complete */
@@ -194,9 +222,14 @@ PVRSRV_ERROR PVRSRVRGXEnableBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVRGXEnableBreakpointKM: Wait for completion aborted with error (%u)", eError));
-		return eError;
+		goto unlock;
 	}
-	
+
+unlock:
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hBPLock);
+#endif
+
 	return eError;
 }
 
@@ -210,9 +243,16 @@ PVRSRV_ERROR PVRSRVRGXDisableBreakpointKM(CONNECTION_DATA    * psConnection,
 	RGXFWIF_KCCB_CMD 	sBPCmd;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hBPLock);
+#endif
+
 	if (psDevInfo->bBPSet == IMG_FALSE)
-		return PVRSRV_ERROR_BP_NOT_SET;
+	{
+		eError = PVRSRV_ERROR_BP_NOT_SET;
+		goto unlock;
+	}
 	
 	sBPCmd.eCmdType = RGXFWIF_KCCB_CMD_BP;
 	sBPCmd.uCmdData.sBPData.bEnable = IMG_FALSE;
@@ -232,7 +272,7 @@ PVRSRV_ERROR PVRSRVRGXDisableBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXDisableBreakpointKM: RGXScheduleCommand failed. Error:%u", eError));
-		return eError;
+		goto unlock;
 	}
 
 	/* Wait for FW to complete */
@@ -240,9 +280,14 @@ PVRSRV_ERROR PVRSRVRGXDisableBreakpointKM(CONNECTION_DATA    * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVRGXDisableBreakpointKM: Wait for completion aborted with error (%u)", eError));
-		return eError;
+		goto unlock;
 	}
-				
+
+unlock:
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hBPLock);
+#endif
+
 	return eError;
 }
 
@@ -251,6 +296,9 @@ PVRSRV_ERROR PVRSRVRGXOverallocateBPRegistersKM(CONNECTION_DATA    * psConnectio
                                                 IMG_UINT32           ui32TempRegs,
                                                 IMG_UINT32           ui32SharedRegs)
 {
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	PVRSRV_RGXDEV_INFO	*psDevInfo = psDeviceNode->pvDevice;
+#endif
 	PVRSRV_ERROR 		eError = PVRSRV_OK;
 	RGXFWIF_KCCB_CMD 	sBPCmd;
 
@@ -261,6 +309,10 @@ PVRSRV_ERROR PVRSRVRGXOverallocateBPRegistersKM(CONNECTION_DATA    * psConnectio
 	sBPCmd.uCmdData.sBPData.ui32TempRegs = ui32TempRegs;
 	sBPCmd.uCmdData.sBPData.ui32SharedRegs = ui32SharedRegs;
 
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psDevInfo->hBPLock);
+#endif
+
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 				RGXFWIF_DM_GP,
 				&sBPCmd,
@@ -270,7 +322,7 @@ PVRSRV_ERROR PVRSRVRGXOverallocateBPRegistersKM(CONNECTION_DATA    * psConnectio
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXOverallocateBPRegistersKM: RGXScheduleCommand failed. Error:%u", eError));
-		return eError;
+		goto unlock;
 	}
 
 	/* Wait for FW to complete */
@@ -278,8 +330,13 @@ PVRSRV_ERROR PVRSRVRGXOverallocateBPRegistersKM(CONNECTION_DATA    * psConnectio
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVRGXOverallocateBPRegistersKM: Wait for completion aborted with error (%u)", eError));
-		return eError;
+		goto unlock;
 	}
+
+unlock:
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psDevInfo->hBPLock);
+#endif
 
 	return eError;
 }

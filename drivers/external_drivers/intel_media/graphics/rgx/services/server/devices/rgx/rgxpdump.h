@@ -62,7 +62,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVPDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
                                           PVRSRV_DEVICE_NODE * psDeviceNode,
                                           IMG_UINT32 ui32PDumpFlags);
@@ -79,10 +78,34 @@ PVRSRV_ERROR PVRSRVPDumpSignatureBufferKM(CONNECTION_DATA * psConnection,
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVPDumpTraceBufferKM(CONNECTION_DATA * psConnection,
                                       PVRSRV_DEVICE_NODE *psDeviceNode,
                                       IMG_UINT32 ui32PDumpFlags);
+
+/*!
+******************************************************************************
+
+ @Function	RGXPDumpOutputImageHdr
+
+ @Description
+
+ Dumps the header for an OutputImage command
+
+ @Return   PVRSRV_ERROR
+
+******************************************************************************/
+PVRSRV_ERROR RGXPDumpOutputImageHdr(PVRSRV_DEVICE_NODE *psDeviceNode,
+									IMG_UINT32 ui32HeaderSize,
+									IMG_UINT32 ui32DataSize,
+									IMG_UINT32 ui32LogicalWidth,
+									IMG_UINT32 ui32LogicalHeight,
+									IMG_UINT32 ui32PhysicalWidth,
+									IMG_UINT32 ui32PhysicalHeight,
+									PDUMP_PIXEL_FORMAT ePixFmt,
+									IMG_MEMLAYOUT eMemLayout,
+									IMG_FB_COMPRESSION eFBCompression,
+									const IMG_UINT32 *paui32FBCClearColour,
+									IMG_PBYTE pbyPDumpImageHdr);
 #else  	/* PDUMP */
 
 #ifdef INLINE_IS_PRAGMA

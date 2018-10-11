@@ -43,7 +43,7 @@
 # NOTE: Don't put anything in this file that isn't strictly required
 # by the build-directory Makefiles. It should go in core.mk otherwise.
 
-TOP := $(abspath ../../..)
+TOP ?= $(abspath ../../..)
 
 # Some miscellaneous things to make comma substitutions easier.
 apos := '#'
@@ -199,7 +199,7 @@ $(foreach _o,SYS_CFLAGS SYS_CXXFLAGS SYS_INCLUDES SYS_EXE_LDFLAGS SYS_LIB_LDFLAG
 # Check for words in EXCLUDED_APIS that aren't understood by the
 # common/apis/*.mk files. This should be kept in sync with all the tests on
 # EXCLUDED_APIS in those files
-_excludable_apis := opencl opengl opengles1 opengles3 vulkan openrl unittests renderscript scripts composerhal servicestools hwperftools testchiptools rogue2d memtrackhal camerahal sensorhal
+_excludable_apis := camerahal cldnn dnn nnhal composerhal hwperftools memtrackhal opencl opengl opengles1 opengles3 openrl renderscript rogue2d scripts sensorhal servicestools testchiptools unittests vulkan
 _excluded_apis := $(subst $(comma),$(space),$(EXCLUDED_APIS))
 
 _unrecognised := $(strip $(filter-out $(_excludable_apis),$(_excluded_apis)))

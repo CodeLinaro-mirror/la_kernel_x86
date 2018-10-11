@@ -42,6 +42,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /***************************************************************************/
 
 #include "img_types.h"
+#include "pvrsrv.h"
 #include "device.h"
 #include "devicemem.h"
 #include "pdump.h"
@@ -62,6 +63,7 @@ typedef struct _SYNC_ADDR_LIST_
 {
 	IMG_UINT32 ui32NumSyncs;
 	PRGXFWIF_UFO_ADDR *pasFWAddrs;
+	IMG_UINT32 ui32State;
 } SYNC_ADDR_LIST;
 
 PVRSRV_ERROR
@@ -80,6 +82,26 @@ SyncAddrListPopulate(SYNC_ADDR_LIST *psList,
 						IMG_UINT32 ui32NumSyncs,
 						SYNC_PRIMITIVE_BLOCK **apsSyncPrimBlock,
 						IMG_UINT32 *paui32SyncOffset);
+
+PVRSRV_ERROR
+SyncAddrListAppendSyncPrim(SYNC_ADDR_LIST          *psList,
+						   PVRSRV_CLIENT_SYNC_PRIM *psSyncPrim);
+PVRSRV_ERROR
+SyncAddrListAppendCheckpoints(SYNC_ADDR_LIST *psList,
+								IMG_UINT32 ui32NumCheckpoints,
+								PSYNC_CHECKPOINT *apsSyncCheckpoint);
+
+PVRSRV_ERROR
+SyncAddrListAppendAndDeRefCheckpoints(SYNC_ADDR_LIST *psList,
+									  IMG_UINT32 ui32NumCheckpoints,
+									  PSYNC_CHECKPOINT *apsSyncCheckpoint);
+
+void
+SyncAddrListDeRefCheckpoints(IMG_UINT32 ui32NumCheckpoints,
+							 PSYNC_CHECKPOINT *apsSyncCheckpoint);
+
+PVRSRV_ERROR
+SyncAddrListRollbackCheckpoints(PVRSRV_DEVICE_NODE *psDevNode, SYNC_ADDR_LIST *psList);
 
 PVRSRV_ERROR
 PVRSRVAllocSyncPrimitiveBlockKM(CONNECTION_DATA *psConnection,
@@ -146,16 +168,18 @@ IMG_UINT32 PVRSRVServerSyncRequesterRegisterKM(IMG_UINT32 *pui32SyncRequesterID)
 void PVRSRVServerSyncRequesterUnregisterKM(IMG_UINT32 ui32SyncRequesterID);
 
 PVRSRV_ERROR
-PVRSRVSyncAllocEventKM(IMG_BOOL bServerSync,
+PVRSRVSyncAllocEventKM(CONNECTION_DATA *psConnection,
+					   PVRSRV_DEVICE_NODE *psDevNode,
+					   IMG_BOOL bServerSync,
                        IMG_UINT32 ui32FWAddr,
                        IMG_UINT32 ui32ClassNameSize,
                        const IMG_CHAR *pszClassName);
 
 PVRSRV_ERROR
-PVRSRVSyncFreeEventKM(IMG_UINT32 ui32FWAddr);
+PVRSRVSyncFreeEventKM(CONNECTION_DATA *psConnection,
+					   PVRSRV_DEVICE_NODE *psDevNode,
+					   IMG_UINT32 ui32FWAddr);
 
-PVRSRV_ERROR
-PVRSRVServerSyncGetKM(SERVER_SYNC_PRIMITIVE *psSync);
 PVRSRV_ERROR
 PVRSRVSyncRecordAddKM(CONNECTION_DATA *psConnection,
 					  PVRSRV_DEVICE_NODE *psDevNode,
@@ -182,6 +206,9 @@ PVRSRV_ERROR
 PVRSRVServerSyncFreeKM(SERVER_SYNC_PRIMITIVE *psSync);
 
 PVRSRV_ERROR
+PVRSRVServerSyncGetKM(SERVER_SYNC_PRIMITIVE *psSync);
+
+PVRSRV_ERROR
 PVRSRVServerSyncGetStatusKM(IMG_UINT32 ui32SyncCount,
 							SERVER_SYNC_PRIMITIVE **papsSyncs,
 							IMG_UINT32 *pui32UID,
@@ -196,9 +223,22 @@ PVRSRVServerSyncQueueSWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
 						  IMG_UINT32 ui32SyncRequesterID,
 						  IMG_BOOL bUpdate,
 						  IMG_BOOL *pbFenceRequired);
+PVRSRV_ERROR
+PVRSRVServerSyncQueueSWOpKM_NoGlobalLock(SERVER_SYNC_PRIMITIVE *psSync,
+						  IMG_UINT32 *pui32FenceValue,
+						  IMG_UINT32 *pui32UpdateValue,
+						  IMG_UINT32 ui32SyncRequesterID,
+						  IMG_BOOL bUpdate,
+						  IMG_BOOL *pbFenceRequired);
 
 PVRSRV_ERROR
 PVRSRVServerSyncQueueHWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
+							   IMG_BOOL bUpdate,
+						       IMG_UINT32 *pui32FenceValue,
+						       IMG_UINT32 *pui32UpdateValue);
+
+PVRSRV_ERROR
+PVRSRVServerSyncQueueHWOpKM_NoGlobalLock(SERVER_SYNC_PRIMITIVE *psSync,
 							   IMG_BOOL bUpdate,
 						       IMG_UINT32 *pui32FenceValue,
 						       IMG_UINT32 *pui32UpdateValue);
@@ -251,6 +291,8 @@ IMG_UINT32 ServerSyncGetValue(SERVER_SYNC_PRIMITIVE *psSync);
 
 IMG_UINT32 ServerSyncGetNextValue(SERVER_SYNC_PRIMITIVE *psSync);
 
+PVRSRV_DEVICE_NODE* ServerSyncGetDeviceNode(SERVER_SYNC_PRIMITIVE *psSync);
+ 
 #if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
 void SyncRecordLookup(PVRSRV_DEVICE_NODE *psDevNode, IMG_UINT32 ui32FwAddr,
 					  IMG_CHAR * pszSyncInfo, size_t len);
@@ -262,8 +304,40 @@ PVRSRV_ERROR SyncRegisterConnection(SYNC_CONNECTION_DATA **ppsSyncConnectionData
 void SyncUnregisterConnection(SYNC_CONNECTION_DATA *ppsSyncConnectionData);
 void SyncConnectionPDumpSyncBlocks(SYNC_CONNECTION_DATA *ppsSyncConnectionData);
 
+/*!
+******************************************************************************
+@Function      ServerSyncInit
+
+@Description   Per-device initialisation for the ServerSync module
+******************************************************************************/
 PVRSRV_ERROR ServerSyncInit(PVRSRV_DEVICE_NODE *psDevNode);
 void ServerSyncDeinit(PVRSRV_DEVICE_NODE *psDevNode);
+
+/*!
+******************************************************************************
+@Function      ServerSyncInitOnce
+
+@Description   One-time initialisation for the ServerSync module
+******************************************************************************/
+PVRSRV_ERROR ServerSyncInitOnce(PVRSRV_DATA *psPVRSRVData);
+void ServerSyncDeinitOnce(PVRSRV_DATA *psPVRSRVData);
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+/*!
+******************************************************************************
+@Function      PVRSRVLockServerSync
+
+@Description   Acquire a global lock to maintain server sync consistency
+******************************************************************************/
+void PVRSRVLockServerSync(void);
+/*!
+******************************************************************************
+@Function      PVRSRVUnlockServerSync
+
+@Description   Release the global server sync lock
+******************************************************************************/
+void PVRSRVUnlockServerSync(void);
+#endif
 
 #if defined(PDUMP)
 PVRSRV_ERROR

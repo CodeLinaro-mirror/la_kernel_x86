@@ -55,9 +55,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_server.h"
 #include "pvrsrv.h"
 #include "process_stats.h"
+#include "osconnection_server.h"
 
 #if defined(PVR_RI_DEBUG)
 #include "ri_server.h"
+#define RI_MAX_TEXT_LEN 20
 #endif
 
 struct _DC_DISPLAY_CONTEXT_
@@ -608,7 +610,8 @@ static PVRSRV_ERROR _DCPMRLockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 			                             NULL,
 			                             sCPUPhysAddr,
 			                             1 << psPMRPriv->uiLog2PageSize,
-			                             NULL);
+			                             NULL,
+			                             OSGetCurrentClientProcessIDKM());
 		}
 	}
 #else
@@ -620,7 +623,8 @@ static PVRSRV_ERROR _DCPMRLockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
 #endif
 		PVRSRVStatsIncrMemAllocStat(eAllocType,
-		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize),
+		                            OSGetCurrentClientProcessIDKM());
 	}
 #endif
 #endif
@@ -649,7 +653,8 @@ static PVRSRV_ERROR _DCPMRUnlockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 		eAllocType = PVRSRV_MEM_ALLOC_TYPE_ALLOC_UMA_PAGES;
 #endif
 		PVRSRVStatsDecrMemAllocStat(eAllocType,
-		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize));
+		                            psPMRPriv->ui32PageCount * (1 << psPMRPriv->uiLog2PageSize),
+		                            OSGetCurrentClientProcessIDKM());
 	}
 #else
 	{
@@ -668,7 +673,8 @@ static PVRSRV_ERROR _DCPMRUnlockPhysAddresses(PMR_IMPL_PRIVDATA pvPriv)
 
 			sCPUPhysAddr.uiAddr = ((uintptr_t)psPMRPriv->pvLinAddr) + i * (1 << psPMRPriv->uiLog2PageSize);
 			PVRSRVStatsRemoveMemAllocRecord(eAllocType,
-			                                sCPUPhysAddr.uiAddr);
+			                                sCPUPhysAddr.uiAddr,
+			                                OSGetCurrentClientProcessIDKM());
 		}
 	}
 #endif
@@ -1316,10 +1322,7 @@ PVRSRV_ERROR DCSystemBufferAcquire(DC_DEVICE *psDevice,
 		{
 			pszRIText[RI_MAX_TEXT_LEN-1] = '\0';
 		}
-		eError = RIWritePMREntryKM (psPMR,
-									(IMG_UINT32)i32RITextSize,
-									(IMG_CHAR *)pszRIText,
-									(uiLog2PageSize*ui32PageCount));
+		eError = RIWritePMREntryKM(psPMR);
 	}
 #endif
 
@@ -1604,18 +1607,6 @@ static void _DCDisplayContextFlush(PDLLIST_NODE psNode)
 		{
 			PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting NULL flip"));
 
-			/* Check if we need to do any CPU cache operations before sending the NULL flip */
-			if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-			{
-				psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-			}
-			else
-			{
-				PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
-				PVR_ASSERT(0);
-			}
-
-
 			/* The next Config may be dependent on the single Config currently in the DC */
 			/* Issue a NULL flip to free it */
 			_DCDisplayContextAcquireRef(psDisplayContext);
@@ -1633,17 +1624,6 @@ static void _DCDisplayContextFlush(PDLLIST_NODE psNode)
 	}
 
 	PVR_DPF((PVR_DBG_WARNING, "DCDisplayContextFlush: inserting final NULL flip"));
-
-	/* Check if we need to do any CPU cache operations before sending the NULL flip */
-	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-	{
-		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-	}
-	else
-	{
-		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextFlush: OSCPUOperation failed"));
-		PVR_ASSERT(0);
-	}
 
 	/* The next Config may be dependent on the single Config currently in the DC */
 	/* Issue a NULL flip to free it */
@@ -1844,17 +1824,6 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 		}
 	}
 
-	/* Check if we need to do any CPU cache operations before sending the config */
-	if (OSCPUOperation(psData->uiCacheOp) == PVRSRV_OK)
-	{
-		psData->uiCacheOp = PVRSRV_CACHE_OP_NONE;
-	}
-	else
-	{
-		PVR_DPF((PVR_DBG_ERROR, "DCDisplayContextConfigure: OSCPUOperation failed"));
-		PVR_ASSERT(0);
-	}
-
 	/* Submit the command */
 	eError = SCPSubmitCommand(psDisplayContext->psSCPContext);
 
@@ -2020,10 +1989,7 @@ PVRSRV_ERROR DCBufferAlloc(DC_DISPLAY_CONTEXT *psDisplayContext,
 		{
 			pszRIText[RI_MAX_TEXT_LEN-1] = '\0';
 		}
-		eError = RIWritePMREntryKM (psPMR,
-									(IMG_UINT32)i32RITextSize,
-									(IMG_CHAR *)pszRIText,
-									(uiLog2PageSize*ui32PageCount));
+		eError = RIWritePMREntryKM (psPMR);
 	}
 #endif
 

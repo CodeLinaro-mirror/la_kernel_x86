@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for cache
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_CACHE_BRIDGE_H
 #define COMMON_CACHE_BRIDGE_H
@@ -52,15 +52,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "cache_ops.h"
 
-
 #define PVRSRV_BRIDGE_CACHE_CMD_FIRST			0
 #define PVRSRV_BRIDGE_CACHE_CACHEOPQUEUE			PVRSRV_BRIDGE_CACHE_CMD_FIRST+0
 #define PVRSRV_BRIDGE_CACHE_CACHEOPEXEC			PVRSRV_BRIDGE_CACHE_CMD_FIRST+1
-#define PVRSRV_BRIDGE_CACHE_CACHEOPSETTIMELINE			PVRSRV_BRIDGE_CACHE_CMD_FIRST+2
-#define PVRSRV_BRIDGE_CACHE_CACHEOPLOG			PVRSRV_BRIDGE_CACHE_CMD_FIRST+3
-#define PVRSRV_BRIDGE_CACHE_CACHEOPGETLINESIZE			PVRSRV_BRIDGE_CACHE_CMD_FIRST+4
-#define PVRSRV_BRIDGE_CACHE_CMD_LAST			(PVRSRV_BRIDGE_CACHE_CMD_FIRST+4)
-
+#define PVRSRV_BRIDGE_CACHE_CACHEOPLOG			PVRSRV_BRIDGE_CACHE_CMD_FIRST+2
+#define PVRSRV_BRIDGE_CACHE_CMD_LAST			(PVRSRV_BRIDGE_CACHE_CMD_FIRST+2)
 
 /*******************************************
             CacheOpQueue          
@@ -70,19 +66,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 typedef struct PVRSRV_BRIDGE_IN_CACHEOPQUEUE_TAG
 {
 	IMG_UINT32 ui32NumCacheOps;
-	IMG_HANDLE * phPMR;
-	IMG_DEVMEM_OFFSET_T * puiOffset;
-	IMG_DEVMEM_SIZE_T * puiSize;
-	PVRSRV_CACHE_OP * piuCacheOp;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_CACHEOPQUEUE;
+	IMG_HANDLE *phPMR;
+	IMG_UINT64 *pui64Address;
+	IMG_DEVMEM_OFFSET_T *puiOffset;
+	IMG_DEVMEM_SIZE_T *puiSize;
+	PVRSRV_CACHE_OP *piuCacheOp;
+	IMG_UINT32 ui32OpTimeline;
+	IMG_UINT32 ui32OpInfoPgGFSeqNum;
+	IMG_UINT32 ui32CurrentFenceSeqNum;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_CACHEOPQUEUE;
 
 /* Bridge out structure for CacheOpQueue */
 typedef struct PVRSRV_BRIDGE_OUT_CACHEOPQUEUE_TAG
 {
-	IMG_UINT32 ui32CacheOpSeqNum;
+	IMG_UINT32 ui32NextFenceSeqNum;
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_CACHEOPQUEUE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CACHEOPQUEUE;
 
 /*******************************************
             CacheOpExec          
@@ -92,34 +91,17 @@ typedef struct PVRSRV_BRIDGE_OUT_CACHEOPQUEUE_TAG
 typedef struct PVRSRV_BRIDGE_IN_CACHEOPEXEC_TAG
 {
 	IMG_HANDLE hPMR;
+	IMG_UINT64 ui64Address;
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_DEVMEM_SIZE_T uiSize;
 	PVRSRV_CACHE_OP iuCacheOp;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_CACHEOPEXEC;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_CACHEOPEXEC;
 
 /* Bridge out structure for CacheOpExec */
 typedef struct PVRSRV_BRIDGE_OUT_CACHEOPEXEC_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_CACHEOPEXEC;
-
-
-/*******************************************
-            CacheOpSetTimeline          
- *******************************************/
-
-/* Bridge in structure for CacheOpSetTimeline */
-typedef struct PVRSRV_BRIDGE_IN_CACHEOPSETTIMELINE_TAG
-{
-	IMG_INT32 i32OpTimeline;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_CACHEOPSETTIMELINE;
-
-/* Bridge out structure for CacheOpSetTimeline */
-typedef struct PVRSRV_BRIDGE_OUT_CACHEOPSETTIMELINE_TAG
-{
-	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_CACHEOPSETTIMELINE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CACHEOPEXEC;
 
 /*******************************************
             CacheOpLog          
@@ -129,36 +111,20 @@ typedef struct PVRSRV_BRIDGE_OUT_CACHEOPSETTIMELINE_TAG
 typedef struct PVRSRV_BRIDGE_IN_CACHEOPLOG_TAG
 {
 	IMG_HANDLE hPMR;
+	IMG_UINT64 ui64Address;
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_DEVMEM_SIZE_T uiSize;
 	IMG_INT64 i64QueuedTimeUs;
 	IMG_INT64 i64ExecuteTimeUs;
+	IMG_INT32 i32NumRBF;
+	IMG_BOOL bIsDiscard;
 	PVRSRV_CACHE_OP iuCacheOp;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_CACHEOPLOG;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_CACHEOPLOG;
 
 /* Bridge out structure for CacheOpLog */
 typedef struct PVRSRV_BRIDGE_OUT_CACHEOPLOG_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_CACHEOPLOG;
-
-
-/*******************************************
-            CacheOpGetLineSize          
- *******************************************/
-
-/* Bridge in structure for CacheOpGetLineSize */
-typedef struct PVRSRV_BRIDGE_IN_CACHEOPGETLINESIZE_TAG
-{
-	 IMG_UINT32 ui32EmptyStructPlaceholder;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_CACHEOPGETLINESIZE;
-
-/* Bridge out structure for CacheOpGetLineSize */
-typedef struct PVRSRV_BRIDGE_OUT_CACHEOPGETLINESIZE_TAG
-{
-	IMG_UINT32 ui32L1DataCacheLineSize;
-	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_CACHEOPGETLINESIZE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CACHEOPLOG;
 
 #endif /* COMMON_CACHE_BRIDGE_H */

@@ -50,7 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #define RGXMIPSFW_LOG2_PAGE_SIZE                 (12)
 #define RGXMIPSFW_LOG2_PAGE_SIZE_64K             (16)
-/* Page size */
 #define RGXMIPSFW_PAGE_SIZE                      (0x1 << RGXMIPSFW_LOG2_PAGE_SIZE)
 #define RGXMIPSFW_PAGE_MASK                      (RGXMIPSFW_PAGE_SIZE - 1)
 #define RGXMIPSFW_LOG2_PAGETABLE_PAGE_SIZE       (15)
@@ -58,15 +57,76 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Page mask MIPS register setting for bigger pages */
 #define RGXMIPSFW_PAGE_MASK_16K                  (0x00007800)
 #define RGXMIPSFW_PAGE_MASK_64K                  (0x0001F800)
-/* Page Frame Number of the entry lo */
-#define RGXMIPSFW_ENTRYLO_PFN_MASK               (0x03FFFFC0)
-#define RGXMIPSFW_ENTRYLO_PFN_SHIFT              (6)
-/* Dirty Valid And Global bits in entry lo */
-#define RGXMIPSFW_ENTRYLO_DVG_MASK               (0x00000007)
-/* Dirty Valid And Global bits + caching policy in entry lo */
-#define RGXMIPSFW_ENTRYLO_DVGC_MASK              (0x0000003F)
 /* Total number of TLB entries */
 #define RGXMIPSFW_NUMBER_OF_TLB_ENTRIES          (16)
+/* "Uncached" caching policy */
+#define RGXMIPSFW_UNCACHED_CACHE_POLICY          (0X00000002)
+/* "Write-back write-allocate" caching policy */
+#define RGXMIPSFW_WRITEBACK_CACHE_POLICY         (0X00000003)
+/* "Write-through no write-allocate" caching policy */
+#define RGXMIPSFW_WRITETHROUGH_CACHE_POLICY      (0X00000001)
+/* Cached policy used by MIPS in case of physical bus on 32 bit */
+#define RGXMIPSFW_CACHED_POLICY                  (RGXMIPSFW_WRITEBACK_CACHE_POLICY)
+/* Cached policy used by MIPS in case of physical bus on more than 32 bit */
+#define RGXMIPSFW_CACHED_POLICY_ABOVE_32BIT      (RGXMIPSFW_WRITETHROUGH_CACHE_POLICY)
+/* Total number of Remap entries */
+#define RGXMIPSFW_NUMBER_OF_REMAP_ENTRIES        (2 * RGXMIPSFW_NUMBER_OF_TLB_ENTRIES)
+
+
+/*
+ * MIPS EntryLo/PTE format
+ */
+
+#define RGXMIPSFW_ENTRYLO_READ_INHIBIT_SHIFT     (31U)
+#define RGXMIPSFW_ENTRYLO_READ_INHIBIT_CLRMSK    (0X7FFFFFFF)
+#define RGXMIPSFW_ENTRYLO_READ_INHIBIT_EN        (0X80000000)
+
+#define RGXMIPSFW_ENTRYLO_EXEC_INHIBIT_SHIFT     (30U)
+#define RGXMIPSFW_ENTRYLO_EXEC_INHIBIT_CLRMSK    (0XBFFFFFFF)
+#define RGXMIPSFW_ENTRYLO_EXEC_INHIBIT_EN        (0X40000000)
+
+/* Page Frame Number */
+#define RGXMIPSFW_ENTRYLO_PFN_SHIFT              (6)
+#define RGXMIPSFW_ENTRYLO_PFN_ALIGNSHIFT         (12)
+/* Mask used for the MIPS Page Table in case of physical bus on 32 bit */
+#define RGXMIPSFW_ENTRYLO_PFN_MASK               (0x03FFFFC0)
+#define RGXMIPSFW_ENTRYLO_PFN_SIZE               (20)
+/* Mask used for the MIPS Page Table in case of physical bus on more than 32 bit */
+#define RGXMIPSFW_ENTRYLO_PFN_MASK_ABOVE_32BIT   (0x3FFFFFC0)
+#define RGXMIPSFW_ENTRYLO_PFN_SIZE_ABOVE_32BIT   (24)
+#define RGXMIPSFW_ADDR_TO_ENTRYLO_PFN_RSHIFT     (RGXMIPSFW_ENTRYLO_PFN_ALIGNSHIFT - \
+                                                  RGXMIPSFW_ENTRYLO_PFN_SHIFT)
+
+#define RGXMIPSFW_ENTRYLO_CACHE_POLICY_SHIFT     (3U)
+#define RGXMIPSFW_ENTRYLO_CACHE_POLICY_CLRMSK    (0XFFFFFFC7)
+
+#define RGXMIPSFW_ENTRYLO_DIRTY_SHIFT            (2U)
+#define RGXMIPSFW_ENTRYLO_DIRTY_CLRMSK           (0XFFFFFFFB)
+#define RGXMIPSFW_ENTRYLO_DIRTY_EN               (0X00000004)
+
+#define RGXMIPSFW_ENTRYLO_VALID_SHIFT            (1U)
+#define RGXMIPSFW_ENTRYLO_VALID_CLRMSK           (0XFFFFFFFD)
+#define RGXMIPSFW_ENTRYLO_VALID_EN               (0X00000002)
+
+#define RGXMIPSFW_ENTRYLO_GLOBAL_SHIFT           (0U)
+#define RGXMIPSFW_ENTRYLO_GLOBAL_CLRMSK          (0XFFFFFFFE)
+#define RGXMIPSFW_ENTRYLO_GLOBAL_EN              (0X00000001)
+
+#define RGXMIPSFW_ENTRYLO_DVG                    (RGXMIPSFW_ENTRYLO_DIRTY_EN | \
+                                                  RGXMIPSFW_ENTRYLO_VALID_EN | \
+                                                  RGXMIPSFW_ENTRYLO_GLOBAL_EN)
+#define RGXMIPSFW_ENTRYLO_UNCACHED               (RGXMIPSFW_UNCACHED_CACHE_POLICY << \
+                                                  RGXMIPSFW_ENTRYLO_CACHE_POLICY_SHIFT)
+#define RGXMIPSFW_ENTRYLO_DVG_UNCACHED           (RGXMIPSFW_ENTRYLO_DVG | RGXMIPSFW_ENTRYLO_UNCACHED)
+
+
+/* Remap Range Config Addr Out */
+/* These defines refer to the upper half of the Remap Range Config register */
+#define RGXMIPSFW_REMAP_RANGE_ADDR_OUT_MASK      (0x0FFFFFF0)
+#define RGXMIPSFW_REMAP_RANGE_ADDR_OUT_SHIFT     (4)  /* wrt upper half of the register */
+#define RGXMIPSFW_REMAP_RANGE_ADDR_OUT_ALIGNSHIFT (12)
+#define RGXMIPSFW_ADDR_TO_RR_ADDR_OUT_RSHIFT     (RGXMIPSFW_REMAP_RANGE_ADDR_OUT_ALIGNSHIFT - \
+                                                  RGXMIPSFW_REMAP_RANGE_ADDR_OUT_SHIFT)
 
 
 /*
@@ -79,7 +139,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* This will need to be changed if the non-secure builds reach this amount of pages */
 #define RGXMIPSFW_CODE_NUMPAGES                  (62)
 #else
-#define RGXMIPSFW_CODE_NUMPAGES                  (38)
+#define RGXMIPSFW_CODE_NUMPAGES                  (44)
 #endif
 #define RGXMIPSFW_CODE_SIZE                      (RGXMIPSFW_CODE_NUMPAGES << RGXMIPSFW_LOG2_PAGE_SIZE)
 
@@ -96,7 +156,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define RGXMIPSFW_DATA_BASE_PAGE                 (0x0)
 #define RGXMIPSFW_DATA_OFFSET                    (RGXMIPSFW_DATA_BASE_PAGE << RGXMIPSFW_LOG2_PAGE_SIZE)
-#define RGXMIPSFW_DATA_NUMPAGES                  (22)
+#define RGXMIPSFW_DATA_NUMPAGES                  (7)
 #define RGXMIPSFW_DATA_SIZE                      (RGXMIPSFW_DATA_NUMPAGES << RGXMIPSFW_LOG2_PAGE_SIZE)
 
 #define RGXMIPSFW_BOOT_NMI_DATA_BASE_PAGE        (RGXMIPSFW_DATA_BASE_PAGE + RGXMIPSFW_DATA_NUMPAGES)
@@ -206,16 +266,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Base address of the shared data within the bootloader/NMI data page */
 #define RGXMIPSFW_NMI_SHARED_DATA_BASE                        (0x100)
 /* Size used by Debug dump data */
-#define RGXMIPSFW_NMI_SHARED_SIZE                             (0x128)
+#define RGXMIPSFW_NMI_SHARED_SIZE                             (0x2B0)
 /* Offsets in the NMI shared area in 32-bit words */
 #define RGXMIPSFW_NMI_SYNC_FLAG_OFFSET                        (0x0)
 #define RGXMIPSFW_NMI_STATE_OFFSET                            (0x1)
+#define RGXMIPSFW_NMI_ERROR_STATE_SET                         (0x1)
 
 /*
  * MIPS fault data
  */
 /* Base address of the fault data within the bootloader/NMI data page */
-#define RGXMIPSFW_FAULT_DATA_BASE                             (0x280)
+#define RGXMIPSFW_FAULT_DATA_BASE                             (0x404)
 
 /* The things that follow are excluded when compiling assembly sources*/
 #if !defined (RGXMIPSFW_ASSEMBLY_CODE)
@@ -261,6 +322,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* Macros to decode C0_Cause register */
 #define RGXMIPSFW_C0_CAUSE_EXCCODE(CAUSE)       (((CAUSE) & 0x7c) >> 2)
+#define RGXMIPSFW_C0_CAUSE_EXCCODE_FWERROR      9
 /* Use only when Coprocessor Unusable exception */
 #define RGXMIPSFW_C0_CAUSE_UNUSABLE_UNIT(CAUSE) (((CAUSE) >> 28) & 0x3)
 #define RGXMIPSFW_C0_CAUSE_PENDING_HWIRQ(CAUSE) (((CAUSE) & 0x3fc00) >> 10)
@@ -269,6 +331,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGXMIPSFW_C0_CAUSE_IC                   (1 << 25)
 #define RGXMIPSFW_C0_CAUSE_PCIPENDING           (1 << 26)
 #define RGXMIPSFW_C0_CAUSE_TIPENDING            (1 << 30)
+#define RGXMIPSFW_C0_CAUSE_BRANCH_DELAY         (1 << 31)
 
 /* Macros to decode C0_Debug register */
 #define RGXMIPSFW_C0_DEBUG_EXCCODE(DEBUG) (((DEBUG) >> 10) & 0x1f)
@@ -353,10 +416,12 @@ typedef struct
 	IMG_UINT32   ui32Palign;
  } RGX_MIPS_ELF_PROGRAM_HDR;
 
-#define RGXMIPSFW_TLB_GET_MASK(ENTRY_PAGE_MASK) (((ENTRY_PAGE_MASK) >> 13) & 0xffffU)
+#define RGXMIPSFW_TLB_GET_MASK(PAGE_MASK)       (((PAGE_MASK) >> 13) & 0XFFFFU)
+#define RGXMIPSFW_TLB_GET_PAGE_SIZE(PAGE_MASK)  ((((PAGE_MASK) | 0x1FFF) + 1) >> 11)
 #define RGXMIPSFW_TLB_GET_VPN2(ENTRY_HI)        ((ENTRY_HI) >> 13)
 #define RGXMIPSFW_TLB_GET_COHERENCY(ENTRY_LO)   (((ENTRY_LO) >> 3) & 0x7U)
-#define RGXMIPSFW_TLB_GET_PFN(ENTRY_LO)         (((ENTRY_LO) >> 6) & 0xfffffU)
+#define RGXMIPSFW_TLB_GET_PFN(ENTRY_LO)         (((ENTRY_LO) >> 6) & 0XFFFFFU)
+#define RGXMIPSFW_TLB_GET_PA(ENTRY_LO)          (((ENTRY_LO) & 0x03FFFFC0) << 6)
 #define RGXMIPSFW_TLB_GET_INHIBIT(ENTRY_LO)     (((ENTRY_LO) >> 30) & 0x3U)
 #define RGXMIPSFW_TLB_GET_DGV(ENTRY_LO)         ((ENTRY_LO) & 0x7U)
 #define RGXMIPSFW_TLB_GLOBAL                    (1U)
@@ -364,6 +429,8 @@ typedef struct
 #define RGXMIPSFW_TLB_DIRTY                     (1U << 2)
 #define RGXMIPSFW_TLB_XI                        (1U << 30)
 #define RGXMIPSFW_TLB_RI                        (1U << 31)
+
+#define RGXMIPSFW_REMAP_GET_REGION_SIZE(REGION_SIZE_ENCODING) (1 << ((REGION_SIZE_ENCODING + 1) << 1))
 
 typedef struct {
 	IMG_UINT32 ui32TLBPageMask;
@@ -373,6 +440,13 @@ typedef struct {
 } RGX_MIPS_TLB_ENTRY;
 
 typedef struct {
+	IMG_UINT32 ui32RemapAddrIn;     /* always 4k aligned */
+	IMG_UINT32 ui32RemapAddrOut;    /* always 4k aligned */
+	IMG_UINT32 ui32RemapRegionSize;
+} RGX_MIPS_REMAP_ENTRY;
+
+typedef struct {
+	IMG_UINT32 ui32ErrorState; /* This must come first in the structure */
 	IMG_UINT32 ui32ErrorEPC;
 	IMG_UINT32 ui32StatusRegister;
 	IMG_UINT32 ui32CauseRegister;
@@ -382,11 +456,13 @@ typedef struct {
 	IMG_UINT32 ui32Debug;
 	IMG_UINT32 ui32DEPC;
 	IMG_UINT32 ui32BadInstr;
+	IMG_UINT32 ui32UnmappedAddress;
 	RGX_MIPS_TLB_ENTRY asTLB[RGXMIPSFW_NUMBER_OF_TLB_ENTRIES];
+	RGX_MIPS_REMAP_ENTRY asRemap[RGXMIPSFW_NUMBER_OF_REMAP_ENTRIES];
 } RGX_MIPS_STATE;
 
 typedef struct {
-	IMG_UINT32 ui32FaultPageEntryLo;
+	IMG_UINT32 ui32FaultPageInfo;
 	IMG_UINT32 ui32BadVAddr;
 	IMG_UINT32 ui32EntryLo0;
 	IMG_UINT32 ui32EntryLo1;

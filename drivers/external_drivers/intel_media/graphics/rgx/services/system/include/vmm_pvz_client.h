@@ -41,8 +41,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#ifndef _VMM_PVZ_CONNECTION_CLIENT_H_
-#define _VMM_PVZ_CONNECTION_CLIENT_H_
+#ifndef _VMM_PVZ_CLIENT_H_
+#define _VMM_PVZ_CLIENT_H_
 
 #include "pvrsrv.h"
 #include "img_types.h"
@@ -136,7 +136,7 @@ PVRSRV_ERROR
 PvzClientUnmapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 						  IMG_UINT32 ui32DevID);
 
-#endif /* _VMM_PVZ_CONNECTION_CLIENT_H_ */
+#endif /* _VMM_PVZ_CLIENT_H_ */
 
 /*****************************************************************************
  End of file (vmm_pvz_client.h)

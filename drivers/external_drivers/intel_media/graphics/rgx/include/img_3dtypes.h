@@ -45,6 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define __IMG_3DTYPES_H__
 
 #include <powervr/buffer_attribs.h>
+#include "img_types.h"
 
 /**
  * Comparison functions
@@ -206,6 +207,20 @@ typedef enum _IMG_CULLMODE_
 	IMG_CULLMODE_BACKFACING,	/**< Back facing triangles */
 } IMG_CULLMODE;
 
+/**
+  Colour for clearing surfaces.
+  The four elements of the 4 x 32 bit array will map to colour
+  R,G,B,A components, in order.
+  For YUV colour space the order is Y,U,V.
+  For Depth and Stencil formats D maps to R and S maps to G.
+*/
+typedef union _IMG_CLEAR_COLOUR_ {
+	IMG_UINT32        aui32[4];
+	IMG_INT32         ai32[4];
+	IMG_FLOAT         af32[4];
+} IMG_CLEAR_COLOUR;
+
+static_assert(sizeof(IMG_FLOAT) == sizeof(IMG_INT32), "Size of IMG_FLOAT is not 32 bits.");
 
 /*! ************************************************************************//**
 @brief          Specifies the MSAA resolve operation.

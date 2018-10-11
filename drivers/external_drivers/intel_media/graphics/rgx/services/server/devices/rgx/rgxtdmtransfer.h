@@ -58,19 +58,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 typedef struct _RGX_SERVER_TQ_TDM_CONTEXT_ RGX_SERVER_TQ_TDM_CONTEXT;
 
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXTDMCreateTransferContextKM(
 	CONNECTION_DATA           * psConnection,
 	PVRSRV_DEVICE_NODE        * psDeviceNode,
 	IMG_UINT32                  ui32Priority,
-	IMG_DEV_VIRTADDR            sMCUFenceAddr,
 	IMG_UINT32                  ui32FrameworkCommandSize,
 	IMG_PBYTE                   pabyFrameworkCommand,
 	IMG_HANDLE                  hMemCtxPrivData,
 	RGX_SERVER_TQ_TDM_CONTEXT **ppsTransferContext);
 
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXTDMDestroyTransferContextKM(RGX_SERVER_TQ_TDM_CONTEXT *psTransferContext);
 
 
@@ -89,10 +86,10 @@ PVRSRV_ERROR PVRSRVRGXTDMSubmitTransferKM(
 	IMG_UINT32                  ui32ServerSyncCount,
 	IMG_UINT32                * paui32ServerSyncFlags,
 	SERVER_SYNC_PRIMITIVE    ** papsServerSyncs,
-	IMG_INT32                   i32CheckFenceFD,
-	IMG_INT32                   i32UpdateTimelineFD,
-	IMG_INT32                 * pi32UpdateFenceFD,
-	IMG_CHAR                    szFenceName[32],
+	PVRSRV_FENCE                iCheckFence,
+	PVRSRV_TIMELINE             iUpdateTimeline,
+	PVRSRV_FENCE              * piUpdateFence,
+	IMG_CHAR                    szUpdateFenceName[32],
 	IMG_UINT32                  ui32FWCommandSize,
 	IMG_UINT8                 * pui8FWCommand,
 	IMG_UINT32                  ui32ExtJobRef,
@@ -100,12 +97,10 @@ PVRSRV_ERROR PVRSRVRGXTDMSubmitTransferKM(
 	IMG_UINT32                * pui32SyncPMRFlags,
 	PMR                      ** ppsSyncPMRs);
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXTDMNotifyWriteOffsetUpdateKM(
 	RGX_SERVER_TQ_TDM_CONTEXT *psTransferContext,
 	IMG_UINT32                 ui32PDumpFlags);
 
-IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXTDMSetTransferContextPriorityKM(CONNECTION_DATA *psConnection,
                                                    PVRSRV_DEVICE_NODE * psDeviceNode,
 												   RGX_SERVER_TQ_TDM_CONTEXT *psTransferContext,

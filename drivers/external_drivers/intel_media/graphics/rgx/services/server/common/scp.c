@@ -863,11 +863,16 @@ void SCPCommandComplete(SCP_CONTEXT *psContext,
                         IMG_BOOL bIgnoreFences)
 {
 	SCP_COMMAND *psCommand;
+	PVRSRV_DEVICE_NODE *psDevNode;
 	IMG_UINT32 i;
 	IMG_BOOL bContinue = IMG_TRUE;
 
-	if (psContext == NULL)
+	PVRSRV_DATA *sPVRSRVData = PVRSRVGetPVRSRVData();
+	psDevNode = sPVRSRVData->psDeviceNodeList;
+
+	if (psContext == NULL || psDevNode == NULL)
 	{
+		PVR_DPF((PVR_DBG_ERROR, "SCPCommandComplete: invalid parameters"));
 		return;
 	}
 
@@ -916,15 +921,14 @@ void SCPCommandComplete(SCP_CONTEXT *psContext,
 						}
 					}
 				}
-
 				if (bFenceFailed)
 				{
-					RGX_HWPERF_HOST_UFO(RGX_HWPERF_UFO_EV_CHECK_FAIL, asFenceSyncData, ui32FenceUFOIdx);
+					RGX_HWPERF_HOST_UFO((PVRSRV_RGXDEV_INFO *)(psDevNode->pvDevice), RGX_HWPERF_UFO_EV_CHECK_FAIL, asFenceSyncData, ui32FenceUFOIdx);
 					return;
 				}
 				else
 				{
-					RGX_HWPERF_HOST_UFO(RGX_HWPERF_UFO_EV_CHECK_SUCCESS, asFenceSyncData, ui32FenceUFOIdx);
+					RGX_HWPERF_HOST_UFO((PVRSRV_RGXDEV_INFO *)(psDevNode->pvDevice), RGX_HWPERF_UFO_EV_CHECK_SUCCESS, asFenceSyncData, ui32FenceUFOIdx);
 				}
 			}
 
@@ -937,7 +941,6 @@ void SCPCommandComplete(SCP_CONTEXT *psContext,
 				if (bUpdate)
 				{
 					IMG_UINT32 ui32SyncAddr;
-
 					(void)ServerSyncGetFWAddr(psSCPSyncData->psSync, &ui32SyncAddr);
 					PVR_ASSERT(ui32UpdateUFOIdx < MAX_TRACED_UFOS);
 					asUpdateSyncData[ui32UpdateUFOIdx].sUpdate.ui32FWAddr = ui32SyncAddr;
@@ -956,9 +959,8 @@ void SCPCommandComplete(SCP_CONTEXT *psContext,
 			}
 			if (ui32UpdateUFOIdx > 0)
 			{
-				RGX_HWPERF_HOST_UFO(RGX_HWPERF_UFO_EV_UPDATE, asUpdateSyncData, ui32UpdateUFOIdx);
+				RGX_HWPERF_HOST_UFO((PVRSRV_RGXDEV_INFO *)(psDevNode->pvDevice), RGX_HWPERF_UFO_EV_UPDATE, asUpdateSyncData, ui32UpdateUFOIdx);
 			}
-
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 			if (psCommand->psReleaseFence)
 			{

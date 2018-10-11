@@ -2,7 +2,7 @@
 @File
 @Title          Self scaling hash tables.
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description 
+@Description
    Implements simple self scaling hash tables. Hash collisions are
    handled by chaining entries together. Hash tables are increased in
    size when they become more than (50%?) full and decreased in size
@@ -59,11 +59,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "osfunc.h"
 #include "allocmem.h"
 
+//#define PERF_DBG_RESIZE
+#if !defined(__KERNEL__) && defined(PERF_DBG_RESIZE)
+#include <sys/time.h>
+#endif
+
 #if defined(__KERNEL__)
 #include "pvrsrv.h"
 #endif
-
-#define PRIVATE_MAX(a,b) ((a)>(b)?(a):(b))
 
 #define	KEY_TO_INDEX(pHash, key, uSize) \
 	((pHash)->pfnHashFunc((pHash)->uKeySize, (key), (uSize)) % (uSize))
@@ -71,46 +74,42 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define	KEY_COMPARE(pHash, pKey1, pKey2) \
 	((pHash)->pfnKeyComp((pHash)->uKeySize, (pKey1), (pKey2)))
 
-/* Each entry in a hash table is placed into a bucket */
-struct _BUCKET_
-{
-	/* the next bucket on the same chain */
-	struct _BUCKET_ *pNext;
-
-	/* entry value */
-	uintptr_t v;
-
-	/* entry key */
-#if defined (WIN32)
-	uintptr_t k[1];
+#if defined(__linux__) && defined(__KERNEL__)
+#define _AllocMem OSAllocMemNoStats
+#define _AllocZMem OSAllocZMemNoStats
+#define _FreeMem OSFreeMemNoStats
 #else
-	uintptr_t k[];		/* PRQA S 0642 */ /* override dynamic array declaration warning */
+#define _AllocMem OSAllocMem
+#define _AllocZMem OSAllocZMem
+#define _FreeMem OSFreeMem
 #endif
-};
-typedef struct _BUCKET_ BUCKET;
+
+#define NO_SHRINK 0
+
+/* Each entry in a hash table is placed into a bucket */
+typedef struct _BUCKET_
+{
+	struct _BUCKET_ *pNext; /*!< the next bucket on the same chain */
+	uintptr_t v;            /*!< entry value */
+#if defined (WIN32)
+	uintptr_t k[1];         /*<! entry key */
+#else
+	uintptr_t k[];          /* PRQA S 0642 */
+	                        /* override dynamic array declaration warning */
+#endif
+} BUCKET;
 
 struct _HASH_TABLE_
 {
-	/* current size of the hash table */
-	IMG_UINT32 uSize;
-
-	/* number of entries currently in the hash table */
-	IMG_UINT32 uCount;
-
-	/* the minimum size that the hash table should be re-sized to */
-	IMG_UINT32 uMinimumSize;
-
-	/* size of key in bytes */
-	IMG_UINT32 uKeySize;
-
-	/* hash function */
-	HASH_FUNC *pfnHashFunc;
-
-	/* key comparison function */
-	HASH_KEY_COMP *pfnKeyComp;
-
-	/* the hash table array */
-	BUCKET **ppBucketTable;
+	IMG_UINT32 uSize;            /*!< current size of the hash table */
+	IMG_UINT32 uCount;           /*!< number of entries currently in the hash table */
+	IMG_UINT32 uMinimumSize;     /*!< the minimum size that the hash table should be re-sized to */
+	IMG_UINT32 uKeySize;         /*!< size of key in bytes */
+	IMG_UINT32 uShrinkThreshold; /*!< The threshold at which to trigger a shrink */
+	IMG_UINT32 uGrowThreshold;   /*!< The threshold at which to trigger a grow */
+	HASH_FUNC*     pfnHashFunc;  /*!< hash function */
+	HASH_KEY_COMP* pfnKeyComp;   /*!< key comparison function */
+	BUCKET**   ppBucketTable;    /*!< the hash table array */
 };
 
 /*************************************************************************/ /*!
@@ -216,12 +215,12 @@ _ChainInsert (HASH_TABLE *pHash, BUCKET *pBucket, BUCKET **ppBucketTable, IMG_UI
 */ /**************************************************************************/
 static void
 _Rehash (HASH_TABLE *pHash,
-         BUCKET **ppOldTable, IMG_UINT32 uOldSize,
-         BUCKET **ppNewTable, IMG_UINT32 uNewSize)
+		 BUCKET **ppOldTable, IMG_UINT32 uOldSize,
+		 BUCKET **ppNewTable, IMG_UINT32 uNewSize)
 {
 	IMG_UINT32 uIndex;
 	for (uIndex=0; uIndex< uOldSize; uIndex++)
-    {
+	{
 		BUCKET *pBucket;
 		pBucket = ppOldTable[uIndex];
 		while (pBucket != NULL)
@@ -230,7 +229,7 @@ _Rehash (HASH_TABLE *pHash,
 			_ChainInsert (pHash, pBucket, ppNewTable, uNewSize);
 			pBucket = pNextBucket;
 		}
-    }
+	}
 }
 
 /*************************************************************************/ /*!
@@ -247,36 +246,53 @@ _Rehash (HASH_TABLE *pHash,
 static IMG_BOOL
 _Resize (HASH_TABLE *pHash, IMG_UINT32 uNewSize)
 {
-	if (uNewSize != pHash->uSize)
-    {
-		BUCKET **ppNewTable;
-        IMG_UINT32 uIndex;
-
-#if defined(__linux__) && defined(__KERNEL__)
-		ppNewTable = OSAllocMemNoStats(sizeof (BUCKET *) * uNewSize);
-#else
-		ppNewTable = OSAllocMem(sizeof (BUCKET *) * uNewSize);
+	BUCKET **ppNewTable;
+	IMG_UINT32 uiThreshold = uNewSize >> 2;
+#if !defined(__KERNEL__)  && defined(PERF_DBG_RESIZE)
+	struct timeval start, end;
 #endif
-		if (ppNewTable == NULL)
-        {
-            return IMG_FALSE;
-        }
 
-        for (uIndex=0; uIndex<uNewSize; uIndex++)
-            ppNewTable[uIndex] = NULL;
+	if (uNewSize == pHash->uSize)
+	{
+		return IMG_TRUE;
+	}
 
-        _Rehash(pHash, pHash->ppBucketTable, pHash->uSize, ppNewTable, uNewSize);
-
-#if defined(__linux__) && defined(__KERNEL__)
-        OSFreeMemNoStats(pHash->ppBucketTable);
-#else
-        OSFreeMem(pHash->ppBucketTable);
+#if !defined(__KERNEL__)  && defined(PERF_DBG_RESIZE)
+	gettimeofday(&start, NULL);
 #endif
-        /*not nulling pointer, being reassigned just below*/
-        pHash->ppBucketTable = ppNewTable;
-        pHash->uSize = uNewSize;
-    }
-    return IMG_TRUE;
+
+	ppNewTable = _AllocZMem(sizeof(BUCKET *) * uNewSize);
+	if (ppNewTable == NULL)
+	{
+		return IMG_FALSE;
+	}
+
+	_Rehash(pHash, pHash->ppBucketTable, pHash->uSize, ppNewTable, uNewSize);
+
+	_FreeMem(pHash->ppBucketTable);
+
+#if !defined(__KERNEL__)  && defined(PERF_DBG_RESIZE)
+	gettimeofday(&end, NULL);
+	if( start.tv_usec > end.tv_usec )
+	{
+		end.tv_usec = 1000000 - start.tv_usec + end.tv_usec;
+	}
+	else
+	{
+		end.tv_usec -=  start.tv_usec;
+	}
+
+	PVR_DPF((PVR_DBG_ERROR, "%s: H:%p O:%d N:%d C:%d G:%d S:%d T:%06luus", __func__, pHash, pHash->uSize, uNewSize, pHash->uCount, pHash->uGrowThreshold, pHash->uShrinkThreshold, end.tv_usec));
+#endif
+
+	/*not nulling pointer, being reassigned just below*/
+	pHash->ppBucketTable = ppNewTable;
+	pHash->uSize = uNewSize;
+
+	pHash->uGrowThreshold = uiThreshold * 3;
+	pHash->uShrinkThreshold = (uNewSize <= pHash->uMinimumSize) ? NO_SHRINK : uiThreshold;
+
+	return IMG_TRUE;
 }
 
 
@@ -294,11 +310,10 @@ _Resize (HASH_TABLE *pHash, IMG_UINT32 uNewSize)
 @Input          pfnKeyComp    Pointer to key comparsion function.
 @Return         NULL or hash table handle.
 */ /**************************************************************************/
-IMG_INTERNAL 
+IMG_INTERNAL
 HASH_TABLE * HASH_Create_Extended (IMG_UINT32 uInitialLen, size_t uKeySize, HASH_FUNC *pfnHashFunc, HASH_KEY_COMP *pfnKeyComp)
 {
 	HASH_TABLE *pHash;
-	IMG_UINT32 uIndex;
 
 	if (uInitialLen == 0 || uKeySize == 0 || pfnHashFunc == NULL || pfnKeyComp == NULL)
 	{
@@ -308,12 +323,8 @@ HASH_TABLE * HASH_Create_Extended (IMG_UINT32 uInitialLen, size_t uKeySize, HASH
 
 	PVR_DPF ((PVR_DBG_MESSAGE, "HASH_Create_Extended: InitialSize=0x%x", uInitialLen));
 
-#if defined(__linux__) && defined(__KERNEL__)
-	pHash = OSAllocMemNoStats(sizeof(HASH_TABLE));
-#else
-	pHash = OSAllocMem(sizeof(HASH_TABLE));
-#endif
-    if (pHash == NULL)
+	pHash = _AllocMem(sizeof(HASH_TABLE));
+	if (pHash == NULL)
 	{
 		return NULL;
 	}
@@ -322,27 +333,19 @@ HASH_TABLE * HASH_Create_Extended (IMG_UINT32 uInitialLen, size_t uKeySize, HASH
 	pHash->uSize = uInitialLen;
 	pHash->uMinimumSize = uInitialLen;
 	pHash->uKeySize = uKeySize;
+	pHash->uGrowThreshold = (uInitialLen >> 2) * 3;
+	pHash->uShrinkThreshold = NO_SHRINK;
 	pHash->pfnHashFunc = pfnHashFunc;
 	pHash->pfnKeyComp = pfnKeyComp;
 
-#if defined(__linux__) && defined(__KERNEL__)
-    pHash->ppBucketTable = OSAllocMemNoStats(sizeof (BUCKET *) * pHash->uSize);
-#else
-    pHash->ppBucketTable = OSAllocMem(sizeof (BUCKET *) * pHash->uSize);
-#endif
-    if (pHash->ppBucketTable == NULL)
-    {
-#if defined(__linux__) && defined(__KERNEL__)
-		OSFreeMemNoStats(pHash);
-#else
-		OSFreeMem(pHash);
-#endif
+	pHash->ppBucketTable = _AllocZMem(sizeof (BUCKET *) * pHash->uSize);
+	if (pHash->ppBucketTable == NULL)
+	{
+		_FreeMem(pHash);
 		/*not nulling pointer, out of scope*/
 		return NULL;
-    }
+	}
 
-	for (uIndex=0; uIndex<pHash->uSize; uIndex++)
-		pHash->ppBucketTable[uIndex] = NULL;
 	return pHash;
 }
 
@@ -357,11 +360,11 @@ HASH_TABLE * HASH_Create_Extended (IMG_UINT32 uInitialLen, size_t uKeySize, HASH
                               in bytes.
 @Return         NULL or hash table handle.
 */ /**************************************************************************/
-IMG_INTERNAL 
+IMG_INTERNAL
 HASH_TABLE * HASH_Create (IMG_UINT32 uInitialLen)
 {
 	return HASH_Create_Extended(uInitialLen, sizeof(uintptr_t),
-		&HASH_Func_Default, &HASH_Key_Comp_Default);
+								&HASH_Func_Default, &HASH_Key_Comp_Default);
 }
 
 /*************************************************************************/ /*!
@@ -394,7 +397,7 @@ HASH_Delete (HASH_TABLE *pHash)
 #endif
 #endif
 	if (pHash != NULL)
-    {
+	{
 		PVR_DPF ((PVR_DBG_MESSAGE, "HASH_Delete"));
 
 		if (bDoCheck)
@@ -411,26 +414,14 @@ HASH_Delete (HASH_TABLE *pHash)
 
 			for (i = 0; i < uiEntriesLeft; i++)
 			{
-#if defined(__linux__) && defined(__KERNEL__)
-				OSFreeMemNoStats(pHash->ppBucketTable[i]);
-#else
-				OSFreeMem(pHash->ppBucketTable[i]);
-#endif
+				_FreeMem(pHash->ppBucketTable[i]);
 			}
 		}
-#if defined(__linux__) && defined(__KERNEL__)
-		OSFreeMemNoStats(pHash->ppBucketTable);
-#else
-		OSFreeMem(pHash->ppBucketTable);
-#endif
+		_FreeMem(pHash->ppBucketTable);
 		pHash->ppBucketTable = NULL;
-#if defined(__linux__) && defined(__KERNEL__)
-		OSFreeMemNoStats(pHash);
-#else
-		OSFreeMem(pHash);
-#endif
+		_FreeMem(pHash);
 		/*not nulling pointer, copy on stack*/
-    }
+	}
 }
 
 /*************************************************************************/ /*!
@@ -456,12 +447,8 @@ HASH_Insert_Extended (HASH_TABLE *pHash, void *pKey, uintptr_t v)
 		return IMG_FALSE;
 	}
 
-#if defined(__linux__) && defined(__KERNEL__)
-	pBucket = OSAllocMemNoStats(sizeof(BUCKET) + pHash->uKeySize);
-#else
-	pBucket = OSAllocMem(sizeof(BUCKET) + pHash->uKeySize);
-#endif
-    if (pBucket == NULL)
+	pBucket = _AllocMem(sizeof(BUCKET) + pHash->uKeySize);
+	if (pBucket == NULL)
 	{
 		return IMG_FALSE;
 	}
@@ -475,14 +462,13 @@ HASH_Insert_Extended (HASH_TABLE *pHash, void *pKey, uintptr_t v)
 	pHash->uCount++;
 
 	/* check if we need to think about re-balancing */
-	if (pHash->uCount << 1 > pHash->uSize)
-    {
-        /* Ignore the return code from _Resize because the hash table is
-           still in a valid state and although not ideally sized, it is still
-           functional */
-        _Resize (pHash, pHash->uSize << 1);
-    }
-
+	if (pHash->uCount > pHash->uGrowThreshold)
+	{
+		/* Ignore the return code from _Resize because the hash table is
+		   still in a valid state and although not ideally sized, it is still
+		   functional */
+		_Resize (pHash, pHash->uSize << 1);
+	}
 
 	return IMG_TRUE;
 }
@@ -536,26 +522,20 @@ HASH_Remove_Extended(HASH_TABLE *pHash, void *pKey)
 			uintptr_t v = pBucket->v;
 			(*ppBucket) = pBucket->pNext;
 
-#if defined(__linux__) && defined(__KERNEL__)
-			OSFreeMemNoStats(pBucket);
-#else
-			OSFreeMem(pBucket);
-#endif
+			_FreeMem(pBucket);
 			/*not nulling original pointer, already overwritten*/
 
 			pHash->uCount--;
 
-			/* check if we need to think about re-balancing */
-			if (pHash->uSize > (pHash->uCount << 2) &&
-                pHash->uSize > pHash->uMinimumSize)
-            {
-                /* Ignore the return code from _Resize because the
-                   hash table is still in a valid state and although
-                   not ideally sized, it is still functional */
-				_Resize (pHash,
-                         PRIVATE_MAX (pHash->uSize >> 1,
-                                      pHash->uMinimumSize));
-            }
+			/* check if we need to think about re-balancing, when the shrink
+			 * threshold is 0 we are at the minimum size, no further shrink */
+			if (pHash->uCount < pHash->uShrinkThreshold)
+			{
+				/* Ignore the return code from _Resize because the
+				   hash table is still in a valid state and although
+				   not ideally sized, it is still functional */
+				_Resize(pHash, MAX(pHash->uSize >> 1, pHash->uMinimumSize));
+			}
 
 			return v;
 		}
@@ -640,26 +620,26 @@ HASH_Retrieve (HASH_TABLE *pHash, uintptr_t k)
 IMG_INTERNAL PVRSRV_ERROR
 HASH_Iterate(HASH_TABLE *pHash, HASH_pfnCallback pfnCallback)
 {
-    IMG_UINT32 uIndex;
-    for (uIndex=0; uIndex < pHash->uSize; uIndex++)
-    {
-        BUCKET *pBucket;
-        pBucket = pHash->ppBucketTable[uIndex];
-        while (pBucket != NULL)
-        {
-            PVRSRV_ERROR eError;
-            BUCKET *pNextBucket = pBucket->pNext;
+	IMG_UINT32 uIndex;
+	for (uIndex=0; uIndex < pHash->uSize; uIndex++)
+	{
+		BUCKET *pBucket;
+		pBucket = pHash->ppBucketTable[uIndex];
+		while (pBucket != NULL)
+		{
+			PVRSRV_ERROR eError;
+			BUCKET *pNextBucket = pBucket->pNext;
 
-            eError = pfnCallback((uintptr_t) ((void *) *(pBucket->k)), (uintptr_t) pBucket->v);
+			eError = pfnCallback((uintptr_t) ((void *) *(pBucket->k)), pBucket->v);
 
-            /* The callback might want us to break out early */
-            if (eError != PVRSRV_OK)
-                return eError;
+			/* The callback might want us to break out early */
+			if (eError != PVRSRV_OK)
+				return eError;
 
-            pBucket = pNextBucket;
-        }
-    }
-    return PVRSRV_OK;
+			pBucket = pNextBucket;
+		}
+	}
+	return PVRSRV_OK;
 }
 
 #ifdef HASH_TRACE
@@ -691,11 +671,11 @@ HASH_Dump (HASH_TABLE *pHash)
 		{
 			uLength++;
 		}
-		uMaxLength = PRIVATE_MAX (uMaxLength, uLength);
+		uMaxLength = MAX(uMaxLength, uLength);
 	}
 
 	PVR_TRACE(("hash table: uMinimumSize=%d  size=%d  count=%d",
-			pHash->uMinimumSize, pHash->uSize, pHash->uCount));
+			   pHash->uMinimumSize, pHash->uSize, pHash->uCount));
 	PVR_TRACE(("  empty=%d  max=%d", uEmptyCount, uMaxLength));
 }
 #endif

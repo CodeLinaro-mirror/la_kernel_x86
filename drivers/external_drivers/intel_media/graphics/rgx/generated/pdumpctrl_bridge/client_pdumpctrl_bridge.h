@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for pdumpctrl
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_PDUMPCTRL_BRIDGE_H
 #define CLIENT_PDUMPCTRL_BRIDGE_H
@@ -54,21 +54,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "common_pdumpctrl_bridge.h"
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpIsCapturing(IMG_HANDLE hBridge,
-								    IMG_BOOL *pbIsCapturing);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetState(IMG_HANDLE
+								 hBridge,
+								 IMG_UINT64 *
+								 pui64State);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetFrame(IMG_HANDLE hBridge,
-								 IMG_UINT32 *pui32Frame);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpGetFrame(IMG_HANDLE
+								 hBridge,
+								 IMG_UINT32 *
+								 pui32Frame);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpSetDefaultCaptureParams(IMG_HANDLE hBridge,
-										IMG_UINT32 ui32Mode,
-										IMG_UINT32 ui32Start,
-										IMG_UINT32 ui32End,
-										IMG_UINT32 ui32Interval,
-										IMG_UINT32 ui32MaxParamFileSize);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgePVRSRVPDumpSetDefaultCaptureParams(IMG_HANDLE hBridge,
+					 IMG_UINT32 ui32Mode,
+					 IMG_UINT32 ui32Start,
+					 IMG_UINT32 ui32End,
+					 IMG_UINT32 ui32Interval,
+					 IMG_UINT32 ui32MaxParamFileSize);
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgePVRSRVPDumpIsLastCaptureFrame(IMG_HANDLE hBridge,
-									   IMG_BOOL *pbpbIsLastCaptureFrame);
-
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV
+BridgePVRSRVPDumpIsLastCaptureFrame(IMG_HANDLE hBridge,
+				    IMG_BOOL * pbpbIsLastCaptureFrame);
 
 #endif /* CLIENT_PDUMPCTRL_BRIDGE_H */

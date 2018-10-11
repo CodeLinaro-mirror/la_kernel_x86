@@ -51,38 +51,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "dllist.h"
 #include "rgx_firmware_processor.h"
 
-#if	!defined(__KERNEL__)
-/* The following defines the offsets for the KCCB, KCCBCtl, FWCCB and FWCCBCtl
- * for the various guests in a virtualisation environment. It is assumed that each
- * guest is built the same way and so all their offsets will match. If the code
- * at host level changes and the offsets change, the defines here need to be updated.
- */
-
-#if defined(RGX_FEATURE_META)
-#define RGXFWIF_GUEST_OFFSET_KCCB           (RGXFW_SEGMMU_DATA_BASE_ADDRESS | \
-                                             RGXFW_SEGMMU_DATA_META_CACHED | \
-                                             RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED | \
-                                             0x2000U)
-#define RGXFWIF_GUEST_OFFSET_KCCBCTL        (RGXFW_SEGMMU_DATA_BASE_ADDRESS | \
-                                             RGXFW_SEGMMU_DATA_META_UNCACHED | \
-                                             RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED | \
-											 0x0280U)
-#define RGXFWIF_GUEST_OFFSET_FWCCB          (RGXFW_SEGMMU_DATA_BASE_ADDRESS | \
-                                             RGXFW_SEGMMU_DATA_META_UNCACHED | \
-                                             RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED | \
-											 0x0300U)
-#define RGXFWIF_GUEST_OFFSET_FWCCBCTL       (RGXFW_SEGMMU_DATA_BASE_ADDRESS | \
-                                             RGXFW_SEGMMU_DATA_META_UNCACHED | \
-                                             RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED | \
-											 0x02C0U)
-#else
-/* In case of MIPS we will need to define proper values for these offsets */
-#define RGXFWIF_GUEST_OFFSET_KCCB           (0x0)
-#define RGXFWIF_GUEST_OFFSET_KCCBCTL        (0x0)
-#define RGXFWIF_GUEST_OFFSET_FWCCB          (0x0)
-#define RGXFWIF_GUEST_OFFSET_FWCCBCTL       (0x0)
-#endif
-
+#if !defined(ALIGN)
+#define ALIGN(val, align) (((val) + ((align) - 1)) & ~((align) - 1))
 #endif
 
 #if defined(RGX_FIRMWARE)
@@ -94,6 +64,7 @@ typedef struct {RGXFWIF_DEV_VIRTADDR p;
 
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_SIGBUFFER;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_TRACEBUF;
+typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_TBIBUF;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_HWPERFBUF;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_HWRINFOBUF;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_RUNTIME_CFG;
@@ -113,6 +84,8 @@ typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_RF_CMD;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_COMPCHECKS;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_ALIGNCHECK;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_CORE_CLK_RATE;
+typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_OS_CONFIG;
+typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_COUNTERBUFFER;
 
 /*!
  * This number is used to represent an invalid page catalogue physical address
@@ -137,7 +110,6 @@ typedef struct _RGXFWIF_FWMEMCONTEXT_
 
 } UNCACHED_ALIGN RGXFWIF_FWMEMCONTEXT;
 
-
 /*!
  * 	FW context state flags
  */
@@ -148,6 +120,18 @@ typedef struct _RGXFWIF_FWMEMCONTEXT_
 #define RGXFWIF_CONTEXT_TDMFLAGS_CONTEXT_STORED		(0x00000010)
 #define RGXFWIF_CONTEXT_ALLFLAGS_NEED_RESUME		(0x0000001F)
 
+/*
+ * Fast scale blit renders can be divided into smaller slices.
+ * The maximum screen size is 8192x8192 pixels or 256x256 tiles.
+ * The blit is sliced into 512x512 pixel blits or 16x16 tiles.
+ * Therefore, there are at most 256 slices of 16x16 tiles, which
+ * means we need 8bits to count up to which slice we have
+ * blitted so far.
+ */
+#define RGXFWIF_CONTEXT_SLICE_BLIT_X_MASK			(0x00000F00)
+#define RGXFWIF_CONTEXT_SLICE_BLIT_X_SHIFT			(8)
+#define RGXFWIF_CONTEXT_SLICE_BLIT_Y_MASK			(0x0000F000)
+#define RGXFWIF_CONTEXT_SLICE_BLIT_Y_SHIFT			(12)
 
 typedef struct _RGXFWIF_TACTX_STATE_
 {
@@ -159,21 +143,19 @@ typedef struct _RGXFWIF_TACTX_STATE_
 	IMG_UINT64	RGXFW_ALIGN uTAReg_VBS_SO_PRIM1;
 	IMG_UINT64	RGXFW_ALIGN uTAReg_VBS_SO_PRIM2;
 	IMG_UINT64	RGXFW_ALIGN uTAReg_VBS_SO_PRIM3;
-#if defined(SUPPORT_VDM_CONTEXT_STORE_BUFFER_AB)
 	IMG_UINT16	RGXFW_ALIGN ui16TACurrentIdx;
-#endif
 } UNCACHED_ALIGN RGXFWIF_TACTX_STATE;
-
 
 typedef struct _RGXFWIF_3DCTX_STATE_
 {
 	/* FW-accessible ISP state which must be written out to memory on context store */
-	IMG_UINT32	RGXFW_ALIGN au3DReg_ISP_STORE[64];
 	IMG_UINT64	RGXFW_ALIGN u3DReg_PM_DEALLOCATED_MASK_STATUS;
 	IMG_UINT64	RGXFW_ALIGN u3DReg_PM_PDS_MTILEFREE_STATUS;
+	/*au3DReg_ISP_STORE should be the last element of the structure
+	 * as this is an array whose size is determined at runtime
+	 * after detecting the RGX core */
+	IMG_UINT32	RGXFW_ALIGN au3DReg_ISP_STORE[];
 } UNCACHED_ALIGN RGXFWIF_3DCTX_STATE;
-
-
 
 typedef struct _RGXFWIF_COMPUTECTX_STATE_
 {
@@ -203,6 +185,7 @@ typedef struct _RGXFWIF_FWCOMMONCONTEXT_
 		Used by the bg context only
 	*/
 	RGXFWIF_DLLIST_NODE		RGXFW_ALIGN sWaitingNode;			/*!< List entry for the waiting list */
+	RGXFWIF_UFO				sLastFailedUFO;						/*!< UFO that last failed (or NULL) */
 
 	/*
 		Used by the irq context only
@@ -224,7 +207,6 @@ typedef struct _RGXFWIF_FWCOMMONCONTEXT_
 	IMG_UINT32				ui32Flags;
 	IMG_UINT32				ui32Priority;
 	IMG_UINT32				ui32PrioritySeqNum;
-	IMG_UINT64		RGXFW_ALIGN 	ui64MCUFenceAddr;
 
 	/* References to the host side originators */
 	IMG_UINT32				ui32ServerCommonContextID;			/*!< the Server Common Context */
@@ -295,7 +277,8 @@ typedef enum _RGXFWIF_BIFTILINGMODE_
 {
 	RGXFWIF_BIFTILINGMODE_NONE      = 0,
 	RGXFWIF_BIFTILINGMODE_256x16    = 0,
-	RGXFWIF_BIFTILINGMODE_512x8     = 1
+	RGXFWIF_BIFTILINGMODE_512x8     = 1,
+	RGXFWIF_BIFTILINGMODE_MAX     	= 4
 } RGXFWIF_BIFTILINGMODE;
 
 /*!
@@ -353,20 +336,17 @@ typedef struct _RGXFWIF_CCB_CTL_
 #if !defined(RGX_FEATURE_SLC_VIVT)
 #define RGXFWIF_MMUCACHEDATA_FLAGS_PMTLB   (0x10) /* can't use PM_TLB0 bit from BIFPM_CTRL reg because it collides with PT bit from BIF_CTRL reg */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_TLB     (RGXFWIF_MMUCACHEDATA_FLAGS_PMTLB | 0x8) /* BIF_CTRL_INVAL_TLB1_EN */
-#define RGXFWIF_MMUCACHEDATA_FLAGS_CTX(C)  (0x0) /* not used */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_CTX_ALL (0x0) /* not used */
 
 #else /* RGX_FEATURE_SLC_VIVT */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_PMTLB   (0x0) /* not used */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_TLB     (0x0) /* not used */
-#define RGXFWIF_MMUCACHEDATA_FLAGS_CTX(C)  ((C) << 0x3) /* MMU_CTRL_INVAL_CONTEXT_SHIFT */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_CTX_ALL (0x800) /* MMU_CTRL_INVAL_ALL_CONTEXTS_EN */
 #endif
 
 #else
 #define RGXFWIF_MMUCACHEDATA_FLAGS_PMTLB   (0x10) /* can't use PM_TLB0 bit from BIFPM_CTRL reg because it collides with PT bit from BIF_CTRL reg */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_TLB     (RGXFWIF_MMUCACHEDATA_FLAGS_PMTLB | 0x8) /* BIF_CTRL_INVAL_TLB1_EN */
-#define RGXFWIF_MMUCACHEDATA_FLAGS_CTX(C)  ((C) << 0x3) /* MMU_CTRL_INVAL_CONTEXT_SHIFT */
 #define RGXFWIF_MMUCACHEDATA_FLAGS_CTX_ALL (0x800) /* MMU_CTRL_INVAL_ALL_CONTEXTS_EN */
 #endif
 
@@ -374,11 +354,11 @@ typedef struct _RGXFWIF_CCB_CTL_
 
 typedef struct _RGXFWIF_MMUCACHEDATA_
 {
-	PRGXFWIF_FWMEMCONTEXT		psMemoryContext;
-	IMG_UINT32					ui32Flags;
-	RGXFWIF_DEV_VIRTADDR		sMMUCacheSync;
-	IMG_UINT32					ui32MMUCacheSyncUpdateValue;
-} RGXFWIF_MMUCACHEDATA;
+	PRGXFWIF_FWMEMCONTEXT sMemoryContext;
+	IMG_UINT32            ui32Flags;
+	RGXFWIF_DEV_VIRTADDR  sMMUCacheSync;
+	IMG_UINT16            ui16MMUCacheSyncUpdateValue;
+} __attribute__ ((packed)) RGXFWIF_MMUCACHEDATA;
 
 typedef struct _RGXFWIF_SLCBPCTLDATA_
 {
@@ -410,7 +390,6 @@ typedef struct _RGXFWIF_KCCB_CMD_KICK_DATA_
 	IMG_UINT32					ui32CWoffUpdate;	/*!< Client CCB woff update */
 	IMG_UINT32					ui32NumCleanupCtl;		/*!< number of CleanupCtl pointers attached */
 	PRGXFWIF_CLEANUP_CTL		apsCleanupCtl[RGXFWIF_KCCB_CMD_KICK_DATA_MAX_NUM_CLEANUP_CTLS]; /*!< CleanupCtl structures associated with command */
-	PRGXFWIF_WORKLOAD_DATA		sWorkloadDataFWAddress;   /*!< deprecated, kept for compatibility. */
 	IMG_UINT32					ui32WorkEstCmdHeaderOffset; /*!< offset to the CmdHeader which houses the workload estimation kick data. */
 } RGXFWIF_KCCB_CMD_KICK_DATA;
 
@@ -419,6 +398,12 @@ typedef struct _RGXFWIF_KCCB_CMD_FENCE_DATA_
 	RGXFWIF_DEV_VIRTADDR sSyncObjDevVAddr;
 	IMG_UINT32 uiUpdateVal;
 } RGXFWIF_KCCB_CMD_SYNC_DATA;
+
+typedef struct _RGXFWIF_KCCB_CMD_FORCE_UPDATE_DATA_
+{
+	PRGXFWIF_FWCOMMONCONTEXT	psContext;			/*!< address of the firmware context */
+	IMG_UINT32					ui32CCBFenceOffset;	/*!< Client CCB fence offset */
+} RGXFWIF_KCCB_CMD_FORCE_UPDATE_DATA;
 
 typedef enum _RGXFWIF_CLEANUP_TYPE_
 {
@@ -461,18 +446,30 @@ typedef enum
 	RGXFWIF_OS_OFFLINE
 } RGXFWIF_OS_STATE_CHANGE;
 
+typedef enum
+{
+	RGXFWIF_PWR_COUNTER_DUMP_START = 1,
+	RGXFWIF_PWR_COUNTER_DUMP_STOP,
+	RGXFWIF_PWR_COUNTER_DUMP_SAMPLE,
+} RGXFWIF_COUNTER_DUMP_REQUEST;
+
+typedef enum
+{
+	RGXFWIF_POWER_FORCE_IDLE = 1,
+	RGXFWIF_POWER_CANCEL_FORCED_IDLE,
+	RGXFWIF_POWER_HOST_TIMEOUT,
+} RGXFWIF_POWER_FORCE_IDLE_TYPE;
+
 typedef struct _RGXFWIF_POWER_REQUEST_
 {
-	RGXFWIF_POWER_TYPE				ePowType;				/*!< Type of power request */
+	RGXFWIF_POWER_TYPE					ePowType;					/*!< Type of power request */
 	union
 	{
-		IMG_UINT32					ui32NumOfDusts;			/*!< Number of active Dusts */
-		IMG_BOOL					bForced;				/*!< If the operation is mandatory */
-		IMG_BOOL					bCancelForcedIdle;		/*!< If the operation is to cancel previously forced idle */
-		IMG_UINT32					ui32ActivePMLatencyms;		/*!< Number of milliseconds to set APM latency */
+		IMG_UINT32						ui32NumOfDusts;			/*!< Number of active Dusts */
+		IMG_BOOL						bForced;				/*!< If the operation is mandatory */
+		RGXFWIF_POWER_FORCE_IDLE_TYPE	ePowRequestType;		/*!< Type of Request. Consolidating Force Idle, Cancel Forced Idle, Host Timeout */
+		IMG_UINT32						ui32ActivePMLatencyms;	/*!< Number of milliseconds to set APM latency */
 	} uPoweReqData;
-	IMG_BOOL						bNotifyTimeout;			/*!< Notify the FW that the host has timed out waiting for a response to an idling.
-															     It's placed here as an extension of the struct for backwards compatibility reasons */
 } RGXFWIF_POWER_REQUEST;
 
 typedef struct _RGXFWIF_SLCFLUSHINVALDATA_
@@ -482,13 +479,6 @@ typedef struct _RGXFWIF_SLCFLUSHINVALDATA_
 	IMG_BOOL    bDMContext;             /*!< The data to flush/invalidate belongs to a specific DM context */
 	RGXFWIF_DM  eDM;                    /*!< DM to flush entries for (only useful when bDMContext == TRUE) */
 } RGXFWIF_SLCFLUSHINVALDATA;
-
-typedef struct _RGXFWIF_STATEFLAG_CTRL_
-{
-	IMG_BOOL    bSetNotClear; /*!< Set or clear config flags */
-	IMG_UINT32  ui32Config;   /*!< Mask of config flags to change */
-	RGXFWIF_DEV_VIRTADDR sSyncObjDevVAddr;	/*!< sync primitive used to return the status */
-} RGXFWIF_STATEFLAG_CTRL;
 
 typedef struct _RGXFWIF_HCS_CTL_
 {
@@ -549,8 +539,9 @@ typedef struct
 typedef struct _RGXFWIF_FREELIST_GS_DATA_
 {
 	RGXFWIF_DEV_VIRTADDR	sFreeListFWDevVAddr; 				/*!< Freelist FW address */
-	IMG_UINT32				ui32DeltaSize;						/*!< Amount of the Freelist change */
-	IMG_UINT32				ui32NewSize;						/*!< New amount of pages on the freelist */
+	IMG_UINT32				ui32DeltaPages;						/*!< Amount of the Freelist change */
+	IMG_UINT32				ui32NewPages;						/*!< New amount of pages on the freelist (including ready pages) */
+	IMG_UINT32              ui32ReadyPages;                     /*!< Number of ready pages to be held in reserve until OOM */
 } RGXFWIF_FREELIST_GS_DATA;
 
 #define RGXFWIF_FREELISTS_RECONSTRUCTION_FAILED_FLAG 0x80000000
@@ -634,7 +625,11 @@ typedef struct _RGXFWIF_REGCONFIG_DATA_
 
 typedef struct _RGXFWIF_REG_CFG_
 {
-	IMG_UINT8            RGXFW_ALIGN  aui8NumRegsType[RGXFWIF_REG_CFG_TYPE_ALL];
+	/**
+	 * PDump WRW command write granularity is 32 bits.
+	 * Add padding to ensure array size is 32 bit granular.
+	 */
+	IMG_UINT8            RGXFW_ALIGN  aui8NumRegsType[ALIGN(RGXFWIF_REG_CFG_TYPE_ALL,sizeof(IMG_UINT32))];
 	RGXFWIF_REG_CFG_REC	 RGXFW_ALIGN  asRegConfigs[RGXFWIF_REG_CFG_MAX_SIZE];
 } UNCACHED_ALIGN RGXFWIF_REG_CFG;
 
@@ -662,49 +657,55 @@ typedef struct
 
 typedef struct
 {
-	PRGXFWIF_INIT		sOSInit;
+	PRGXFWIF_OS_CONFIG sOSConfig;
 }  RGXFW_ALIGN RGXFWIF_OS_CONFIG_DATA;
+
+typedef struct
+{
+	RGXFWIF_COUNTER_DUMP_REQUEST eCounterDumpRequest;
+}  RGXFW_ALIGN RGXFWIF_COUNTER_DUMP_DATA;
 
 typedef enum _RGXFWIF_KCCB_CMD_TYPE_
 {
-	RGXFWIF_KCCB_CMD_KICK						= 101,
-	RGXFWIF_KCCB_CMD_MMUCACHE					= 102,
-	RGXFWIF_KCCB_CMD_BP							= 104,
-	RGXFWIF_KCCB_CMD_SLCBPCTL   				= 106, /*!< slc bypass control. Requires sSLCBPCtlData. For validation */
-	RGXFWIF_KCCB_CMD_SYNC       				= 107, /*!< host sync command. Requires sSyncData. */
-	RGXFWIF_KCCB_CMD_SLCFLUSHINVAL				= 108, /*!< slc flush and invalidation request */
-	RGXFWIF_KCCB_CMD_CLEANUP					= 109, /*!< Requests cleanup of a FW resource (type specified in the command data) */
-	RGXFWIF_KCCB_CMD_POW						= 110, /*!< Power request */
-	RGXFWIF_KCCB_CMD_HWPERF_UPDATE_CONFIG			= 111, /*!< Configure HWPerf events (to be generated) and HWPerf buffer address (if required) */
-	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS	= 112, /*!< Configure, clear and enable multiple HWPerf blocks */
-	RGXFWIF_KCCB_CMD_HWPERF_CTRL_BLKS			= 113, /*!< Enable or disable multiple HWPerf blocks (reusing existing configuration) */
-	RGXFWIF_KCCB_CMD_CORECLKSPEEDCHANGE			= 114, /*!< CORE clock speed change event */
-	RGXFWIF_KCCB_CMD_ZSBUFFER_BACKING_UPDATE	= 115, /*!< Backing for on-demand ZS-Buffer done */
-	RGXFWIF_KCCB_CMD_ZSBUFFER_UNBACKING_UPDATE	= 116, /*!< Unbacking for on-demand ZS-Buffer done */
-	RGXFWIF_KCCB_CMD_FREELIST_GROW_UPDATE		= 117, /*!< Freelist Grow done */
-	RGXFWIF_KCCB_CMD_FREELIST_SHRINK_UPDATE		= 118, /*!< Freelist Shrink done */
-	RGXFWIF_KCCB_CMD_FREELISTS_RECONSTRUCTION_UPDATE	= 119, /*!< Freelists Reconstruction done */
-	RGXFWIF_KCCB_CMD_HEALTH_CHECK               = 120, /*!< Health check request */
-	RGXFWIF_KCCB_CMD_REGCONFIG                  = 121,
-	RGXFWIF_KCCB_CMD_HWPERF_SELECT_CUSTOM_CNTRS = 122, /*!< Configure the custom counters for HWPerf */
-	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS_DIRECT	= 123, /*!< Configure, clear and enable multiple HWPerf blocks during the init process*/
-	RGXFWIF_KCCB_CMD_LOGTYPE_UPDATE             = 124, /*!< Ask the firmware to update its cached ui32LogType value from the (shared) tracebuf control structure */
-	RGXFWIF_KCCB_CMD_WORKEST_CLEAR_BUFFER		= 125,
-	RGXFWIF_KCCB_CMD_PDVFS_PASS_OPP				= 126,
-	RGXFWIF_KCCB_CMD_PDVFS_LIMIT_MAX_FREQ				= 127,
-	RGXFWIF_KCCB_CMD_PDVFS_REQUEST_REACTIVE_UPDATE	= 129,
-	RGXFWIF_KCCB_CMD_DOPPLER_MEMORY_GROW		= 130,
+	RGXFWIF_KCCB_CMD_KICK						= 101 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_MMUCACHE					= 102 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_BP							= 104 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_SLCBPCTL   				= 106 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< slc bypass control. Requires sSLCBPCtlData. For validation */
+	RGXFWIF_KCCB_CMD_SYNC       				= 107 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< host sync command. Requires sSyncData. */
+	RGXFWIF_KCCB_CMD_SLCFLUSHINVAL				= 108 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< slc flush and invalidation request */
+	RGXFWIF_KCCB_CMD_CLEANUP					= 109 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Requests cleanup of a FW resource (type specified in the command data) */
+	RGXFWIF_KCCB_CMD_POW						= 110 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Power request */
+	RGXFWIF_KCCB_CMD_HWPERF_UPDATE_CONFIG		= 111 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Configure HWPerf events (to be generated) and HWPerf buffer address (if required) */
+	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS	= 112 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Configure, clear and enable multiple HWPerf blocks */
+	RGXFWIF_KCCB_CMD_HWPERF_CTRL_BLKS			= 113 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Enable or disable multiple HWPerf blocks (reusing existing configuration) */
+	RGXFWIF_KCCB_CMD_CORECLKSPEEDCHANGE			= 114 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< CORE clock speed change event */
+	RGXFWIF_KCCB_CMD_ZSBUFFER_BACKING_UPDATE	= 115 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Backing for on-demand ZS-Buffer done */
+	RGXFWIF_KCCB_CMD_ZSBUFFER_UNBACKING_UPDATE	= 116 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Unbacking for on-demand ZS-Buffer done */
+	RGXFWIF_KCCB_CMD_FREELIST_GROW_UPDATE		= 117 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Freelist Grow done */
+	RGXFWIF_KCCB_CMD_FREELIST_SHRINK_UPDATE		= 118 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Freelist Shrink done */
+	RGXFWIF_KCCB_CMD_FREELISTS_RECONSTRUCTION_UPDATE	= 119 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Freelists Reconstruction done */
+	RGXFWIF_KCCB_CMD_HEALTH_CHECK               = 120 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Health check request */
+	RGXFWIF_KCCB_CMD_REGCONFIG                  = 121 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_HWPERF_SELECT_CUSTOM_CNTRS = 122 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Configure the custom counters for HWPerf */
+	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS_DIRECT	= 123 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Configure, clear and enable multiple HWPerf blocks during the init process*/
+	RGXFWIF_KCCB_CMD_LOGTYPE_UPDATE             = 124 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Ask the firmware to update its cached ui32LogType value from the (shared) tracebuf control structure */
+	RGXFWIF_KCCB_CMD_WORKEST_CLEAR_BUFFER		= 125 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_PDVFS_LIMIT_MAX_FREQ		= 127 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_PDVFS_REQUEST_REACTIVE_UPDATE	= 129 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_KCCB_CMD_DOPPLER_MEMORY_GROW		= 130 | RGX_CMD_MAGIC_DWORD_SHIFTED,
 
-	RGXFWIF_KCCB_CMD_NOTIFY_SIGNAL_UPDATE       = 131, /*!< Informs the firmware that the host has performed a signal update */
+	RGXFWIF_KCCB_CMD_NOTIFY_SIGNAL_UPDATE       = 131 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Informs the firmware that the host has performed a signal update */
 
-	RGXFWIF_KCCB_CMD_NOTIFY_WRITE_OFFSET_UPDATE	= 132, /*!< Informs the firmware that the host has added more data to a CDM2 Circular Buffer */
+	RGXFWIF_KCCB_CMD_NOTIFY_WRITE_OFFSET_UPDATE	= 132 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Informs the firmware that the host has added more data to a CDM2 Circular Buffer */
 
-	RGXFWIF_KCCB_CMD_OSID_PRIORITY_CHANGE       = 133, /*!< Changes the relative scheduling priority for a particular OSid. It can only be serviced for the Host DDK */
-	RGXFWIF_KCCB_CMD_STATEFLAGS_CTRL            = 134, /*!< Set or clear firmware state flags */
-	RGXFWIF_KCCB_CMD_HCS_SET_DEADLINE           = 135, /*!< Set hard context switching deadline */
-	RGXFWIF_KCCB_CMD_OS_ISOLATION_GROUP_CHANGE  = 136, /*!< Changes the configuration of (or even disables) the OSid Isolation scheduling group. It can only be serviced for the Host DDK */
-	RGXFWIF_KCCB_CMD_OS_ONLINE_STATE_CONFIGURE  = 137, /*!< Informs the FW that a Guest OS has come online / offline. It can only be serviced for the Host DDK */
-	RGXFWIF_KCCB_CMD_OS_CFG_INIT                = 138, /*!< First kick of the DDK which initializes all OS specific data on the FW */
+	RGXFWIF_KCCB_CMD_OSID_PRIORITY_CHANGE       = 133 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Changes the relative scheduling priority for a particular OSid. It can only be serviced for the Host DDK */
+	RGXFWIF_KCCB_CMD_STATEFLAGS_CTRL            = 134 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Set or clear firmware state flags */
+	RGXFWIF_KCCB_CMD_HCS_SET_DEADLINE           = 135 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Set hard context switching deadline */
+	RGXFWIF_KCCB_CMD_OS_ISOLATION_GROUP_CHANGE  = 136 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Changes the configuration of (or even disables) the OSid Isolation scheduling group. It can only be serviced for the Host DDK */
+	RGXFWIF_KCCB_CMD_OS_ONLINE_STATE_CONFIGURE  = 137 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Informs the FW that a Guest OS has come online / offline. It can only be serviced for the Host DDK */
+	RGXFWIF_KCCB_CMD_OS_CFG_INIT                = 138 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< First kick of the DDK which initializes all OS specific data on the FW */
+	RGXFWIF_KCCB_CMD_COUNTER_DUMP               = 139 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Controls counter dumping in the FW */
+	RGXFWIF_KCCB_CMD_FORCE_UPDATE               = 140 | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Forcing signalling of all unmet UFOs for a given CCB offset */
 } RGXFWIF_KCCB_CMD_TYPE;
 
 /* Kernel CCB command packet */
@@ -738,11 +739,13 @@ typedef struct _RGXFWIF_KCCB_CMD_
 		RGXFWIF_PDVFS_OPP_DATA				sPDVFSOppData;
 		RGXFWIF_PDVFS_MAX_FREQ_DATA			sPDVFSMaxFreqData;
 		RGXFWIF_OSID_PRIORITY_DATA			sCmdOSidPriorityData;	/*!< Data for updating an OSid priority */
-		RGXFWIF_STATEFLAG_CTRL				sStateFlagCtrl;			/*!< Data for StateFlag control command */
 		RGXFWIF_HCS_CTL						sHCSCtrl;				/*!< Data for Hard Context Switching */
 		RGXFWIF_OSID_ISOLATION_GROUP_DATA   sCmdOSidIsolationData;  /*!< Data for updating the OSid isolation group */
 		RGXFWIF_OS_STATE_CHANGE_DATA        sCmdOSOnlineStateData;  /*!< Data for updating the Guest Online states */
 		RGXFWIF_OS_CONFIG_DATA              sCmdOSConfigData;       /*!< Data for the OS-specific initialization part of the FW */
+		RGXFWIF_DEV_VIRTADDR                sTBIBuffer;             /*!< Dev address for TBI buffer allocated on demand */
+		RGXFWIF_COUNTER_DUMP_DATA			sCounterDumpConfigData; /*!< Data for dumping of register ranges */
+		RGXFWIF_KCCB_CMD_FORCE_UPDATE_DATA  sForceUpdateData;       /*!< Data for signalling all unmet fences for a given CCB */
 	} UNCACHED_ALIGN uCmdData;
 } UNCACHED_ALIGN RGXFWIF_KCCB_CMD;
 
@@ -782,18 +785,19 @@ typedef struct _RGXFWIF_FWCCB_CMD_CONTEXT_RESET_DATA_
 
 typedef enum _RGXFWIF_FWCCB_CMD_TYPE_
 {
-	RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING				= 101, 	/*!< Requests ZSBuffer to be backed with physical pages */
-	RGXFWIF_FWCCB_CMD_ZSBUFFER_UNBACKING			= 102, 	/*!< Requests ZSBuffer to be unbacked */
-	RGXFWIF_FWCCB_CMD_FREELIST_GROW					= 103, 	/*!< Requests an on-demand freelist grow/shrink */
-	RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION		= 104, 	/*!< Requests freelists reconstruction */
-	RGXFWIF_FWCCB_CMD_CONTEXT_RESET_NOTIFICATION	= 105,	/*!< Notifies host of a HWR event on a context */
-	RGXFWIF_FWCCB_CMD_DEBUG_DUMP					= 106,	/*!< Requests an on-demand debug dump */
-	RGXFWIF_FWCCB_CMD_UPDATE_STATS					= 107,	/*!< Requests an on-demand update on process stats */
+	RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING				= 101 | RGX_CMD_MAGIC_DWORD_SHIFTED, 	/*!< Requests ZSBuffer to be backed with physical pages */
+	RGXFWIF_FWCCB_CMD_ZSBUFFER_UNBACKING			= 102 | RGX_CMD_MAGIC_DWORD_SHIFTED, 	/*!< Requests ZSBuffer to be unbacked */
+	RGXFWIF_FWCCB_CMD_FREELIST_GROW					= 103 | RGX_CMD_MAGIC_DWORD_SHIFTED, 	/*!< Requests an on-demand freelist grow/shrink */
+	RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION		= 104 | RGX_CMD_MAGIC_DWORD_SHIFTED, 	/*!< Requests freelists reconstruction */
+	RGXFWIF_FWCCB_CMD_CONTEXT_RESET_NOTIFICATION	= 105 | RGX_CMD_MAGIC_DWORD_SHIFTED,	/*!< Notifies host of a HWR event on a context */
+	RGXFWIF_FWCCB_CMD_DEBUG_DUMP					= 106 | RGX_CMD_MAGIC_DWORD_SHIFTED,	/*!< Requests an on-demand debug dump */
+	RGXFWIF_FWCCB_CMD_UPDATE_STATS					= 107 | RGX_CMD_MAGIC_DWORD_SHIFTED,	/*!< Requests an on-demand update on process stats */
 
-	RGXFWIF_FWCCB_CMD_DOPPLER_MEMORY_GROW			= 108, 	/*!< Requests an on-demand RPM freelist grow */
-	RGXFWIF_FWCCB_CMD_WORKLOAD_FINISHED				= 109,	/*!< Supplies data for the workload matching algorithm */
-	RGXFWIF_FWCCB_CMD_CORE_CLK_RATE_CHANGE			= 110,
-	RGXFWIF_FWCCB_CMD_PDVFS_FREEMEM					= 111,
+	RGXFWIF_FWCCB_CMD_DOPPLER_MEMORY_GROW			= 108 | RGX_CMD_MAGIC_DWORD_SHIFTED, 	/*!< Requests an on-demand RPM freelist grow */
+	RGXFWIF_FWCCB_CMD_WORKLOAD_FINISHED				= 109 | RGX_CMD_MAGIC_DWORD_SHIFTED,	/*!< Supplies data for the workload matching algorithm */
+	RGXFWIF_FWCCB_CMD_CORE_CLK_RATE_CHANGE			= 110 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_FWCCB_CMD_PDVFS_FREEMEM					= 111 | RGX_CMD_MAGIC_DWORD_SHIFTED,
+	RGXFWIF_FWCCB_CMD_REQUEST_GPU_RESTART			= 112 | RGX_CMD_MAGIC_DWORD_SHIFTED,
 } RGXFWIF_FWCCB_CMD_TYPE;
 
 typedef enum
@@ -820,11 +824,6 @@ typedef struct
  * Workload Estimation Structures
  *****************************************************************************/
 
-typedef struct
-{
-	IMG_UINT64 RGXFW_ALIGN /*uintptr_t DEVMEM_MEMDESC*/	ui64WorkloadDataMemdesc;
-} RGXFWIF_FWCCB_CMD_WORKLOAD_FINISHED_DATA;
-
 /*!
  ******************************************************************************
  * Proactive DVFS Structures
@@ -850,7 +849,6 @@ typedef struct _RGXFWIF_FWCCB_CMD_
 		RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION_DATA		sCmdFreeListsReconstruction;	/*!< Data for freelists reconstruction */
 		RGXFWIF_FWCCB_CMD_CONTEXT_RESET_DATA				sCmdContextResetNotification;	/*!< Data for context reset notification */
 		RGXFWIF_FWCCB_CMD_UPDATE_STATS_DATA                 sCmdUpdateStatsData;            /*!< Data for updating process stats */
-		RGXFWIF_FWCCB_CMD_WORKLOAD_FINISHED_DATA			sCmdWorkEstWorkloadFinished;			/*!< Data for workload matching */
 		RGXFWIF_FWCCB_CMD_CORE_CLK_RATE_CHANGE_DATA			sCmdCoreClkRateChange;
 		RGXFWIF_FWCCB_CMD_PDVFS_FREEMEM_DATA				sCmdPDVFSFreeMem;
 	} RGXFW_ALIGN uCmdData;
@@ -867,6 +865,12 @@ typedef struct _RGXFWIF_SIGBUF_CTL_
 	PRGXFWIF_SIGBUFFER		sBuffer;			/*!< Ptr to Signature Buffer memory */
 	IMG_UINT32				ui32LeftSizeInRegs;	/*!< Amount of space left for storing regs in the buffer */
 } UNCACHED_ALIGN RGXFWIF_SIGBUF_CTL;
+
+typedef struct _PRGXFWIF_COUNTER_DUMP_CTL_
+{
+	PRGXFWIF_COUNTERBUFFER	sBuffer;			/*!< Ptr to counter dump buffer */
+	IMG_UINT32				ui32SizeInDwords; 	/*!< Amount of space for storing in the buffer */
+} UNCACHED_ALIGN RGXFWIF_COUNTER_DUMP_CTL;
 
 /*!
  ******************************************************************************
@@ -916,8 +920,40 @@ typedef struct _RGXFWIF_PID_FILTER_
 } RGXFW_ALIGN RGXFWIF_PID_FILTER;
 #endif
 
+typedef struct
+{
+	IMG_UINT32              ui32ConfigFlags;        /*!< Configuration flags from host */
+	RGXFWIF_DEV_VIRTADDR    sPowerSync;
+	IMG_UINT32              ui32ConfigFlagsExt;     /*!< Extended configuration flags from host */
+	PRGXFWIF_TRACEBUF       sTraceBufCtl;           /*!< structure containing trace control data and actual trace buffer */
+	PRGXFWIF_HWRINFOBUF     sRGXFWIfHWRInfoBufCtl;
+	PRGXFWIF_TRACEBUF       sGuestTraceBufCtl;           /*!< structure containing trace control data and actual trace buffer for the Guest OSes*/
+	PRGXFWIF_HWRINFOBUF     sRGXFWIfGuestHWRInfoBufCtl;
+
+} RGXFWIF_OS_CONFIG;
+
+typedef enum
+{
+	RGXFWIF_GPIO_VAL_OFF           = 0, /*!< No GPIO validation */
+	RGXFWIF_GPIO_VAL_GENERAL       = 1, /*!< Simple test case that
+	                                         initiates by sending data via the
+	                                         GPIO and then sends back any data
+	                                         received over the GPIO */
+	RGXFWIF_GPIO_VAL_AP            = 2, /*!< More complex test case that writes
+	                                         and reads data across the entire
+	                                         GPIO AP address range.*/
+#if defined(SUPPORT_STRIP_RENDERING)
+	RGXFWIF_GPIO_VAL_SR_BASIC      = 3, /*!< Strip Rendering AP based basic test.*/
+	RGXFWIF_GPIO_VAL_SR_COMPLEX    = 4, /*!< Strip Rendering AP based complex test.*/
+#endif
+	RGXFWIF_GPIO_VAL_LAST
+} RGXFWIF_GPIO_VAL_MODE;
+
 typedef struct _RGXFWIF_INIT_
 {
+
+	PRGXFWIF_OS_CONFIG      sOSConfig;              /*!< OS configuration data for the FW initialization */
+
 	IMG_DEV_PHYADDR         RGXFW_ALIGN sFaultPhysAddr;
 
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sPDSExecBase;
@@ -931,7 +967,7 @@ typedef struct _RGXFWIF_INIT_
 	IMG_BOOL                bFirstRender;
 	IMG_BOOL                bFrameworkAfterInit;
 	IMG_BOOL                bDisableFilterHWPerfCustomCounter;
-	RGXFWIF_DEV_VIRTADDR    sPowerSync;
+
 	IMG_UINT32              ui32FilterFlags;
 
 	/* Kernel CCB */
@@ -944,8 +980,6 @@ typedef struct _RGXFWIF_INIT_
 
 	RGXFWIF_SIGBUF_CTL	asSigBufCtl[RGXFWIF_DM_DEFAULT_MAX];
 
-	IMG_BOOL                bEnableLogging;
-	IMG_UINT32              ui32ConfigFlags;        /*!< Configuration flags from host */
 	IMG_UINT32              ui32BreakpointTemps;
 	IMG_UINT32              ui32BreakpointShareds;
 	IMG_UINT32              ui32HWRDebugDumpLimit;
@@ -961,12 +995,15 @@ typedef struct _RGXFWIF_INIT_
 	PRGXFWIF_RUNTIME_CFG    sRuntimeCfg;
 
 	PRGXFWIF_TRACEBUF       sTraceBufCtl;
+	PRGXFWIF_TBIBUF         sTBIBuf;
 	IMG_UINT64              RGXFW_ALIGN ui64HWPerfFilter;
 
 	PRGXFWIF_HWRINFOBUF     sRGXFWIfHWRInfoBufCtl;
 	PRGXFWIF_GPU_UTIL_FWCB  sGpuUtilFWCbCtl;
 	PRGXFWIF_REG_CFG        sRegCfg;
 	PRGXFWIF_HWPERF_CTL     sHWPerfCtl;
+
+	RGXFWIF_COUNTER_DUMP_CTL sCounterDumpCtl;
 
 	RGXFWIF_DEV_VIRTADDR    sAlignChecks;
 
@@ -1013,6 +1050,8 @@ typedef struct _RGXFWIF_INIT_
 	PRGXFWIF_CCB_CTL        psWorkEstFirmwareCCBCtl;
 	PRGXFWIF_CCB            psWorkEstFirmwareCCB;
 
+	RGXFWIF_GPIO_VAL_MODE       eGPIOValidationMode;
+
 } UNCACHED_ALIGN RGXFWIF_INIT;
 
 
@@ -1030,5 +1069,3 @@ typedef struct _RGXFWIF_CMD_PRIORITY_
 /******************************************************************************
  End of file (rgx_fwif_km.h)
 ******************************************************************************/
-
-

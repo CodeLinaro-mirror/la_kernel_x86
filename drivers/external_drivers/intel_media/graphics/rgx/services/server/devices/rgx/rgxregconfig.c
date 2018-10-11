@@ -49,6 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sync_internal.h"
 #include "pdump_km.h"
 #include "pvrsrv.h"
+
 PVRSRV_ERROR PVRSRVRGXSetRegConfigTypeKM(CONNECTION_DATA * psDevConnection,
                                          PVRSRV_DEVICE_NODE	 *psDeviceNode,
                                          IMG_UINT8           ui8RegCfgType)
@@ -61,6 +62,10 @@ PVRSRV_ERROR PVRSRVRGXSetRegConfigTypeKM(CONNECTION_DATA * psDevConnection,
 
 	PVR_UNREFERENCED_PARAMETER(psDevConnection);
 
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psRegCfg->hLock);
+#endif
+
 	if (eRegCfgType < psRegCfg->eRegCfgTypeToPush)
 	{
 		PVR_DPF((PVR_DBG_ERROR, 
@@ -68,10 +73,17 @@ PVRSRV_ERROR PVRSRVRGXSetRegConfigTypeKM(CONNECTION_DATA * psDevConnection,
 				 " Configurations of different types need to go in order",
 				 eRegCfgType,
 				 psRegCfg->eRegCfgTypeToPush));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return PVRSRV_ERROR_REG_CONFIG_INVALID_TYPE;
 	}
 
 	psRegCfg->eRegCfgTypeToPush = eRegCfgType;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psRegCfg->hLock);
+#endif
 
 	return eError;
 #else
@@ -95,15 +107,25 @@ PVRSRV_ERROR PVRSRVRGXAddRegConfigKM(CONNECTION_DATA * psConnection,
 	RGX_REG_CONFIG          *psRegCfg = &psDevInfo->sRegCongfig;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psRegCfg->hLock);
+#endif
 	
 	if (psRegCfg->bEnabled)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXAddRegConfigKM: Cannot add record whilst register configuration active."));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return PVRSRV_ERROR_REG_CONFIG_ENABLED;
 	}
 	if (psRegCfg->ui32NumRegRecords == RGXFWIF_REG_CFG_MAX_SIZE)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXAddRegConfigKM: Register configuration full."));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return PVRSRV_ERROR_REG_CONFIG_FULL;
 	}
 
@@ -123,10 +145,17 @@ PVRSRV_ERROR PVRSRVRGXAddRegConfigKM(CONNECTION_DATA * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXAddRegConfigKM: RGXScheduleCommand failed. Error:%u", eError));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return eError;
 	}
 
 	psRegCfg->ui32NumRegRecords++;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psRegCfg->hLock);
+#endif
 
 	return eError;
 #else
@@ -147,10 +176,17 @@ PVRSRV_ERROR PVRSRVRGXClearRegConfigKM(CONNECTION_DATA * psConnection,
 	RGX_REG_CONFIG          *psRegCfg = &psDevInfo->sRegCongfig;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psRegCfg->hLock);
+#endif
 	
 	if (psRegCfg->bEnabled)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXClearRegConfigKM: Attempt to clear register configuration whilst active."));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return PVRSRV_ERROR_REG_CONFIG_ENABLED;
 	}
 
@@ -166,11 +202,18 @@ PVRSRV_ERROR PVRSRVRGXClearRegConfigKM(CONNECTION_DATA * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXClearRegConfigKM: RGXScheduleCommand failed. Error:%u", eError));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return eError;
 	}
 
 	psRegCfg->ui32NumRegRecords = 0;
-	psRegCfg->eRegCfgTypeToPush = RGXFWIF_REG_CFG_TYPE_PWR_ON; 
+	psRegCfg->eRegCfgTypeToPush = RGXFWIF_REG_CFG_TYPE_PWR_ON;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psRegCfg->hLock);
+#endif
 
 	return eError;
 #else
@@ -192,7 +235,11 @@ PVRSRV_ERROR PVRSRVRGXEnableRegConfigKM(CONNECTION_DATA * psConnection,
 	RGX_REG_CONFIG          *psRegCfg = &psDevInfo->sRegCongfig;
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psRegCfg->hLock);
+#endif
+
 	sRegCfgCmd.eCmdType = RGXFWIF_KCCB_CMD_REGCONFIG;
 	sRegCfgCmd.uCmdData.sRegConfigData.eCmdType = RGXFWIF_REGCFG_CMD_ENABLE;
 
@@ -205,10 +252,17 @@ PVRSRV_ERROR PVRSRVRGXEnableRegConfigKM(CONNECTION_DATA * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXEnableRegConfigKM: RGXScheduleCommand failed. Error:%u", eError));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return eError;
 	}
 
 	psRegCfg->bEnabled = IMG_TRUE;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psRegCfg->hLock);
+#endif
 
 	return eError;
 #else
@@ -229,7 +283,11 @@ PVRSRV_ERROR PVRSRVRGXDisableRegConfigKM(CONNECTION_DATA * psConnection,
 	RGX_REG_CONFIG          *psRegCfg = &psDevInfo->sRegCongfig;
 	
 	PVR_UNREFERENCED_PARAMETER(psConnection);
-	
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockAcquire(psRegCfg->hLock);
+#endif
+
 	sRegCfgCmd.eCmdType = RGXFWIF_KCCB_CMD_REGCONFIG;
 	sRegCfgCmd.uCmdData.sRegConfigData.eCmdType = RGXFWIF_REGCFG_CMD_DISABLE;
 
@@ -242,10 +300,17 @@ PVRSRV_ERROR PVRSRVRGXDisableRegConfigKM(CONNECTION_DATA * psConnection,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXDisableRegConfigKM: RGXScheduleCommand failed. Error:%u", eError));
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+		OSLockRelease(psRegCfg->hLock);
+#endif
 		return eError;
 	}
 
 	psRegCfg->bEnabled = IMG_FALSE;
+
+#if !defined(PVRSRV_USE_BRIDGE_LOCK)
+	OSLockRelease(psRegCfg->hLock);
+#endif
 
 	return eError;
 #else

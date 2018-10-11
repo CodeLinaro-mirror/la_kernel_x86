@@ -65,12 +65,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGXFWIF_LOG_TYPE_GROUP_HWP		0x00000800
 #define RGXFWIF_LOG_TYPE_GROUP_RPM		0x00001000
 #define RGXFWIF_LOG_TYPE_GROUP_DMA		0x00002000
+#define RGXFWIF_LOG_TYPE_GROUP_MISC		0x00004000
 #define RGXFWIF_LOG_TYPE_GROUP_DEBUG	0x80000000
-#define RGXFWIF_LOG_TYPE_GROUP_MASK		0x80003FFE
-#define RGXFWIF_LOG_TYPE_MASK			0x80003FFF
+#define RGXFWIF_LOG_TYPE_GROUP_MASK		0x80007FFE
+#define RGXFWIF_LOG_TYPE_MASK			0x80007FFF
 
 /* String used in pvrdebug -h output */
-#define RGXFWIF_LOG_GROUPS_STRING_LIST   "main,mts,cleanup,csw,bif,pm,rtd,spm,pow,hwr,hwp,rpm,dma,debug"
+#define RGXFWIF_LOG_GROUPS_STRING_LIST   "main,mts,cleanup,csw,bif,pm,rtd,spm,pow,hwr,hwp,rpm,dma,misc,debug"
 
 /* Table entry to map log group strings to log type value */
 typedef struct {
@@ -126,7 +127,7 @@ typedef void (*PFN_RGXFW_LOG) (const IMG_CHAR* pszFmt, ...);
 /************************************************************************
 * RGX FW signature checks
 ************************************************************************/
-#define RGXFW_SIG_BUFFER_SIZE_MIN       (1024)
+#define RGXFW_SIG_BUFFER_SIZE_MIN       (8192)
 
 /*!
  ******************************************************************************
@@ -135,7 +136,7 @@ typedef void (*PFN_RGXFW_LOG) (const IMG_CHAR* pszFmt, ...);
 /* Size of the Firmware L1 HWPERF buffer in bytes (2MB). Accessed by the
  * Firmware and host driver. */
 #define RGXFW_HWPERF_L1_SIZE_MIN        (16U)
-#define RGXFW_HWPERF_L1_SIZE_DEFAULT    (2048U)
+#define RGXFW_HWPERF_L1_SIZE_DEFAULT    PVRSRV_APPHINT_HWPERFFWBUFSIZEINKB
 #define RGXFW_HWPERF_L1_SIZE_MAX        (12288U)
 
 /* This padding value must always be large enough to hold the biggest
@@ -162,12 +163,12 @@ typedef void (*PFN_RGXFW_LOG) (const IMG_CHAR* pszFmt, ...);
 
 #define RGXFW_POLL_TYPE_SET 0x80000000
 
-typedef struct _RGXFWIF_ASSERTBUF_
+typedef struct _RGXFWIF_FILE_INFO_BUF_
 {
 	IMG_CHAR	szPath[RGXFW_TRACE_BUFFER_ASSERT_SIZE];
 	IMG_CHAR	szInfo[RGXFW_TRACE_BUFFER_ASSERT_SIZE];
 	IMG_UINT32	ui32LineNum;
-} UNCACHED_ALIGN RGXFWIF_ASSERTBUF;
+} UNCACHED_ALIGN RGXFWIF_FILE_INFO_BUF;
 
 typedef struct _RGXFWIF_TRACEBUF_SPACE_
 {
@@ -180,12 +181,24 @@ typedef struct _RGXFWIF_TRACEBUF_SPACE_
 #endif
 	IMG_PUINT32             pui32TraceBuffer;	/* To be used by host when reading from trace buffer */
 
-	RGXFWIF_ASSERTBUF	sAssertBuf;
+	RGXFWIF_FILE_INFO_BUF	sAssertBuf;
 } UNCACHED_ALIGN RGXFWIF_TRACEBUF_SPACE;
+
+
+#define RGXFWIF_FWFAULTINFO_MAX 	(8)			/* Total number of FW fault logs stored  */
+
+typedef struct _RGX_FWFAULTINFO_
+{
+	IMG_UINT64 RGXFW_ALIGN	ui64CRTimer;
+	IMG_UINT64 RGXFW_ALIGN	ui64OSTimer;
+	IMG_UINT32 RGXFW_ALIGN	ui32Data;
+	RGXFWIF_FILE_INFO_BUF	sFaultBuf;
+} UNCACHED_ALIGN RGX_FWFAULTINFO;
+
 
 #define RGXFWIF_POW_STATES \
   X(RGXFWIF_POW_OFF)			/* idle and handshaked with the host (ready to full power down) */ \
-  X(RGXFWIF_POW_ON)				/* running HW mds */ \
+  X(RGXFWIF_POW_ON)				/* running HW commands */ \
   X(RGXFWIF_POW_FORCED_IDLE)	/* forced idle */ \
   X(RGXFWIF_POW_IDLE)			/* idle waiting for host handshake */
 
@@ -197,11 +210,13 @@ typedef enum _RGXFWIF_POW_STATE_
 } RGXFWIF_POW_STATE;
 
 /* Firmware HWR states */
-#define RGXFWIF_HWR_HARDWARE_OK		(0x1 << 0)	/*!< Tells if the HW state is ok or locked up */
-#define RGXFWIF_HWR_ANALYSIS_DONE	(0x1 << 2)	/*!< Tells if the analysis of a GPU lockup has already been performed */
-#define RGXFWIF_HWR_GENERAL_LOCKUP	(0x1 << 3)	/*!< Tells if a DM unrelated lockup has been detected */
-#define RGXFWIF_HWR_DM_RUNNING_OK	(0x1 << 4)	/*!< Tells if at least one DM is running without being close to a lockup */
-#define RGXFWIF_HWR_DM_STALLING		(0x1 << 5)	/*!< Tells if at least one DM is close to lockup */
+#define RGXFWIF_HWR_HARDWARE_OK			(0x1 << 0)	/*!< The HW state is ok or locked up */
+#define RGXFWIF_HWR_ANALYSIS_DONE		(0x1 << 2)	/*!< The analysis of a GPU lockup has been performed */
+#define RGXFWIF_HWR_GENERAL_LOCKUP		(0x1 << 3)	/*!< A DM unrelated lockup has been detected */
+#define RGXFWIF_HWR_DM_RUNNING_OK		(0x1 << 4)	/*!< At least one DM is running without being close to a lockup */
+#define RGXFWIF_HWR_DM_STALLING			(0x1 << 5)	/*!< At least one DM is close to lockup */
+#define RGXFWIF_HWR_FW_FAULT			(0x1 << 6)	/*!< The FW has faulted and needs to restart */
+#define RGXFWIF_HWR_RESTART_REQUESTED	(0x1 << 7)	/*!< The FW has requested the host to restart it */
 typedef IMG_UINT32 RGXFWIF_HWR_STATEFLAGS;
 
 /* Firmware per-DM HWR states */
@@ -214,6 +229,7 @@ typedef IMG_UINT32 RGXFWIF_HWR_STATEFLAGS;
 #define RGXFWIF_DM_STATE_INNOCENT_LOCKUP			(0x1 << 6)	/*!< DM was innocently affected by another lockup which caused HWR */
 #define RGXFWIF_DM_STATE_GUILTY_OVERRUNING			(0x1 << 7)	/*!< DM was identified as over-running and causing HWR */
 #define RGXFWIF_DM_STATE_INNOCENT_OVERRUNING		(0x1 << 8)	/*!< DM was innocently affected by another DM over-running which caused HWR */
+#define RGXFWIF_DM_STATE_HARD_CONTEXT_SWITCH		(0x1 << 9)	/*!< DM was forced into HWR as it delayed more important workloads */
 
 /* Per-OSid States */
 #define RGXFW_OS_STATE_ACTIVE_OS						(1 << 0)    /*!< Non active operating systems should not be served by the FW */
@@ -266,6 +282,9 @@ typedef struct _RGXFWIF_TRACEBUF_
 	IMG_UINT32                  ui32OSStateFlags[RGXFW_NUM_OS];		/*!< State flags for each Operating System > */
 
 	IMG_UINT32				ui32MMUFlushCounter;
+
+	RGX_FWFAULTINFO			sFaultInfo[RGXFWIF_FWFAULTINFO_MAX];
+	IMG_UINT32				ui32FWFaults;
 } UNCACHED_ALIGN RGXFWIF_TRACEBUF;
 
 
@@ -373,6 +392,7 @@ typedef struct _RGX_POLLINFO_
 	IMG_UINT32	ui32ThreadNum;
 	IMG_UINT32 	ui32CrPollAddr;
 	IMG_UINT32 	ui32CrPollMask;
+	IMG_UINT32 	ui32CrPollLastValue;
 } UNCACHED_ALIGN RGX_POLLINFO;
 
 typedef struct _RGX_HWRINFO_
@@ -410,6 +430,7 @@ typedef struct _RGXFWIF_HWRINFOBUF_
 
 	IMG_UINT32	ui32FirstCrPollAddr[RGXFW_THREAD_NUM];
 	IMG_UINT32	ui32FirstCrPollMask[RGXFW_THREAD_NUM];
+	IMG_UINT32	ui32FirstCrPollLastValue[RGXFW_THREAD_NUM];
 	IMG_UINT32	ui32WriteIndex;
 	IMG_UINT32	ui32DDReqCount;
 } UNCACHED_ALIGN RGXFWIF_HWRINFOBUF;
@@ -429,7 +450,7 @@ typedef struct _RGXFWIF_HWRINFOBUF_
 #define RGXFWIF_INICFG_CTXSWITCH_CDM_EN				(0x1 << 2)
 #define RGXFWIF_INICFG_CTXSWITCH_MODE_RAND			(0x1 << 3)
 #define RGXFWIF_INICFG_CTXSWITCH_SRESET_EN			(0x1 << 4)
-#define RGXFWIF_INICFG_RSVD							(0x1 << 5)
+#define RGXFWIF_INICFG_USE_EXTENDED					(0x1 << 5)
 #define RGXFWIF_INICFG_POW_RASCALDUST				(0x1 << 6)
 #define RGXFWIF_INICFG_HWPERF_EN					(0x1 << 7)
 #define RGXFWIF_INICFG_HWR_EN						(0x1 << 8)
@@ -442,7 +463,10 @@ typedef struct _RGXFWIF_HWRINFOBUF_
 #define RGXFWIF_INICFG_VDM_CTX_STORE_MODE_CLRMSK	(0xFFFFCFFFU)
 #define RGXFWIF_INICFG_VDM_CTX_STORE_MODE_SHIFT		(12)
 #define RGXFWIF_INICFG_SHG_BYPASS_EN				(0x1 << 14)
-#define RGXFWIF_INICFG_RTU_BYPASS_EN				(0x1 << 15)
+/*
+ * #define RGXFWIF_INICFG_RTU_BYPASS_EN				(0x1 << 15)
+ * Removed this obsolete flag from DDK.
+*/
 #define RGXFWIF_INICFG_REGCONFIG_EN					(0x1 << 16)
 #define RGXFWIF_INICFG_ASSERT_ON_OUTOFMEMORY		(0x1 << 17)
 #define RGXFWIF_INICFG_HWP_DISABLE_FILTER			(0x1 << 18)
@@ -465,7 +489,15 @@ typedef struct _RGXFWIF_HWRINFOBUF_
 #define RGXFWIF_INICFG_WORKEST_V2					(0x1 << 29)
 #define RGXFWIF_INICFG_PDVFS_V1						(0x1 << 30)
 #define RGXFWIF_INICFG_PDVFS_V2						(0x1 << 31)
-#define RGXFWIF_INICFG_ALL							(0xFFFFFFDFU)
+#define RGXFWIF_INICFG_ALL							(0xFFFFFFFFU)
+
+#define RGXFWIF_INICFG_EXT_USE_EXTENDED				(0x1 << 31)
+#define RGXFWIF_INICFG_EXT_LOW_PRIO_CS_TDM			(0x1 <<  0)
+#define RGXFWIF_INICFG_EXT_LOW_PRIO_CS_TA			(0x1 <<  1)
+#define RGXFWIF_INICFG_EXT_LOW_PRIO_CS_3D			(0x1 <<  2)
+#define RGXFWIF_INICFG_EXT_LOW_PRIO_CS_CDM			(0x1 <<  3)
+#define RGXFWIF_INICFG_EXT_LOW_PRIO_CS_SHG			(0x1 <<  4)
+#define RGXFWIF_INICFG_EXT_TRACEBUF_FIELD			(0x1 <<  5) /*!< The tracebuffer and HWRInfoBufCtl fields are included in the OSConfig Struct > */
 
 #define RGXFWIF_SRVCFG_DISABLE_PDP_EN 		(0x1 << 31)
 #define RGXFWIF_SRVCFG_ALL					(0x80000000U)

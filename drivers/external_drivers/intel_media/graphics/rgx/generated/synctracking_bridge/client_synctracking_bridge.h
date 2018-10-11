@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Client bridge header for synctracking
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -39,7 +39,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef CLIENT_SYNCTRACKING_BRIDGE_H
 #define CLIENT_SYNCTRACKING_BRIDGE_H
@@ -54,17 +54,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "common_synctracking_bridge.h"
 
-IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeSyncRecordRemoveByHandle(IMG_HANDLE hBridge,
-								      IMG_HANDLE hhRecord);
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeSyncRecordRemoveByHandle(IMG_HANDLE
+								      hBridge,
+								      IMG_HANDLE
+								      hhRecord);
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeSyncRecordAdd(IMG_HANDLE hBridge,
-							   IMG_HANDLE *phhRecord,
-							   IMG_HANDLE hhServerSyncPrimBlock,
-							   IMG_UINT32 ui32ui32FwBlockAddr,
-							   IMG_UINT32 ui32ui32SyncOffset,
-							   IMG_BOOL bbServerSync,
-							   IMG_UINT32 ui32ClassNameSize,
-							   const IMG_CHAR *puiClassName);
-
+							   IMG_HANDLE *
+							   phhRecord,
+							   IMG_HANDLE
+							   hhServerSyncPrimBlock,
+							   IMG_UINT32
+							   ui32ui32FwBlockAddr,
+							   IMG_UINT32
+							   ui32ui32SyncOffset,
+							   IMG_BOOL
+							   bbServerSync,
+							   IMG_UINT32
+							   ui32ClassNameSize,
+							   const IMG_CHAR *
+							   puiClassName);
 
 #endif /* CLIENT_SYNCTRACKING_BRIDGE_H */

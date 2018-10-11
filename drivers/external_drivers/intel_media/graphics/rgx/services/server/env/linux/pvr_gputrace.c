@@ -40,159 +40,38 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#include "pvrsrv_error.h"
-#include "srvkm.h"
-#include "pvr_debug.h"
-#include "pvr_debugfs.h"
-#include "pvr_uaccess.h"
-
-#include "pvr_gputrace.h"
-#include "rgxhwperf.h"
-
-#include "trace_events.h"
+#if !defined(CONFIG_GPU_TRACEPOINTS)
 #define CREATE_TRACE_POINTS
 #include <trace/events/gpu.h>
+#undef CREATE_TRACE_POINTS
+#else
+#include <trace/events/gpu.h>
+#endif
+
+#include "pvrsrv_error.h"
+#include "pvrsrv_apphint.h"
+#include "pvr_debug.h"
+#include "pvr_gputrace.h"
+#include "rgxhwperf.h"
+#include "device.h"
+#include "trace_events.h"
+#define CREATE_TRACE_POINTS
 #include "rogue_trace_events.h"
-
-
 
 /******************************************************************************
  Module internal implementation
 ******************************************************************************/
 
-/* DebugFS entry for the feature's on/off file */
-static PVR_DEBUGFS_ENTRY_DATA *gpsPVRDebugFSGpuTracingOnEntry = NULL;
-
-/* This variable is set when the gpu tracing is enabled but the HWPerf
- * resources have not been initialised yet. This may most likely happen
- * if the driver was built with SUPPORT_KERNEL_SRVINIT=1.
- * If this variable is IMG_TRUE it means that the gpu tracing was enabled
- * but the full initialisation is yet to be done. */
-static IMG_BOOL gbFTraceGPUEventsPreEnabled = IMG_FALSE;
-/* When this variable is IMG_TRUE it means that the gpu tracing has been fully
- * initialised and enabled. */
-static IMG_BOOL gbFTraceGPUEventsEnabled = IMG_FALSE;
-
-/*
-  If SUPPORT_GPUTRACE_EVENTS is defined the drive is built with support
-  to route RGX HWPerf packets to the Linux FTrace mechanism. To allow
-  this routing feature to be switched on and off at run-time the following
-  debugfs entry is created:
-  	/sys/kernel/debug/pvr/gpu_tracing_on
-  To enable GPU events in the FTrace log type the following on the target:
- 	echo Y > /sys/kernel/debug/pvr/gpu_tracing_on
-  To disable, type:
-  	echo N > /sys/kernel/debug/pvr/gpu_tracing_on
-
-  It is also possible to enable this feature at driver load by setting the
-  default application hint "EnableFTraceGPU=1" in /etc/powervr.ini.
-*/
-
-static void *GpuTracingSeqStart(struct seq_file *psSeqFile, loff_t *puiPosition)
-{
-	if (*puiPosition == 0)
-	{
-		/* We want only one entry in the sequence, one call to show() */
-		return (void*)1;
-	}
-
-	return NULL;
-}
-
-
-static void GpuTracingSeqStop(struct seq_file *psSeqFile, void *pvData)
-{
-	PVR_UNREFERENCED_PARAMETER(psSeqFile);
-}
-
-
-static void *GpuTracingSeqNext(struct seq_file *psSeqFile, void *pvData, loff_t *puiPosition)
-{
-	PVR_UNREFERENCED_PARAMETER(psSeqFile);
-	return NULL;
-}
-
-
-static int GpuTracingSeqShow(struct seq_file *psSeqFile, void *pvData)
-{
-	const IMG_CHAR *pszInit = "N\n";
-
-	if (gbFTraceGPUEventsEnabled)
-		// fully operational
-		pszInit = "Y\n";
-	else if (gbFTraceGPUEventsPreEnabled)
-		// partially initialised (probably HWPerf not initialised yet)
-		pszInit = "P\n";
-
-	PVR_UNREFERENCED_PARAMETER(pvData);
-
-	seq_puts(psSeqFile, pszInit);
-	return 0;
-}
-
-
-static struct seq_operations gsGpuTracingReadOps =
-{
-	.start = GpuTracingSeqStart,
-	.stop  = GpuTracingSeqStop,
-	.next  = GpuTracingSeqNext,
-	.show  = GpuTracingSeqShow,
-};
-
-
-static IMG_INT GpuTracingSet(const IMG_CHAR *buffer, size_t count, loff_t uiPosition, void *data)
-{
-	IMG_CHAR cFirstChar;
-
-	PVR_UNREFERENCED_PARAMETER(uiPosition);
-	PVR_UNREFERENCED_PARAMETER(data);
-
-	if (!count)
-	{
-		return -EINVAL;
-	}
-
-	if (pvr_copy_from_user(&cFirstChar, buffer, 1))
-	{
-		return -EFAULT;
-	}
-
-	switch (cFirstChar)
-	{
-		case '0':
-		case 'n':
-		case 'N':
-		{
-			PVRGpuTraceEnabledSet(IMG_FALSE);
-			PVR_TRACE(("DISABLED GPU FTrace"));
-			break;
-		}
-		case '1':
-		case 'y':
-		case 'Y':
-		{
-			if (PVRGpuTraceEnabledSet(IMG_TRUE) == PVRSRV_OK)
-			{
-				PVR_TRACE(("ENABLED GPU FTrace"));
-			}
-			else
-			{
-				PVR_TRACE(("FAILED to enable GPU FTrace"));
-			}
-			break;
-		}
-	}
-
-	return count;
-}
-
+/* This lock ensures state change of GPU_TRACING on/off is done atomically */
+static POS_LOCK ghGPUTraceStateLock;
+static IMG_BOOL gbFTraceGPUEventsEnabled = PVRSRV_APPHINT_ENABLEFTRACEGPU;
 
 /******************************************************************************
  Module In-bound API
 ******************************************************************************/
 
-
 void PVRGpuTraceClientWork(
+		PVRSRV_DEVICE_NODE *psDevNode,
 		const IMG_UINT32 ui32CtxId,
 		const IMG_UINT32 ui32JobId,
 		const IMG_CHAR* pszKickType)
@@ -207,7 +86,6 @@ void PVRGpuTraceClientWork(
 		trace_gpu_job_enqueue(ui32CtxId, ui32JobId, pszKickType);
 	}
 }
-
 
 void PVRGpuTraceWorkSwitch(
 		IMG_UINT64 ui64HWTimestampInOSTime,
@@ -277,40 +155,46 @@ void PVRGpuTraceEventsLost(
 	trace_rogue_events_lost(eStreamId, ui32LastOrdinal, ui32CurrOrdinal);
 }
 
-PVRSRV_ERROR PVRGpuTraceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
+PVRSRV_ERROR PVRGpuTraceSupportInit(void)
 {
 	PVRSRV_ERROR eError;
 
-	eError = RGXHWPerfFTraceGPUInit(psDeviceNode);
-	if (eError != PVRSRV_OK)
-		return eError;
+	eError = RGXHWPerfFTraceGPUInitSupport();
+	PVR_LOGR_IF_ERROR (eError, "RGXHWPerfFTraceGPUSupportInit");
 
-	eError = PVRDebugFSCreateEntry("gpu_tracing_on", NULL, &gsGpuTracingReadOps,
-	                               (PVRSRV_ENTRY_WRITE_FUNC *)GpuTracingSet,
-	                               NULL, NULL, NULL,
-	                               &gpsPVRDebugFSGpuTracingOnEntry);
-	if (eError != PVRSRV_OK)
-	{
-		RGXHWPerfFTraceGPUDeInit(psDeviceNode);
-		return eError;
-	}
+	eError = OSLockCreate(&ghGPUTraceStateLock, LOCK_TYPE_PASSIVE);
+	PVR_LOGR_IF_ERROR (eError, "OSLockCreate");
 
 	return PVRSRV_OK;
 }
 
-void PVRGpuTraceDeInit(PVRSRV_DEVICE_NODE *psDeviceNode)
+void PVRGpuTraceSupportDeInit(void)
 {
-	/* gbFTraceGPUEventsEnabled and gbFTraceGPUEventsPreEnabled are cleared
-	 * in this function. */
-	PVRGpuTraceEnabledSet(IMG_FALSE);
-
-	RGXHWPerfFTraceGPUDeInit(psDeviceNode);
-
-	/* Can be NULL if driver startup failed */
-	if (gpsPVRDebugFSGpuTracingOnEntry)
+	if (ghGPUTraceStateLock)
 	{
-		PVRDebugFSRemoveEntry(&gpsPVRDebugFSGpuTracingOnEntry);
+		OSLockDestroy(ghGPUTraceStateLock);
 	}
+
+	RGXHWPerfFTraceGPUDeInitSupport();
+}
+
+PVRSRV_ERROR PVRGpuTraceInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
+{
+	PVRSRV_ERROR eError;
+
+	eError = RGXHWPerfFTraceGPUInitDevice(psDeviceNode);
+	PVR_LOGG_IF_ERROR(eError, "RGXHWPerfFTraceGPUInitDevice", e0);
+
+	return PVRSRV_OK;
+
+e0:
+	RGXHWPerfFTraceGPUDeInitDevice(psDeviceNode);
+	return eError;
+}
+
+void PVRGpuTraceDeInitDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
+{
+	RGXHWPerfFTraceGPUDeInitDevice(psDeviceNode);
 }
 
 IMG_BOOL PVRGpuTraceEnabled(void)
@@ -318,19 +202,61 @@ IMG_BOOL PVRGpuTraceEnabled(void)
 	return gbFTraceGPUEventsEnabled;
 }
 
-void PVRGpuTraceSetEnabled(IMG_BOOL bEnabled)
+static PVRSRV_ERROR _IsGpuTraceEnabled(const PVRSRV_DEVICE_NODE *device,
+                                       const void *private_data,
+                                       IMG_BOOL *value)
 {
-	gbFTraceGPUEventsEnabled = bEnabled;
+	PVR_UNREFERENCED_PARAMETER(device);
+	PVR_UNREFERENCED_PARAMETER(private_data);
+
+	*value = gbFTraceGPUEventsEnabled;
+
+	return PVRSRV_OK;
 }
 
-IMG_BOOL PVRGpuTracePreEnabled(void)
+static PVRSRV_ERROR _SetGpuTraceEnabled(const PVRSRV_DEVICE_NODE *device,
+                                        const void *private_data,
+                                        IMG_BOOL value)
 {
-	return gbFTraceGPUEventsPreEnabled;
+	PVR_UNREFERENCED_PARAMETER(device);
+
+	/* Lock down the state to avoid concurrent writes */
+	OSLockAcquire(ghGPUTraceStateLock);
+
+	if (value != gbFTraceGPUEventsEnabled)
+	{
+		PVRSRV_ERROR eError;
+		if ((eError = PVRGpuTraceEnabledSet(value)) == PVRSRV_OK)
+		{
+			PVR_TRACE(("%s GPU FTrace", value ? "ENABLED" : "DISABLED"));
+			gbFTraceGPUEventsEnabled = value;
+		}
+		else
+		{
+			PVR_TRACE(("FAILED to %s GPU FTrace", value ? "enable" : "disable"));
+			/* On failure, partial enable/disable might have resulted.
+			 * Try best to restore to previous state. Ignore error */
+			PVRGpuTraceEnabledSet(gbFTraceGPUEventsEnabled);
+
+			OSLockRelease(ghGPUTraceStateLock);
+			return eError;
+		}
+	}
+	else
+	{
+		PVR_TRACE(("GPU FTrace already %s!", value ? "enabled" : "disabled"));
+	}
+
+	OSLockRelease(ghGPUTraceStateLock);
+
+	return PVRSRV_OK;
 }
 
-void PVRGpuTraceSetPreEnabled(IMG_BOOL bEnabled)
+void PVRGpuTraceInitAppHintCallbacks(const PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-	gbFTraceGPUEventsPreEnabled = bEnabled;
+	PVRSRVAppHintRegisterHandlersBOOL(APPHINT_ID_EnableFTraceGPU,
+	                                  _IsGpuTraceEnabled, _SetGpuTraceEnabled,
+	                                  psDeviceNode, NULL);
 }
 
 /******************************************************************************

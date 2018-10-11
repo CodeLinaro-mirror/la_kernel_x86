@@ -43,7 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TRACE_EVENTS_H
 
 #include "rgx_fwif_km.h"
-#include "rgx_hwperf_km.h"
+#include "rgx_hwperf.h"
 
 /* We need to make these functions do nothing if CONFIG_EVENT_TRACING isn't
  * enabled, just like the actual trace event functions that the kernel

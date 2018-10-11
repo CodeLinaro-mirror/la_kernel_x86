@@ -136,7 +136,7 @@ static PVRSRV_DEVICE_CONFIG* gpsDevConfig = NULL;
 
 long int GetConfigFreq(void)
 {
-    return asOPPTable[min_vf_level_val].ui32Freq;
+	return asOPPTable[min_vf_level_val].ui32Freq;
 }
 
 IMG_UINT32 AwClockFreqGet(IMG_HANDLE hSysData)
@@ -171,7 +171,7 @@ static void DeAssertGpuResetSignal(void)
 static void RgxEnableClock(void)
 {
 	if(gpu_core_clk->enable_count == 0)
-	{	
+	{
 		if(clk_prepare_enable(gpu_pll_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable pll9 clock!"));
@@ -196,12 +196,12 @@ static void RgxEnableClock(void)
 }
 
 static void RgxDisableClock(void)
-{				
+{
 	if(gpu_core_clk->enable_count == 1)
 	{
-		clk_disable_unprepare(gpu_ctrl_clk);		
+		clk_disable_unprepare(gpu_ctrl_clk);
 		clk_disable_unprepare(gpu_axi_clk);
-		clk_disable_unprepare(gpu_mem_clk);	
+		clk_disable_unprepare(gpu_mem_clk);
 		clk_disable_unprepare(gpu_core_clk);
 		clk_disable_unprepare(gpu_pll_clk);
 	}
@@ -211,7 +211,7 @@ static void RgxEnablePower(void)
 {
 	if(!regulator_is_enabled(rgx_regulator))
 	{
-		regulator_enable(rgx_regulator); 		
+		regulator_enable(rgx_regulator);
 	}
 }
 
@@ -219,11 +219,11 @@ static void RgxDisablePower(void)
 {
 	if(regulator_is_enabled(rgx_regulator))
 	{
-		regulator_disable(rgx_regulator); 		
+		regulator_disable(rgx_regulator);
 	}
 }
 
-void SetVoltage(IMG_UINT32 ui32Volt)
+static void SetVoltage(IMG_UINT32 ui32Volt)
 {
 	if(regulator_set_voltage(rgx_regulator, ui32Volt*1000, ui32Volt*1000) != 0)
 	{
@@ -253,10 +253,10 @@ static void SetClkVal(const char clk_name[], int freq)
 	}
 	
 	if(clk_set_rate(clk, freq))
-    {
+	{
 		clk = NULL;
 		return;
-    }
+	}
 
 	if(clk == gpu_pll_clk)
 	{
@@ -267,40 +267,42 @@ static void SetClkVal(const char clk_name[], int freq)
 	clk = NULL;
 }
 
-void SetFrequency(IMG_UINT32 ui32Frequency)
+#if defined(PVR_DVFS) || defined(SUPPORT_PDVFS)
+static void SetFrequency(IMG_UINT32 ui32Frequency)
 {
 	SetClkVal("pll", (int) ui32Frequency);
 }
+#endif
 
 static void ParseFexPara(void)
 {
-    script_item_u regulator_id_fex, min_vf_level, max_vf_level;
+	script_item_u regulator_id_fex, min_vf_level, max_vf_level;
 	if(SCIRPT_ITEM_VALUE_TYPE_STR == script_get_item("rgx_para", "regulator_id", &regulator_id_fex))
-    {              
-        regulator_id = regulator_id_fex.str;
-    }
+	{
+		regulator_id = regulator_id_fex.str;
+	}
 	
-    if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "min_vf_level", &min_vf_level))
-    {              
-        if((min_vf_level.val >= 0 && min_vf_level.val < LEVEL_COUNT))
+	if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "min_vf_level", &min_vf_level))
+	{
+		if((min_vf_level.val >= 0 && min_vf_level.val < LEVEL_COUNT))
 		{
-        		min_vf_level_val = min_vf_level.val;
+			min_vf_level_val = min_vf_level.val;
 		}
-    }
+	}
 	else
 	{
 		goto err_out2;
 	}
 	
-    if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "max_vf_level", &max_vf_level))
-    {              
+	if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "max_vf_level", &max_vf_level))
+	{
 		if(max_vf_level.val >= min_vf_level_val && max_vf_level.val < LEVEL_COUNT)
 		{
 			max_vf_level_val = max_vf_level.val;
 		}
-    }
+	}
 	else
-	{	
+	{
 		goto err_out1;
 	}
 	
@@ -399,25 +401,25 @@ static void RgxDvfsChange(int vf_level, int up_flag)
 
 static int rgx_throttle_notifier_call(struct notifier_block *nfb, unsigned long mode, void *cmd)
 {
-    int retval = NOTIFY_DONE;
+	int retval = NOTIFY_DONE;
 	if(mode == BUDGET_GPU_THROTTLE && Is_powernow)
-    {
-			RgxDvfsChange(min_vf_level_val, 0);
-        Is_powernow = 0;
-    }
-    else
 	{
-        if(cmd && (*(int *)cmd) == 1 && !Is_powernow)
+		RgxDvfsChange(min_vf_level_val, 0);
+		Is_powernow = 0;
+	}
+	else
+	{
+		if(cmd && (*(int *)cmd) == 1 && !Is_powernow)
 		{
 			RgxDvfsChange(max_vf_level_val, 0);
-            Is_powernow = 1;
-        }
+			Is_powernow = 1;
+		}
 		else if(cmd && (*(int *)cmd) == 0 && Is_powernow)
 		{
 			RgxDvfsChange(min_vf_level_val, 0);
-            Is_powernow = 0;
-        }
-    }
+			Is_powernow = 0;
+		}
+	}
 	
 	return retval;
 }
@@ -437,16 +439,16 @@ void RgxSunxiDeInit(void)
 }
 
 void RgxSunxiInit(PVRSRV_DEVICE_CONFIG* psDevConfig)
-{	
+{
 	IMG_UINT32 vf_level_val;
 
 	ParseFexPara();
 
 	rgx_regulator = regulator_get(NULL, regulator_id);
-	if (IS_ERR(rgx_regulator)) 
+	if (IS_ERR(rgx_regulator))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to get rgx regulator!"));
-        rgx_regulator = NULL;
+		rgx_regulator = NULL;
 		return;
 	}
 	
@@ -468,7 +470,7 @@ void RgxSunxiInit(PVRSRV_DEVICE_CONFIG* psDevConfig)
 	vf_level_val = min_vf_level_val;
 
 	SetVoltage(asOPPTable[vf_level_val].ui32Volt);
-		
+	
 	SetClkVal("pll", asOPPTable[vf_level_val].ui32Freq);
 	SetClkVal("core", asOPPTable[vf_level_val].ui32Freq);
 	SetClkVal("mem", asOPPTable[vf_level_val].ui32Freq);

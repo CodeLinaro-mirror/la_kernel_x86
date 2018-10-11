@@ -40,6 +40,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/version.h>
+
 #include "connection_server.h"
 #include "osconnection_server.h"
 
@@ -65,7 +67,7 @@ PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, void *pvOS
 {
 	ENV_CONNECTION_PRIVATE_DATA *psPrivData = pvOSData;
 	ENV_CONNECTION_DATA *psEnvConnection;
-#if defined(SUPPORT_ION)
+#if defined(SUPPORT_ION) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
 	ENV_ION_CONNECTION_DATA *psIonConnection;
 #endif
 
@@ -85,7 +87,7 @@ PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, void *pvOS
 	psEnvConnection->psFile = psPrivData->psFile;
 	psEnvConnection->psDevNode = psPrivData->psDevNode;
 
-#if defined(SUPPORT_ION)
+#if defined(SUPPORT_ION) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
 	psIonConnection = (ENV_ION_CONNECTION_DATA *)OSAllocZMem(sizeof(ENV_ION_CONNECTION_DATA));
 	if (psIonConnection == NULL)
 	{
@@ -110,8 +112,7 @@ PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, void *pvOS
 								"ion client for per connection data"));
 		return PVRSRV_ERROR_OUT_OF_MEMORY;
 	}
-	psEnvConnection->psIonData->ui32IonClientRefCount = 1;
-#endif /* SUPPORT_ION */
+#endif /* SUPPORT_ION && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)) */
 	return PVRSRV_OK;
 }
 
@@ -126,8 +127,14 @@ PVRSRV_ERROR OSConnectionPrivateDataDeInit(IMG_HANDLE hOsPrivateData)
 
 	psEnvConnection = hOsPrivateData;
 
-#if defined(SUPPORT_ION)
-	EnvDataIonClientRelease(psEnvConnection->psIonData);
+#if defined(SUPPORT_ION) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
+	PVR_ASSERT(psEnvConnection->psIonData != NULL);
+
+	PVR_ASSERT(psEnvConnection->psIonData->psIonClient != NULL);
+	ion_client_destroy(psEnvConnection->psIonData->psIonClient);
+
+	IonDevRelease(psEnvConnection->psIonData->psIonDev);
+	OSFreeMem(psEnvConnection->psIonData);
 #endif
 
 	OSFreeMem(hOsPrivateData);

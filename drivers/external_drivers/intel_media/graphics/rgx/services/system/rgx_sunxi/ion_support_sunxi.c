@@ -47,7 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 extern struct ion_device *idev;
 
-PVRSRV_ERROR IonInit(void *phPrivateData)
+PVRSRV_ERROR IonInit(void *pvPrivateData)
 {
 	/* Nothing to do */
 	return PVRSRV_OK;

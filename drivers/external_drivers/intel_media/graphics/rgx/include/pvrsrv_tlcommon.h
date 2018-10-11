@@ -68,10 +68,17 @@ typedef IMG_HANDLE PVRSRVTL_SD;
  *
  * if the ORDER of the structure members is changed, please UPDATE the 
  *   PVRSRVTL_PACKET_FLAG_OFFSET macro.
+ *
+ * Layout of uiTypeSize member is :
+ *
+ * |<---------------------------32-bits------------------------------>|
+ * |<----8---->|<-----1----->|<----7--->|<------------16------------->|
+ * |    Type   | Drop-Oldest |  UNUSED  |             Size            |
+ *
  */
 typedef struct _PVRSRVTL_PACKETHDR_
 {
-	IMG_UINT32 uiTypeSize;	/*!< Type & number of bytes following header */
+	IMG_UINT32 uiTypeSize;	/*!< Type, Drop-Oldest flag & number of bytes following header */
 	IMG_UINT32 uiReserved;	/*!< Reserve, packets and data must be 8 byte aligned */
 
 	/* First bytes of TL packet data follow header ... */
@@ -95,6 +102,12 @@ static_assert((sizeof(PVRSRVTL_PACKETHDR) & (PVRSRVTL_PACKET_ALIGNMENT-1)) == 0,
  */
 #define PVRSRVTL_PACKETHDR_TYPE_MASK    0xFF000000U
 #define PVRSRVTL_PACKETHDR_TYPE_OFFSET  24U
+
+/*! Packet header mask used to check if packets before this one were dropped or not.
+ * Do not use directly, see GET macros.
+ */
+#define PVRSRVTL_PACKETHDR_OLDEST_DROPPED_MASK    0x00800000U
+#define PVRSRVTL_PACKETHDR_OLDEST_DROPPED_OFFSET    23U
 
 /*! Packet type enumeration.
  */
@@ -129,7 +142,17 @@ typedef enum _PVRSRVTL_PACKETTYPE_
 	 */
 	PVRSRVTL_PACKETTYPE_MARKER_EOS = 4,
 
-	PVRSRVTL_PACKETTYPE_LAST = PVRSRVTL_PACKETTYPE_MARKER_EOS
+	/*! Packet emitted on first stream opened by writer. Packet carries a name
+	 * of the opened stream in a form of null-terminated string.
+	 */
+	PVRSRVTL_PACKETTYPE_STREAM_OPEN_FOR_WRITE = 5,
+
+	/*! Packet emitted on last stream closed by writer. Packet carries a name
+	 * of the closed stream in a form of null-terminated string.
+	 */
+	PVRSRVTL_PACKETTYPE_STREAM_CLOSE_FOR_WRITE = 6,
+
+	PVRSRVTL_PACKETTYPE_LAST
 } PVRSRVTL_PACKETTYPE;
 
 /* The SET_PACKET_* macros rely on the order the PVRSRVTL_PACKETHDR members are declared:
@@ -167,6 +190,13 @@ typedef enum _PVRSRVTL_PACKETTYPE_
  */
 #define GET_PACKET_TYPE(p)		(((p)->uiTypeSize & PVRSRVTL_PACKETHDR_TYPE_MASK)>>PVRSRVTL_PACKETHDR_TYPE_OFFSET)
 
+/*! Set PACKETS_DROPPED flag in packet header as a part of uiTypeSize. p is of type PVRSRVTL_PPACKETHDR.
+ */
+#define SET_PACKETS_DROPPED(p)		(((p)->uiTypeSize) | (1<<PVRSRVTL_PACKETHDR_OLDEST_DROPPED_OFFSET))
+
+/*! Check if packets were dropped before this packet. p is of type PVRSRVTL_PPACKETHDR
+ */
+#define CHECK_PACKETS_DROPPED(p)	(((p)->uiTypeSize & PVRSRVTL_PACKETHDR_OLDEST_DROPPED_MASK)>>PVRSRVTL_PACKETHDR_OLDEST_DROPPED_OFFSET)
 
 /*! Flags for use with PVRSRVTLOpenStream
  * 0x01 - Do not block in PVRSRVTLAcquireData() when no bytes are available
@@ -178,11 +208,15 @@ typedef enum _PVRSRVTL_PACKETTYPE_
  *        required if one wants to call reserve/commit/write function on the
  *        stream descriptor. Read from on the stream descriptor opened
  *        with this flag will fail.
+ * 0x10 - Reset stream on open.
+ *        When this flag is used the stream will drop all of the stored data.
  */
-#define PVRSRV_STREAM_FLAG_NONE                 (0U)
-#define PVRSRV_STREAM_FLAG_ACQUIRE_NONBLOCKING  (1U<<0)
-#define PVRSRV_STREAM_FLAG_OPEN_WAIT            (1U<<1)
-#define PVRSRV_STREAM_FLAG_OPEN_WO              (1U<<2)
+#define PVRSRV_STREAM_FLAG_NONE                        (0U)
+#define PVRSRV_STREAM_FLAG_ACQUIRE_NONBLOCKING         (1U<<0)
+#define PVRSRV_STREAM_FLAG_OPEN_WAIT                   (1U<<1)
+#define PVRSRV_STREAM_FLAG_OPEN_WO                     (1U<<2)
+#define PVRSRV_STREAM_FLAG_DISABLE_PRODUCER_CALLBACK   (1U<<3)
+#define PVRSRV_STREAM_FLAG_RESET_ON_OPEN               (1U<<4)
 
 #if defined (__cplusplus)
 }

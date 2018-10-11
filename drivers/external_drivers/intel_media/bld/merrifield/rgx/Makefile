@@ -24,7 +24,6 @@ ccflags-y += \
 	-I$(RGXINC)/generated/rgxcmp_bridge \
 	-I$(RGXINC)/generated/pdumpmm_bridge \
 	-I$(RGXINC)/generated/dc_bridge \
-	-I$(RGXINC)/generated/hostportio_bridge \
 	-I$(RGXINC)/generated/rgxtq_bridge \
 	-I$(RGXINC)/generated/rgxtq2_bridge \
 	-I$(RGXINC)/generated/mm_bridge \
@@ -67,9 +66,7 @@ ccflags-y += \
 	-I$(RGXINC)/services/system/common/env/linux \
 	-I$(RGXINC)/services/shared/devices/rgx \
 	-I$(RGXINC)/services/shared/include \
-	-I$(RGXINC)/services/srvinit/devices \
-	-I$(RGXINC)/services/srvinit/devices/rgx \
-	-I$(RGXINC)/services/srvinit/include \
+	-I$(RGXINC)/services/server/devices \
 	-I$(RGXINC)/services/server/env/linux \
 	-I$(RGXINC)/services/server/include \
 	-I$(RGXINC)/services/server/devices/rgx \
@@ -102,100 +99,130 @@ ccflags-y += -DRGX_BNC_CONFIG_KM_HEADER="\"configs/rgxconfig_km_$(cgr_b).V.$(cgr
 
 ccflags-y += \
 	-DANDROID \
-        -DLINUX \
-        -DPVRSRV_MODNAME="\"pvrsrvkm\"" \
-        -DPVR_BUILD_DIR="\"intel_android\"" \
-        -DPVR_LDM_DRIVER_REGISTRATION_NAME="\"pvrsrvkm\"" \
-        -DSUPPORT_RGX=1 \
-        -DSUPPORT_LINUX_X86_WRITECOMBINE \
-        -DSUPPORT_LINUX_X86_PAT \
-        -DSYS_USING_INTERRUPTS \
-        -DLDM_PCI \
-        -DSUPPORT_DRM \
-        -DSUPPORT_DRM_EXT \
-        -DBC_DISCONTIG_BUFFERS \
-        -DCACHEFLUSH_TYPE=CACHEFLUSH_X86 \
-        -DSUPPORT_GPUTRACE_EVENTS \
-        -DPVR_LINUX_PHYSMEM_MAX_POOL_PAGES=10240 \
-        -DPVR_LINUX_ARM_PAGEALLOC_FLUSH_THRESHOLD=256 \
-        -DPVR_LINUX_PHYSMEM_MIN_NUM_PAGES=256 \
-        -DPVR_LINUX_PHYSMEM_MAX_ALLOC_ORDER=2 \
-        -DPVRSRV_NEED_PVR_DPF \
-        -DSUPPORT_SYSTEM_INTERRUPT_HANDLING \
-        -DSUPPORT_SHARED_SLC \
-        -DPVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD=16384\
-        -DPVR_ANDROID_ION_USE_SG_LENGTH \
-        -DPVRSRV_ENABLE_PROCESS_STATS \
-        -DPVR_ANDROID_SYNC_HEADER="\"../../drivers/staging/android/sync.h\"" \
-        -DGPUVIRT_VALIDATION_NUM_OS=8 \
-        -DPVRSRV_FULL_SYNC_TRACKING_HISTORY_LEN=256 \
-        -DSUPPORT_PERCONTEXT_FREELIST \
-        -DSUPPORT_AUTH \
-		-DRGX_FW_HEAP_SHIFT=25	\
-		-DPVRSRV_APPHINT_CLEANUPTHREADPRIORITY=0	\
-		-DPVRSRV_APPHINT_CLEANUPTHREADWEIGHT=0	\
-		-DPVRSRV_APPHINT_WATCHDOGTHREADPRIORITY=0	\
-		-DPVRSRV_APPHINT_WATCHDOGTHREADWEIGHT=0	\
-		-DPVR_LINUX_PHYSMEM_MAX_ALLOC_ORDER_NUM=2	\
-		-DPVR_DIRTY_BYTES_FLUSH_THRESHOLD=1048576	\
-		-DPVR_LINUX_HIGHORDER_ALLOCATION_THRESHOLD=256	\
-		-DPVR_DRM_NAME="\"pvr\""	\
-		-DPVRSRV_APPHINT_ENABLEFWPOISONONFREE=IMG_FALSE	\
-		-DPVRSRV_APPHINT_FWPOISONONFREEVALUE=0xBD	\
-		-DPVRSRV_APPHINT_GENERAL_NON4K_HEAP_PAGE_SIZE=0x4000	\
-		-DPVRSRV_APPHINT_TIMECORRCLOCK=2	\
-		-DDMABUF_IMPORT_PHYSHEAP_ID=0		\
-		-DPVRSRV_GPUVIRT_NUM_OSID=2			\
-		-DSUPPORT_KERNEL_SRVINIT=1                      \
-		-DPVRSRV_APPHINT_HWRDEBUGDUMPLIMIT=APPHNT_BLDVAR_DBGDUMPLIMIT			\
-		-DSAPPHNT_BLDVAR_DBGDUMPLIMITPPORT_KERNEL_SRVINIT=1			\
-		-DPVRSRV_APPHINT_ENABLETRUSTEDDEVICEACECONFIG=IMG_FALSE	\
-		-DPVRSRV_APPHINT_HTBUFFERSIZE=0x1000					\
-		-DPVRSRV_APPHINT_ENABLESIGNATURECHECKS=APPHNT_BLDVAR_ENABLESIGNATURECHECKS		\
-		-DPVRSRV_APPHINT_SIGNATURECHECKSBUFSIZE=RGXFW_SIG_BUFFER_SIZE_MIN			\
-		-DPVRSRV_APPHINT_DISABLECLOCKGATING=0					\
-		-DPVRSRV_APPHINT_DISABLEDMOVERLAP=0						\
-		-DPVRSRV_APPHINT_ENABLECDMKILLINGRANDMODE=0				\
-		-DPVRSRV_APPHINT_ENABLEFWCONTEXTSWITCH=RGXFWIF_INICFG_CTXSWITCH_DM_ALL			\
-		-DPVRSRV_APPHINT_ENABLERDPOWERISLAND=RGX_RD_POWER_ISLAND_DEFAULT					\
-		-DPVRSRV_APPHINT_FIRMWAREPERF=FW_PERF_CONF_NONE							\
-		-DPVRSRV_APPHINT_FWCONTEXTSWITCHPROFILE=RGXFWIF_CTXSWITCH_PROFILE_MEDIUM_EN				\
-		-DPVRSRV_APPHINT_HWPERFDISABLECUSTOMCOUNTERFILTER=0		\
-		-DPVRSRV_APPHINT_HWPERFFWBUFSIZEINKB=RGXFW_HWPERF_L1_SIZE_DEFAULT		\
-		-DPVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB=HWPERF_HOST_TL_STREAM_SIZE_DEFAULT				\
-		-DPVRSRV_APPHINT_JONESDISABLEMASK=0						\
-		-DPVRSRV_APPHINT_NEWFILTERINGMODE=1						\
-		-DPVRSRV_APPHINT_TRUNCATEMODE=0							\
-		-DPVRSRV_APPHINT_USEMETAT1=RGX_META_T1_OFF							\
-		-DPVRSRV_APPHINT_ENABLEHTBLOGGROUP=0			\
-		-DPVRSRV_APPHINT_HTBOPERATIONMODE=HTB_OPMODE_DROPLATEST				\
-		-DPVRSRV_APPHINT_HWPERFFWFILTER=0				\
-		-DPVRSRV_APPHINT_HWPERFHOSTFILTER=0				\
-		-DPVRSRV_APPHINT_ASSERTONHWRTRIGGER=IMG_FALSE	\
-		-DPVRSRV_APPHINT_ASSERTOUTOFMEMORY=IMG_FALSE	\
-		-DPVRSRV_APPHINT_CHECKMLIST=APPHNT_BLDVAR_DEBUG					\
-		-DPVRSRV_APPHINT_ENABLELOGGROUP=0				\
-		-DPVRSRV_APPHINT_FIRMWARELOGTYPE=0				\
-		-DPVRSRV_APPHINT_ENABLEAPM=RGX_ACTIVEPM_DEFAULT					\
-		-DPVRSRV_APPHINT_DISABLEFEDLOGGING=IMG_FALSE	\
-		-DPVRSRV_APPHINT_ZEROFREELIST=IMG_FALSE			\
-		-DPVRSRV_APPHINT_DUSTREQUESTINJECT=IMG_FALSE	\
-		-DPVRSRV_APPHINT_DISABLEPDUMPPANIC=IMG_FALSE	\
-		-DRGX_FW_FILENAME="\"rgx.fw.signed\""		\
-		-DPVR_LINUX_PHYSMEM_MAX_EXCESS_POOL_PAGES=32768	\
-		-DCACHEFLUSH_UM_TYPE=CACHEFLUSH_UM_X86_ONLY		\
-		-DPVRSRV_APPHINT_RGXBVNC="\"1.76.4.6\""				\
-		-DSUPPORT_TLA=1				\
-		-DSUPPORT_COMPUTE=1				\
-		-DSUPPORT_MULTIBVNC_RUNTIME_BVNC_ACQUISITION=1				\
-		-DPVRSRV_ENABLE_MEMTRACK_STATS_FILE=1				\
-		-DPVRSRV_NEED_PVR_STACKTRACE=1				\
-		-DSUPPORT_NATIVE_FENCE_SYNC=1			\
-		-DHWR_DEFAULT_ENABLED=1					\
-		-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO=1					\
-		-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO_THRESHOLD=90					\
-		-DDEVICE_MEMSETCPY_ALIGN_IN_BYTES=8			\
-		$(NULL)
+	-DLINUX \
+	-DPVRSRV_MODNAME="\"pvrsrvkm\"" \
+	-DPVRSYNC_MODNAME="\"pvr_sync\"" \
+	-DPVR_BUILD_DIR="\"intel_android\"" \
+	-DPVR_LDM_DRIVER_REGISTRATION_NAME="\"pvrsrvkm\"" \
+	-DSUPPORT_RGX=1 \
+	-DSUPPORT_LINUX_X86_WRITECOMBINE \
+	-DSUPPORT_LINUX_X86_PAT \
+	-DSYS_USING_INTERRUPTS \
+	-DLDM_PCI \
+	-DSUPPORT_DRM \
+	-DSUPPORT_DRM_EXT \
+	-DBC_DISCONTIG_BUFFERS \
+	-DCACHEFLUSH_TYPE=CACHEFLUSH_X86 \
+	-DSUPPORT_GPUTRACE_EVENTS \
+	-DPVR_LINUX_PHYSMEM_MAX_POOL_PAGES=10240 \
+	-DPVR_LINUX_ARM_PAGEALLOC_FLUSH_THRESHOLD=256 \
+	-DPVR_LINUX_PHYSMEM_MIN_NUM_PAGES=256 \
+	-DPVR_LINUX_PHYSMEM_MAX_ALLOC_ORDER=2 \
+	-DPVR_LINUX_PHYSMEM_SUPPRESS_DMA_AC	\
+	-DPVRSRV_NEED_PVR_DPF=1	\
+	-DSUPPORT_SYSTEM_INTERRUPT_HANDLING \
+	-DSUPPORT_SHARED_SLC \
+	-DPVR_LINUX_KMALLOC_ALLOCATION_THRESHOLD=16384\
+	-DPVR_ANDROID_ION_USE_SG_LENGTH \
+	-DPVRSRV_ENABLE_PROCESS_STATS \
+	-DPVR_ANDROID_SYNC_HEADER="\"../../drivers/staging/android/sync.h\"" \
+	-DGPUVIRT_VALIDATION_NUM_OS=8 \
+	-DPVRSRV_FULL_SYNC_TRACKING_HISTORY_LEN=256 \
+	-DSUPPORT_PERCONTEXT_FREELIST \
+	-DSUPPORT_AUTH \
+	-DRGX_FW_HEAP_SHIFT=25	\
+	-DPVRSRV_APPHINT_CLEANUPTHREADPRIORITY=0	\
+	-DPVRSRV_APPHINT_CLEANUPTHREADWEIGHT=0	\
+	-DPVRSRV_APPHINT_WATCHDOGTHREADPRIORITY=0	\
+	-DPVRSRV_APPHINT_WATCHDOGTHREADWEIGHT=0	\
+	-DPVR_LINUX_PHYSMEM_MAX_ALLOC_ORDER_NUM=2	\
+	-DPVR_DIRTY_BYTES_FLUSH_THRESHOLD=524288	\
+	-DPVR_LINUX_HIGHORDER_ALLOCATION_THRESHOLD=256	\
+	-DPVR_DRM_NAME="\"pvr\""	\
+	-DPVRSRV_APPHINT_ENABLEFWPOISONONFREE=IMG_FALSE	\
+	-DPVRSRV_APPHINT_FWPOISONONFREEVALUE=0xBD	\
+	-DPVRSRV_APPHINT_GENERAL_NON4K_HEAP_PAGE_SIZE=0x4000	\
+	-DPVRSRV_APPHINT_TIMECORRCLOCK=2	\
+	-DPVRSRV_GPUVIRT_NUM_OSID=2			\
+	-DPVRSRV_APPHINT_HWRDEBUGDUMPLIMIT=APPHNT_BLDVAR_DBGDUMPLIMIT			\
+	-DSAPPHNT_BLDVAR_DBGDUMPLIMITPPORT_KERNEL_SRVINIT=1			\
+	-DPVRSRV_APPHINT_ENABLETRUSTEDDEVICEACECONFIG=IMG_FALSE	\
+	-DPVRSRV_APPHINT_HTBUFFERSIZE=64			\
+	-DPVRSRV_APPHINT_ENABLESIGNATURECHECKS=APPHNT_BLDVAR_ENABLESIGNATURECHECKS		\
+	-DPVRSRV_APPHINT_SIGNATURECHECKSBUFSIZE=RGXFW_SIG_BUFFER_SIZE_MIN			\
+	-DPVRSRV_APPHINT_BIFTILINGMODE=4			\
+	-DPVRSRV_APPHINT_DISABLECLOCKGATING=0					\
+	-DPVRSRV_APPHINT_DISABLEDMOVERLAP=0						\
+	-DPVRSRV_APPHINT_ENABLECDMKILLINGRANDMODE=0				\
+	-DPVRSRV_APPHINT_ENABLEFWCONTEXTSWITCH=RGXFWIF_INICFG_CTXSWITCH_DM_ALL			\
+	-DPVRSRV_APPHINT_ENABLERDPOWERISLAND=RGX_RD_POWER_ISLAND_DEFAULT					\
+	-DPVRSRV_APPHINT_FIRMWAREPERF=FW_PERF_CONF_NONE							\
+	-DPVRSRV_APPHINT_FWCONTEXTSWITCHPROFILE=RGXFWIF_CTXSWITCH_PROFILE_MEDIUM_EN				\
+	-DPVRSRV_APPHINT_HWPERFDISABLECUSTOMCOUNTERFILTER=0		\
+	-DPVRSRV_APPHINT_HWPERFFWBUFSIZEINKB=2048		\
+	-DPVRSRV_APPHINT_HWPERFHOSTBUFSIZEINKB=2048		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTBUFFERSIZE=786432				\
+	-DPVRSRV_APPHINT_JONESDISABLEMASK=0						\
+	-DPVRSRV_APPHINT_NEWFILTERINGMODE=1						\
+	-DPVRSRV_APPHINT_TRUNCATEMODE=0							\
+	-DPVRSRV_APPHINT_USEMETAT1=RGX_META_T1_OFF							\
+	-DPVRSRV_APPHINT_ENABLEHTBLOGGROUP=0			\
+	-DPVRSRV_APPHINT_HTBOPERATIONMODE=HTB_OPMODE_DROPOLDEST				\
+	-DPVRSRV_APPHINT_ENABLEFTRACEGPU=IMG_FALSE		\
+	-DPVRSRV_APPHINT_HWPERFFWFILTER=0				\
+	-DPVRSRV_APPHINT_HWPERFHOSTFILTER=0				\
+	-DPVRSRV_APPHINT_ASSERTONHWRTRIGGER=IMG_FALSE	\
+	-DPVRSRV_APPHINT_ASSERTOUTOFMEMORY=IMG_FALSE	\
+	-DPVRSRV_APPHINT_CHECKMLIST=APPHNT_BLDVAR_DEBUG					\
+	-DPVRSRV_APPHINT_ENABLELOGGROUP=RGXFWIF_LOG_TYPE_NONE				\
+	-DPVRSRV_APPHINT_FIRMWARELOGTYPE=0				\
+	-DPVRSRV_APPHINT_ENABLEAPM=RGX_ACTIVEPM_DEFAULT					\
+	-DPVRSRV_APPHINT_DISABLEFEDLOGGING=IMG_FALSE	\
+	-DPVRSRV_APPHINT_ZEROFREELIST=IMG_FALSE			\
+	-DPVRSRV_APPHINT_DUSTREQUESTINJECT=IMG_FALSE	\
+	-DPVRSRV_APPHINT_DISABLEPDUMPPANIC=IMG_FALSE	\
+	-DPVRSRV_APPHINT_VDMCONTEXTSWITCHMODE=RGXFWIF_INICFG_VDM_CTX_STORE_MODE_INDEX	\
+	-DPVRSRV_APPHINT_DRIVERMODE=0x7FFFFFFF		\
+	-DPVRSRV_APPHINT_EMUMAXFREQ=0			\
+	-DPVRSRV_APPHINT_GPIOVALIDATIONMODE=0		\
+	-DPVRSRV_APPHINT_OSIDREGION0MIN="\"0x00000000 0x04000000 0x10000000 0x18000000 0x20000000 0x28000000 0x30000000 0x38000000\""	\
+	-DPVRSRV_APPHINT_OSIDREGION0MAX="\"0x3FFFFFFF 0x0FFFFFFF 0x17FFFFFF 0x1FFFFFFF 0x27FFFFFF 0x2FFFFFFF 0x37FFFFFF 0x3FFFFFFF\""		\
+	-DPVRSRV_APPHINT_OSIDREGION1MIN="\"0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000 0x3F000000\""		\
+	-DPVRSRV_APPHINT_OSIDREGION1MAX="\"0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF 0x3FFFFFFF\""		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_SERVICES=0		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_EGL=0		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENGLES=0		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENCL=0		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENRL=0		\
+	-DPVRSRV_APPHINT_HWPERFCLIENTFILTER_VULKAN=0		\
+	-DPVRSRV_APPHINT_CACHEOPCONFIG=0			\
+	-DPVRSRV_APPHINT_CACHEOPGFTHRESHOLDSIZE=0		\
+	-DRGX_FW_FILENAME="\"rgx.fw.signed\""		\
+	-DPVR_LINUX_PHYSMEM_MAX_EXCESS_POOL_PAGES=20480	\
+	-DCACHEFLUSH_UM_TYPE=CACHEFLUSH_UM_X86_ONLY		\
+	-DPVRSRV_APPHINT_RGXBVNC="\"1.76.4.6\""				\
+	-DSUPPORT_TLA=1				\
+	-DSUPPORT_COMPUTE=1				\
+	-DSUPPORT_MULTIBVNC_RUNTIME_BVNC_ACQUISITION=1				\
+	-DPVRSRV_ENABLE_MEMTRACK_STATS_FILE=1				\
+	-DSUPPORT_NATIVE_FENCE_SYNC=1			\
+	-DPVR_USE_FENCE_SYNC_MODEL=1			\
+	-DPVRSRV_SYNC_SEPARATE_TIMELINES=1		\
+	-DHWR_DEFAULT_ENABLED=1					\
+	-DPVR_ANNOTATION_MAX_LEN=40			\
+	-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO=1					\
+	-DPVRSRV_ENABLE_CCCB_UTILISATION_INFO_THRESHOLD=90					\
+	-DDEVICE_MEMSETCPY_ALIGN_IN_BYTES=8			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TQ3D=14			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TQ2D=14			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_CDM=13			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_TA=15			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_3D=16			\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_KICKSYNC=13		\
+	-DPVRSRV_RGX_LOG2_CLIENT_CCB_SIZE_RTU=15			\
+	-DPVRSRV_POISON_ON_ALLOC_VALUE=0xd9			\
+	-DPVRSRV_POISON_ON_FREE_VALUE=0x63			\
+	$(NULL)
 
 #	-DPVRSRV_ENABLE_FW_TRACE_DEBUGFS \
 
@@ -213,9 +240,6 @@ endif
 
 # for ION
 ccflags-$(CONFIG_ION) += -DSUPPORT_ION=1
-
-ccflags-y += \
-	-DSUPPORT_POWMON_WO_GPIO_PIN 
 
 # for PDUMP
 ccflags-$(CONFIG_PDUMP) += -DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS
@@ -262,6 +286,10 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/common/process_stats.o \
 	$(RGXDIR)/services/server/common/cache_km.o \
 	$(RGXDIR)/services/server/common/htbserver.o \
+	$(RGXDIR)/services/server/common/info_page_km.o \
+	$(RGXDIR)/services/server/common/pvrsrv_pool.o \
+	$(RGXDIR)/services/server/common/pvrsrv_bridge_init.o \
+	$(RGXDIR)/services/server/common/physmem_hostmem.o \
 	$(RGXDIR)/services/server/common/physmem_tdsecbuf.o \
 	$(RGXDIR)/services/server/common/pvr_notifier.o \
 	$(RGXDIR)/services/server/common/sync_checkpoint.o \
@@ -293,14 +321,22 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/common/tlintern.o \
 	$(RGXDIR)/services/server/common/tlstream.o \
 	$(RGXDIR)/services/server/common/tlserver.o \
-    $(RGXDIR)/services/shared/common/tlclient.o	\
-	$(RGXDIR)/services/shared/common/htbuffer.o
+	$(RGXDIR)/services/shared/common/tlclient.o \
+	$(RGXDIR)/services/shared/common/htbuffer.o \
+	$(RGXDIR)/services/server/env/linux/htb_debug.o
 
 # SUPPORT_NATIVE_FENCE_SYNC
+ifeq ($(SUPPORT_DMA_FENCE),1)
 $(DRIVER_NAME)-y += \
-	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync.o	\
-	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_drm.o	\
-	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_platform_drv.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync_file.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_counting_timeline.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sw_fence.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_fence.o	\
+	$(RGXDIR)/services/server/env/linux/dma_fence_sync_native_server.o
+else
+$(DRIVER_NAME)-y += $(RGXDIR)/services/server/env/linux/sync_native_server.o
+$(DRIVER_NAME)-y += $(RGXDIR)/kernel/drivers/staging/imgtec/pvr_sync2.o
+endif
 
 $(DRIVER_NAME)-$(CONFIG_DRM_HANDSET_DEBUG) += \
 	$(RGXDIR)/services/server/common/ri_server.o
@@ -318,7 +354,7 @@ $(DRIVER_NAME)-$(CONFIG_PDUMP) += \
 	$(RGXDIR)/tools/intern/debug/dbgdriv/common/hotkey.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxpdump.o \
 	$(RGXDIR)/services/shared/common/devicemem_pdump.o	\
-    $(RGXDIR)/services/shared/common/devicememx_pdump.o \
+	$(RGXDIR)/services/shared/common/devicememx_pdump.o \
 
 # For SUPPORT_RGX
 $(DRIVER_NAME)-y += \
@@ -340,22 +376,19 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/server/devices/rgx/rgxhwperf.o \
 	$(RGXDIR)/services/server/devices/rgx/rgxtimecorr.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxkicksync.o	\
-	$(RGXDIR)/services/server/devices/rgx/rgxlayer_km_impl.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxmipsmmuinit.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxray.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxsignals.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxstartstop.o	\
 	$(RGXDIR)/services/server/devices/rgx/rgxtdmtransfer.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxbvnc.o		\
+	$(RGXDIR)/services/server/devices/rgx/rgxsyncutils.o	\
 
 # For devfreq
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/3rdparty/intel_devfreq/rgxdf.o \
 	$(RGXDIR)/services/3rdparty/intel_devfreq/dfrgx_utilstats.o \
 	$(RGXDIR)/services/3rdparty/intel_devfreq/dfrgx_interface.o
-
-# For Power Monitor
-#$(DRIVER_NAME)-y += \
-#	$(RGXDIR)/services/server/devices/rgx/rgxpowermon.o
 
 $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/breakpoint_bridge/server_breakpoint_bridge.o \
@@ -366,7 +399,6 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/generated/pdump_bridge/server_pdump_bridge.o \
 	$(RGXDIR)/generated/pdump_bridge/client_pdump_direct_bridge.o \
 	$(RGXDIR)/generated/srvcore_bridge/server_srvcore_bridge.o \
-	$(RGXDIR)/generated/rgxinit_bridge/client_rgxinit_direct_bridge.o \
 	$(RGXDIR)/generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/server_pdumpmm_bridge.o \
 	$(RGXDIR)/generated/pdumpmm_bridge/client_pdumpmm_direct_bridge.o \
@@ -426,6 +458,8 @@ $(DRIVER_NAME)-y += \
 
 # display class
 $(DRIVER_NAME)-y += \
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_drm.o	\
+	$(RGXDIR)/kernel/drivers/staging/imgtec/pvr_platform_drv.o	\
 	$(RGXDIR)/services/server/env/linux/pvr_drm_gem.o \
 	$(RGXDIR)/services/server/env/linux/pvr_drm_prime.o \
 	$(RGXDIR)/services/system/rgx_intel/sysconfig.o \
@@ -433,16 +467,14 @@ $(DRIVER_NAME)-y += \
 	$(RGXDIR)/services/3rdparty/intel_drm/dc_mrfld.o \
 	$(RGXDIR)/services/system/common/env/linux/pci_support.o	\
 	$(RGXDIR)/services/system/common/env/linux/dma_support.o	\
-	$(RGXDIR)/services/system/common/env/linux/interrupt_support.o	\
+	$(RGXDIR)/services/system/common/env/linux/interrupt_support.o \
 
 # server initialization
 $(DRIVER_NAME)-y += \
-	$(RGXDIR)/services/srvinit/common/srvinit_pdump.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxfwimageutils.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxlayer_impl.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/rgxsrvinit_script.o	\
-	$(RGXDIR)/services/srvinit/devices/rgx/env/linux/km/rgxfwload.o	
+	$(RGXDIR)/services/server/devices/rgx/rgxfwimageutils.o		\
+	$(RGXDIR)/services/server/devices/rgx/rgxlayer_impl.o	\
+	$(RGXDIR)/services/server/devices/rgx/rgxsrvinit.o	\
+	$(RGXDIR)/services/server/devices/rgx/env/linux/km/rgxfwload.o
 
 # for SUPPORT_PVRSRV_GPUVIRT
 $(DRIVER_NAME)-$(SUPPORT_PVRSRV_GPUVIRT) += \

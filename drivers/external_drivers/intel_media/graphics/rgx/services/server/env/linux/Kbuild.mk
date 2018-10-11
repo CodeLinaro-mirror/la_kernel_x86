@@ -80,6 +80,7 @@ $(PVRSRV_MODNAME)-y += \
  services/server/common/physheap.o \
  services/server/common/physmem.o \
  services/server/common/physmem_lma.o \
+ services/server/common/physmem_hostmem.o \
  services/server/common/physmem_tdsecbuf.o \
  services/server/common/pmr.o \
  services/server/common/power.o \
@@ -91,12 +92,16 @@ $(PVRSRV_MODNAME)-y += \
  services/server/common/sync_server.o \
  services/shared/common/htbuffer.o \
  services/server/common/htbserver.o \
+ services/server/env/linux/htb_debug.o \
  services/server/common/tlintern.o \
  services/shared/common/tlclient.o \
  services/server/common/tlserver.o \
  services/server/common/tlstream.o \
  services/server/common/cache_km.o \
- services/shared/common/uniq_key_splay_tree.o
+ services/shared/common/uniq_key_splay_tree.o \
+ services/server/common/pvrsrv_pool.o \
+ services/server/common/pvrsrv_bridge_init.o \
+ services/server/common/info_page_km.o
 
 # Wrap ExtMem support
 ifeq ($(SUPPORT_WRAP_EXTMEM),1)
@@ -105,29 +110,14 @@ ifeq ($(SUPPORT_WRAP_EXTMEM),1)
  services/server/common/physmem_extmem.o 
 endif
 
-# Virtualization build host/guest
-ifneq ($(SUPPORT_PVRSRV_GPUVIRT),)
- $(PVRSRV_MODNAME)-y += \
- services/server/common/pvrsrv_vz_common.o
-ifeq ($(PVRSRV_GPUVIRT_GUESTDRV),)
- $(PVRSRV_MODNAME)-y += \
- services/server/common/pvrsrv_vz_host.o
-endif
-endif
-
 ifeq ($(SUPPORT_TRUSTED_DEVICE),1)
  $(PVRSRV_MODNAME)-y += \
  services/server/common/physmem_tdfwcode.o
 endif
 
-ifeq ($(SUPPORT_PDVFS),1)
+ifeq ($(SUPPORT_PHYSMEM_TEST),1)
  $(PVRSRV_MODNAME)-y += \
- services/server/devices/rgx/rgxpdvfs.o
-endif
-
-ifeq ($(SUPPORT_WORKLOAD_ESTIMATION),1)
- $(PVRSRV_MODNAME)-y += \
- services/server/devices/rgx/rgxworkest.o
+ services/server/env/linux/physmem_test.o
 endif
 
 ifeq ($(SUPPORT_DRM_EXT),)
@@ -151,6 +141,7 @@ ifeq ($(SUPPORT_DRM_EXT),)
 endif
 
 
+ifeq ($(SUPPORT_RGX),1)
 $(PVRSRV_MODNAME)-y += \
  services/server/devices/rgx/debugmisc_server.o \
  services/server/devices/rgx/rgxbreakpoint.o \
@@ -158,43 +149,38 @@ $(PVRSRV_MODNAME)-y += \
  services/server/devices/rgx/rgxdebug.o \
  services/server/devices/rgx/rgxfwutils.o \
  services/server/devices/rgx/rgxinit.o \
+ services/server/devices/rgx/rgxbvnc.o \
  services/server/devices/rgx/rgxkicksync.o \
- services/server/devices/rgx/rgxlayer_km_impl.o \
+ services/server/devices/rgx/rgxlayer_impl.o \
  services/server/devices/rgx/rgxmem.o \
  services/server/devices/rgx/rgxmmuinit.o \
  services/server/devices/rgx/rgxregconfig.o \
  services/server/devices/rgx/rgxta3d.o \
+ services/server/devices/rgx/rgxsyncutils.o \
  services/server/devices/rgx/rgxtimerquery.o \
  services/server/devices/rgx/rgxtransfer.o \
  services/server/devices/rgx/rgxtdmtransfer.o \
  services/server/devices/rgx/rgxutils.o \
  services/shared/devices/rgx/rgx_compat_bvnc.o \
- services/server/devices/rgx/rgxmipsmmuinit.o
-
-# Virtualisation build host/guest
-ifneq ($(SUPPORT_PVRSRV_GPUVIRT),)
- $(PVRSRV_MODNAME)-y += \
- services/server/devices/rgx/rgxinit_vz_common.o
-ifneq ($(PVRSRV_GPUVIRT_GUESTDRV),)
- $(PVRSRV_MODNAME)-y += \
- services/server/devices/rgx/rgxinit_vz_guest.o \
- services/server/devices/rgx/rgxpower_vz_guest.o \
- services/server/devices/rgx/rgxhwperf_vz_guest.o \
- services/server/devices/rgx/rgxfwutils_vz_guest.o
-else
- $(PVRSRV_MODNAME)-y += \
- services/server/devices/rgx/rgxinit_vz_host.o \
- services/server/devices/rgx/rgxfwutils_vz_host.o
-endif
-endif
-
-# Normal/virtualization host build
-ifeq ($(PVRSRV_GPUVIRT_GUESTDRV),)
- $(PVRSRV_MODNAME)-y += \
+ services/server/devices/rgx/rgxmipsmmuinit.o \
  services/server/devices/rgx/rgxhwperf.o \
  services/server/devices/rgx/rgxpower.o \
  services/server/devices/rgx/rgxstartstop.o \
- services/server/devices/rgx/rgxtimecorr.o
+ services/server/devices/rgx/rgxtimecorr.o \
+ services/server/devices/rgx/rgxcompute.o \
+ services/server/devices/rgx/rgxray.o \
+ services/server/devices/rgx/rgxsignals.o
+ 
+ifeq ($(SUPPORT_PDVFS),1)
+ $(PVRSRV_MODNAME)-y += \
+ services/server/devices/rgx/rgxpdvfs.o
+
+ ifeq ($(SUPPORT_WORKLOAD_ESTIMATION),1)
+  $(PVRSRV_MODNAME)-y += \
+  services/server/devices/rgx/rgxworkest.o
+ endif
+endif
+ 
 endif
 
 ifeq ($(SUPPORT_DISPLAY_CLASS),1)
@@ -213,13 +199,16 @@ $(PVRSRV_MODNAME)-y += \
  services/server/common/pdump_mmu.o \
  services/server/common/pdump_physmem.o \
  services/shared/common/devicemem_pdump.o \
- services/shared/common/devicememx_pdump.o \
+ services/shared/common/devicememx_pdump.o
+ 
+ifeq ($(SUPPORT_RGX),1)
+$(PVRSRV_MODNAME)-y += \
  services/server/devices/rgx/rgxpdump.o
 endif
 
- $(PVRSRV_MODNAME)-y += services/server/devices/rgx/rgxcompute.o
+endif
 
- $(PVRSRV_MODNAME)-y += services/server/devices/rgx/rgxray.o
+
 
 ifeq ($(PVR_RI_DEBUG),1)
 $(PVRSRV_MODNAME)-y += services/server/common/ri_server.o
@@ -233,8 +222,6 @@ ifeq ($(SUPPORT_PAGE_FAULT_DEBUG),1)
 $(PVRSRV_MODNAME)-y += services/server/common/devicemem_history_server.o
 endif
 
- $(PVRSRV_MODNAME)-y += services/server/devices/rgx/rgxsignals.o
-
 ifeq ($(PVR_HANDLE_BACKEND),generic)
 $(PVRSRV_MODNAME)-y += services/server/common/handle_generic.o
 else
@@ -247,6 +234,10 @@ ifeq ($(SUPPORT_GPUTRACE_EVENTS),1)
 $(PVRSRV_MODNAME)-y += services/server/env/linux/pvr_gputrace.o
 endif
 
+ifeq ($(PVRSRV_ENABLE_LINUX_MMAP_STATS),1)
+$(PVRSRV_MODNAME)-y += services/server/env/linux/mmap_stats.o
+endif
+
 ifeq ($(SUPPORT_BUFFER_SYNC),1)
 $(PVRSRV_MODNAME)-y += \
  kernel/drivers/staging/imgtec/pvr_buffer_sync.o \
@@ -254,7 +245,23 @@ $(PVRSRV_MODNAME)-y += \
 endif
 
 ifeq ($(SUPPORT_NATIVE_FENCE_SYNC),1)
-$(PVRSRV_MODNAME)-y += kernel/drivers/staging/imgtec/pvr_sync.o
+ifeq ($(SUPPORT_DMA_FENCE),1)
+$(PVRSRV_MODNAME)-y += \
+ kernel/drivers/staging/imgtec/pvr_sync_file.o \
+ kernel/drivers/staging/imgtec/pvr_counting_timeline.o \
+ kernel/drivers/staging/imgtec/pvr_sw_fence.o \
+ kernel/drivers/staging/imgtec/pvr_fence.o \
+ services/server/env/linux/dma_fence_sync_native_server.o
+else
+$(PVRSRV_MODNAME)-y += services/server/env/linux/sync_native_server.o
+$(PVRSRV_MODNAME)-y += kernel/drivers/staging/imgtec/pvr_sync2.o
+endif
+else
+ifeq ($(SUPPORT_FALLBACK_FENCE_SYNC),1)
+$(PVRSRV_MODNAME)-y += \
+ services/server/common/sync_fallback_server.o \
+ services/server/env/linux/ossecure_export.o
+endif
 endif
 
 ifeq ($(PVR_DVFS),1)
@@ -280,18 +287,29 @@ $(PVRSRV_MODNAME)-y += \
  kernel/drivers/staging/imgtec/pvr_drm.o
 endif # SUPPORT_DRM_EXT
 
-ifeq ($(SUPPORT_KERNEL_SRVINIT),1)
-
 ccflags-y += -I$(OUT)/target_neutral/intermediates/firmware
 
-SRVINIT := srvinit
-include $(TOP)/services/srvinit/srvinit_common.mk
-ccflags-y += $(patsubst %,-I$(TOP)/%,$($(SRVINIT)_includes))
-$(PVRSRV_MODNAME)-y += $(patsubst $(TOP)/%.c,%.o,$($(SRVINIT)_src))
+ifeq ($(SUPPORT_RGX),1)
+# Srvinit headers and source files
 
-else
-$(PVRSRV_MODNAME)-y += services/server/env/linux/pvr_hwperf.o
-endif # SUPPORT_KERNEL_SRVINIT
+$(PVRSRV_MODNAME)-y += \
+ services/server/devices/rgx/rgxsrvinit.o \
+ services/server/devices/rgx/rgxfwimageutils.o \
+ services/shared/devices/rgx/rgx_compat_bvnc.o \
+ services/shared/devices/rgx/rgx_hwperf_table.o \
+ services/server/devices/rgx/env/linux/km/rgxfwload.o
+endif
+
+ccflags-y += \
+ -Iinclude \
+ -Ihwdefs \
+ -Ihwdefs/km \
+ -Iservices/include \
+ -Iservices/include/shared \
+ -Iservices/server/include \
+ -Iservices/server/devices/rgx \
+ -Iservices/shared/include \
+ -Iservices/shared/devices/rgx
 
 # Bridge headers and source files
 
@@ -302,52 +320,59 @@ endif # SUPPORT_KERNEL_SRVINIT
 ccflags-y += \
  -I$(bridge_base)/mm_bridge \
  -I$(bridge_base)/cmm_bridge \
- -I$(bridge_base)/rgxtq_bridge \
- -I$(bridge_base)/rgxtq2_bridge \
- -I$(bridge_base)/rgxinit_bridge \
- -I$(bridge_base)/rgxta3d_bridge \
  -I$(bridge_base)/srvcore_bridge \
  -I$(bridge_base)/sync_bridge \
  -I$(bridge_base)/synctracking_bridge \
- -I$(bridge_base)/breakpoint_bridge \
- -I$(bridge_base)/debugmisc_bridge \
  -I$(bridge_base)/htbuffer_bridge \
  -I$(bridge_base)/pvrtl_bridge \
+ -I$(bridge_base)/cache_bridge \
+ -I$(bridge_base)/dmabuf_bridge
+
+ifeq ($(SUPPORT_RGX),1)
+ccflags-y += \
+ -I$(bridge_base)/rgxtq_bridge \
+ -I$(bridge_base)/rgxtq2_bridge \
+ -I$(bridge_base)/rgxta3d_bridge \
  -I$(bridge_base)/rgxhwperf_bridge \
+ -I$(bridge_base)/rgxkicksync_bridge \
+ -I$(bridge_base)/rgxcmp_bridge \
+ -I$(bridge_base)/rgxray_bridge \
+ -I$(bridge_base)/breakpoint_bridge \
  -I$(bridge_base)/regconfig_bridge \
  -I$(bridge_base)/timerquery_bridge \
- -I$(bridge_base)/rgxkicksync_bridge \
- -I$(bridge_base)/cache_bridge \
- -I$(bridge_base)/dmabuf_bridge \
-
+ -I$(bridge_base)/debugmisc_bridge \
+ -I$(bridge_base)/rgxsignals_bridge
+endif
 
 $(PVRSRV_MODNAME)-y += \
  generated/mm_bridge/server_mm_bridge.o \
  generated/cmm_bridge/server_cmm_bridge.o \
+ generated/srvcore_bridge/server_srvcore_bridge.o \
+ generated/sync_bridge/server_sync_bridge.o \
+ generated/htbuffer_bridge/server_htbuffer_bridge.o \
+ generated/pvrtl_bridge/server_pvrtl_bridge.o \
+ generated/cache_bridge/server_cache_bridge.o \
+ generated/dmabuf_bridge/server_dmabuf_bridge.o
+
+ifeq ($(SUPPORT_RGX),1)
+$(PVRSRV_MODNAME)-y += \
  generated/rgxtq_bridge/server_rgxtq_bridge.o \
  generated/rgxtq2_bridge/server_rgxtq2_bridge.o \
  generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
- generated/srvcore_bridge/server_srvcore_bridge.o \
- generated/sync_bridge/server_sync_bridge.o \
- generated/breakpoint_bridge/server_breakpoint_bridge.o \
- generated/debugmisc_bridge/server_debugmisc_bridge.o \
- generated/htbuffer_bridge/server_htbuffer_bridge.o \
- generated/pvrtl_bridge/server_pvrtl_bridge.o \
  generated/rgxhwperf_bridge/server_rgxhwperf_bridge.o \
+ generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
+ generated/rgxcmp_bridge/server_rgxcmp_bridge.o \
+ generated/rgxray_bridge/server_rgxray_bridge.o \
+ generated/breakpoint_bridge/server_breakpoint_bridge.o \
  generated/regconfig_bridge/server_regconfig_bridge.o \
  generated/timerquery_bridge/server_timerquery_bridge.o \
- generated/rgxkicksync_bridge/server_rgxkicksync_bridge.o \
- generated/cache_bridge/server_cache_bridge.o \
- generated/dmabuf_bridge/server_dmabuf_bridge.o
- 
- 
+ generated/debugmisc_bridge/server_debugmisc_bridge.o \
+ generated/rgxsignals_bridge/server_rgxsignals_bridge.o
+endif
+  
 ifeq ($(SUPPORT_WRAP_EXTMEM),1)
 ccflags-y += -I$(bridge_base)/mmextmem_bridge
 $(PVRSRV_MODNAME)-y += generated/mmextmem_bridge/server_mmextmem_bridge.o 
-endif
-
-ifneq ($(SUPPORT_KERNEL_SRVINIT),1)
-$(PVRSRV_MODNAME)-y += generated/rgxinit_bridge/server_rgxinit_bridge.o
 endif
 
 ifeq ($(SUPPORT_DISPLAY_CLASS),1)
@@ -376,20 +401,21 @@ ifeq ($(PDUMP),1)
 ccflags-y += \
  -I$(bridge_base)/pdump_bridge \
  -I$(bridge_base)/pdumpctrl_bridge \
- -I$(bridge_base)/pdumpmm_bridge \
- -I$(bridge_base)/rgxpdump_bridge
+ -I$(bridge_base)/pdumpmm_bridge
+
+ifeq ($(SUPPORT_RGX),1)
+ccflags-y += \
+ -I$(bridge_base)/rgxpdump_bridge 
+
+$(PVRSRV_MODNAME)-y += \
+ generated/rgxpdump_bridge/server_rgxpdump_bridge.o
+endif
+ 
 $(PVRSRV_MODNAME)-y += \
  generated/pdump_bridge/server_pdump_bridge.o \
  generated/pdumpctrl_bridge/server_pdumpctrl_bridge.o \
- generated/pdumpmm_bridge/server_pdumpmm_bridge.o \
- generated/rgxpdump_bridge/server_rgxpdump_bridge.o
+ generated/pdumpmm_bridge/server_pdumpmm_bridge.o
 endif
-
-ccflags-y += -I$(bridge_base)/rgxcmp_bridge
-$(PVRSRV_MODNAME)-y += generated/rgxcmp_bridge/server_rgxcmp_bridge.o
-
-ccflags-y += -I$(bridge_base)/rgxray_bridge
-$(PVRSRV_MODNAME)-y += generated/rgxray_bridge/server_rgxray_bridge.o
 
 ifeq ($(PVR_RI_DEBUG),1)
 ccflags-y += -I$(bridge_base)/ri_bridge
@@ -420,9 +446,16 @@ $(PVRSRV_MODNAME)-y += \
 endif
 
 #ifeq ($(SUPPORT_SIGNAL_FILTER),1)
-ccflags-y += -I$(bridge_base)/rgxsignals_bridge
-$(PVRSRV_MODNAME)-y += generated/rgxsignals_bridge/server_rgxsignals_bridge.o
 #endif
+
+ifeq ($(SUPPORT_FALLBACK_FENCE_SYNC),1)
+ccflags-y += \
+ -I$(bridge_base)/syncfallback_bridge
+$(PVRSRV_MODNAME)-y += generated/syncfallback_bridge/server_syncfallback_bridge.o
+endif
+
+
+
 
 # Direct bridges
 
@@ -441,15 +474,16 @@ ifeq ($(PVR_RI_DEBUG),1)
 $(PVRSRV_MODNAME)-y += generated/ri_bridge/client_ri_direct_bridge.o
 endif
 
-ifeq ($(SUPPORT_KERNEL_SRVINIT),1)
+ifeq ($(PDUMP),1)
  $(PVRSRV_MODNAME)-y += \
-   generated/rgxinit_bridge/client_rgxinit_direct_bridge.o
- ifeq ($(PDUMP),1)
-  $(PVRSRV_MODNAME)-y += \
-   generated/pdump_bridge/client_pdump_direct_bridge.o \
-   generated/pdumpctrl_bridge/client_pdumpctrl_direct_bridge.o \
-   generated/rgxpdump_bridge/client_rgxpdump_direct_bridge.o
- endif
+  generated/pdump_bridge/client_pdump_direct_bridge.o \
+  generated/pdumpctrl_bridge/client_pdumpctrl_direct_bridge.o 
+  
+ifeq ($(SUPPORT_RGX),1)
+ $(PVRSRV_MODNAME)-y += \
+  generated/rgxpdump_bridge/client_rgxpdump_direct_bridge.o
+endif
+
 endif
 
 ifeq ($(SUPPORT_PAGE_FAULT_DEBUG),1)

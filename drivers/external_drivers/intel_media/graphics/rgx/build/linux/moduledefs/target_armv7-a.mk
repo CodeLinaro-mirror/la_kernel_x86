@@ -59,13 +59,19 @@ MODULE_CC := $(MODULE_CC) -mthumb
 MODULE_CXX := $(MODULE_CXX) -mthumb
 endif
 
+MODULE_EXE_LDFLAGS := \
+ -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker -lc
+
+MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC_SECONDARY)
+
+ifeq ($(NDK_ROOT),)
+
 ifneq ($(SUPPORT_ARC_PLATFORM),)
 _obj := $(SYSROOT)/usr
 else
 _obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_arm,)
 endif
 
-# Linker flags used to find system libraries.
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
  -L$(_obj)/lib \
  -Xlinker -rpath-link=$(_obj)/lib
@@ -75,8 +81,15 @@ ifeq ($(SUPPORT_ARC_PLATFORM),)
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
  -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib \
  -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib
-
-ifeq ($(NDK_ROOT),)
+ifneq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor/lib
+else
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/vendor/lib
+endif
 
 MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libc/arch-arm/include \
@@ -84,34 +97,71 @@ MODULE_INCLUDE_FLAGS := \
  -isystem $(ANDROID_ROOT)/bionic/libm/include/arm \
  $(MODULE_INCLUDE_FLAGS)
 
+MODULE_ARCH_TAG := $(_obj)
+
+endif # SUPPORT_ARC_PLATFORM
+
 else # NDK_ROOT
 
-_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-arm/usr
+MODULE_INCLUDE_FLAGS := \
+ -isystem $(NDK_SYSROOT)/usr/include/$(CROSS_TRIPLE_SECONDARY) \
+ $(MODULE_INCLUDE_FLAGS)
+
+MODULE_LIBRARY_FLAGS_SUBST := \
+ art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libart.so \
+ RScpp:$(NDK_ROOT)/toolchains/renderscript/prebuilt/$(HOST_OS)-$(HOST_ARCH)/platform/arm/libRScpp_static.a
+
+ifeq ($(wildcard $(NDK_ROOT)/out/local/armeabi-v7a/libc++.so),)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/armeabi-v7a/libc++_static.a$$(space)$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/armeabi-v7a/libc++abi.a \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+else
+MODULE_LIBRARY_FLAGS_SUBST := \
+ c++:$(NDK_ROOT)/out/local/armeabi-v7a/libc++.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -Xlinker -rpath-link=$(NDK_ROOT)/out/local/armeabi-v7a
+endif
+
+ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
+
+MODULE_SYSTEM_LIBRARY_DIR_FLAGS += \
+ -L$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib \
+ -Xlinker -rpath-link=$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib
+
+# Substitutions performed on MODULE_LIBRARY_FLAGS (NDK workarounds)
+MODULE_LIBRARY_FLAGS_SUBST := \
+ nativewindow:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libnativewindow.so \
+ sync:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libsync.so \
+ $(MODULE_LIBRARY_FLAGS_SUBST)
+
+endif # !VNDK
+
+_obj := $(NDK_PLATFORMS_ROOT)/$(TARGET_PLATFORM)/arch-arm/usr
 
 MODULE_SYSTEM_LIBRARY_DIR_FLAGS := \
- -L$(NDK_ROOT)/sources/cxx-stl/llvm-libc++/libs/armeabi-v7a \
+ -L$(_obj)/lib \
+ -Xlinker -rpath-link=$(_obj)/lib \
  $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
+
+# Workaround; the VNDK platforms root lacks the crt files
+_obj := $(NDK_ROOT)/platforms/$(TARGET_PLATFORM)/arch-arm/usr
+
+MODULE_EXE_LDFLAGS := $(MODULE_EXE_LDFLAGS) $(LIBGCC_SECONDARY) -Wl,--as-needed -ldl
+
+MODULE_ARCH_TAG := armeabi-v7a
 
 endif # NDK_ROOT
 
-endif # !SUPPORT_ARC_PLATFORM
+MODULE_LIB_LDFLAGS := $(MODULE_EXE_LDFLAGS)
 
 MODULE_LDFLAGS += $(MODULE_SYSTEM_LIBRARY_DIR_FLAGS)
-
-MODULE_EXE_LDFLAGS := \
- -Bdynamic -nostdlib -Wl,-dynamic-linker,/system/bin/linker -lc
-
-MODULE_LIB_LDFLAGS := $(MODULE_EXE_LDFLAGS)
 
 MODULE_EXE_CRTBEGIN := $(_obj)/lib/crtbegin_dynamic.o
 MODULE_EXE_CRTEND := $(_obj)/lib/crtend_android.o
 
 MODULE_LIB_CRTBEGIN := $(_obj)/lib/crtbegin_so.o
 MODULE_LIB_CRTEND := $(_obj)/lib/crtend_so.o
-
-MODULE_LIBGCC := -Wl,--version-script,$(MAKE_TOP)/common/libgcc.lds $(LIBGCC_SECONDARY)
-
-MODULE_ARCH_TAG := $(_obj)
 
 endif # SUPPORT_ANDROID_PLATFORM
 
